@@ -389,3 +389,77 @@ class TestProbeFile:
         assert mf.metadata_json is not None
         parsed = json.loads(mf.metadata_json)
         assert parsed == raw
+
+
+class TestScanDirectoryParallel:
+    """Tests for scan_directory parallel execution."""
+
+    def test_scan_uses_process_pool(self, tmp_path: Path) -> None:
+        """scan_directory should use ProcessPoolExecutor with specified max_workers."""
+        for i in range(5):
+            (tmp_path / f"clip{i}.mp4").write_bytes(b"\x00")
+
+        mock_executor = MagicMock()
+        mock_executor.__enter__ = MagicMock(return_value=mock_executor)
+        mock_executor.__exit__ = MagicMock(return_value=False)
+        mock_executor.map.return_value = [
+            MediaFile(file_path=tmp_path / f"clip{i}.mp4") for i in range(5)
+        ]
+
+        with patch(
+            "autopilot.ingest.scanner.ProcessPoolExecutor",
+            return_value=mock_executor,
+        ) as mock_pool_cls:
+            results = scan_directory(tmp_path, max_workers=2)
+
+        mock_pool_cls.assert_called_once_with(max_workers=2)
+        assert mock_executor.map.called
+        assert len(results) == 5
+
+    def test_scan_default_workers(self, tmp_path: Path) -> None:
+        """scan_directory without max_workers should use None (CPU count default)."""
+        (tmp_path / "clip.mp4").write_bytes(b"\x00")
+
+        mock_executor = MagicMock()
+        mock_executor.__enter__ = MagicMock(return_value=mock_executor)
+        mock_executor.__exit__ = MagicMock(return_value=False)
+        mock_executor.map.return_value = [
+            MediaFile(file_path=tmp_path / "clip.mp4"),
+        ]
+
+        with patch(
+            "autopilot.ingest.scanner.ProcessPoolExecutor",
+            return_value=mock_executor,
+        ) as mock_pool_cls:
+            results = scan_directory(tmp_path)
+
+        mock_pool_cls.assert_called_once_with(max_workers=None)
+        assert len(results) == 1
+
+    def test_scan_handles_probe_failure(self, tmp_path: Path) -> None:
+        """scan_directory should skip files that fail to probe without crashing."""
+        (tmp_path / "good.mp4").write_bytes(b"\x00")
+        (tmp_path / "bad.mp4").write_bytes(b"\x00")
+
+        def mock_map(fn, files):
+            """Simulate one success and one failure."""
+            for f in files:
+                if f.name == "bad.mp4":
+                    raise Exception("probe failed")
+                yield MediaFile(file_path=f)
+
+        mock_executor = MagicMock()
+        mock_executor.__enter__ = MagicMock(return_value=mock_executor)
+        mock_executor.__exit__ = MagicMock(return_value=False)
+        mock_executor.map.side_effect = mock_map
+
+        with patch(
+            "autopilot.ingest.scanner.ProcessPoolExecutor",
+            return_value=mock_executor,
+        ):
+            results = scan_directory(tmp_path)
+
+        # Should have at least the good file (bad one is skipped)
+        assert len(results) >= 1
+        names = {mf.file_path.name for mf in results}
+        assert "good.mp4" in names
