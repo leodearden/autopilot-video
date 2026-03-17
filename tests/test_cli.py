@@ -221,3 +221,64 @@ class TestRunSubcommand:
                     ["--config", str(config_file), "run"],
                 )
                 assert result.exit_code == 0, f"Exit code: {result.exit_code}, Output: {result.output}"
+
+
+class TestStageSubcommands:
+    """Tests for individual stage subcommands delegation."""
+
+    def _invoke_with_mock_orch(
+        self, tmp_path: Path, subcommand: str
+    ) -> MagicMock:
+        """Invoke a subcommand with mocked orchestrator, return the mock."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+            mock_db_cls.return_value = MagicMock()
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch = MagicMock()
+                mock_orch_cls.return_value = mock_orch
+                result = runner.invoke(
+                    main,
+                    ["--config", str(config_file), subcommand],
+                )
+                assert result.exit_code == 0, (
+                    f"{subcommand} failed: {result.output}"
+                )
+                return mock_orch
+
+    def test_ingest_delegates_to_stage(self, tmp_path: Path) -> None:
+        """'ingest' calls the INGEST stage function."""
+        mock_orch = self._invoke_with_mock_orch(tmp_path, "ingest")
+        mock_orch._stage_map.__getitem__.assert_any_call("INGEST")
+
+    def test_analyze_delegates_to_stage(self, tmp_path: Path) -> None:
+        """'analyze' calls the ANALYZE and CLASSIFY stage functions."""
+        mock_orch = self._invoke_with_mock_orch(tmp_path, "analyze")
+        calls = [c.args[0] for c in mock_orch._stage_map.__getitem__.call_args_list]
+        assert "ANALYZE" in calls
+        assert "CLASSIFY" in calls
+
+    def test_plan_delegates(self, tmp_path: Path) -> None:
+        """'plan' calls the NARRATE and SCRIPT stage functions."""
+        mock_orch = self._invoke_with_mock_orch(tmp_path, "plan")
+        calls = [c.args[0] for c in mock_orch._stage_map.__getitem__.call_args_list]
+        assert "NARRATE" in calls
+        assert "SCRIPT" in calls
+
+    def test_edit_delegates(self, tmp_path: Path) -> None:
+        """'edit' calls the EDL and SOURCE_ASSETS stage functions."""
+        mock_orch = self._invoke_with_mock_orch(tmp_path, "edit")
+        calls = [c.args[0] for c in mock_orch._stage_map.__getitem__.call_args_list]
+        assert "EDL" in calls
+        assert "SOURCE_ASSETS" in calls
+
+    def test_render_delegates(self, tmp_path: Path) -> None:
+        """'render' calls the RENDER stage function."""
+        mock_orch = self._invoke_with_mock_orch(tmp_path, "render")
+        mock_orch._stage_map.__getitem__.assert_any_call("RENDER")
+
+    def test_upload_delegates(self, tmp_path: Path) -> None:
+        """'upload' calls the UPLOAD stage function."""
+        mock_orch = self._invoke_with_mock_orch(tmp_path, "upload")
+        mock_orch._stage_map.__getitem__.assert_any_call("UPLOAD")
