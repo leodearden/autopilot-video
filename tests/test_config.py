@@ -670,3 +670,28 @@ def test_load_config_resolution_scalar(tmp_path: pathlib.Path) -> None:
     )
     with pytest.raises(ConfigError, match="resolution"):
         load_config(config_file)
+
+
+# ---------------------------------------------------------------------------
+# Step 29: Null camera entry — treated as default CameraConfig
+# ---------------------------------------------------------------------------
+
+
+def test_load_config_null_camera_entry(tmp_path: pathlib.Path) -> None:
+    """Null camera entry (key with no value) gets all CameraConfig defaults."""
+    from autopilot.config import load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        f"{_BASE_REQUIRED}"
+        "cameras:\n"
+        "  gopro:\n"
+    )
+    cfg = load_config(config_file)
+    assert "gopro" in cfg.cameras
+    cam = cfg.cameras["gopro"]
+    assert cam.source_resolution == (1920, 1080)
+    assert cam.has_gyro_data is False
+    assert cam.aspect_mode == "landscape"
+    assert cam.default_crop_target == "16:9"
+    assert cam.crop_smoothing_tau == 0.5
