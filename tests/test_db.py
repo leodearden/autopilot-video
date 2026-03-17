@@ -150,3 +150,86 @@ class TestSchema:
         assert fk[2] == "media_files"  # table
         assert fk[3] == "media_id"  # from
         assert fk[4] == "id"  # to
+
+
+# -- media_files CRUD --------------------------------------------------------
+
+
+class TestMediaFilesCRUD:
+    """Tests for media_files table CRUD operations."""
+
+    def test_insert_media(self, catalog_db):
+        """Insert a media file row and retrieve it."""
+        catalog_db.insert_media(
+            id="m1",
+            file_path="/videos/test.mp4",
+            sha256_prefix="abc123",
+            codec="h264",
+            resolution_w=1920,
+            resolution_h=1080,
+            fps=30.0,
+            duration_seconds=120.5,
+        )
+        cur = catalog_db.conn.execute(
+            "SELECT * FROM media_files WHERE id = ?", ("m1",)
+        )
+        row = cur.fetchone()
+        assert row is not None
+        assert row["file_path"] == "/videos/test.mp4"
+        assert row["codec"] == "h264"
+
+    def test_get_media(self, catalog_db):
+        """get_media returns correct row as dict."""
+        catalog_db.insert_media(id="m1", file_path="/videos/test.mp4")
+        result = catalog_db.get_media("m1")
+        assert result is not None
+        assert result["id"] == "m1"
+        assert result["file_path"] == "/videos/test.mp4"
+        assert result["status"] == "ingested"
+
+    def test_get_media_not_found(self, catalog_db):
+        """get_media returns None for nonexistent id."""
+        assert catalog_db.get_media("nonexistent") is None
+
+    def test_update_media_status(self, catalog_db):
+        """update_media_status changes status field."""
+        catalog_db.insert_media(id="m1", file_path="/videos/test.mp4")
+        catalog_db.update_media_status("m1", "analyzing")
+        result = catalog_db.get_media("m1")
+        assert result is not None
+        assert result["status"] == "analyzing"
+
+    def test_list_by_status(self, catalog_db):
+        """list_by_status returns only matching rows."""
+        catalog_db.insert_media(
+            id="m1", file_path="/a.mp4", status="ingested"
+        )
+        catalog_db.insert_media(
+            id="m2", file_path="/b.mp4", status="analyzing"
+        )
+        catalog_db.insert_media(
+            id="m3", file_path="/c.mp4", status="ingested"
+        )
+        results = catalog_db.list_by_status("ingested")
+        assert len(results) == 2
+        ids = {r["id"] for r in results}
+        assert ids == {"m1", "m3"}
+
+    def test_find_by_hash(self, catalog_db):
+        """find_by_hash returns the media with matching sha256_prefix."""
+        catalog_db.insert_media(
+            id="m1", file_path="/a.mp4", sha256_prefix="abc123"
+        )
+        result = catalog_db.find_by_hash("abc123")
+        assert result is not None
+        assert result["id"] == "m1"
+
+    def test_find_by_hash_not_found(self, catalog_db):
+        """find_by_hash returns None for nonexistent hash."""
+        assert catalog_db.find_by_hash("nonexistent") is None
+
+    def test_insert_media_duplicate_id(self, catalog_db):
+        """Inserting duplicate primary key raises IntegrityError."""
+        catalog_db.insert_media(id="m1", file_path="/a.mp4")
+        with pytest.raises(sqlite3.IntegrityError):
+            catalog_db.insert_media(id="m1", file_path="/b.mp4")
