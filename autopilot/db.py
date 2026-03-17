@@ -9,11 +9,17 @@ from typing import Self
 class CatalogDB:
     """Wraps a SQLite database with WAL mode, thread safety, and schema management.
 
+    CRUD write methods do NOT auto-commit.  Callers must either use the context
+    manager (``with db:``) for automatic commit/rollback, or call
+    ``db.conn.commit()`` explicitly after writes.
+
     Usage::
 
         db = CatalogDB("catalog.db")
         with db:
             db.insert_media(...)
+            db.upsert_transcript(...)
+        # both writes committed atomically on __exit__
         db.close()
     """
 
@@ -211,7 +217,6 @@ class CatalogDB:
                 metadata_json,
             ),
         )
-        self.conn.commit()
 
     def get_media(self, media_id: str) -> dict[str, object] | None:
         """Get a media file by id, or None if not found."""
@@ -225,7 +230,6 @@ class CatalogDB:
             "UPDATE media_files SET status = ? WHERE id = ?",
             (status, media_id),
         )
-        self.conn.commit()
 
     def list_by_status(self, status: str) -> list[dict[str, object]]:
         """List all media files with a given status."""
@@ -250,7 +254,6 @@ class CatalogDB:
             "(media_id, segments_json, language) VALUES (?, ?, ?)",
             (media_id, segments_json, language),
         )
-        self.conn.commit()
 
     def get_transcript(self, media_id: str) -> dict[str, object] | None:
         """Get a transcript by media_id, or None if not found."""
@@ -267,7 +270,6 @@ class CatalogDB:
             "(media_id, boundaries_json, method) VALUES (?, ?, ?)",
             (media_id, boundaries_json, method),
         )
-        self.conn.commit()
 
     def get_boundaries(
         self, media_id: str, method: str | None = None
@@ -300,7 +302,6 @@ class CatalogDB:
             "INSERT INTO detections (media_id, frame_number, detections_json) VALUES (?, ?, ?)",
             rows,
         )
-        self.conn.commit()
 
     def get_detections_for_frame(
         self, media_id: str, frame_number: int
@@ -340,7 +341,6 @@ class CatalogDB:
             "VALUES (?, ?, ?, ?)",
             (cluster_id, label, representative_embedding, sample_image_paths),
         )
-        self.conn.commit()
 
     def update_face_label(self, cluster_id: int, label: str) -> None:
         """Update the label of a face cluster."""
@@ -348,7 +348,6 @@ class CatalogDB:
             "UPDATE face_clusters SET label = ? WHERE cluster_id = ?",
             (label, cluster_id),
         )
-        self.conn.commit()
 
     def get_face_clusters(self) -> list[dict[str, object]]:
         """List all face clusters."""
@@ -374,7 +373,6 @@ class CatalogDB:
             "INSERT INTO clip_embeddings (media_id, frame_number, embedding) VALUES (?, ?, ?)",
             rows,
         )
-        self.conn.commit()
 
     def get_embeddings_for_media(self, media_id: str) -> list[dict[str, object]]:
         """Get all clip embeddings for a media file."""
@@ -394,7 +392,6 @@ class CatalogDB:
             "INSERT INTO audio_events (media_id, timestamp_seconds, events_json) VALUES (?, ?, ?)",
             rows,
         )
-        self.conn.commit()
 
     def get_audio_events_for_range(
         self, media_id: str, start_seconds: float, end_seconds: float
@@ -441,7 +438,6 @@ class CatalogDB:
                 clip_ids_json,
             ),
         )
-        self.conn.commit()
 
     def get_activity_clusters(self) -> list[dict[str, object]]:
         """List all activity clusters."""
@@ -460,7 +456,6 @@ class CatalogDB:
             "WHERE cluster_id = ?",
             values,
         )
-        self.conn.commit()
 
     # -- narratives CRUD --------------------------------------------------------
 
@@ -491,7 +486,6 @@ class CatalogDB:
                 status,
             ),
         )
-        self.conn.commit()
 
     def get_narrative(self, narrative_id: str) -> dict[str, object] | None:
         """Get a narrative by id, or None if not found."""
@@ -508,7 +502,6 @@ class CatalogDB:
             "UPDATE narratives SET status = ? WHERE narrative_id = ?",
             (status, narrative_id),
         )
-        self.conn.commit()
 
     def list_narratives(self, status: str | None = None) -> list[dict[str, object]]:
         """List all narratives, optionally filtered by status."""
@@ -535,7 +528,6 @@ class CatalogDB:
             "VALUES (?, ?, ?, ?)",
             (narrative_id, edl_json, otio_path, validation_json),
         )
-        self.conn.commit()
 
     def get_edit_plan(self, narrative_id: str) -> dict[str, object] | None:
         """Get an edit plan by narrative_id, or None if not found."""
@@ -564,7 +556,6 @@ class CatalogDB:
             "smoothing_tau, path_data) VALUES (?, ?, ?, ?, ?)",
             (media_id, target_aspect, subject_track_id, smoothing_tau, path_data),
         )
-        self.conn.commit()
 
     def get_crop_path(
         self,
@@ -606,7 +597,6 @@ class CatalogDB:
                 privacy_status,
             ),
         )
-        self.conn.commit()
 
     def get_upload(self, narrative_id: str) -> dict[str, object] | None:
         """Get an upload by narrative_id, or None if not found."""
