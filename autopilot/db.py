@@ -327,6 +327,73 @@ class CatalogDB:
         )
         return [dict(row) for row in cur.fetchall()]
 
+    # -- face_clusters CRUD -----------------------------------------------------
+
+    def insert_face_cluster(
+        self,
+        cluster_id: int,
+        label: str | None = None,
+        representative_embedding: bytes | None = None,
+        sample_image_paths: str | None = None,
+    ) -> None:
+        """Insert a new face cluster."""
+        self.conn.execute(
+            "INSERT INTO face_clusters "
+            "(cluster_id, label, representative_embedding, sample_image_paths) "
+            "VALUES (?, ?, ?, ?)",
+            (cluster_id, label, representative_embedding, sample_image_paths),
+        )
+        self.conn.commit()
+
+    def update_face_label(self, cluster_id: int, label: str) -> None:
+        """Update the label of a face cluster."""
+        self.conn.execute(
+            "UPDATE face_clusters SET label = ? WHERE cluster_id = ?",
+            (label, cluster_id),
+        )
+        self.conn.commit()
+
+    def get_face_clusters(self) -> list[dict[str, object]]:
+        """List all face clusters."""
+        cur = self.conn.execute("SELECT * FROM face_clusters")
+        return [dict(row) for row in cur.fetchall()]
+
+    def get_face_cluster_by_id(
+        self, cluster_id: int
+    ) -> dict[str, object] | None:
+        """Get a face cluster by id, or None if not found."""
+        cur = self.conn.execute(
+            "SELECT * FROM face_clusters WHERE cluster_id = ?",
+            (cluster_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+    # -- clip_embeddings CRUD ---------------------------------------------------
+
+    def batch_insert_embeddings(
+        self, rows: list[tuple[str, int, bytes]]
+    ) -> None:
+        """Batch insert clip embeddings: (media_id, frame_number, embedding)."""
+        if not rows:
+            return
+        self.conn.executemany(
+            "INSERT INTO clip_embeddings "
+            "(media_id, frame_number, embedding) VALUES (?, ?, ?)",
+            rows,
+        )
+        self.conn.commit()
+
+    def get_embeddings_for_media(
+        self, media_id: str
+    ) -> list[dict[str, object]]:
+        """Get all clip embeddings for a media file."""
+        cur = self.conn.execute(
+            "SELECT * FROM clip_embeddings WHERE media_id = ?",
+            (media_id,),
+        )
+        return [dict(row) for row in cur.fetchall()]
+
     def close(self) -> None:
         """Close the underlying database connection."""
         self.conn.close()
