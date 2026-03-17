@@ -1,0 +1,450 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "Project scaffolding",
+        "description": "Create the project skeleton: pyproject.toml with all dependencies, config.yaml template, directory structure with __init__.py files.",
+        "details": "Create pyproject.toml using uv/hatch build system with Python 3.11+ requirement. Include ALL dependencies from the PRD technology stack:\n- Core: click, pyyaml, sqlite3 (stdlib)\n- ML: whisperx, faster-whisper, ultralytics, insightface, transformers, faiss-gpu, panns_inference, audiocraft, scikit-learn\n- Video: moviepy (v2.x), pyav, opentimelineio, scenedetect\n- TTS: kokoro\n- API: anthropic, google-api-python-client, requests\n- Dev: pytest, ruff, pyright\n\nCreate config.yaml template matching the PRD's configuration section exactly (input_dir, output_dir, creator profile, camera profiles, output targets, model preferences, LLM config, YouTube config, processing config).\n\nCreate directory structure:\n  autopilot/\n    __init__.py\n    ingest/__init__.py\n    analyze/__init__.py\n    organize/__init__.py\n    plan/__init__.py\n    source/__init__.py\n    render/__init__.py\n    upload/__init__.py\n    prompts/\n  tests/\n    fixtures/\n  scripts/\n  output/",
+        "testStrategy": "Verify pyproject.toml is valid (uv pip compile or similar). Verify all directories exist with __init__.py. Verify config.yaml parses as valid YAML with expected top-level keys.",
+        "priority": "critical",
+        "status": "blocked",
+        "dependencies": [],
+        "tags": [
+          "autopilot"
+        ],
+        "subtasks": [],
+        "updatedAt": "2026-03-17T14:56:32.346Z"
+      },
+      {
+        "id": "2",
+        "title": "Configuration system",
+        "description": "Implement config.py: load and validate config.yaml into typed dataclasses with sensible defaults.",
+        "details": "Create autopilot/config.py with:\n1. Typed dataclasses (or Pydantic models) for every config section: CreatorConfig, CameraConfig, OutputConfig, ModelConfig, LLMConfig, YouTubeConfig, ProcessingConfig, and a root AutopilotConfig.\n2. A load_config(path: Path) -> AutopilotConfig function that reads YAML, validates required fields, applies defaults for optional fields, and expands ~ in paths.\n3. Defaults should match the PRD values (e.g., whisper_size='large-v3', yolo_variant='yolo11x', tts_engine='kokoro', etc.).\n4. Validation: raise clear errors for missing required fields (input_dir, output_dir), invalid enum values, numeric bounds checks (e.g., quality_crf between 0-51).",
+        "testStrategy": "Unit tests: load valid config, load config with missing optional fields (verify defaults), load config with invalid values (verify error messages), test path expansion.",
+        "priority": "high",
+        "status": "pending",
+        "dependencies": [
+          "1"
+        ],
+        "tags": [
+          "autopilot"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "3",
+        "title": "SQLite catalog and db interface",
+        "description": "Implement db.py with the full 12-table schema from the PRD, CRUD helpers, WAL mode, and JSON column support.",
+        "details": "Create autopilot/db.py with:\n1. A CatalogDB class that manages a SQLite connection with WAL mode enabled and JSON1 extension.\n2. Schema creation via CREATE TABLE IF NOT EXISTS for all 12 tables from the PRD: media_files, transcripts, shot_boundaries, detections, face_clusters, clip_embeddings, audio_events, activity_clusters, narratives, edit_plans, crop_paths, uploads.\n3. CRUD helper methods per table:\n   - media_files: insert_media, get_media, update_status, list_by_status, find_by_hash\n   - transcripts: upsert_transcript, get_transcript\n   - shot_boundaries: upsert_boundaries, get_boundaries\n   - detections: batch_insert_detections, get_detections_for_frame, get_detections_for_range\n   - face_clusters: insert_cluster, update_label, get_clusters, get_cluster_by_id\n   - clip_embeddings: batch_insert_embeddings, get_embeddings_for_media\n   - audio_events: batch_insert_events, get_events_for_range\n   - activity_clusters: insert_cluster, get_clusters, update_cluster\n   - narratives: insert_narrative, get_narrative, update_status, list_narratives\n   - edit_plans: upsert_plan, get_plan\n   - crop_paths: upsert_crop_path, get_crop_path\n   - uploads: insert_upload, get_upload\n4. Context manager support (__enter__/__exit__) for transaction management.\n5. Connection pooling is not needed (single-user), but ensure thread safety with check_same_thread=False.\n6. Use TEXT for JSON columns, BLOB for binary data (embeddings, crop paths).",
+        "testStrategy": "Unit tests with in-memory SQLite: verify schema creation, CRUD operations for each table, JSON column round-trip, WAL mode enabled, deduplication via find_by_hash, batch insert performance with 1000 rows.",
+        "priority": "critical",
+        "status": "pending",
+        "dependencies": [
+          "1"
+        ],
+        "tags": [
+          "autopilot"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "4",
+        "title": "CLI entry point and pipeline orchestrator skeleton",
+        "description": "Implement cli.py with Click subcommands and orchestrator.py DAG runner skeleton.",
+        "details": "Create autopilot/cli.py with Click:\n1. Main group: `autopilot` with --config option (default: config.yaml)\n2. Subcommands: `ingest`, `analyze`, `plan`, `edit`, `render`, `upload`, `run` (full pipeline)\n3. Each subcommand loads config, opens the catalog DB, and delegates to the appropriate stage function.\n4. `run` executes all stages in sequence with progress reporting.\n5. Common options: --input-dir (override), --output-dir (override), --verbose, --dry-run.\n\nCreate autopilot/orchestrator.py:\n1. A PipelineOrchestrator class that defines the stage DAG.\n2. Stages: INGEST -> ANALYZE -> CLASSIFY -> NARRATE -> SCRIPT -> EDL -> SOURCE_ASSETS -> RENDER -> UPLOAD\n3. Each stage has: name, function reference, dependencies, estimated_time.\n4. run() method executes stages in topological order, tracking elapsed time vs the wall-clock budget.\n5. Stage functions are initially stubs that log 'Stage X not yet implemented' — they'll be filled in by later tasks.\n6. Progress reporting: print stage name, status (running/done/skipped/error), elapsed time.",
+        "testStrategy": "Test CLI invocation with --help for each subcommand. Test orchestrator DAG ordering is correct. Test orchestrator handles stage errors gracefully (skips dependents, reports failure).",
+        "priority": "high",
+        "status": "pending",
+        "dependencies": [
+          "2",
+          "3"
+        ],
+        "tags": [
+          "autopilot"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "5",
+        "title": "Ingest pipeline",
+        "description": "Implement scanner.py (ffprobe + exiftool metadata), normalizer.py (EBU R128 loudnorm), and dedup.py (SHA-256 first-64MB).",
+        "details": "Create autopilot/ingest/scanner.py:\n1. scan_directory(input_dir: Path) -> list[MediaFile]: Walk directory tree, find all .mp4, .mov, .wav, .mp3, .aac, and image files.\n2. For each file, extract metadata via ffprobe subprocess: codec, resolution, fps, duration, audio channels.\n3. Extract EXIF/creation timestamp and GPS via exiftool subprocess. DJI Osmo Action 6 embeds GPS and timestamp in MP4 metadata.\n4. Return structured MediaFile objects ready for DB insertion.\n5. Parallelize across CPU cores using concurrent.futures.ProcessPoolExecutor.\n\nCreate autopilot/ingest/normalizer.py:\n1. normalize_audio(media_path: Path, output_dir: Path) -> Path: Extract and normalize audio to EBU R128 (-16 LUFS, -1.5 dBTP, 11 LRA) via ffmpeg -af loudnorm.\n2. Output as .wav files (separate from source video to avoid re-encoding).\n3. Skip files that already have normalized audio in output_dir.\n\nCreate autopilot/ingest/dedup.py:\n1. compute_hash(file_path: Path) -> str: SHA-256 of first 64MB.\n2. find_duplicates(catalog_db: CatalogDB) -> list[tuple[str, str]]: Find pairs with matching hashes.\n3. Mark duplicates in catalog (keep first ingested, mark later ones).",
+        "testStrategy": "Test scanner with small fixture files (.mp4, .wav) in tests/fixtures/. Verify metadata extraction fields. Test normalizer produces .wav output at correct loudness (verify with ffprobe). Test dedup correctly identifies duplicate files and non-duplicates.",
+        "priority": "high",
+        "status": "pending",
+        "dependencies": [
+          "3"
+        ],
+        "tags": [
+          "autopilot/ingest"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "6",
+        "title": "GPU scheduler",
+        "description": "Implement gpu_scheduler.py for VRAM-aware model loading/unloading with context-manager API.",
+        "details": "Create autopilot/analyze/gpu_scheduler.py:\n1. A GPUScheduler class that tracks currently loaded models and their VRAM usage.\n2. Model registry: dict mapping model_name -> ModelSpec(load_fn, unload_fn, vram_bytes, warmup_fn).\n3. Context manager API: `with scheduler.model('whisperx') as model:` — loads if not loaded, unloads others if VRAM insufficient.\n4. VRAM tracking: query torch.cuda.mem_get_info() for available VRAM. If loading a model would exceed available VRAM, unload the least-recently-used model first.\n5. Device selection from config (gpu_device index).\n6. Eager unloading: after context manager exits, model stays loaded (LRU cache) unless another model needs the VRAM.\n7. Force-unload method to clear all models (useful between pipeline stages).\n8. Thread safety: use a threading.Lock since the pipeline may run audio analysis concurrently with video analysis.\n\nVRAM budget from PRD:\n- whisperx large-v3: ~3 GB\n- TransNetV2: <1 GB\n- YOLO11x: ~8 GB\n- InsightFace buffalo_l: ~2 GB\n- SigLIP 2: ~3 GB\n- PANNs CNN14: <1 GB\n- Qwen2.5-VL-7B: ~14 GB\n- Total GPU: 24 GB (RTX 3090)",
+        "testStrategy": "Unit tests with mock VRAM tracking (don't require GPU). Test LRU eviction logic. Test context manager loads/unloads correctly. Test VRAM overflow triggers eviction. Test thread safety with concurrent access.",
+        "priority": "high",
+        "status": "pending",
+        "dependencies": [
+          "2"
+        ],
+        "tags": [
+          "autopilot/analyze/gpu_scheduler"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "7",
+        "title": "ASR transcription",
+        "description": "Implement asr.py with WhisperX large-v3, pyannote diarization, and wav2vec2 forced alignment.",
+        "details": "Create autopilot/analyze/asr.py:\n1. transcribe_media(media_id: str, audio_path: Path, db: CatalogDB, scheduler: GPUScheduler, config: ModelConfig) -> None\n2. Load WhisperX model via GPU scheduler (large-v3 or large-v3-turbo based on config).\n3. Run transcription with WhisperX: model.transcribe(audio, batch_size=config.batch_size_whisper).\n4. Run forced alignment: whisperx.align() for word-level timestamps.\n5. Run speaker diarization: whisperx.DiarizationPipeline() with pyannote (requires HuggingFace token).\n6. Assign speaker labels to segments via whisperx.assign_word_speakers().\n7. Store result in transcripts table as JSON matching the PRD schema: segments with start, end, text, speaker, words (each with word, start, end, score).\n8. Update media_files status to 'analyzing' at start, handle errors gracefully.\n9. Skip files that already have transcripts (idempotent).\n\nPerformance: faster-whisper large-v3 achieves ~25x real-time on RTX 3090. Process all media files sequentially (GPU-bound).",
+        "testStrategy": "Test with a short (~10 second) audio fixture. Verify transcript output schema matches PRD. Verify word-level timestamps are present. Test idempotency (re-run produces same result). Test error handling for corrupt audio.",
+        "priority": "high",
+        "status": "pending",
+        "dependencies": [
+          "3",
+          "6"
+        ],
+        "tags": [
+          "autopilot/analyze/asr"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "8",
+        "title": "Shot boundary detection",
+        "description": "Implement scenes.py with TransNetV2 as primary detector and PySceneDetect detect-adaptive as fallback.",
+        "details": "Create autopilot/analyze/scenes.py:\n1. detect_shots(media_id: str, video_path: Path, db: CatalogDB, scheduler: GPUScheduler) -> None\n2. Primary: Load TransNetV2 via GPU scheduler. Feed video frames (downsampled to 48x27 as TransNetV2 expects). Process in batches. Output: list of (start_frame, end_frame, transition_type) tuples.\n3. Fallback: PySceneDetect with detect-adaptive mode, threshold 27.0. Used when TransNetV2 fails or for validation.\n4. Store results in shot_boundaries table with method='transnetv2' or 'pyscenedetect'.\n5. If both methods are run, store both for later comparison/validation.\n6. Skip files already processed (idempotent).\n\nTransNetV2 processes at ~200-400 FPS on RTX 3090 on downsampled frames. PySceneDetect is CPU-based and slower but reliable.",
+        "testStrategy": "Test with a short video fixture containing at least one cut transition. Verify shot boundaries are detected at approximately correct frames. Test fallback path when TransNetV2 is unavailable. Test idempotency.",
+        "priority": "medium",
+        "status": "pending",
+        "dependencies": [
+          "3",
+          "6"
+        ],
+        "tags": [
+          "autopilot/analyze/scenes"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "9",
+        "title": "Object detection and tracking",
+        "description": "Implement objects.py with YOLO11x and ByteTrack, configurable N-frame sampling, and Kalman bbox interpolation.",
+        "details": "Create autopilot/analyze/objects.py:\n1. detect_objects(media_id: str, video_path: Path, db: CatalogDB, scheduler: GPUScheduler, config: ModelConfig) -> None\n2. Load YOLO11x (or configured variant) via GPU scheduler.\n3. Two modes based on whether clip will be auto-cropped:\n   a. Full detection (for auto-crop candidates): Run on every Nth frame (config.yolo_sample_every_n_frames, default 3). Interpolate bounding boxes for skipped frames using ByteTrack's Kalman filter predictions.\n   b. Sparse detection (for cataloging only): 1 frame per second.\n4. Use ultralytics model.track() with ByteTrack for persistent track IDs across frames.\n5. Store per-frame detections in detections table as JSON: [{track_id, class, bbox_xywh, confidence}, ...].\n6. Handle 4K square input: YOLO operates on resized 640x640. Bboxes are stored in original resolution coordinates.\n7. Batch processing: process frames in batches of config.batch_size_yolo (default 16) for GPU efficiency.\n8. Skip files already processed (idempotent).\n\nPerformance: YOLO11x at ~40-60 FPS on RTX 3090 at 640x640. Every-3rd-frame on 50h footage = ~1.8M frames -> ~10h.",
+        "testStrategy": "Test with a short video fixture containing a person or object. Verify detections have correct schema (track_id, class, bbox, confidence). Verify track IDs persist across frames. Test bbox coordinate scaling to original resolution. Test N-frame sampling and interpolation.",
+        "priority": "high",
+        "status": "pending",
+        "dependencies": [
+          "3",
+          "6"
+        ],
+        "tags": [
+          "autopilot/analyze/objects"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "10",
+        "title": "Face detection and clustering",
+        "description": "Implement faces.py with InsightFace SCRFD + ArcFace 512-d embeddings and DBSCAN clustering.",
+        "details": "Create autopilot/analyze/faces.py:\n1. detect_faces(media_id: str, video_path: Path, db: CatalogDB, scheduler: GPUScheduler) -> None\n   - Load InsightFace buffalo_l model pack via GPU scheduler.\n   - Run SCRFD face detection on sampled frames (1 FPS, same as YOLO sparse mode).\n   - For each detected face, extract 512-d ArcFace embedding.\n   - Store per-frame face data in a faces table or within detections.\n\n2. cluster_faces(db: CatalogDB) -> None\n   - Collect all face embeddings across all media files.\n   - Run DBSCAN or agglomerative clustering on embeddings (cosine distance).\n   - Populate face_clusters table: cluster_id, representative_embedding (centroid), sample_image_paths.\n   - The label field starts as NULL — human assigns names via scripts/label_faces.py.\n\n3. Also create scripts/label_faces.py:\n   - Interactive script that displays sample face crops per cluster.\n   - User assigns a name to each cluster.\n   - Updates face_clusters.label in the database.\n\nPerformance: SCRFD at ~100 FPS on RTX 3090. 50h at 1 FPS = 180K frames -> ~30 min.",
+        "testStrategy": "Test face detection with a fixture image containing faces. Verify embedding dimensionality is 512. Test clustering produces distinct clusters for distinct people. Test label_faces.py updates the database correctly.",
+        "priority": "medium",
+        "status": "pending",
+        "dependencies": [
+          "3",
+          "6"
+        ],
+        "tags": [
+          "autopilot/analyze/faces",
+          "scripts"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "11",
+        "title": "Frame embeddings and search index",
+        "description": "Implement embeddings.py with SigLIP 2 ViT-SO400M/14 at 0.5 FPS and FAISS IVF index for nearest-neighbor search.",
+        "details": "Create autopilot/analyze/embeddings.py:\n1. compute_embeddings(media_id: str, video_path: Path, db: CatalogDB, scheduler: GPUScheduler, config: ModelConfig) -> None\n   - Load SigLIP 2 model (google/siglip2-so400m-patch14) via GPU scheduler.\n   - Sample frames at 0.5 FPS (1 frame per 2 seconds).\n   - Compute 768-d float32 embedding per frame using the vision encoder.\n   - Store embeddings in clip_embeddings table as BLOB (packed float32 array).\n   - Skip already-processed media (idempotent).\n\n2. build_search_index(db: CatalogDB, output_path: Path) -> None\n   - Load all embeddings from clip_embeddings table.\n   - Build a FAISS IVF index (IndexIVFFlat or IndexIVFPQ depending on dataset size).\n   - Save index to output_path for fast loading.\n\n3. search_by_text(query: str, index_path: Path, model, top_k: int = 10) -> list[tuple[str, int, float]]\n   - Encode text query with SigLIP text encoder.\n   - Search FAISS index for nearest neighbors.\n   - Return list of (media_id, frame_number, distance).\n\n4. search_by_image(image: np.ndarray, index_path: Path, model, top_k: int = 10) -> list[tuple[str, int, float]]\n   - Encode image with SigLIP vision encoder.\n   - Search FAISS index.\n\nPerformance: ~200 embeddings/sec on RTX 3090. 50h at 0.5 FPS = 90K frames -> ~7.5 min.",
+        "testStrategy": "Test embedding computation with a fixture image. Verify output dimensionality is 768. Test FAISS index build and retrieval (insert 100 random vectors, query, verify nearest neighbor). Test text-to-image search returns reasonable results.",
+        "priority": "medium",
+        "status": "pending",
+        "dependencies": [
+          "3",
+          "6"
+        ],
+        "tags": [
+          "autopilot/analyze/embeddings"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "12",
+        "title": "Audio event classification",
+        "description": "Implement audio_events.py with PANNs CNN14 for per-second top-5 event classification.",
+        "details": "Create autopilot/analyze/audio_events.py:\n1. classify_audio_events(media_id: str, audio_path: Path, db: CatalogDB, scheduler: GPUScheduler) -> None\n   - Load PANNs CNN14 model via GPU scheduler.\n   - Process audio in 1-second windows.\n   - For each window, classify against AudioSet's 527 event classes.\n   - Store top-5 events per second in audio_events table as JSON: [{class, probability}, ...].\n   - Skip already-processed media (idempotent).\n\n2. Event classes of interest for the video editing use case: speech, music, applause, vehicle engines, wind, water, animal sounds, cooking sounds, footsteps, crowd noise.\n\nPerformance: CNN14 processes audio at >100x real-time on GPU. 50h -> ~30 min.",
+        "testStrategy": "Test with an audio fixture containing identifiable sounds (e.g., speech, music). Verify output schema (top-5 classes with probabilities). Verify probabilities sum to reasonable values. Test idempotency.",
+        "priority": "medium",
+        "status": "pending",
+        "dependencies": [
+          "3",
+          "6"
+        ],
+        "tags": [
+          "autopilot/analyze/audio_events"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "13",
+        "title": "Selective video captioning",
+        "description": "Implement captions.py with Qwen2.5-VL-7B for on-demand clip descriptions via transformers/vLLM.",
+        "details": "Create autopilot/analyze/captions.py:\n1. caption_clip(media_id: str, video_path: Path, start_time: float, end_time: float, db: CatalogDB, scheduler: GPUScheduler) -> str\n   - Load Qwen2.5-VL-7B-Instruct via GPU scheduler (~14 GB VRAM FP16).\n   - Extract frames from the clip segment (e.g., 8 evenly-spaced frames for a 30-second clip).\n   - Prompt the model to describe the scene, activities, and notable elements.\n   - Return natural language description.\n   - Store in a captions table or as metadata_json in media_files.\n\n2. batch_caption(media_ids: list[str], db: CatalogDB, scheduler: GPUScheduler, sample_rate: float = 0.1) -> None\n   - For initial cataloging: caption a random 10% sample of clips.\n   - For on-demand: caption specific clips requested by the LLM planner (Stage 3).\n   - Budget: ~500 clip descriptions per editing run.\n\n3. Integration with vLLM for batched inference if available, fallback to transformers for single inference.\n\nPerformance: ~2-5 seconds per 30-second clip at 7B FP16 on RTX 3090.",
+        "testStrategy": "Test with a fixture video clip. Verify caption is non-empty and describes visual content. Test batch captioning with sample_rate parameter. Test model loading/unloading via GPU scheduler.",
+        "priority": "low",
+        "status": "pending",
+        "dependencies": [
+          "3",
+          "6"
+        ],
+        "tags": [
+          "autopilot/analyze/captions"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "14",
+        "title": "Activity clustering and labeling",
+        "description": "Implement cluster.py for temporal-spatial-semantic DBSCAN clustering and classify.py for Claude Sonnet activity labeling.",
+        "details": "Create autopilot/organize/cluster.py:\n1. cluster_activities(db: CatalogDB) -> list[ActivityCluster]\n   - Load all media files with timestamps and GPS coordinates.\n   - Step 1: Temporal-spatial clustering via DBSCAN with custom distance metric combining:\n     a. Temporal: clips within 30 minutes of each other.\n     b. Spatial: clips within 500 meters (haversine distance on GPS coords).\n   - Step 2: Semantic refinement within each cluster:\n     a. Load SigLIP embeddings for clips in the cluster.\n     b. Compute mean CLIP embedding per 5-minute sliding window.\n     c. Detect embedding-space discontinuities (cosine distance > threshold) as activity boundaries.\n     d. Also use transcript text similarity to validate splits.\n   - Step 3: Handle missing GPS (some clips may lack GPS) — fall back to temporal-only clustering.\n   - Store clusters in activity_clusters table.\n\nCreate autopilot/organize/classify.py:\n1. label_activities(db: CatalogDB, config: LLMConfig) -> None\n   - For each activity cluster, assemble a summary: transcript excerpts, top YOLO classes, top audio events, GPS reverse-geocode (via simple offline lookup or Nominatim), time range.\n   - Call Claude Sonnet via Anthropic API with the activity_label.md prompt.\n   - Parse response: short descriptive label + 1-paragraph description.\n   - Also ask LLM to flag clusters that should be split.\n   - Update activity_clusters table with labels and descriptions.",
+        "testStrategy": "Test clustering with synthetic data (known cluster centers, verify correct assignment). Test semantic refinement splits distinct activities within a spatial cluster. Test LLM labeling with mocked API response. Test handling of missing GPS data.",
+        "priority": "high",
+        "status": "pending",
+        "dependencies": [
+          "7",
+          "9",
+          "11",
+          "12"
+        ],
+        "tags": [
+          "autopilot/organize"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "15",
+        "title": "Narrative organization",
+        "description": "Implement narratives.py for master storyboard construction and Claude Opus narrative proposals.",
+        "details": "Create autopilot/organize/narratives.py:\n1. build_master_storyboard(db: CatalogDB) -> str\n   - For each activity cluster, produce a structured summary:\n     a. Label and description (from Stage 2)\n     b. Duration of usable footage\n     c. Key moments: transcript highlights + YOLO event density peaks\n     d. People present: from face clusters\n     e. Emotional tone: transcript sentiment + audio events\n     f. Visual quality notes: YOLO detection confidence distributions (low confidence = motion blur / poor framing)\n   - Format as structured text for LLM consumption.\n\n2. propose_narratives(storyboard: str, db: CatalogDB, config: LLMConfig) -> list[Narrative]\n   - Call Claude Opus with the master storyboard + narrative_planner.md system prompt.\n   - System prompt includes creator's style preferences, target durations, audience from config.\n   - Request: proposed narratives with titles, included activities, duration, narrative arc, emotional journey, reasoning.\n   - Parse structured response into Narrative objects.\n   - Store in narratives table with status='proposed'.\n\n3. This is a human review checkpoint — output should be formatted for creator review (clear summary of each proposed narrative).",
+        "testStrategy": "Test storyboard construction with mock DB data. Test LLM call with mocked API response. Verify narrative objects have all required fields. Test formatting of review output.",
+        "priority": "high",
+        "status": "pending",
+        "dependencies": [
+          "14"
+        ],
+        "tags": [
+          "autopilot/organize"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "16",
+        "title": "Script generation",
+        "description": "Implement script.py for narrative storyboard assembly and Claude Opus scene-by-scene scripting.",
+        "details": "Create autopilot/plan/script.py:\n1. build_narrative_storyboard(narrative_id: str, db: CatalogDB) -> str\n   - For the activities in this narrative, assemble the full L-Storyboard:\n     a. Every shot with transcript, visual description, detected objects, people, audio events, duration.\n     b. Timestamps relative to both source clip and narrative timeline.\n   - This is the detailed per-clip data, not the high-level summary from Stage 3.\n\n2. generate_script(narrative_id: str, db: CatalogDB, config: LLMConfig) -> dict\n   - Load the narrative description (from Stage 3) and its storyboard.\n   - Call Claude Opus with script_writer.md system prompt.\n   - Request:\n     a. Scene-by-scene script with estimated timing\n     b. Voiceover narration text (if applicable per creator preferences)\n     c. On-screen text/titles at key moments\n     d. Music mood suggestions per scene\n     e. B-roll needs: specific shots to enhance the narrative\n     f. Quality flags: scenes where source footage may be insufficient\n   - Store full script JSON in a narrative_scripts column or separate table.\n   - Update narrative status to 'scripted'.\n\nEstimated time: ~10 min per narrative via Claude Opus.",
+        "testStrategy": "Test storyboard assembly with mock DB data containing multiple clips. Test script generation with mocked API response. Verify script JSON contains all required sections (scenes, voiceover, titles, music, broll, quality flags).",
+        "priority": "high",
+        "status": "pending",
+        "dependencies": [
+          "15"
+        ],
+        "tags": [
+          "autopilot/plan/script"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "17",
+        "title": "EDL generation and validation",
+        "description": "Implement edl.py for Claude Opus tool-use EDL construction and validator.py for automated EDL checks.",
+        "details": "Create autopilot/plan/edl.py:\n1. generate_edl(narrative_id: str, db: CatalogDB, config: LLMConfig) -> dict\n   - Load the script (from Stage 4) and detailed storyboard data for candidate clips.\n   - Call Claude Opus with edit_planner.md system prompt using function-calling/tool-use.\n   - Available tools for the LLM:\n     a. select_clip(clip_id, in_timecode, out_timecode, track)\n     b. add_transition(type, duration, position)\n     c. set_crop_mode(clip_id, mode, subject_track_id)\n     d. add_title(text, style, position, duration)\n     e. set_audio(clip_id, level_db, fade_in, fade_out)\n     f. add_music(mood, duration, start_time)\n     g. add_voiceover(text, start_time, duration)\n     h. request_broll(description, duration, start_time)\n   - Collect all tool calls into a JSON EDL structure.\n   - Store in edit_plans table. Update narrative status to 'planned'.\n\nCreate autopilot/plan/validator.py:\n1. validate_edl(edl: dict, db: CatalogDB) -> ValidationResult\n   - Check: no overlapping clips on same track\n   - Check: total duration within ±10% of scripted target\n   - Check: all referenced clip_ids exist in catalog\n   - Check: all in/out points within clip duration bounds\n   - Check: audio levels within broadcast-safe ranges (-24 to 0 dBFS)\n   - Return: ValidationResult with pass/fail, list of errors, list of warnings.\n2. If validation fails, re-prompt the LLM with error feedback (up to 3 retries).",
+        "testStrategy": "Test EDL generation with mocked LLM tool-use response. Test validator catches: overlapping clips, invalid clip_ids, out-of-bounds timecodes, excessive duration, unsafe audio levels. Test retry logic with initially-invalid then valid EDL.",
+        "priority": "high",
+        "status": "pending",
+        "dependencies": [
+          "16"
+        ],
+        "tags": [
+          "autopilot/plan/edl",
+          "autopilot/plan/validator"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "18",
+        "title": "OpenTimelineIO export",
+        "description": "Implement otio_export.py to convert JSON EDL to .otio format for NLE review.",
+        "details": "Create autopilot/plan/otio_export.py:\n1. export_otio(edl: dict, output_path: Path, db: CatalogDB) -> Path\n   - Convert the JSON EDL structure to an OpenTimelineIO Timeline object.\n   - Map EDL concepts to OTIO:\n     a. Clips -> otio.schema.Clip with MediaReference to source files\n     b. Transitions -> otio.schema.Transition (crossfade, etc.)\n     c. Tracks -> otio.schema.Track (video track, audio track, title track)\n     d. Timecodes -> otio.opentime.RationalTime\n   - Preserve all metadata (crop mode, audio levels) as OTIO metadata dict on each clip.\n   - Write .otio file to output_path.\n   - This enables human review in DaVinci Resolve or other NLE before rendering.\n\n2. Ensure round-trip fidelity: if someone edits the .otio in an NLE and re-exports, we should be able to detect changes.",
+        "testStrategy": "Test with a minimal EDL (2 clips, 1 transition). Verify .otio file is valid (otio.adapters.read_from_file succeeds). Verify clip references, timecodes, and transitions match the input EDL. Test metadata preservation.",
+        "priority": "low",
+        "status": "pending",
+        "dependencies": [
+          "17"
+        ],
+        "tags": [
+          "autopilot/plan/otio_export"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "19",
+        "title": "Auto-crop viewport computation",
+        "description": "Implement crop.py for subject tracking, rule-of-thirds framing, Kalman filter smoothing with activity-aware tau, and detection gap handling.",
+        "details": "Create autopilot/render/crop.py:\n1. compute_crop_path(media_id: str, target_aspect: str, db: CatalogDB, config: CameraConfig, edl_entry: dict) -> np.ndarray\n   - Load tracking data from detections table for the clip.\n   - Source is 4K×4K (4096×4096). Target: 1920×1080 (16:9) or 1080×1920 (9:16).\n   - Crop window is ~47-50% of source width for 16:9.\n\n2. Subject selection:\n   - If EDL specifies subject_track_id: use that track.\n   - If 'auto': select track with highest cumulative (bbox_area × frame_count).\n\n3. Raw crop center per frame:\n   - Position subject according to rule of thirds (horizontally: center at 1/3 or 2/3; vertically: eyes at 1/3 from top).\n   - For multiple subjects: compute bounding box containing all, center on that.\n\n4. Smoothing via Kalman filter (or EMA with configurable tau):\n   - Slow activities (walking, talking): tau = 1.0s\n   - Medium activities (hiking): tau = 0.5s\n   - Fast activities (sports): tau = 0.2s\n   - Tau comes from config or EDL per-clip override.\n\n5. Clamp to frame bounds: crop window never extends beyond source frame.\n\n6. Detection gap handling:\n   - Subject not detected: hold last position for up to 2 seconds.\n   - After 2s: smoothly drift to frame center over 1 second.\n   - Subject reappears: smooth transition back.\n\n7. Output: per-frame (crop_x, crop_y) array stored in crop_paths table as packed binary.\n\n8. Fallback modes: 'center' (fixed center crop), 'manual_offset' (static offset), 'stabilize_only' (gyro-based).",
+        "testStrategy": "Test with synthetic detection data (known bounding boxes). Verify crop follows subject. Test smoothing eliminates frame-to-frame jitter (max delta < 2% frame width). Test gap handling (hold, drift, reacquire). Test clamp to bounds. Test all fallback modes.",
+        "priority": "high",
+        "status": "pending",
+        "dependencies": [
+          "9",
+          "17"
+        ],
+        "tags": [
+          "autopilot/render/crop"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "20",
+        "title": "Rendering pipeline",
+        "description": "Implement ffmpeg_render.py (NVENC filter graphs), moviepy_render.py (complex compositions), and router.py (fast/slow path routing).",
+        "details": "Create autopilot/render/ffmpeg_render.py:\n1. render_simple(edl_entry: dict, crop_path: np.ndarray | None, output_path: Path, config: OutputConfig) -> Path\n   - For clips requiring only cut/concatenation/audio mix (no dynamic crop).\n   - Build FFmpeg filter graph: decode (cuvid) -> crop (static or none) -> scale_cuda -> encode (NVENC H.264 High Profile).\n   - Audio: mix with loudnorm to -16 LUFS, AAC 256 kbps.\n   - Transitions: xfade filter for crossfades.\n   - Return rendered file path.\n\nCreate autopilot/render/moviepy_render.py:\n1. render_complex(edl_entry: dict, crop_path: np.ndarray, output_path: Path, config: OutputConfig) -> Path\n   - For clips requiring dynamic per-frame crop, PiP, or custom overlays.\n   - Use MoviePy 2.x for frame-by-frame composition.\n   - For each frame: apply crop from crop_path array, scale to output resolution.\n   - Use PyAV for efficient I/O.\n   - Slower (~10-30 FPS) but fully flexible.\n\nCreate autopilot/render/router.py:\n1. route_and_render(narrative_id: str, db: CatalogDB, config: OutputConfig) -> Path\n   - Load the EDL for this narrative.\n   - For each clip in EDL, determine rendering complexity:\n     a. Static crop or no crop + simple transitions -> FFmpeg fast path\n     b. Dynamic crop or complex overlay -> MoviePy slow path\n   - Render all clips via appropriate path.\n   - Concatenate rendered segments into final output.\n   - Mix audio tracks (source audio, music, voiceover) with levels from EDL.\n   - Apply subtitles if configured (from ASR output via drawtext or subtitles filter).\n   - Output: final .mp4 in output/{narrative_title}/final.mp4",
+        "testStrategy": "Test FFmpeg render with a simple 2-clip EDL (fixture videos). Verify output resolution, codec, audio levels. Test MoviePy render with synthetic dynamic crop path. Test router correctly classifies clips as simple vs complex. Test final concatenation produces valid mp4.",
+        "priority": "high",
+        "status": "pending",
+        "dependencies": [
+          "19"
+        ],
+        "tags": [
+          "autopilot/render/ffmpeg_render",
+          "autopilot/render/moviepy_render",
+          "autopilot/render/router"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "21",
+        "title": "Asset sourcing",
+        "description": "Implement music.py (MusicGen + Freesound), broll.py (Pexels + Pixabay), voiceover.py (Kokoro TTS), and fetch_list.py.",
+        "details": "Create autopilot/source/music.py:\n1. source_music(request: MusicRequest, config: ModelConfig) -> Path | None\n   - If config.music_engine == 'musicgen': generate via MusicGen-large (3.3B, ~7 GB VRAM).\n     Load model, generate 30s instrumental from text prompt (e.g., 'upbeat acoustic guitar, travel vlog, 120 BPM').\n   - Also search Freesound.org API for CC-licensed ambient/effects tracks.\n   - Return path to downloaded/generated audio, or None if unfulfilled.\n\nCreate autopilot/source/broll.py:\n1. source_broll(request: BrollRequest) -> Path | None\n   - Search Pexels API (free, 200 req/hr) by keyword from request_broll(description).\n   - Download top-3 results. Let calling code select best match.\n   - Fallback: search Pixabay API (100 req/min).\n   - Return path to downloaded video, or None.\n\nCreate autopilot/source/voiceover.py:\n1. generate_voiceover(text: str, output_path: Path, config: ModelConfig) -> Path\n   - If config.tts_engine == 'kokoro': run Kokoro TTS locally (82M params, CPU-friendly).\n   - If 'elevenlabs': call ElevenLabs API.\n   - Return path to generated .wav.\n\nCreate autopilot/source/fetch_list.py:\n1. generate_fetch_list(unresolved: list[AssetRequest], output_path: Path) -> None\n   - Write a human-readable markdown file listing unresolved asset requests.\n   - Format: type, description, suggested sources, priority.\n   - Output to output/fetch_list.md.\n\nAfter all sourcing, update the EDL with resolved file paths replacing placeholder requests.",
+        "testStrategy": "Test music sourcing with mocked MusicGen model and mocked Freesound API. Test broll with mocked Pexels/Pixabay APIs. Test voiceover with mocked Kokoro. Test fetch_list generates valid markdown. Test EDL update replaces placeholders with file paths.",
+        "priority": "medium",
+        "status": "pending",
+        "dependencies": [
+          "17"
+        ],
+        "tags": [
+          "autopilot/source"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "22",
+        "title": "Post-render quality validation",
+        "description": "Implement validate.py for duration, loudness, black frames, silence, codec, and file size checks.",
+        "details": "Create autopilot/render/validate.py:\n1. validate_render(rendered_path: Path, edl: dict, config: OutputConfig) -> ValidationReport\n   - Duration: within ±1 second of EDL target.\n   - Audio loudness: within -16 ±1 LUFS (measure via ffmpeg loudnorm analysis pass).\n   - Black frames: scan for frames with mean pixel value < 5 (via ffmpeg blackdetect or frame sampling).\n   - Silent audio gaps: detect silence > 2 seconds (unless marked intentional in EDL) via ffmpeg silencedetect.\n   - Resolution and codec: match target specs from config.\n   - File size: 8-15 MB per minute for 1080p H.264 (warn if outside range).\n\n2. Return ValidationReport with: pass/fail, list of issues with severity (error/warning), measurements.\n3. Write validation_report.json to output/{narrative_title}/.\n\nAll checks use ffprobe/ffmpeg analysis — no need for frame-by-frame Python processing.",
+        "testStrategy": "Test with a fixture rendered video. Test duration check (pass and fail cases). Test loudness measurement. Test black frame detection with a video containing intentional black frames. Test file size bounds.",
+        "priority": "medium",
+        "status": "pending",
+        "dependencies": [
+          "20"
+        ],
+        "tags": [
+          "autopilot/render/validate"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "23",
+        "title": "YouTube upload and thumbnail",
+        "description": "Implement youtube.py for OAuth 2.0 + Data API v3 unlisted upload and thumbnail.py for best-frame extraction.",
+        "details": "Create autopilot/upload/youtube.py:\n1. upload_video(narrative_id: str, video_path: Path, db: CatalogDB, config: YouTubeConfig) -> str\n   - Load OAuth 2.0 credentials from config.youtube.credentials_path.\n   - If credentials expired, use refresh token for unattended renewal.\n   - Upload via YouTube Data API v3 with:\n     a. privacyStatus from config (default 'unlisted')\n     b. Title from narrative\n     c. Description from narrative script\n     d. Tags from activity labels + detected object classes\n     e. Category from config (default '19' = Travel & Events)\n   - Store YouTube video ID and URL in uploads table.\n   - Return YouTube URL.\n\n2. Also create scripts/setup_youtube_oauth.py:\n   - One-time interactive OAuth 2.0 flow.\n   - Opens browser for Google auth consent.\n   - Saves refresh token to credentials_path.\n\nCreate autopilot/upload/thumbnail.py:\n1. extract_best_thumbnail(narrative_id: str, video_path: Path, db: CatalogDB) -> Path\n   - Score frames by: YOLO detection confidence + rule-of-thirds composition score + sharpness (Laplacian variance).\n   - Extract the highest-scoring frame as a JPEG.\n   - Upload as custom thumbnail via YouTube thumbnails.set API.\n   - Return path to the extracted thumbnail.\n\nQuota: 10K units/day, each upload = 1600 units -> 6 uploads/day.",
+        "testStrategy": "Test upload with mocked YouTube API client. Verify all metadata fields are set correctly. Test credential refresh flow. Test thumbnail extraction with a fixture video (verify JPEG output). Test scripts/setup_youtube_oauth.py produces valid credentials file.",
+        "priority": "medium",
+        "status": "pending",
+        "dependencies": [
+          "22"
+        ],
+        "tags": [
+          "autopilot/upload",
+          "scripts"
+        ],
+        "subtasks": []
+      },
+      {
+        "id": "24",
+        "title": "LLM prompt templates",
+        "description": "Create all prompt .md files: activity_label.md, narrative_planner.md, script_writer.md, edit_planner.md with tool schemas.",
+        "details": "Create autopilot/prompts/activity_label.md:\n- System prompt for Claude Sonnet activity labeling (Stage 2).\n- Input format: cluster summary (transcript excerpts, YOLO classes, audio events, GPS, time range).\n- Output format: short label + 1-paragraph description + split recommendation.\n\nCreate autopilot/prompts/narrative_planner.md:\n- System prompt for Claude Opus narrative proposals (Stage 3).\n- Includes creator profile placeholders (filled from config at runtime).\n- Input: master storyboard.\n- Output: list of narratives with titles, activities, duration, arc, emotional journey, reasoning.\n\nCreate autopilot/prompts/script_writer.md:\n- System prompt for Claude Opus script generation (Stage 4).\n- Input: narrative description + detailed storyboard.\n- Output: scene-by-scene script, voiceover text, titles, music moods, B-roll needs, quality flags.\n\nCreate autopilot/prompts/edit_planner.md:\n- System prompt for Claude Opus EDL generation (Stage 5).\n- Includes full tool-use function definitions for: select_clip, add_transition, set_crop_mode, add_title, set_audio, add_music, add_voiceover, request_broll.\n- Each tool has a JSON schema defining its parameters.\n- Instructions for producing a coherent edit plan using the tools.",
+        "testStrategy": "Verify all prompt files exist and contain non-empty content. Verify edit_planner.md contains valid JSON schemas for all 8 tools. Verify placeholders (like {creator_name}) are present where config values should be inserted.",
+        "priority": "medium",
+        "status": "blocked",
+        "dependencies": [],
+        "tags": [
+          "autopilot/prompts"
+        ],
+        "subtasks": [],
+        "updatedAt": "2026-03-17T14:56:32.362Z"
+      },
+      {
+        "id": "25",
+        "title": "Pipeline wiring and end-to-end integration",
+        "description": "Wire all stages into orchestrator.py DAG, implement 'autopilot run' command, and add e2e test with fixture data.",
+        "details": "Update autopilot/orchestrator.py:\n1. Replace stub stage functions with actual implementations:\n   - INGEST: call scanner.scan_directory, normalizer.normalize_audio, dedup.find_duplicates\n   - ANALYZE: call asr, scenes, objects, faces, embeddings, audio_events (with GPU scheduler managing VRAM).\n     Run audio stages (ASR, audio events) concurrently with video stages where possible.\n   - CLASSIFY: call cluster.cluster_activities, classify.label_activities\n   - NARRATE: call narratives.propose_narratives (with human review pause)\n   - SCRIPT: call script.generate_script for each approved narrative\n   - EDL: call edl.generate_edl + validator.validate_edl + otio_export.export_otio\n   - SOURCE: call music, broll, voiceover sourcing; generate fetch list\n   - RENDER: call router.route_and_render + validate.validate_render for each narrative\n   - UPLOAD: call youtube.upload_video + thumbnail.extract_best_thumbnail for each narrative\n2. Implement progress reporting with stage timings and wall-clock budget tracking.\n3. Handle human review checkpoints (NARRATE stage pauses for approval).\n4. Error handling: if a stage fails for one narrative, continue with others.\n\nUpdate autopilot/cli.py:\n- Wire the `run` subcommand to PipelineOrchestrator.run().\n- Wire individual subcommands to their respective stages.\n\nCreate tests/test_e2e.py:\n- E2e test using small fixture files that exercises the full pipeline.\n- Mock LLM API calls. Use small/mock models for ML stages.\n- Verify: catalog populated, activity clusters created, narratives proposed, EDL generated, render output exists.",
+        "testStrategy": "Run the full e2e test. Verify pipeline completes without errors. Verify all database tables are populated. Verify output files exist (EDL, OTIO, rendered video, validation report). Test error recovery (inject a stage failure, verify other narratives still complete).",
+        "priority": "critical",
+        "status": "pending",
+        "dependencies": [
+          "4",
+          "5",
+          "7",
+          "8",
+          "9",
+          "10",
+          "11",
+          "12",
+          "13",
+          "14",
+          "15",
+          "16",
+          "17",
+          "18",
+          "19",
+          "20",
+          "21",
+          "22",
+          "23",
+          "24"
+        ],
+        "tags": [
+          "autopilot",
+          "tests"
+        ],
+        "subtasks": []
+      }
+    ],
+    "metadata": {
+      "version": "1.0.0",
+      "lastModified": "2026-03-17T14:56:32.362Z",
+      "taskCount": 25,
+      "completedCount": 0,
+      "tags": [
+        "master"
+      ]
+    }
+  }
+}
