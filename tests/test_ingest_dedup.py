@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
 
 from autopilot.ingest.dedup import compute_hash, find_duplicates, mark_duplicates
 

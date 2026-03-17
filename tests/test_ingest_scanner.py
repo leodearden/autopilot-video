@@ -6,8 +6,6 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from autopilot.ingest.scanner import (
     MediaFile,
     _run_exiftool,
@@ -214,7 +212,7 @@ class TestRunFfprobe:
         output = self._make_ffprobe_output()
         mock_result = MagicMock()
         mock_result.stdout = output
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
+        with patch("subprocess.run", return_value=mock_result):
             result = _run_ffprobe(Path("/footage/clip.mp4"))
         assert result["codec"] == "h264"
         assert result["resolution_w"] == 3840
