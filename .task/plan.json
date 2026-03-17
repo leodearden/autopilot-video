@@ -1,0 +1,135 @@
+{
+  "task_id": "24",
+  "title": "LLM prompt templates",
+  "modules": ["autopilot/prompts", "tests"],
+  "analysis": "Task 24 creates 4 markdown prompt template files in autopilot/prompts/ for pipeline stages 2-5: activity labeling (Claude Sonnet), narrative planning (Claude Opus), script writing (Claude Opus), and EDL generation with tool-use schemas (Claude Opus). The worktree currently has no autopilot/ directory — task 1 scaffolding hasn't been merged, so prerequisites must create the directory structure including autopilot/prompts/ and tests/. The existing test pattern (worktree 1) uses pytest with a project_root fixture from conftest.py. Tests are structural/content validation only — no LLM invocations. The PRD (docs/prd-autopilot-editor.md) defines exact tool signatures for Stage 5: select_clip, add_transition, set_crop_mode, add_title, set_audio, add_music, add_voiceover, request_broll. Creator profile placeholders come from config.yaml's creator section: name, channel_style, target_audience, default_video_duration_minutes, narration_style, music_preference. The narrative_planner.md needs these 6 placeholders for runtime substitution via Python str.format_map(). Output JSON field names align with SQLite table columns from the PRD data model (activity_clusters.label/description, narratives.title/arc_notes, edit_plans.edl_json). Each prompt is a self-contained markdown system prompt — no cross-references between prompt files. The prompts/ directory is NOT a Python package (no __init__.py), consistent with the scaffolding task's explicit test for this convention.",
+  "prerequisites": [
+    {
+      "id": "pre-1",
+      "description": "Create directory structure: autopilot/prompts/ (with .gitkeep to match worktree 1 convention) and tests/ directory. Create tests/__init__.py and tests/conftest.py with project_root fixture (matching worktree 1 pattern: pathlib.Path(__file__).resolve().parent.parent) plus a prompts_dir fixture returning project_root / 'autopilot' / 'prompts'. Add a helper function extract_json_blocks(text) that finds all fenced ```json code blocks in markdown and parses them as JSON, returning a list of parsed objects. This helper is used by test_prompt_edit_planner.py to validate tool schemas.",
+      "status": "done",
+      "commit": "b2b6458",
+      "tests": []
+    }
+  ],
+  "steps": [
+    {
+      "id": "step-1",
+      "type": "test",
+      "description": "Write failing test tests/test_prompt_activity_label.py: (1) verify autopilot/prompts/activity_label.md exists and is non-empty (>100 chars to ensure real content); (2) verify content references all required input signals: 'transcript' (or 'transcription'), 'YOLO' (or 'object detect'), 'audio event', 'GPS' (or 'location'), 'time range' (or 'time_range'/'temporal'); (3) verify output format section mentions required JSON fields: 'label', 'description', 'split_recommended' (or 'split'); (4) verify the word 'JSON' appears in the output format section to confirm structured output.",
+      "status": "done",
+      "commit": "2d42d69"
+    },
+    {
+      "id": "step-2",
+      "type": "impl",
+      "description": "Create autopilot/prompts/activity_label.md: system prompt for Claude Sonnet activity labeling (Stage 2). Structure: (1) Role definition as activity classification specialist for a video editing pipeline. (2) Input format section specifying the cluster summary with transcript excerpts, top YOLO detection classes, audio event classifications, GPS reverse-geocoded location, and time range. (3) Output format section requiring JSON with fields: label (short descriptive name, 3-8 words), description (1-paragraph summary of what happens), split_recommended (boolean), split_reason (string or null). (4) Labeling guidelines: prefer specific over generic labels, include location when relevant, capture the primary activity. (5) Split detection heuristics: flag when transcript topics shift dramatically, when YOLO class distributions change significantly, or when there's a temporal gap >30min within the cluster.",
+      "status": "done",
+      "commit": "8d29d7b"
+    },
+    {
+      "id": "step-3",
+      "type": "test",
+      "description": "Write failing test tests/test_prompt_narrative_planner.py: (1) verify autopilot/prompts/narrative_planner.md exists and is non-empty (>200 chars); (2) verify all 6 creator profile placeholders are present in the file: {creator_name}, {channel_style}, {target_audience}, {default_video_duration}, {narration_style}, {music_preference}; (3) verify input section references 'storyboard' or 'master storyboard'; (4) verify output format references required JSON fields: 'title', 'activity_cluster_ids', 'proposed_duration' (or 'duration'), 'arc', 'emotional_journey', 'reasoning'; (5) verify 'JSON' appears to confirm structured output expectation.",
+      "status": "done",
+      "commit": "f8235ec"
+    },
+    {
+      "id": "step-4",
+      "type": "impl",
+      "description": "Create autopilot/prompts/narrative_planner.md: system prompt for Claude Opus narrative planning (Stage 3). Structure: (1) Role definition as narrative architect for video editing pipeline. (2) Creator profile section with all 6 placeholders: {creator_name}, {channel_style}, {target_audience}, {default_video_duration}, {narration_style}, {music_preference}. (3) Input format: master storyboard with per-activity summaries (label, duration, key moments, people present, emotional tone, visual quality). (4) Output format: JSON array of narrative proposals, each with title, activity_cluster_ids, proposed_duration_seconds, arc (object with beginning/middle/end descriptions), emotional_journey (string), target_audience (string), reasoning (string explaining inclusion/exclusion). (5) Narrative construction guidelines: story arc principles, pacing advice, duration targeting, when to combine vs. separate activities, handling excluded footage.",
+      "status": "done",
+      "commit": "9527317"
+    },
+    {
+      "id": "step-5",
+      "type": "test",
+      "description": "Write failing test tests/test_prompt_script_writer.py: (1) verify autopilot/prompts/script_writer.md exists and is non-empty (>200 chars); (2) verify input section references 'narrative' and 'storyboard' (or 'L-Storyboard'); (3) verify output format mentions required elements: 'scene' (or 'scenes'), 'voiceover', 'title' (or 'titles'), 'music' (or 'music_mood'), and b-roll (any of 'broll', 'b-roll', 'b_roll'); (4) verify 'quality_flag' (or 'quality flag') is referenced for flagging source footage issues; (5) verify 'JSON' appears to confirm structured output.",
+      "status": "done",
+      "commit": "f10cf59"
+    },
+    {
+      "id": "step-6",
+      "type": "impl",
+      "description": "Create autopilot/prompts/script_writer.md: system prompt for Claude Opus script generation (Stage 4). Structure: (1) Role definition as professional video script writer. (2) Input format: approved narrative description from Stage 3 plus full L-Storyboard for included activities (per-shot: transcript, visual description, detected objects with tracking IDs, people present, audio events, duration, timestamps). (3) Output format: JSON with top-level 'scenes' array (each: scene_number, description, estimated_duration_seconds, source_clips array, voiceover_text or null, titles array, music_mood), 'broll_needs' array (each: description, duration_seconds, placement_after_scene), 'quality_flags' array (each: scene_number, issue, severity, suggestion). (4) Scripting guidelines: pacing principles, voiceover integration, when to use titles vs narration, music mood transitions, B-roll identification, quality issue detection (blur, darkness, audio issues).",
+      "status": "done",
+      "commit": "072ebb7"
+    },
+    {
+      "id": "step-7",
+      "type": "test",
+      "description": "Write failing test tests/test_prompt_edit_planner.py: (1) verify autopilot/prompts/edit_planner.md exists and is non-empty (>500 chars given tool schemas); (2) use extract_json_blocks() helper from conftest.py to extract all fenced JSON code blocks; (3) verify exactly 8 tool definitions found; (4) verify each has keys 'name', 'description', 'input_schema'; (5) collect tool names and assert the set equals {select_clip, add_transition, set_crop_mode, add_title, set_audio, add_music, add_voiceover, request_broll}; (6) verify each input_schema has 'type': 'object' and 'properties' dict; (7) verify key required parameters: select_clip must have clip_id, in_timecode, out_timecode, track in properties; set_crop_mode must have clip_id, mode; add_title must have text; set_audio must have clip_id, level_db; (8) verify the prompt text contains instructions about timeline construction and validation (references 'overlap' or 'overlapping', 'duration', 'audio level' or 'broadcast').",
+      "status": "done",
+      "commit": "dcffdc1"
+    },
+    {
+      "id": "step-8",
+      "type": "impl",
+      "description": "Create autopilot/prompts/edit_planner.md: system prompt for Claude Opus EDL generation (Stage 5) with Anthropic tool-use. Structure: (1) Role definition as professional video editor constructing precise edit decision lists. (2) Input format: script from Stage 4 plus detailed storyboard data for all candidate clips. (3) Tool definitions section with 8 tools, each as a fenced JSON block with Anthropic API format {name, description, input_schema}: select_clip(clip_id:string, in_timecode:string HH:MM:SS.mmm, out_timecode:string, track:integer >=1), add_transition(type:enum[crossfade,cut,fade_in,fade_out,dissolve], duration:number seconds, position:string timecode), set_crop_mode(clip_id:string, mode:enum[auto_subject,center,manual_offset], subject_track_id:integer|null), add_title(text:string, style:enum[full_screen,lower_third,subtitle], position:string timecode, duration:number), set_audio(clip_id:string, level_db:number -48 to +18, fade_in:number seconds, fade_out:number), add_music(mood:string, duration:number, start_time:string timecode), add_voiceover(text:string, start_time:string timecode, duration:number), request_broll(description:string, duration:number, start_time:string timecode). (4) Edit construction instructions: build timeline sequentially, use track 1 for primary footage and track 2+ for overlays/B-roll, maintain audio continuity. (5) Validation constraints: no overlapping clips on same track, total duration within ±10% of script target, all clip_ids must exist in provided storyboard, in/out points within clip duration bounds, audio levels broadcast-safe (-24dB to 0dB for speech, -30dB to -12dB for music).",
+      "status": "done",
+      "commit": "67fdc3a"
+    }
+  ],
+  "design_decisions": [
+    {
+      "decision": "Use {placeholder} syntax (Python str.format_map compatible) for template variables in narrative_planner.md",
+      "rationale": "The task spec explicitly mentions '{creator_name}' as the placeholder style. Python's built-in str.format_map() handles simple key-value substitution without requiring Jinja2. The 6 placeholders map directly to config.yaml creator section keys. Other prompts don't need runtime substitution — only narrative_planner.md uses creator profile context."
+    },
+    {
+      "decision": "Tool schemas in edit_planner.md use Anthropic API tool_use format: {name, description, input_schema} with JSON Schema for input_schema",
+      "rationale": "The PRD specifies Claude Opus with function-calling tools for Stage 5. The Anthropic API expects tools in this exact format. Embedding schemas as fenced ```json code blocks makes them both human-readable and programmatically extractable by the downstream edl.py module (task 17). The extract_json_blocks() test helper validates parsability."
+    },
+    {
+      "decision": "Specify structured JSON output formats in each prompt template rather than free-form text",
+      "rationale": "Downstream pipeline stages (classify.py, narratives.py, script.py, edl.py) must parse LLM responses programmatically. Explicit JSON output schemas in prompts ensure parseable responses. Output field names align with corresponding SQLite table columns from the PRD data model (activity_clusters.label/description, narratives.title/proposed_duration_seconds, edit_plans.edl_json)."
+    },
+    {
+      "decision": "Each prompt file is self-contained markdown with complete instructions — no cross-references between prompts",
+      "rationale": "Self-contained prompts support: (1) isolated iteration during Phase 5 prompt tuning, (2) direct testing in the Anthropic console without needing other files, (3) clear pipeline stage boundaries, (4) independent modification without cascading changes."
+    },
+    {
+      "decision": "Tests validate structural completeness and content correctness, not LLM output quality",
+      "rationale": "LLM output quality is subjective and prompt-dependent. Structural tests verify: files exist, are non-empty with substantial content (length thresholds), contain required sections/placeholders, embed valid parseable JSON schemas, and reference all expected input/output fields. This catches broken prompts (missing placeholders, malformed JSON) without requiring LLM API calls in CI."
+    },
+    {
+      "decision": "Separate test file per prompt template, not one monolithic test file",
+      "rationale": "Each prompt is an independent artifact with distinct validation requirements. Separate test files enable: (1) running tests for individual prompts during TDD development, (2) clearer failure attribution, (3) natural TDD cycle (test file → impl file alternation), (4) independent CI pass/fail granularity."
+    },
+    {
+      "decision": "Use flexible regex/substring matching in tests (e.g., accept 'transcript' or 'transcription', 'broll' or 'b-roll' or 'b_roll') rather than exact string matches",
+      "rationale": "Prompt wording should be natural and may evolve. Overly rigid string matching creates brittle tests that break on cosmetic rephrasing. Testing for semantic presence of required concepts (input signals, output fields) rather than exact phrasing gives the prompt author freedom to iterate on wording while ensuring completeness."
+    }
+  ],
+  "reuse": [
+    {
+      "what": "project_root pytest fixture pattern",
+      "where": "/home/leo/src/autopilot-video/.worktrees/1/tests/conftest.py",
+      "how": "Reuse the exact same fixture pattern: pathlib.Path(__file__).resolve().parent.parent. Extend with a prompts_dir fixture (project_root / 'autopilot' / 'prompts') and an extract_json_blocks() helper for parsing fenced JSON from markdown."
+    },
+    {
+      "what": "PRD Stage 2-5 specifications",
+      "where": "/home/leo/src/autopilot-video/docs/prd-autopilot-editor.md (lines 211-302)",
+      "how": "Each pipeline stage's Goal, Approach, Input, and Output sections define what the corresponding prompt template must operationalize. Stage 2 (Activity Classification) → activity_label.md, Stage 3 (Narrative Organization) → narrative_planner.md, Stage 4 (Script Each Narrative) → script_writer.md, Stage 5 (Edit Plan) → edit_planner.md."
+    },
+    {
+      "what": "PRD Stage 5 tool function signatures",
+      "where": "/home/leo/src/autopilot-video/docs/prd-autopilot-editor.md (lines 281-289)",
+      "how": "The PRD defines 8 tool signatures with parameter names and types: select_clip, add_transition, set_crop_mode, add_title, set_audio, add_music, add_voiceover, request_broll. These are formalized as JSON Schema tool definitions in edit_planner.md."
+    },
+    {
+      "what": "Config.yaml creator profile structure for placeholder mapping",
+      "where": "/home/leo/src/autopilot-video/.worktrees/1/config.yaml (lines 7-13) and PRD config section (lines 737-751)",
+      "how": "The 6 creator section fields (name, channel_style, target_audience, default_video_duration_minutes, narration_style, music_preference) map to {creator_name}, {channel_style}, {target_audience}, {default_video_duration}, {narration_style}, {music_preference} placeholders in narrative_planner.md."
+    },
+    {
+      "what": "SQLite schema column names for output field alignment",
+      "where": "/home/leo/src/autopilot-video/docs/prd-autopilot-editor.md (lines 537-643)",
+      "how": "JSON output field names in prompts align with SQLite columns: activity_clusters.label/description (activity_label.md), narratives.title/proposed_duration_seconds/activity_cluster_ids_json/arc_notes (narrative_planner.md), edit_plans.edl_json (edit_planner.md). This minimizes transformation in pipeline code."
+    },
+    {
+      "what": "Test assertion style from test_scaffolding.py",
+      "where": "/home/leo/src/autopilot-video/.worktrees/1/tests/test_scaffolding.py",
+      "how": "Follow the same assertion style: clear failure messages as second argument to assert, pathlib.Path-based file existence checks, content-based validation with descriptive test names. Maintain consistent test quality and readability."
+    }
+  ]
+}
