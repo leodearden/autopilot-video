@@ -325,3 +325,62 @@ class TestShotBoundariesCRUD:
         assert len(results) == 2
         methods = {r["method"] for r in results}
         assert methods == {"transnetv2", "pyscenedetect"}
+
+
+# -- detections CRUD ---------------------------------------------------------
+
+
+class TestDetectionsCRUD:
+    """Tests for detections table CRUD operations."""
+
+    def test_batch_insert_detections(self, catalog_db):
+        """Insert 100 detection rows in one call and verify count."""
+        _insert_test_media(catalog_db)
+        rows = [
+            ("m1", i, f'{{"track_id": {i}}}')
+            for i in range(100)
+        ]
+        catalog_db.batch_insert_detections(rows)
+        cur = catalog_db.conn.execute(
+            "SELECT count(*) FROM detections WHERE media_id = 'm1'"
+        )
+        assert cur.fetchone()[0] == 100
+
+    def test_get_detections_for_frame(self, catalog_db):
+        """Retrieve detections for a specific media_id + frame_number."""
+        _insert_test_media(catalog_db)
+        catalog_db.batch_insert_detections([
+            ("m1", 10, '{"class": "person"}'),
+            ("m1", 20, '{"class": "car"}'),
+        ])
+        result = catalog_db.get_detections_for_frame("m1", 10)
+        assert result is not None
+        assert result["frame_number"] == 10
+        assert result["detections_json"] == '{"class": "person"}'
+
+    def test_get_detections_for_range(self, catalog_db):
+        """Retrieve detections for media_id between frame_start and frame_end."""
+        _insert_test_media(catalog_db)
+        catalog_db.batch_insert_detections([
+            ("m1", 5, "[]"),
+            ("m1", 10, "[]"),
+            ("m1", 15, "[]"),
+            ("m1", 20, "[]"),
+        ])
+        results = catalog_db.get_detections_for_range("m1", 8, 18)
+        assert len(results) == 2
+        frames = {r["frame_number"] for r in results}
+        assert frames == {10, 15}
+
+    def test_batch_insert_detections_empty(self, catalog_db):
+        """Batch insert with empty list does not error."""
+        catalog_db.batch_insert_detections([])
+
+    def test_detections_json_roundtrip(self, catalog_db):
+        """Verify JSON text stored and retrieved identically."""
+        _insert_test_media(catalog_db)
+        json_str = '[{"track_id": 1, "class": "person", "bbox": [10, 20, 100, 200]}]'
+        catalog_db.batch_insert_detections([("m1", 0, json_str)])
+        result = catalog_db.get_detections_for_frame("m1", 0)
+        assert result is not None
+        assert result["detections_json"] == json_str
