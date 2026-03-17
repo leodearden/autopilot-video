@@ -251,3 +251,53 @@ class TestProgressReporting:
             orch.run(config=MagicMock(), db=MagicMock())
 
         assert any("Pipeline complete" in r.message for r in caplog.records)
+
+
+class TestErrorHandling:
+    """Tests for error handling in run()."""
+
+    def test_run_catches_stage_error(self) -> None:
+        """run() doesn't crash when a stage raises; returns ERROR status."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+        # Make ANALYZE raise
+        orch._stage_map["ANALYZE"].func = MagicMock(
+            side_effect=RuntimeError("analyze failed")
+        )
+
+        results = orch.run(config=MagicMock(), db=MagicMock())
+
+        assert results["ANALYZE"].status == StageStatus.ERROR
+
+    def test_run_skips_dependents_on_error(self) -> None:
+        """When ANALYZE errors, CLASSIFY and all downstream are SKIPPED."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+        orch._stage_map["ANALYZE"].func = MagicMock(
+            side_effect=RuntimeError("analyze failed")
+        )
+
+        results = orch.run(config=MagicMock(), db=MagicMock())
+
+        assert results["INGEST"].status == StageStatus.DONE
+        assert results["ANALYZE"].status == StageStatus.ERROR
+        # All stages that depend (transitively) on ANALYZE should be SKIPPED
+        for name in ["CLASSIFY", "NARRATE", "SCRIPT", "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD"]:
+            assert results[name].status == StageStatus.SKIPPED, (
+                f"{name} should be SKIPPED"
+            )
+
+    def test_run_reports_error_message(self) -> None:
+        """Error message is captured in the stage result."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+        orch._stage_map["INGEST"].func = MagicMock(
+            side_effect=RuntimeError("ingest boom")
+        )
+
+        results = orch.run(config=MagicMock(), db=MagicMock())
+
+        assert results["INGEST"].error_message == "ingest boom"
