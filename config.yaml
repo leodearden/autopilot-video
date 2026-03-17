@@ -1,0 +1,61 @@
+# config.yaml
+
+input_dir: ~/footage/trip-thailand-2026/
+output_dir: ~/output/trip-thailand-2026/
+
+# Creator profile (used in LLM prompts)
+creator:
+  name: "Your Name"
+  channel_style: "travel vlog, relaxed, observational"
+  target_audience: "travel enthusiasts, 25-40"
+  default_video_duration_minutes: 8-15
+  narration_style: "minimal voiceover, let footage speak"
+  music_preference: "acoustic, ambient, no vocals"
+
+# Camera profiles
+cameras:
+  dji_osmo_action_6:
+    source_resolution: [4096, 4096]  # Or [3840, 3840]
+    aspect_mode: "square"
+    has_gyro_data: true
+    default_crop_target: "16:9"
+    crop_smoothing_tau: 0.5
+
+# Output targets
+output:
+  primary_aspect: "16:9"
+  resolution: [1920, 1080]
+  codec: "h264"
+  quality_crf: 18                   # Lower = higher quality
+  audio_bitrate: "256k"
+  target_loudness_lufs: -16
+
+# Model preferences
+models:
+  whisper_size: "large-v3"          # large-v3 | large-v3-turbo
+  yolo_variant: "yolo11x"          # yolo11x | yolo11l | yolo11m
+  yolo_sample_every_n_frames: 3    # 1 = every frame, 3 = every 3rd
+  clip_model: "google/siglip2-so400m-patch14"
+  face_model: "buffalo_l"
+  tts_engine: "kokoro"             # kokoro | elevenlabs
+  music_engine: "musicgen"         # musicgen | fetch_list_only
+
+# LLM
+llm:
+  provider: "anthropic"
+  planning_model: "claude-opus-4-20250514"
+  utility_model: "claude-sonnet-4-20250514"
+
+# YouTube
+youtube:
+  privacy_status: "unlisted"       # unlisted | private
+  default_category: "19"           # Travel & Events
+  credentials_path: ~/.config/autopilot/youtube_oauth.json
+
+# Processing
+processing:
+  max_wall_clock_hours: 36
+  gpu_device: 0
+  num_cpu_workers: 12              # Leave 4 cores for system
+  batch_size_yolo: 16
+  batch_size_whisper: 24
