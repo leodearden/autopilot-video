@@ -118,9 +118,14 @@ class AutopilotConfig:
     processing: ProcessingConfig = field(default_factory=ProcessingConfig)
 
 
-def _to_tuple(value: Any) -> tuple[int, int]:
+def _to_tuple(value: Any, field_name: str = "resolution") -> tuple[int, int]:
     """Convert a list/sequence to a 2-tuple of ints."""
-    return (int(value[0]), int(value[1]))
+    try:
+        return (int(value[0]), int(value[1]))
+    except (IndexError, TypeError, ValueError) as e:
+        raise ConfigError(
+            f"Expected a 2-element integer list for {field_name}, got {value!r}"
+        ) from e
 
 
 # Allowed values for constrained string fields
@@ -190,7 +195,7 @@ def _build_camera(data: dict[str, Any]) -> CameraConfig:
     """Build CameraConfig from parsed YAML dict."""
     result = CameraConfig()
     if "source_resolution" in data:
-        result.source_resolution = _to_tuple(data["source_resolution"])
+        result.source_resolution = _to_tuple(data["source_resolution"], "source_resolution")
     if "aspect_mode" in data:
         result.aspect_mode = str(data["aspect_mode"])
     if "has_gyro_data" in data:
@@ -208,7 +213,7 @@ def _build_output(data: dict[str, Any]) -> OutputConfig:
     if "primary_aspect" in data:
         result.primary_aspect = str(data["primary_aspect"])
     if "resolution" in data:
-        result.resolution = _to_tuple(data["resolution"])
+        result.resolution = _to_tuple(data["resolution"], "resolution")
     if "codec" in data:
         result.codec = str(data["codec"])
     if "quality_crf" in data:
