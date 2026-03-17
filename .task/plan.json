@@ -1,28 +1,14 @@
 {
-  "task_id": "1",
-  "title": "Project scaffolding",
-  "modules": [
-    "autopilot",
-    "autopilot/ingest",
-    "autopilot/analyze",
-    "autopilot/organize",
-    "autopilot/plan",
-    "autopilot/source",
-    "autopilot/render",
-    "autopilot/upload",
-    "autopilot/prompts",
-    "tests",
-    "tests/fixtures",
-    "scripts",
-    "output"
-  ],
-  "analysis": "Task 1 is project scaffolding: create pyproject.toml with all PRD dependencies, config.yaml template matching the PRD configuration section exactly, and the full directory structure with __init__.py files. This is a greenfield project — the repo currently only has CLAUDE.md, .gitignore, orchestrator-config.yaml, docs/prd-autopilot-editor.md, and task infrastructure. The PRD specifies a detailed project structure (autopilot/ with 7 subpackages + prompts dir), tests/fixtures/, scripts/, and output/. The config.yaml must have: input_dir, output_dir, creator profile, cameras, output targets, models, llm, youtube, processing sections. pyproject.toml must use uv/hatch build system with Python 3.11+. There is a chicken-and-egg issue: we need pyproject.toml to run pytest, but we want to TDD the pyproject.toml contents. Solution: prerequisite creates a minimal pyproject.toml + tests dir so pytest can execute, then TDD steps verify and expand from there.",
+  "task_id": "3",
+  "title": "SQLite catalog and db interface",
+  "modules": ["autopilot", "tests"],
+  "analysis": "Task 3 requires implementing autopilot/db.py with a CatalogDB class that wraps SQLite with WAL mode, thread safety (check_same_thread=False), and the full 12-table schema from the PRD (media_files, transcripts, shot_boundaries, detections, face_clusters, clip_embeddings, audio_events, activity_clusters, narratives, edit_plans, crop_paths, uploads). The class needs CRUD helper methods for each table, context manager support for transactions, and proper handling of TEXT-based JSON columns and BLOB columns for binary data. The PRD provides the exact CREATE TABLE statements (lines 537-643 of prd-autopilot-editor.md). Tests should use in-memory SQLite (:memory:) per the task's testStrategy. The project uses Python 3.11+, pytest, ruff, pyright. SQLite JSON1 extension is built into Python's sqlite3 module since 3.9+. No external dependencies needed — sqlite3 is stdlib. The plan uses incremental TDD: first test/impl the CatalogDB class with connection management, WAL mode, and schema creation, then progressively test/impl CRUD helpers for each table grouped by complexity. Prerequisites: a conftest.py fixture for in-memory CatalogDB instances.",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Create minimal pyproject.toml with hatchling build system, Python >=3.11, and pytest as dev dependency so we can run tests. Create tests/__init__.py and tests/conftest.py with a helper that resolves project root.",
+      "description": "Add a catalog_db fixture to tests/conftest.py that creates an in-memory CatalogDB instance for each test. This fixture will be used by all subsequent test steps.",
       "status": "done",
-      "commit": "bbe7481",
+      "commit": "1497814",
       "tests": []
     }
   ],
@@ -30,114 +16,188 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write tests/test_scaffolding.py with test_directory_structure_exists() that asserts all required directories exist (autopilot/, autopilot/ingest/, autopilot/analyze/, autopilot/organize/, autopilot/plan/, autopilot/source/, autopilot/render/, autopilot/upload/, autopilot/prompts/, tests/fixtures/, scripts/, output/) and that each Python package has an __init__.py file (autopilot/ and its 7 subpackages). Also assert prompts/ does NOT have __init__.py (it's not a Python package).",
+      "description": "Write tests/test_db.py with tests for CatalogDB class basics: (1) test_catalogdb_creates_connection — instantiate CatalogDB with ':memory:', assert connection is not None; (2) test_catalogdb_wal_mode — verify PRAGMA journal_mode returns 'wal' (note: WAL doesn't work with :memory:, so test with a tmp_path file DB); (3) test_catalogdb_thread_safety — verify connection was created with check_same_thread=False by accessing from a different thread; (4) test_catalogdb_context_manager — verify __enter__ returns self and __exit__ commits; (5) test_catalogdb_close — verify close() closes the connection.",
       "status": "done",
-      "commit": "9bc1a02"
+      "commit": "c254a4f"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Create all directories and __init__.py files: autopilot/__init__.py (with __version__ = '0.1.0'), autopilot/ingest/__init__.py, autopilot/analyze/__init__.py, autopilot/organize/__init__.py, autopilot/plan/__init__.py, autopilot/source/__init__.py, autopilot/render/__init__.py, autopilot/upload/__init__.py, autopilot/prompts/ (empty dir with .gitkeep), tests/fixtures/ (empty dir with .gitkeep), scripts/ (empty dir with .gitkeep), output/ (empty dir with .gitkeep). Verify test passes.",
+      "description": "Create autopilot/db.py with CatalogDB class: __init__(self, db_path) opens sqlite3.connect with check_same_thread=False, enables WAL mode (PRAGMA journal_mode=WAL), enables foreign keys (PRAGMA foreign_keys=ON). Implement __enter__/__exit__ for transaction context manager (BEGIN on enter, COMMIT on exit, ROLLBACK on exception). Implement close() method. Make all step-1 tests pass.",
       "status": "done",
-      "commit": "6aaf989"
+      "commit": "fa33ab0"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write test_pyproject_toml_valid() that: (1) parses pyproject.toml as valid TOML, (2) asserts build-system requires hatchling, (3) asserts project.requires-python >= '3.11', (4) asserts project.name == 'autopilot-video', (5) asserts all required dependency groups exist. Write test_pyproject_toml_has_all_dependencies() that checks the dependencies list contains all required packages: click, pyyaml, whisperx, faster-whisper, ultralytics, insightface, transformers, faiss-gpu, panns-inference, audiocraft, scikit-learn, moviepy, pyav, opentimelineio, scenedetect, kokoro, anthropic, google-api-python-client, requests. Write test_pyproject_toml_has_dev_dependencies() checking pytest, ruff, pyright are in dev optional-dependencies.",
+      "description": "Write tests for schema creation: (1) test_schema_creates_all_12_tables — call _create_schema() and verify all 12 tables exist via sqlite_master query; (2) test_schema_media_files_columns — verify media_files table has all expected columns (id, file_path, sha256_prefix, codec, resolution_w, resolution_h, fps, duration_seconds, created_at, gps_lat, gps_lon, audio_channels, status, metadata_json); (3) test_schema_is_idempotent — call _create_schema() twice without error; (4) test_schema_foreign_keys — verify foreign key constraints exist (e.g., transcripts.media_id references media_files.id).",
       "status": "done",
-      "commit": "cbc1cee"
+      "commit": "903ea94"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Update pyproject.toml with all dependencies from the PRD technology stack. Use hatchling build backend. Set name='autopilot-video', version from autopilot/__init__.py, requires-python='>=3.11'. Group deps: core runtime (click, pyyaml, requests), ML (whisperx, faster-whisper, ultralytics, insightface, transformers, faiss-gpu, panns-inference, audiocraft, scikit-learn), video (moviepy>=2.0, pyav, opentimelineio, scenedetect), TTS (kokoro), API (anthropic, google-api-python-client). Dev deps as optional [dev]: pytest, ruff, pyright. Add [tool.pytest.ini_options] with testpaths=['tests']. Add [tool.ruff] config. Add [tool.pyright] config. Verify test passes.",
+      "description": "Implement _create_schema() method in CatalogDB that executes CREATE TABLE IF NOT EXISTS for all 12 tables using the exact schema from the PRD. Call _create_schema() from __init__. Tables: media_files, transcripts, shot_boundaries, detections, face_clusters, clip_embeddings, audio_events, activity_clusters, narratives, edit_plans, crop_paths, uploads. Make all step-3 tests pass.",
       "status": "done",
-      "commit": "bd538d6"
+      "commit": "13a52ed"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write test_config_yaml_valid() that: (1) parses config.yaml as valid YAML, (2) asserts all required top-level keys exist: input_dir, output_dir, creator, cameras, output, models, llm, youtube, processing. Write test_config_yaml_creator_section() checking creator has keys: name, channel_style, target_audience, default_video_duration_minutes, narration_style, music_preference. Write test_config_yaml_models_section() checking models has: whisper_size, yolo_variant, yolo_sample_every_n_frames, clip_model, face_model, tts_engine, music_engine. Write test_config_yaml_processing_section() checking processing has: max_wall_clock_hours, gpu_device, num_cpu_workers, batch_size_yolo, batch_size_whisper. Write test_config_yaml_output_section() checking output has: primary_aspect, resolution, codec, quality_crf, audio_bitrate, target_loudness_lufs. Write test_config_yaml_llm_section() checking llm has: provider, planning_model, utility_model. Write test_config_yaml_youtube_section() checking youtube has: privacy_status, default_category, credentials_path.",
+      "description": "Write tests for media_files CRUD: (1) test_insert_media — insert a media file row and verify it's retrievable; (2) test_get_media — get by id returns correct row; (3) test_get_media_not_found — returns None for nonexistent id; (4) test_update_status — change status from 'ingested' to 'analyzing' and verify; (5) test_list_by_status — insert multiple files with different statuses, list_by_status('ingested') returns only matching; (6) test_find_by_hash — insert media with sha256_prefix, find_by_hash returns it; (7) test_find_by_hash_not_found — returns None for nonexistent hash; (8) test_insert_media_duplicate_id — verify raises on duplicate primary key.",
       "status": "done",
-      "commit": "1386c9a"
+      "commit": "76f6f50"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Create config.yaml matching the PRD configuration section exactly. Include all sections with the exact default values from the PRD: input_dir (placeholder ~/footage/), output_dir (placeholder ~/output/), creator profile, camera profiles (dji_osmo_action_6 with source_resolution, aspect_mode, has_gyro_data, default_crop_target, crop_smoothing_tau), output targets, model preferences, LLM config (anthropic provider, claude-opus-4-20250514 planning, claude-sonnet-4-20250514 utility), YouTube config, processing config. Verify test passes.",
+      "description": "Implement media_files CRUD methods: insert_media(id, file_path, sha256_prefix=None, codec=None, resolution_w=None, resolution_h=None, fps=None, duration_seconds=None, created_at=None, gps_lat=None, gps_lon=None, audio_channels=None, status='ingested', metadata_json=None), get_media(id) -> dict|None, update_status(id, status), list_by_status(status) -> list[dict], find_by_hash(sha256_prefix) -> dict|None. Use Row factory for dict-like returns. Make all step-5 tests pass.",
       "status": "done",
-      "commit": "83042fc"
+      "commit": "94c55c4"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write test_gitignore_has_output_dir() that verifies .gitignore contains 'output/' to prevent committing rendered videos. Write test_package_version() that imports autopilot and checks __version__ is a valid semver string.",
+      "description": "Write tests for transcripts and shot_boundaries CRUD: (1) test_upsert_transcript — insert then update transcript, verify latest value; (2) test_get_transcript — retrieve by media_id; (3) test_get_transcript_not_found — returns None; (4) test_upsert_boundaries — insert shot boundaries with method; (5) test_get_boundaries — retrieve by media_id; (6) test_boundaries_composite_key — same media_id with different methods stored separately; (7) test_transcript_json_roundtrip — store JSON string, retrieve identical string.",
       "status": "done",
-      "commit": "95dd8cd"
+      "commit": "78fb10a"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Update .gitignore to include output/, __pycache__/, *.pyc, .eggs/, *.egg-info/, dist/, build/, .venv/, .env, *.credentials.json entries. Ensure autopilot/__init__.py has __version__ = '0.1.0'. Verify all tests pass.",
+      "description": "Implement transcripts CRUD: upsert_transcript(media_id, segments_json, language), get_transcript(media_id) -> dict|None. Implement shot_boundaries CRUD: upsert_boundaries(media_id, boundaries_json, method), get_boundaries(media_id, method=None) -> dict|list[dict]. Use INSERT OR REPLACE for upserts. Make all step-7 tests pass.",
       "status": "done",
-      "commit": "54d9ce7"
+      "commit": "d7f9894"
+    },
+    {
+      "id": "step-9",
+      "type": "test",
+      "description": "Write tests for detections CRUD: (1) test_batch_insert_detections — insert 100 detection rows in one call and verify count; (2) test_get_detections_for_frame — retrieve detections for a specific media_id + frame_number; (3) test_get_detections_for_range — retrieve detections for media_id between frame_start and frame_end; (4) test_batch_insert_detections_empty — batch insert with empty list does not error; (5) test_detections_json_roundtrip — verify JSON text stored and retrieved identically.",
+      "status": "done",
+      "commit": "28c627a"
+    },
+    {
+      "id": "step-10",
+      "type": "impl",
+      "description": "Implement detections CRUD: batch_insert_detections(rows: list[tuple[str, int, str]]) using executemany for efficiency, get_detections_for_frame(media_id, frame_number) -> dict|None, get_detections_for_range(media_id, frame_start, frame_end) -> list[dict]. Make all step-9 tests pass.",
+      "status": "done",
+      "commit": "70f4232"
+    },
+    {
+      "id": "step-11",
+      "type": "test",
+      "description": "Write tests for face_clusters and clip_embeddings CRUD: (1) test_insert_face_cluster — insert cluster with label and BLOB embedding; (2) test_update_face_label — update label for existing cluster; (3) test_get_clusters — list all face clusters; (4) test_get_cluster_by_id — retrieve single cluster by id; (5) test_batch_insert_embeddings — insert multiple embeddings with BLOB data; (6) test_get_embeddings_for_media — retrieve all embeddings for a media_id; (7) test_embedding_blob_roundtrip — verify binary data survives round-trip.",
+      "status": "done",
+      "commit": "7ade66b"
+    },
+    {
+      "id": "step-12",
+      "type": "impl",
+      "description": "Implement face_clusters CRUD: insert_cluster(cluster_id, label=None, representative_embedding=None, sample_image_paths=None), update_label(cluster_id, label), get_clusters() -> list[dict], get_cluster_by_id(cluster_id) -> dict|None. Implement clip_embeddings CRUD: batch_insert_embeddings(rows: list[tuple[str, int, bytes]]) using executemany, get_embeddings_for_media(media_id) -> list[dict]. Make all step-11 tests pass.",
+      "status": "done",
+      "commit": "e803e9f"
+    },
+    {
+      "id": "step-13",
+      "type": "test",
+      "description": "Write tests for audio_events and activity_clusters CRUD: (1) test_batch_insert_audio_events — insert multiple events; (2) test_get_events_for_range — retrieve events for media_id between start and end timestamps; (3) test_insert_activity_cluster — insert cluster with all fields; (4) test_get_activity_clusters — list all clusters; (5) test_update_activity_cluster — update label and description; (6) test_activity_cluster_json_roundtrip — verify clip_ids_json round-trips.",
+      "status": "done",
+      "commit": "1e49285"
+    },
+    {
+      "id": "step-14",
+      "type": "impl",
+      "description": "Implement audio_events CRUD: batch_insert_events(rows: list[tuple[str, float, str]]) using executemany, get_events_for_range(media_id, start_seconds, end_seconds) -> list[dict]. Implement activity_clusters CRUD: insert_cluster(cluster_id, label=None, description=None, time_start=None, time_end=None, location_label=None, gps_center_lat=None, gps_center_lon=None, clip_ids_json=None), get_clusters() -> list[dict], update_cluster(cluster_id, **kwargs). Make all step-13 tests pass.",
+      "status": "done",
+      "commit": "6129b78"
+    },
+    {
+      "id": "step-15",
+      "type": "test",
+      "description": "Write tests for narratives, edit_plans, crop_paths, uploads CRUD: (1) test_insert_narrative — insert with all fields; (2) test_get_narrative — retrieve by id; (3) test_update_narrative_status — change status; (4) test_list_narratives — list all, optionally filter by status; (5) test_upsert_edit_plan — insert and update plan; (6) test_get_edit_plan — retrieve by narrative_id; (7) test_upsert_crop_path — insert crop path with BLOB data; (8) test_get_crop_path — retrieve by composite key; (9) test_insert_upload — insert upload record; (10) test_get_upload — retrieve by narrative_id.",
+      "status": "done",
+      "commit": "4b00b94"
+    },
+    {
+      "id": "step-16",
+      "type": "impl",
+      "description": "Implement narratives CRUD: insert_narrative(narrative_id, title=None, description=None, proposed_duration_seconds=None, activity_cluster_ids_json=None, arc_notes=None, status='proposed'), get_narrative(narrative_id) -> dict|None, update_status(narrative_id, status), list_narratives(status=None) -> list[dict]. Implement edit_plans CRUD: upsert_plan(narrative_id, edl_json, otio_path=None, validation_json=None), get_plan(narrative_id) -> dict|None. Implement crop_paths CRUD: upsert_crop_path(media_id, target_aspect, subject_track_id, smoothing_tau=None, path_data=None), get_crop_path(media_id, target_aspect, subject_track_id) -> dict|None. Implement uploads CRUD: insert_upload(narrative_id, youtube_video_id=None, youtube_url=None, uploaded_at=None, privacy_status='unlisted'), get_upload(narrative_id) -> dict|None. Make all step-15 tests pass.",
+      "status": "done",
+      "commit": "dae1d92"
+    },
+    {
+      "id": "step-17",
+      "type": "test",
+      "description": "Write integration/edge-case tests: (1) test_transaction_commit — use context manager, insert data, verify persisted after exit; (2) test_transaction_rollback — use context manager, insert data, raise exception, verify data not persisted; (3) test_batch_insert_performance — insert 1000 detection rows, verify completes in <1 second; (4) test_foreign_key_enforcement — insert transcript referencing nonexistent media_id, verify raises IntegrityError; (5) test_json1_extension_available — verify json_extract works via a SQL query on a JSON column.",
+      "status": "done",
+      "commit": "8e30e4a"
+    },
+    {
+      "id": "step-18",
+      "type": "impl",
+      "description": "Fix any remaining issues from step-17 tests. Ensure transaction rollback works correctly in __exit__, foreign keys are enforced, and JSON1 extension queries work. Add any missing indexes for performance (e.g., index on media_files.sha256_prefix, media_files.status). Make all tests pass. Run ruff check and pyright to ensure code quality.",
+      "status": "done",
+      "commit": "8c7ae83"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use hatchling as build backend (not setuptools)",
-      "rationale": "The task specifies 'uv/hatch build system'. Hatchling is the modern Python build backend that pairs with uv for dependency management. It supports dynamic version reading from __init__.py."
+      "decision": "Use sqlite3.Row as row_factory for dict-like access",
+      "rationale": "sqlite3.Row provides both index-based and key-based access to columns, making CRUD return values easy to work with without external dependencies. Callers can access row['column_name'] naturally."
     },
     {
-      "decision": "Put __version__ in autopilot/__init__.py, read dynamically in pyproject.toml",
-      "rationale": "Single source of truth for version. Hatchling supports [tool.hatch.version] with path-based version reading. This is the standard hatch pattern."
+      "decision": "Use INSERT OR REPLACE for upsert operations",
+      "rationale": "SQLite supports INSERT OR REPLACE which maps naturally to upsert semantics for tables with primary keys (transcripts, shot_boundaries, edit_plans, crop_paths, uploads). This is simpler than INSERT ... ON CONFLICT DO UPDATE for our use case."
     },
     {
-      "decision": "autopilot/prompts/ gets .gitkeep not __init__.py",
-      "rationale": "The prompts directory holds .md template files, not Python modules. It should not be a Python package. .gitkeep ensures git tracks the empty directory."
+      "decision": "Use executemany for batch inserts (detections, embeddings, audio_events)",
+      "rationale": "executemany is the idiomatic and performant way to insert multiple rows in sqlite3. Combined with a single transaction, this handles the 1000+ row batch inserts efficiently."
     },
     {
-      "decision": "Dev dependencies go in [project.optional-dependencies] dev group, not separate requirements file",
-      "rationale": "Modern Python packaging puts dev deps in optional-dependencies. Installable via 'uv pip install -e .[dev]' or 'pip install -e .[dev]'. Keeps everything in one file."
+      "decision": "WAL mode test uses tmp_path file DB, not :memory:",
+      "rationale": "SQLite WAL mode is not supported with :memory: databases. The WAL test needs a real file-backed database (via pytest tmp_path fixture) to verify journal_mode=wal is actually set."
     },
     {
-      "decision": "Use tomllib (stdlib in 3.11+) to parse pyproject.toml in tests",
-      "rationale": "Python 3.11+ includes tomllib in stdlib, so no extra test dependency needed. This validates the TOML is well-formed programmatically."
+      "decision": "No external ORM — use raw sqlite3 with helper methods",
+      "rationale": "The task specifies a CatalogDB class with explicit CRUD helpers. Raw sqlite3 is sufficient for a single-user pipeline, avoids dependency bloat, and keeps the schema matching the PRD SQL exactly. This is a deliberate simplicity choice."
     },
     {
-      "decision": "Prerequisite creates minimal pyproject.toml before TDD steps",
-      "rationale": "Chicken-and-egg: pytest needs pyproject.toml to discover tests. The prerequisite creates just enough to run pytest (project name, python version, pytest dep), then step-3/step-4 TDD the full dependency list."
+      "decision": "Return dict|None from single-row getters, list[dict] from multi-row getters",
+      "rationale": "Consistent API: get_* methods return a single dict (converted from Row) or None if not found. list_* and batch get methods return list[dict]. This avoids callers needing to understand sqlite3.Row objects."
     },
     {
-      "decision": "Config values match PRD defaults exactly, not placeholders",
-      "rationale": "The task says 'matching the PRD configuration section exactly'. We use the exact values from the PRD (e.g., CRF 18, LUFS -16, claude-opus-4-20250514) so downstream tasks can rely on these defaults."
+      "decision": "BLOB columns for embeddings and crop_paths path_data, TEXT for JSON",
+      "rationale": "Per the PRD and task: embeddings are dense float32 arrays best stored as BLOB (768-dim * 4 bytes = 3072 bytes each), crop paths are packed binary arrays. JSON metadata uses TEXT columns for readability and json_extract() support."
     },
     {
-      "decision": "output/ and tests/fixtures/ get .gitkeep files",
-      "rationale": "Git doesn't track empty directories. .gitkeep is the convention for ensuring empty directories are committed. output/ will later hold rendered videos (gitignored), but the directory should exist in the repo."
+      "decision": "Namespace activity_clusters methods to avoid collision with face_clusters",
+      "rationale": "Both face_clusters and activity_clusters have insert_cluster/get_clusters methods. Use method names that include the table context: e.g., insert_face_cluster, insert_activity_cluster, or use a prefix pattern to disambiguate."
+    },
+    {
+      "decision": "Enable PRAGMA foreign_keys=ON at connection time",
+      "rationale": "SQLite has foreign key support disabled by default. Enabling it ensures referential integrity (e.g., can't insert a transcript for a nonexistent media_id), which is critical for data consistency in the catalog."
     }
   ],
   "reuse": [
     {
-      "what": "PRD configuration section",
-      "where": "docs/prd-autopilot-editor.md lines 737-799",
-      "how": "Copy the exact YAML from the PRD as the config.yaml template, with all sections and default values preserved."
+      "what": "PRD SQLite schema (12 CREATE TABLE statements)",
+      "where": "docs/prd-autopilot-editor.md lines 537-643",
+      "how": "Copy the exact CREATE TABLE statements from the PRD into _create_schema(). These are the canonical table definitions."
     },
     {
-      "what": "PRD project structure",
-      "where": "docs/prd-autopilot-editor.md lines 648-731",
-      "how": "Use the exact directory layout specified in the PRD to create the project skeleton. The 7 subpackages under autopilot/ and the support directories match the PRD exactly."
+      "what": "Existing conftest.py project_root fixture",
+      "where": "tests/conftest.py",
+      "how": "Extend conftest.py with a catalog_db fixture that creates in-memory CatalogDB instances, building on the existing fixture pattern."
     },
     {
-      "what": "PRD technology stack / dependency list",
-      "where": "docs/prd-autopilot-editor.md lines 502-521",
-      "how": "Map the 'Key Python Libraries' table directly to pyproject.toml dependencies. Every library listed becomes a dependency entry."
+      "what": "Existing test_scaffolding.py patterns",
+      "where": "tests/test_scaffolding.py",
+      "how": "Follow the same test style: docstrings, clear assertion messages, grouping related tests with section comments, using project_root fixture."
     },
     {
-      "what": "orchestrator-config.yaml verification commands",
-      "where": "orchestrator-config.yaml lines 41-43",
-      "how": "The test_command (pytest), lint_command (ruff check), and type_check_command (pyright) confirm the dev tooling choices. Configure these in pyproject.toml [tool.*] sections."
+      "what": "Python stdlib sqlite3 module",
+      "where": "Python 3.11+ standard library",
+      "how": "No external dependencies needed. sqlite3 in Python 3.11+ includes JSON1 extension support and WAL mode. Use sqlite3.connect(), sqlite3.Row, executemany, and PRAGMA commands."
     }
   ]
 }
