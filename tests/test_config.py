@@ -480,3 +480,35 @@ def test_load_config_camera_partial_defaults(tmp_path: pathlib.Path) -> None:
     assert cam.has_gyro_data is False
     assert cam.default_crop_target == "16:9"
     assert cam.crop_smoothing_tau == 0.5
+
+
+# ---------------------------------------------------------------------------
+# Step 19: Integration test with project config.yaml
+# ---------------------------------------------------------------------------
+
+
+def test_load_config_integration(project_root: pathlib.Path) -> None:
+    """Load the actual project config.yaml and verify key values."""
+    from autopilot.config import AutopilotConfig, load_config
+
+    cfg = load_config(project_root / "config.yaml")
+
+    assert isinstance(cfg, AutopilotConfig)
+
+    # Camera
+    assert "dji_osmo_action_6" in cfg.cameras
+    assert cfg.cameras["dji_osmo_action_6"].source_resolution == (4096, 4096)
+
+    # Models
+    assert cfg.models.whisper_size == "large-v3"
+
+    # Output
+    assert cfg.output.quality_crf == 18
+
+    # LLM
+    assert cfg.llm.provider == "anthropic"
+
+    # Paths are expanded
+    assert cfg.input_dir.is_absolute()
+    assert cfg.output_dir.is_absolute()
+    assert cfg.youtube.credentials_path.is_absolute()
