@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from autopilot.ingest.dedup import compute_hash
+from autopilot.ingest.dedup import compute_hash, find_duplicates
 
 
 class TestComputeHash:
@@ -58,3 +58,50 @@ class TestComputeHash:
         f2.write_bytes(b"content B")
 
         assert compute_hash(f1) != compute_hash(f2)
+
+
+class TestFindDuplicates:
+    """Tests for find_duplicates using the catalog_db fixture."""
+
+    def test_find_duplicates_with_matches(self, catalog_db) -> None:  # type: ignore[no-untyped-def]
+        """find_duplicates should return pairs for files with matching sha256_prefix."""
+        catalog_db.insert_media("m1", "/a.mp4", sha256_prefix="abc123")
+        catalog_db.insert_media("m2", "/b.mp4", sha256_prefix="abc123")
+        catalog_db.insert_media("m3", "/c.mp4", sha256_prefix="def456")
+
+        pairs = find_duplicates(catalog_db)
+        # m1 kept, m2 is duplicate
+        assert len(pairs) == 1
+        kept, dup = pairs[0]
+        assert kept == "m1"
+        assert dup == "m2"
+
+    def test_find_duplicates_no_matches(self, catalog_db) -> None:  # type: ignore[no-untyped-def]
+        """find_duplicates should return empty list when all hashes are unique."""
+        catalog_db.insert_media("m1", "/a.mp4", sha256_prefix="aaa")
+        catalog_db.insert_media("m2", "/b.mp4", sha256_prefix="bbb")
+        catalog_db.insert_media("m3", "/c.mp4", sha256_prefix="ccc")
+
+        pairs = find_duplicates(catalog_db)
+        assert pairs == []
+
+    def test_find_duplicates_null_hash(self, catalog_db) -> None:  # type: ignore[no-untyped-def]
+        """find_duplicates should exclude files with sha256_prefix=None."""
+        catalog_db.insert_media("m1", "/a.mp4", sha256_prefix=None)
+        catalog_db.insert_media("m2", "/b.mp4", sha256_prefix=None)
+        catalog_db.insert_media("m3", "/c.mp4", sha256_prefix="abc123")
+
+        pairs = find_duplicates(catalog_db)
+        assert pairs == []
+
+    def test_find_duplicates_triple(self, catalog_db) -> None:  # type: ignore[no-untyped-def]
+        """find_duplicates with 3 files sharing a hash should return 2 pairs."""
+        catalog_db.insert_media("m1", "/a.mp4", sha256_prefix="abc123")
+        catalog_db.insert_media("m2", "/b.mp4", sha256_prefix="abc123")
+        catalog_db.insert_media("m3", "/c.mp4", sha256_prefix="abc123")
+
+        pairs = find_duplicates(catalog_db)
+        # m1 kept, m2 and m3 are duplicates
+        assert len(pairs) == 2
+        assert ("m1", "m2") in pairs
+        assert ("m1", "m3") in pairs
