@@ -384,3 +384,96 @@ class TestDetectionsCRUD:
         result = catalog_db.get_detections_for_frame("m1", 0)
         assert result is not None
         assert result["detections_json"] == json_str
+
+
+# -- face_clusters & clip_embeddings CRUD ------------------------------------
+
+import struct
+
+
+def _make_embedding(dim: int = 512) -> bytes:
+    """Create a dummy embedding blob of float32 values."""
+    return struct.pack(f"{dim}f", *[float(i) for i in range(dim)])
+
+
+class TestFaceClustersCRUD:
+    """Tests for face_clusters table CRUD operations."""
+
+    def test_insert_face_cluster(self, catalog_db):
+        """Insert a face cluster with label and BLOB embedding."""
+        emb = _make_embedding(512)
+        catalog_db.insert_face_cluster(
+            cluster_id=1,
+            label="Alice",
+            representative_embedding=emb,
+            sample_image_paths='["/crops/face1.jpg"]',
+        )
+        result = catalog_db.get_face_cluster_by_id(1)
+        assert result is not None
+        assert result["label"] == "Alice"
+        assert result["representative_embedding"] == emb
+
+    def test_update_face_label(self, catalog_db):
+        """Update label for existing cluster."""
+        catalog_db.insert_face_cluster(cluster_id=1, label="Unknown")
+        catalog_db.update_face_label(1, "Bob")
+        result = catalog_db.get_face_cluster_by_id(1)
+        assert result is not None
+        assert result["label"] == "Bob"
+
+    def test_get_face_clusters(self, catalog_db):
+        """List all face clusters."""
+        catalog_db.insert_face_cluster(cluster_id=1, label="Alice")
+        catalog_db.insert_face_cluster(cluster_id=2, label="Bob")
+        results = catalog_db.get_face_clusters()
+        assert len(results) == 2
+
+    def test_get_face_cluster_by_id(self, catalog_db):
+        """Retrieve single cluster by id."""
+        catalog_db.insert_face_cluster(cluster_id=1, label="Alice")
+        result = catalog_db.get_face_cluster_by_id(1)
+        assert result is not None
+        assert result["cluster_id"] == 1
+        # Nonexistent
+        assert catalog_db.get_face_cluster_by_id(999) is None
+
+
+class TestClipEmbeddingsCRUD:
+    """Tests for clip_embeddings table CRUD operations."""
+
+    def test_batch_insert_embeddings(self, catalog_db):
+        """Insert multiple embeddings with BLOB data."""
+        _insert_test_media(catalog_db)
+        emb = _make_embedding(768)
+        rows = [("m1", i, emb) for i in range(10)]
+        catalog_db.batch_insert_embeddings(rows)
+        cur = catalog_db.conn.execute(
+            "SELECT count(*) FROM clip_embeddings WHERE media_id = 'm1'"
+        )
+        assert cur.fetchone()[0] == 10
+
+    def test_get_embeddings_for_media(self, catalog_db):
+        """Retrieve all embeddings for a media_id."""
+        _insert_test_media(catalog_db)
+        emb = _make_embedding(768)
+        catalog_db.batch_insert_embeddings([
+            ("m1", 0, emb),
+            ("m1", 10, emb),
+        ])
+        results = catalog_db.get_embeddings_for_media("m1")
+        assert len(results) == 2
+        frames = {r["frame_number"] for r in results}
+        assert frames == {0, 10}
+
+    def test_embedding_blob_roundtrip(self, catalog_db):
+        """Verify binary data survives round-trip."""
+        _insert_test_media(catalog_db)
+        emb = _make_embedding(768)
+        catalog_db.batch_insert_embeddings([("m1", 0, emb)])
+        results = catalog_db.get_embeddings_for_media("m1")
+        assert len(results) == 1
+        assert results[0]["embedding"] == emb
+        # Verify we can unpack it back
+        values = struct.unpack(f"{768}f", results[0]["embedding"])
+        assert values[0] == 0.0
+        assert values[767] == 767.0
