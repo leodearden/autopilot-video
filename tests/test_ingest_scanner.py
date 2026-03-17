@@ -12,6 +12,7 @@ from autopilot.ingest.scanner import (
     MediaFile,
     _run_exiftool,
     _run_ffprobe,
+    probe_file,
     scan_directory,
 )
 
@@ -315,3 +316,76 @@ class TestRunExiftool:
         ):
             result = _run_exiftool(Path("/footage/corrupt.mp4"))
         assert result == {}
+
+
+class TestProbeFile:
+    """Tests for probe_file combining ffprobe + exiftool."""
+
+    def test_probe_file_combines_metadata(self) -> None:
+        """probe_file should merge ffprobe and exiftool metadata into a MediaFile."""
+        ffprobe_data = {
+            "codec": "h264",
+            "resolution_w": 3840,
+            "resolution_h": 2160,
+            "fps": 30.0,
+            "duration_seconds": 120.5,
+            "audio_channels": 2,
+            "_raw": {"streams": [], "format": {}},
+        }
+        exiftool_data = {
+            "created_at": "2026-01-15T10:30:00",
+            "gps_lat": 13.7563,
+            "gps_lon": 100.5018,
+        }
+        with (
+            patch("autopilot.ingest.scanner._run_ffprobe", return_value=ffprobe_data),
+            patch("autopilot.ingest.scanner._run_exiftool", return_value=exiftool_data),
+        ):
+            mf = probe_file(Path("/footage/clip.mp4"))
+        assert mf.file_path == Path("/footage/clip.mp4")
+        assert mf.codec == "h264"
+        assert mf.resolution_w == 3840
+        assert mf.resolution_h == 2160
+        assert mf.fps == 30.0
+        assert mf.duration_seconds == 120.5
+        assert mf.audio_channels == 2
+        assert mf.created_at == "2026-01-15T10:30:00"
+        assert mf.gps_lat == 13.7563
+        assert mf.gps_lon == 100.5018
+
+    def test_probe_file_ffprobe_only(self) -> None:
+        """probe_file should handle empty exiftool result gracefully."""
+        ffprobe_data = {
+            "codec": "h264",
+            "resolution_w": 1920,
+            "resolution_h": 1080,
+            "fps": 24.0,
+            "duration_seconds": 60.0,
+            "audio_channels": 2,
+            "_raw": {"streams": [], "format": {}},
+        }
+        with (
+            patch("autopilot.ingest.scanner._run_ffprobe", return_value=ffprobe_data),
+            patch("autopilot.ingest.scanner._run_exiftool", return_value={}),
+        ):
+            mf = probe_file(Path("/footage/clip.mp4"))
+        assert mf.codec == "h264"
+        assert mf.created_at is None
+        assert mf.gps_lat is None
+        assert mf.gps_lon is None
+
+    def test_probe_file_stores_raw_metadata(self) -> None:
+        """probe_file should store raw ffprobe JSON in metadata_json."""
+        raw = {"streams": [{"codec_type": "video"}], "format": {"duration": "10"}}
+        ffprobe_data = {
+            "codec": "h264",
+            "_raw": raw,
+        }
+        with (
+            patch("autopilot.ingest.scanner._run_ffprobe", return_value=ffprobe_data),
+            patch("autopilot.ingest.scanner._run_exiftool", return_value={}),
+        ):
+            mf = probe_file(Path("/footage/clip.mp4"))
+        assert mf.metadata_json is not None
+        parsed = json.loads(mf.metadata_json)
+        assert parsed == raw
