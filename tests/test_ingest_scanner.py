@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from autopilot.ingest.scanner import MediaFile, scan_directory
+from autopilot.ingest.scanner import MediaFile, _run_ffprobe, scan_directory
 
 
 class TestMediaFile:
@@ -140,3 +140,102 @@ class TestScanDirectory:
             results = scan_directory(tmp_path)
         assert results == []
         mock_probe.assert_not_called()
+
+
+class TestRunFfprobe:
+    """Tests for _run_ffprobe metadata extraction."""
+
+    def _make_ffprobe_output(
+        self,
+        *,
+        video_codec: str | None = "h264",
+        width: int | None = 3840,
+        height: int | None = 2160,
+        r_frame_rate: str = "30/1",
+        duration: str = "120.5",
+        audio_channels: int | None = 2,
+    ) -> str:
+        """Build a realistic ffprobe JSON output string."""
+        streams = []
+        if video_codec is not None:
+            streams.append(
+                {
+                    "codec_type": "video",
+                    "codec_name": video_codec,
+                    "width": width,
+                    "height": height,
+                    "r_frame_rate": r_frame_rate,
+                }
+            )
+        if audio_channels is not None:
+            streams.append(
+                {
+                    "codec_type": "audio",
+                    "codec_name": "aac",
+                    "channels": audio_channels,
+                }
+            )
+        return json.dumps(
+            {
+                "streams": streams,
+                "format": {"duration": duration, "format_name": "mov,mp4,m4a,3gp,3g2,mj2"},
+            }
+        )
+
+    def test_parse_ffprobe_video(self) -> None:
+        """ffprobe JSON for a video file should yield codec, resolution, fps, duration, channels."""
+        output = self._make_ffprobe_output()
+        mock_result = MagicMock()
+        mock_result.stdout = output
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            result = _run_ffprobe(Path("/footage/clip.mp4"))
+        assert result["codec"] == "h264"
+        assert result["resolution_w"] == 3840
+        assert result["resolution_h"] == 2160
+        assert result["fps"] == 30.0
+        assert result["duration_seconds"] == 120.5
+        assert result["audio_channels"] == 2
+
+    def test_parse_ffprobe_audio_only(self) -> None:
+        """ffprobe JSON for an audio-only file should have no resolution/fps."""
+        output = self._make_ffprobe_output(video_codec=None, width=None, height=None)
+        mock_result = MagicMock()
+        mock_result.stdout = output
+        with patch("subprocess.run", return_value=mock_result):
+            result = _run_ffprobe(Path("/footage/audio.wav"))
+        assert result.get("resolution_w") is None
+        assert result.get("resolution_h") is None
+        assert result.get("fps") is None
+        assert result["duration_seconds"] == 120.5
+        assert result["audio_channels"] == 2
+        # Audio-only: codec should come from audio stream
+        assert result["codec"] == "aac"
+
+    def test_parse_ffprobe_image(self) -> None:
+        """ffprobe JSON for an image should have codec and resolution but no duration."""
+        output = self._make_ffprobe_output(
+            video_codec="mjpeg",
+            width=4032,
+            height=3024,
+            duration="0",
+            audio_channels=None,
+        )
+        mock_result = MagicMock()
+        mock_result.stdout = output
+        with patch("subprocess.run", return_value=mock_result):
+            result = _run_ffprobe(Path("/footage/photo.jpg"))
+        assert result["codec"] == "mjpeg"
+        assert result["resolution_w"] == 4032
+        assert result["resolution_h"] == 3024
+        assert result.get("audio_channels") is None
+
+    def test_ffprobe_failure(self) -> None:
+        """_run_ffprobe should return empty dict on subprocess failure."""
+        import subprocess
+
+        with patch(
+            "subprocess.run",
+            side_effect=subprocess.CalledProcessError(1, "ffprobe"),
+        ):
+            result = _run_ffprobe(Path("/footage/corrupt.mp4"))
+        assert result == {}
