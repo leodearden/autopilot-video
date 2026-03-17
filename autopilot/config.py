@@ -319,6 +319,9 @@ def load_config(path: str | Path) -> AutopilotConfig:
     if raw is None:
         raw = {}
 
+    if not isinstance(raw, dict):
+        raise ConfigError(f'Config file must contain a YAML mapping, got {type(raw).__name__}')
+
     # Validate required fields
     missing = [f for f in ("input_dir", "output_dir") if f not in raw]
     if missing:
@@ -338,6 +341,9 @@ def load_config(path: str | Path) -> AutopilotConfig:
     creator = _build_creator(raw.get("creator") or {})
 
     cameras_raw = raw.get("cameras") or {}
+    for name, cam in cameras_raw.items():
+        if cam is not None and not isinstance(cam, dict):
+            raise ConfigError(f'Expected a mapping for camera "{name}", got {type(cam).__name__}')
     cameras = {name: _build_camera(cam or {}) for name, cam in cameras_raw.items()}
 
     output = _build_output(raw.get("output") or {})
