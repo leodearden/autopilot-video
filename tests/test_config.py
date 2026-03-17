@@ -695,3 +695,32 @@ def test_load_config_null_camera_entry(tmp_path: pathlib.Path) -> None:
     assert cam.aspect_mode == "landscape"
     assert cam.default_crop_target == "16:9"
     assert cam.crop_smoothing_tau == 0.5
+
+
+# ---------------------------------------------------------------------------
+# Step 31: Wrong section types — non-dict values for sections
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "section,bad_value",
+    [
+        ("creator", "a string"),
+        ("output", "42"),
+        ("models", "[a, list]"),
+        ("llm", "true"),
+        ("youtube", "99"),
+        ("processing", "[1, 2, 3]"),
+        ("cameras", "mystring"),
+    ],
+)
+def test_load_config_wrong_section_type(
+    tmp_path: pathlib.Path, section: str, bad_value: str
+) -> None:
+    """ConfigError (not AttributeError) raised for non-dict section values."""
+    from autopilot.config import ConfigError, load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(f"{_BASE_REQUIRED}{section}: {bad_value}\n")
+    with pytest.raises(ConfigError, match=section):
+        load_config(config_file)
