@@ -851,3 +851,39 @@ class TestTransactionSemantics:
             assert result["id"] == "m1"
         finally:
             db.close()
+
+
+# -- Init safety tests (review fix) ------------------------------------------
+
+
+class TestInitSafety:
+    """Tests for CatalogDB.__init__ resource safety."""
+
+    def test_init_failure_closes_connection(self, monkeypatch):
+        """If _create_schema() fails, the connection should be closed."""
+        from unittest.mock import MagicMock
+
+        from autopilot.db import CatalogDB
+
+        # Capture the connection object so we can check it's closed afterward
+        captured: dict[str, sqlite3.Connection] = {}
+        original_connect = sqlite3.connect
+
+        def spy_connect(*args, **kwargs):
+            conn = original_connect(*args, **kwargs)
+            captured["conn"] = conn
+            return conn
+
+        monkeypatch.setattr(sqlite3, "connect", spy_connect)
+        monkeypatch.setattr(
+            CatalogDB, "_create_schema", MagicMock(side_effect=RuntimeError("schema fail"))
+        )
+
+        with pytest.raises(RuntimeError, match="schema fail"):
+            CatalogDB(":memory:")
+
+        # Verify the connection was closed — executing on a closed connection
+        # raises ProgrammingError
+        conn = captured["conn"]
+        with pytest.raises(sqlite3.ProgrammingError):
+            conn.execute("SELECT 1")
