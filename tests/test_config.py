@@ -511,3 +511,48 @@ def test_load_config_integration(project_root: pathlib.Path) -> None:
     assert cfg.input_dir.is_absolute()
     assert cfg.output_dir.is_absolute()
     assert cfg.youtube.credentials_path.is_absolute()
+
+
+# ---------------------------------------------------------------------------
+# Step 21: Type coercion errors — non-numeric strings for numeric fields
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "section,field,bad_value",
+    [
+        ("output", "quality_crf", "abc"),
+        ("output", "target_loudness_lufs", "loud"),
+        ("models", "yolo_sample_every_n_frames", "often"),
+        ("processing", "max_wall_clock_hours", "forever"),
+        ("processing", "gpu_device", "auto"),
+        ("processing", "num_cpu_workers", "many"),
+        ("processing", "batch_size_yolo", "big"),
+        ("processing", "batch_size_whisper", "huge"),
+    ],
+)
+def test_load_config_type_coercion_error(
+    tmp_path: pathlib.Path, section: str, field: str, bad_value: str
+) -> None:
+    """ConfigError (not ValueError) raised when numeric fields get non-numeric strings."""
+    from autopilot.config import ConfigError, load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(f"{_BASE_REQUIRED}{section}:\n  {field}: {bad_value}\n")
+    with pytest.raises(ConfigError, match=field):
+        load_config(config_file)
+
+
+def test_load_config_camera_float_coercion_error(tmp_path: pathlib.Path) -> None:
+    """ConfigError raised when camera crop_smoothing_tau gets non-numeric string."""
+    from autopilot.config import ConfigError, load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        f"{_BASE_REQUIRED}"
+        "cameras:\n"
+        "  test_cam:\n"
+        "    crop_smoothing_tau: smooth\n"
+    )
+    with pytest.raises(ConfigError, match="crop_smoothing_tau"):
+        load_config(config_file)
