@@ -1,17 +1,17 @@
 {
-  "task_id": "3",
-  "title": "SQLite catalog and db interface",
+  "task_id": "5",
+  "title": "Ingest pipeline",
   "modules": [
-    "autopilot",
+    "autopilot/ingest",
     "tests"
   ],
-  "analysis": "Task 3 requires implementing autopilot/db.py with a CatalogDB class that wraps SQLite with WAL mode, thread safety (check_same_thread=False), and the full 12-table schema from the PRD (media_files, transcripts, shot_boundaries, detections, face_clusters, clip_embeddings, audio_events, activity_clusters, narratives, edit_plans, crop_paths, uploads). The class needs CRUD helper methods for each table, context manager support for transactions, and proper handling of TEXT-based JSON columns and BLOB columns for binary data. The PRD provides the exact CREATE TABLE statements (lines 537-643 of prd-autopilot-editor.md). Tests should use in-memory SQLite (:memory:) per the task's testStrategy. The project uses Python 3.11+, pytest, ruff, pyright. SQLite JSON1 extension is built into Python's sqlite3 module since 3.9+. No external dependencies needed — sqlite3 is stdlib. The plan uses incremental TDD: first test/impl the CatalogDB class with connection management, WAL mode, and schema creation, then progressively test/impl CRUD helpers for each table grouped by complexity. Prerequisites: a conftest.py fixture for in-memory CatalogDB instances.\n\nREVIEW FIXES (steps 19-24): The review identified critical issues with transaction semantics and a resource leak. All CRUD write methods call self.conn.commit() unconditionally, which means the context manager's rollback in __exit__ is a no-op for public API calls. The fix: (1) remove self.conn.commit() from all CRUD methods so they participate in caller-managed transactions via the context manager, (2) fix __init__ to close the connection if _create_schema() fails (resource leak), (3) rewrite the transaction tests to actually exercise the context manager's commit/rollback with public API methods, not raw SQL, (4) update the conftest fixture and existing tests to work with the new non-autocommit behavior.",
+  "analysis": "Task 5 requires implementing three modules in autopilot/ingest/: scanner.py (directory walking + ffprobe/exiftool metadata extraction), normalizer.py (EBU R128 loudnorm via ffmpeg), and dedup.py (SHA-256 first-64MB hashing + duplicate detection). All three modules depend on the CatalogDB from task 3 (already implemented) and rely on external CLI tools (ffprobe, exiftool, ffmpeg) that must be mocked in tests.\n\nKey design considerations:\n1. **MediaFile dataclass** — a structured data object in scanner.py that maps directly to CatalogDB.insert_media() parameters, holding all metadata fields from the media_files table.\n2. **Subprocess isolation** — all ffprobe, exiftool, and ffmpeg calls go through thin wrapper functions that are easily mockable. Tests mock subprocess.run to control output and verify command construction.\n3. **Parallelization** — scan_directory uses concurrent.futures.ProcessPoolExecutor for CPU-parallel metadata extraction. The number of workers comes from config or defaults to os.cpu_count().\n4. **Dedup strategy** — compute_hash reads only the first 64MB (67,108,864 bytes) for speed on large video files. find_duplicates uses a SQL GROUP BY query on sha256_prefix. mark_duplicates keeps the first-ingested file (lowest rowid) and marks others as 'duplicate'.\n5. **Normalizer skip logic** — derives output filename from input stem + '.wav', checks if it already exists in output_dir before running ffmpeg.\n6. **Supported extensions** — video: .mp4, .mov; audio: .wav, .mp3, .aac; image: .jpg, .jpeg, .png, .tif, .tiff, .bmp, .webp (per PRD, DJI footage is primarily .mp4).\n\nExisting reusable infrastructure: CatalogDB with insert_media/find_by_hash/update_media_status/list_by_status, conftest.py catalog_db fixture (in-memory autocommit SQLite), pytest tmp_path for filesystem tests. Tests will follow existing patterns (TestClass grouping, docstrings, clear assertion messages).",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Add a catalog_db fixture to tests/conftest.py that creates an in-memory CatalogDB instance for each test. This fixture will be used by all subsequent test steps.",
+      "description": "Create empty test files tests/test_ingest_scanner.py, tests/test_ingest_normalizer.py, tests/test_ingest_dedup.py with module docstrings and standard imports (pytest, Path, unittest.mock). These serve as the test homes for the three ingest submodules.",
       "status": "done",
-      "commit": "1497814",
+      "commit": "e8641a2",
       "tests": []
     }
   ],
@@ -19,242 +19,244 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write tests/test_db.py with tests for CatalogDB class basics: (1) test_catalogdb_creates_connection — instantiate CatalogDB with ':memory:', assert connection is not None; (2) test_catalogdb_wal_mode — verify PRAGMA journal_mode returns 'wal' (note: WAL doesn't work with :memory:, so test with a tmp_path file DB); (3) test_catalogdb_thread_safety — verify connection was created with check_same_thread=False by accessing from a different thread; (4) test_catalogdb_context_manager — verify __enter__ returns self and __exit__ commits; (5) test_catalogdb_close — verify close() closes the connection.",
+      "description": "Write failing tests for the MediaFile dataclass in tests/test_ingest_scanner.py. TestMediaFile class: (1) test_mediafile_fields — instantiate MediaFile with all fields (file_path, codec, resolution_w, resolution_h, fps, duration_seconds, created_at, gps_lat, gps_lon, audio_channels, sha256_prefix, metadata_json), verify all attributes are set correctly; (2) test_mediafile_defaults — instantiate with only file_path, verify all optional fields default to None; (3) test_mediafile_file_path_is_path — verify file_path is stored as a Path object.",
       "status": "done",
-      "commit": "c254a4f"
+      "commit": "81833bf"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Create autopilot/db.py with CatalogDB class: __init__(self, db_path) opens sqlite3.connect with check_same_thread=False, enables WAL mode (PRAGMA journal_mode=WAL), enables foreign keys (PRAGMA foreign_keys=ON). Implement __enter__/__exit__ for transaction context manager (BEGIN on enter, COMMIT on exit, ROLLBACK on exception). Implement close() method. Make all step-1 tests pass.",
+      "description": "Create autopilot/ingest/scanner.py with the MediaFile dataclass. Fields: file_path (Path, required), codec (str | None), resolution_w (int | None), resolution_h (int | None), fps (float | None), duration_seconds (float | None), created_at (str | None), gps_lat (float | None), gps_lon (float | None), audio_channels (int | None), sha256_prefix (str | None), metadata_json (str | None). All optional fields default to None. Make step-1 tests pass.",
       "status": "done",
-      "commit": "fa33ab0"
+      "commit": "81c20d9"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write tests for schema creation: (1) test_schema_creates_all_12_tables — call _create_schema() and verify all 12 tables exist via sqlite_master query; (2) test_schema_media_files_columns — verify media_files table has all expected columns (id, file_path, sha256_prefix, codec, resolution_w, resolution_h, fps, duration_seconds, created_at, gps_lat, gps_lon, audio_channels, status, metadata_json); (3) test_schema_is_idempotent — call _create_schema() twice without error; (4) test_schema_foreign_keys — verify foreign key constraints exist (e.g., transcripts.media_id references media_files.id).",
+      "description": "Write failing tests for scan_directory file discovery. TestScanDirectory class: (1) test_scan_finds_video_files — create tmp_path with .mp4, .mov files, verify scan_directory returns MediaFile objects for each; (2) test_scan_finds_audio_files — create tmp_path with .wav, .mp3, .aac files, verify they're found; (3) test_scan_finds_image_files — create tmp_path with .jpg, .png, .tiff files, verify they're found; (4) test_scan_ignores_unsupported_extensions — create .txt, .pdf, .py files, verify they're NOT returned; (5) test_scan_walks_subdirectories — create nested dirs with media files, verify all are found; (6) test_scan_empty_directory — verify returns empty list. Note: mock _probe_file to return a minimal MediaFile since we're only testing file discovery here.",
       "status": "done",
-      "commit": "903ea94"
+      "commit": "37300d4"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement _create_schema() method in CatalogDB that executes CREATE TABLE IF NOT EXISTS for all 12 tables using the exact schema from the PRD. Call _create_schema() from __init__. Tables: media_files, transcripts, shot_boundaries, detections, face_clusters, clip_embeddings, audio_events, activity_clusters, narratives, edit_plans, crop_paths, uploads. Make all step-3 tests pass.",
+      "description": "Implement the file-walking part of scan_directory(input_dir: Path) -> list[MediaFile]. Define SUPPORTED_EXTENSIONS as a frozenset of video (.mp4, .mov), audio (.wav, .mp3, .aac), and image (.jpg, .jpeg, .png, .tif, .tiff, .bmp, .webp) extensions. Use Path.rglob('*') to walk the directory tree, filter by suffix (case-insensitive). For now, create a stub _probe_file that returns a MediaFile with just file_path set. Make step-3 tests pass.",
       "status": "done",
-      "commit": "13a52ed"
+      "commit": "17e5b1a"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write tests for media_files CRUD: (1) test_insert_media — insert a media file row and verify it's retrievable; (2) test_get_media — get by id returns correct row; (3) test_get_media_not_found — returns None for nonexistent id; (4) test_update_status — change status from 'ingested' to 'analyzing' and verify; (5) test_list_by_status — insert multiple files with different statuses, list_by_status('ingested') returns only matching; (6) test_find_by_hash — insert media with sha256_prefix, find_by_hash returns it; (7) test_find_by_hash_not_found — returns None for nonexistent hash; (8) test_insert_media_duplicate_id — verify raises on duplicate primary key.",
+      "description": "Write failing tests for ffprobe metadata extraction. TestRunFfprobe class: (1) test_parse_ffprobe_video — mock subprocess.run to return ffprobe JSON for a video file (codec_name='h264', width=3840, height=3840, r_frame_rate='30/1', duration='120.5', channels=2), verify _run_ffprobe returns dict with correct codec, resolution, fps, duration, audio_channels; (2) test_parse_ffprobe_audio_only — mock ffprobe JSON for a .wav file (no video stream, only audio), verify resolution/fps are None, duration and audio_channels are set; (3) test_parse_ffprobe_image — mock ffprobe JSON for a .jpg file, verify codec and resolution are set, duration is None or 0; (4) test_ffprobe_failure — mock subprocess.run to raise CalledProcessError, verify _run_ffprobe returns empty dict or handles gracefully without crashing.",
       "status": "done",
-      "commit": "76f6f50"
+      "commit": "e91617b"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Implement media_files CRUD methods: insert_media(id, file_path, sha256_prefix=None, codec=None, resolution_w=None, resolution_h=None, fps=None, duration_seconds=None, created_at=None, gps_lat=None, gps_lon=None, audio_channels=None, status='ingested', metadata_json=None), get_media(id) -> dict|None, update_status(id, status), list_by_status(status) -> list[dict], find_by_hash(sha256_prefix) -> dict|None. Use Row factory for dict-like returns. Make all step-5 tests pass.",
+      "description": "Implement _run_ffprobe(file_path: Path) -> dict function in scanner.py. Run ffprobe via subprocess.run with args: ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', file_path]. Parse the JSON output. Extract: codec (from first video stream codec_name, or first audio stream if no video), resolution_w/h (from video stream width/height), fps (from r_frame_rate, parse 'num/den' fraction), duration_seconds (from format.duration), audio_channels (from first audio stream channels). Return dict with these keys. Handle CalledProcessError and JSONDecodeError gracefully by returning empty dict. Make step-5 tests pass.",
       "status": "done",
-      "commit": "94c55c4"
+      "commit": "4d374bd"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write tests for transcripts and shot_boundaries CRUD: (1) test_upsert_transcript — insert then update transcript, verify latest value; (2) test_get_transcript — retrieve by media_id; (3) test_get_transcript_not_found — returns None; (4) test_upsert_boundaries — insert shot boundaries with method; (5) test_get_boundaries — retrieve by media_id; (6) test_boundaries_composite_key — same media_id with different methods stored separately; (7) test_transcript_json_roundtrip — store JSON string, retrieve identical string.",
+      "description": "Write failing tests for exiftool metadata extraction. TestRunExiftool class: (1) test_parse_exiftool_dji_mp4 — mock subprocess.run to return exiftool JSON for a DJI Osmo Action file with CreateDate='2026:01:15 10:30:00', GPSLatitude=13.7563, GPSLongitude=100.5018, verify _run_exiftool returns dict with created_at (ISO format) and gps_lat/gps_lon; (2) test_parse_exiftool_no_gps — mock exiftool JSON without GPS fields, verify gps_lat/gps_lon are None, created_at is still extracted; (3) test_parse_exiftool_no_date — mock exiftool JSON without date fields, verify created_at is None; (4) test_exiftool_failure — mock subprocess failure, verify returns empty dict gracefully.",
       "status": "done",
-      "commit": "78fb10a"
+      "commit": "21f7a96"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Implement transcripts CRUD: upsert_transcript(media_id, segments_json, language), get_transcript(media_id) -> dict|None. Implement shot_boundaries CRUD: upsert_boundaries(media_id, boundaries_json, method), get_boundaries(media_id, method=None) -> dict|list[dict]. Use INSERT OR REPLACE for upserts. Make all step-7 tests pass.",
+      "description": "Implement _run_exiftool(file_path: Path) -> dict function in scanner.py. Run exiftool via subprocess.run with args: ['exiftool', '-j', '-n', '-CreateDate', '-DateTimeOriginal', '-GPSLatitude', '-GPSLongitude', file_path]. Parse JSON output (array of one object). Extract: created_at from CreateDate or DateTimeOriginal (convert 'YYYY:MM:DD HH:MM:SS' to ISO 8601 format), gps_lat and gps_lon from GPSLatitude/GPSLongitude (with -n flag these are numeric). Handle missing fields, subprocess errors, and JSON errors gracefully. Make step-7 tests pass.",
       "status": "done",
-      "commit": "d7f9894"
+      "commit": "8e189e6"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write tests for detections CRUD: (1) test_batch_insert_detections — insert 100 detection rows in one call and verify count; (2) test_get_detections_for_frame — retrieve detections for a specific media_id + frame_number; (3) test_get_detections_for_range — retrieve detections for media_id between frame_start and frame_end; (4) test_batch_insert_detections_empty — batch insert with empty list does not error; (5) test_detections_json_roundtrip — verify JSON text stored and retrieved identically.",
+      "description": "Write failing tests for probe_file combining ffprobe + exiftool. TestProbeFile class: (1) test_probe_file_combines_metadata — mock both _run_ffprobe and _run_exiftool to return valid dicts, verify probe_file returns a MediaFile with all fields populated from both sources; (2) test_probe_file_ffprobe_only — mock _run_exiftool to return empty dict, verify MediaFile has ffprobe fields but None for gps/created_at; (3) test_probe_file_stores_raw_metadata — verify metadata_json field contains the raw ffprobe JSON stringified.",
       "status": "done",
-      "commit": "28c627a"
+      "commit": "1f29ec5"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Implement detections CRUD: batch_insert_detections(rows: list[tuple[str, int, str]]) using executemany for efficiency, get_detections_for_frame(media_id, frame_number) -> dict|None, get_detections_for_range(media_id, frame_start, frame_end) -> list[dict]. Make all step-9 tests pass.",
+      "description": "Implement probe_file(file_path: Path) -> MediaFile function in scanner.py. Calls _run_ffprobe and _run_exiftool, merges results into a MediaFile dataclass instance. Stores the full raw ffprobe output as metadata_json (json.dumps). Make step-9 tests pass.",
       "status": "done",
-      "commit": "70f4232"
+      "commit": "4bc054f"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write tests for face_clusters and clip_embeddings CRUD: (1) test_insert_face_cluster — insert cluster with label and BLOB embedding; (2) test_update_face_label — update label for existing cluster; (3) test_get_clusters — list all face clusters; (4) test_get_cluster_by_id — retrieve single cluster by id; (5) test_batch_insert_embeddings — insert multiple embeddings with BLOB data; (6) test_get_embeddings_for_media — retrieve all embeddings for a media_id; (7) test_embedding_blob_roundtrip — verify binary data survives round-trip.",
+      "description": "Write failing tests for parallel scanning. TestScanDirectoryParallel class: (1) test_scan_uses_process_pool — mock ProcessPoolExecutor and probe_file, create tmp_path with 5 .mp4 files, call scan_directory with max_workers=2, verify ProcessPoolExecutor was instantiated with max_workers=2 and executor.map was called with probe_file and the file list; (2) test_scan_default_workers — call scan_directory without max_workers, verify ProcessPoolExecutor uses None (defaults to CPU count); (3) test_scan_handles_probe_failure — mock probe_file to raise an exception for one file, verify scan_directory returns results for the other files without crashing (graceful error handling).",
       "status": "done",
-      "commit": "7ade66b"
+      "commit": "a16050d"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Implement face_clusters CRUD: insert_cluster(cluster_id, label=None, representative_embedding=None, sample_image_paths=None), update_label(cluster_id, label), get_clusters() -> list[dict], get_cluster_by_id(cluster_id) -> dict|None. Implement clip_embeddings CRUD: batch_insert_embeddings(rows: list[tuple[str, int, bytes]]) using executemany, get_embeddings_for_media(media_id) -> list[dict]. Make all step-11 tests pass.",
+      "description": "Update scan_directory to accept optional max_workers parameter and parallelize probe_file calls using concurrent.futures.ProcessPoolExecutor. Use executor.map or submit+as_completed pattern. Handle individual probe failures gracefully (log warning, skip file, continue). Wire the full pipeline: walk directory -> filter extensions -> parallel probe -> return list[MediaFile]. Make step-11 tests pass. Run ruff check on scanner.py.",
       "status": "done",
-      "commit": "e803e9f"
+      "commit": "bac7183"
     },
     {
       "id": "step-13",
       "type": "test",
-      "description": "Write tests for audio_events and activity_clusters CRUD: (1) test_batch_insert_audio_events — insert multiple events; (2) test_get_events_for_range — retrieve events for media_id between start and end timestamps; (3) test_insert_activity_cluster — insert cluster with all fields; (4) test_get_activity_clusters — list all clusters; (5) test_update_activity_cluster — update label and description; (6) test_activity_cluster_json_roundtrip — verify clip_ids_json round-trips.",
+      "description": "Write failing tests for normalize_audio in tests/test_ingest_normalizer.py. TestNormalizeAudio class: (1) test_normalize_builds_correct_ffmpeg_command — mock subprocess.run, call normalize_audio with a .mp4 path and output_dir, verify subprocess.run was called with ffmpeg args including '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', output format wav, and correct output path; (2) test_normalize_returns_output_path — verify returned Path matches expected output_dir / '<stem>.wav'; (3) test_normalize_creates_output_dir — mock subprocess.run, pass non-existent output_dir, verify it's created (or verify mkdir is called); (4) test_normalize_audio_file — mock subprocess.run, pass a .wav input, verify ffmpeg command handles audio-only files correctly.",
       "status": "done",
-      "commit": "1e49285"
+      "commit": "e7d1c23"
     },
     {
       "id": "step-14",
       "type": "impl",
-      "description": "Implement audio_events CRUD: batch_insert_events(rows: list[tuple[str, float, str]]) using executemany, get_events_for_range(media_id, start_seconds, end_seconds) -> list[dict]. Implement activity_clusters CRUD: insert_cluster(cluster_id, label=None, description=None, time_start=None, time_end=None, location_label=None, gps_center_lat=None, gps_center_lon=None, clip_ids_json=None), get_clusters() -> list[dict], update_cluster(cluster_id, **kwargs). Make all step-13 tests pass.",
+      "description": "Create autopilot/ingest/normalizer.py with normalize_audio(media_path: Path, output_dir: Path) -> Path function. Build ffmpeg command: ['ffmpeg', '-i', str(media_path), '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-ar', '48000', '-ac', '2', '-y', str(output_path)]. Output path is output_dir / f'{media_path.stem}.wav'. Create output_dir if it doesn't exist (output_dir.mkdir(parents=True, exist_ok=True)). Run via subprocess.run with check=True. Return output_path. Make step-13 tests pass.",
       "status": "done",
-      "commit": "6129b78"
+      "commit": "0f92820"
     },
     {
       "id": "step-15",
       "type": "test",
-      "description": "Write tests for narratives, edit_plans, crop_paths, uploads CRUD: (1) test_insert_narrative — insert with all fields; (2) test_get_narrative — retrieve by id; (3) test_update_narrative_status — change status; (4) test_list_narratives — list all, optionally filter by status; (5) test_upsert_edit_plan — insert and update plan; (6) test_get_edit_plan — retrieve by narrative_id; (7) test_upsert_crop_path — insert crop path with BLOB data; (8) test_get_crop_path — retrieve by composite key; (9) test_insert_upload — insert upload record; (10) test_get_upload — retrieve by narrative_id.",
+      "description": "Write failing tests for normalizer skip logic. TestNormalizeSkip class: (1) test_normalize_skips_existing_output — create output_dir with an existing '<stem>.wav' file (non-empty), call normalize_audio, verify subprocess.run was NOT called and the existing path is returned; (2) test_normalize_does_not_skip_if_missing — verify subprocess.run IS called when output file doesn't exist; (3) test_normalize_ffmpeg_failure — mock subprocess.run to raise CalledProcessError, verify normalize_audio raises or propagates the error cleanly.",
       "status": "done",
-      "commit": "4b00b94"
+      "commit": "1161345"
     },
     {
       "id": "step-16",
       "type": "impl",
-      "description": "Implement narratives CRUD: insert_narrative(narrative_id, title=None, description=None, proposed_duration_seconds=None, activity_cluster_ids_json=None, arc_notes=None, status='proposed'), get_narrative(narrative_id) -> dict|None, update_status(narrative_id, status), list_narratives(status=None) -> list[dict]. Implement edit_plans CRUD: upsert_plan(narrative_id, edl_json, otio_path=None, validation_json=None), get_plan(narrative_id) -> dict|None. Implement crop_paths CRUD: upsert_crop_path(media_id, target_aspect, subject_track_id, smoothing_tau=None, path_data=None), get_crop_path(media_id, target_aspect, subject_track_id) -> dict|None. Implement uploads CRUD: insert_upload(narrative_id, youtube_video_id=None, youtube_url=None, uploaded_at=None, privacy_status='unlisted'), get_upload(narrative_id) -> dict|None. Make all step-15 tests pass.",
+      "description": "Add skip logic to normalize_audio: before running ffmpeg, check if output_path already exists and is non-empty (output_path.exists() and output_path.stat().st_size > 0). If so, return output_path immediately without running ffmpeg. Let subprocess.CalledProcessError propagate to the caller. Make step-15 tests pass. Run ruff check on normalizer.py.",
       "status": "done",
-      "commit": "dae1d92"
+      "commit": "1161345"
     },
     {
       "id": "step-17",
       "type": "test",
-      "description": "Write integration/edge-case tests: (1) test_transaction_commit — use context manager, insert data, verify persisted after exit; (2) test_transaction_rollback — use context manager, insert data, raise exception, verify data not persisted; (3) test_batch_insert_performance — insert 1000 detection rows, verify completes in <1 second; (4) test_foreign_key_enforcement — insert transcript referencing nonexistent media_id, verify raises IntegrityError; (5) test_json1_extension_available — verify json_extract works via a SQL query on a JSON column.",
+      "description": "Write failing tests for compute_hash in tests/test_ingest_dedup.py. TestComputeHash class: (1) test_hash_small_file — create a tmp_path file with known content (< 64MB), verify compute_hash returns the expected SHA-256 hex digest of the full content; (2) test_hash_large_file — create a tmp_path file larger than 64MB (write 65MB of data), verify compute_hash returns SHA-256 of only the first 64MB (compute expected hash independently); (3) test_hash_empty_file — create empty file, verify returns SHA-256 of empty bytes; (4) test_hash_deterministic — call compute_hash twice on same file, verify same result; (5) test_hash_different_files — create two files with different content, verify different hashes.",
       "status": "done",
-      "commit": "8e30e4a"
+      "commit": "bacddc9"
     },
     {
       "id": "step-18",
       "type": "impl",
-      "description": "Fix any remaining issues from step-17 tests. Ensure transaction rollback works correctly in __exit__, foreign keys are enforced, and JSON1 extension queries work. Add any missing indexes for performance (e.g., index on media_files.sha256_prefix, media_files.status). Make all tests pass. Run ruff check and pyright to ensure code quality.",
+      "description": "Create autopilot/ingest/dedup.py with compute_hash(file_path: Path) -> str function. Open file in binary mode, read up to HASH_SIZE = 64 * 1024 * 1024 bytes (67,108,864), compute SHA-256, return hex digest string. Use hashlib.sha256() with chunked reads (e.g., 8KB chunks) up to the 64MB limit for memory efficiency. Make step-17 tests pass.",
       "status": "done",
-      "commit": "8c7ae83"
+      "commit": "cd812ca"
     },
     {
       "id": "step-19",
       "type": "test",
-      "description": "REVIEW FIX: Write failing tests for correct transaction semantics using public CRUD API methods (not raw SQL). In tests/test_db.py, add a new TestTransactionSemantics class with these tests: (1) test_crud_does_not_autocommit — create a fresh CatalogDB(':memory:'), call insert_media() WITHOUT a 'with' block, then call db.conn.rollback(), then verify the row is NOT present (proves CRUD methods don't commit internally); (2) test_context_manager_commits_crud — use 'with db:' block to call insert_media(), verify data persists after __exit__ by querying outside the block; (3) test_context_manager_rollback_crud — use 'with db:' block to call insert_media() then raise an exception, verify insert_media's data is rolled back and NOT persisted; (4) test_multi_op_atomicity — inside a 'with db:' block call insert_media() then upsert_transcript(), raise after transcript insert, verify NEITHER media nor transcript row persists; (5) test_explicit_commit_without_context_manager — call insert_media() then db.conn.commit() manually (no context manager), verify data persists. These tests will FAIL against the current implementation because CRUD methods call self.conn.commit() internally.",
+      "description": "Write failing tests for find_duplicates using the catalog_db fixture. TestFindDuplicates class: (1) test_find_duplicates_with_matches — insert 3 media files into catalog_db, two with matching sha256_prefix='abc123' and one with 'def456', call find_duplicates, verify returns list containing the pair of matching IDs; (2) test_find_duplicates_no_matches — insert 3 files all with unique hashes, verify returns empty list; (3) test_find_duplicates_null_hash — insert files with sha256_prefix=None, verify they're excluded from results; (4) test_find_duplicates_triple — insert 3 files with same hash, verify returns all pairs or all IDs in the group.",
       "status": "done",
-      "commit": "a26cf78"
+      "commit": "f5d1b98"
     },
     {
       "id": "step-20",
       "type": "impl",
-      "description": "REVIEW FIX: Fix transaction semantics in autopilot/db.py. (1) Remove self.conn.commit() from ALL individual CRUD write methods — every method that currently calls self.conn.commit() after its SQL operation (insert_media, update_media_status, upsert_transcript, upsert_boundaries, batch_insert_detections, insert_face_cluster, update_face_label, batch_insert_embeddings, batch_insert_audio_events, insert_activity_cluster, update_activity_cluster, insert_narrative, update_narrative_status, upsert_plan, upsert_crop_path, insert_upload — approximately 16 call sites). The context manager __exit__ becomes the sole commit point. (2) Update the class docstring to document that callers must either use 'with db:' for automatic commit/rollback, or call db.conn.commit() explicitly after writes. (3) Update the conftest.py catalog_db fixture so that existing tests (steps 5-16) continue to pass. The fixture should yield a CatalogDB that auto-commits for convenience in unit tests. Preferred approach: after creating the CatalogDB instance, set db.conn.isolation_level = None (autocommit mode) in the fixture, OR wrap each test's CRUD calls in a context manager. Alternative: create a helper that commits after each CRUD call. (4) Make all step-19 tests pass AND verify all existing tests still pass. Run full test suite.",
+      "description": "Implement find_duplicates(catalog_db: CatalogDB) -> list[tuple[str, str]] in dedup.py. Query: SELECT sha256_prefix, GROUP_CONCAT(id) FROM media_files WHERE sha256_prefix IS NOT NULL GROUP BY sha256_prefix HAVING COUNT(*) > 1. Parse results into list of tuples where each tuple is (kept_id, duplicate_id) — the first id (by rowid order) is kept, subsequent ones are duplicates. For groups of 3+, emit multiple pairs (kept, dup1), (kept, dup2), etc. Make step-19 tests pass.",
       "status": "done",
-      "commit": "02d532c"
+      "commit": "4f0c0ad"
     },
     {
       "id": "step-21",
       "type": "test",
-      "description": "REVIEW FIX: Write failing test for resource leak on init failure. In tests/test_db.py, add to TestTransactionSemantics or a new TestInitSafety class: test_init_failure_closes_connection — monkeypatch CatalogDB._create_schema to raise RuntimeError, then instantiate CatalogDB in a try/except, and verify that the connection was closed. Use a mock or monkeypatch to track whether conn.close() was called. This test will FAIL against the current implementation because __init__ does not wrap _create_schema() in try/except.",
+      "description": "Write failing tests for mark_duplicates. TestMarkDuplicates class: (1) test_mark_duplicates_updates_status — insert 3 media files (two with same hash), call mark_duplicates, verify the first-ingested keeps status='ingested' and the second gets status='duplicate'; (2) test_mark_duplicates_no_duplicates — insert files with unique hashes, call mark_duplicates, verify no statuses changed; (3) test_mark_duplicates_preserves_non_duplicate_status — insert a file with status='analyzing' and unique hash, verify its status is unchanged after mark_duplicates.",
       "status": "done",
-      "commit": "f07fca4"
+      "commit": "3e4559e"
     },
     {
       "id": "step-22",
       "type": "impl",
-      "description": "REVIEW FIX: Fix resource leak in CatalogDB.__init__. Wrap the post-connect initialization (PRAGMA journal_mode=WAL, PRAGMA foreign_keys=ON, and _create_schema() call) in a try/except block. On any exception, call self.conn.close() before re-raising. This ensures the SQLite connection and associated file handles (WAL, SHM sidecar files) are properly released if initialization fails. Make step-21 test pass. Run full test suite.",
+      "description": "Implement mark_duplicates(catalog_db: CatalogDB) -> int in dedup.py. Call find_duplicates to get pairs, then for each (kept_id, duplicate_id) pair call catalog_db.update_media_status(duplicate_id, 'duplicate'). Return count of files marked as duplicate. Make step-21 tests pass. Run ruff check on dedup.py.",
       "status": "done",
-      "commit": "6149857"
+      "commit": "6312de1"
     },
     {
       "id": "step-23",
       "type": "test",
-      "description": "REVIEW FIX: Rewrite the existing flawed transaction tests in TestIntegration. (1) Rewrite test_transaction_commit to use raw db.conn.execute('INSERT INTO media_files ...') WITHOUT any explicit commit inside the 'with' block, then verify the data persists after __exit__ — this actually exercises __exit__'s commit() path rather than relying on CRUD auto-commit. (2) Rewrite test_transaction_rollback to use public CRUD methods (db.insert_media()) inside a 'with' block followed by a deliberate exception, and verify the data is NOT persisted — proving rollback works for public API calls now that CRUD methods no longer auto-commit. Update both docstrings to accurately describe what each test exercises. These should now pass (since step-20 already fixed the implementation).",
+      "description": "Write integration test verifying the __init__.py exports. TestIngestPackage class: (1) test_ingest_exports — verify 'from autopilot.ingest.scanner import MediaFile, scan_directory, probe_file' works; (2) test_normalizer_exports — verify 'from autopilot.ingest.normalizer import normalize_audio' works; (3) test_dedup_exports — verify 'from autopilot.ingest.dedup import compute_hash, find_duplicates, mark_duplicates' works.",
       "status": "done",
-      "commit": "06dde9e"
+      "commit": "28bcca0"
     },
     {
       "id": "step-24",
       "type": "impl",
-      "description": "REVIEW FIX: Final verification and cleanup. (1) Run the full test suite (pytest tests/test_db.py -v) and ensure ALL tests pass — both the new transaction semantics tests AND all existing CRUD tests. (2) Run ruff check autopilot/db.py tests/test_db.py to verify no lint issues. (3) Run pyright autopilot/db.py tests/test_db.py to verify no type errors. (4) Review that no test bypasses the public API in a misleading way. Fix any remaining failures.",
+      "description": "Update autopilot/ingest/__init__.py to export the public API: MediaFile, scan_directory, probe_file from scanner; normalize_audio from normalizer; compute_hash, find_duplicates, mark_duplicates from dedup. Run full test suite (pytest tests/ -v), ruff check autopilot/ingest/, and pyright autopilot/ingest/ to ensure quality. Fix any remaining issues.",
       "status": "done",
-      "commit": "8166ee5"
+      "commit": "42b9117"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use sqlite3.Row as row_factory for dict-like access",
-      "rationale": "sqlite3.Row provides both index-based and key-based access to columns, making CRUD return values easy to work with without external dependencies. Callers can access row['column_name'] naturally."
+      "decision": "MediaFile is a dataclass in scanner.py, not a separate models module",
+      "rationale": "The task explicitly says scanner.py returns MediaFile objects. Since it's the only data structure needed for the ingest pipeline and maps 1:1 to CatalogDB.insert_media() parameters, keeping it in scanner.py avoids an extra module. If other pipeline stages need it later, it can be moved to ingest/__init__.py."
     },
     {
-      "decision": "Use INSERT OR REPLACE for upsert operations",
-      "rationale": "SQLite supports INSERT OR REPLACE which maps naturally to upsert semantics for tables with primary keys (transcripts, shot_boundaries, edit_plans, crop_paths, uploads). This is simpler than INSERT ... ON CONFLICT DO UPDATE for our use case."
+      "decision": "Mock subprocess.run for all external tool tests (ffprobe, exiftool, ffmpeg)",
+      "rationale": "Tests must run in CI environments without ffprobe, exiftool, or ffmpeg installed. Mocking subprocess.run with controlled JSON output lets us test parsing logic, command construction, and error handling deterministically. Real integration tests with actual media files would be a separate, optional test suite."
     },
     {
-      "decision": "Use executemany for batch inserts (detections, embeddings, audio_events)",
-      "rationale": "executemany is the idiomatic and performant way to insert multiple rows in sqlite3. Combined with a single transaction, this handles the 1000+ row batch inserts efficiently."
+      "decision": "Use chunked reads in compute_hash for memory efficiency",
+      "rationale": "Reading 64MB in one call (file.read(64*1024*1024)) would allocate a 64MB buffer. Instead, read in 8KB chunks while accumulating the SHA-256 hash, with a byte counter to stop at the 64MB boundary. This keeps memory usage constant regardless of file size."
     },
     {
-      "decision": "WAL mode test uses tmp_path file DB, not :memory:",
-      "rationale": "SQLite WAL mode is not supported with :memory: databases. The WAL test needs a real file-backed database (via pytest tmp_path fixture) to verify journal_mode=wal is actually set."
+      "decision": "find_duplicates returns (kept_id, duplicate_id) tuples, not raw hash groups",
+      "rationale": "The caller (mark_duplicates) needs to know which file to keep and which to mark. By returning oriented pairs where the first element is the keeper (first ingested by rowid), the caller can directly iterate and update statuses without additional sorting/grouping logic."
     },
     {
-      "decision": "No external ORM — use raw sqlite3 with helper methods",
-      "rationale": "The task specifies a CatalogDB class with explicit CRUD helpers. Raw sqlite3 is sufficient for a single-user pipeline, avoids dependency bloat, and keeps the schema matching the PRD SQL exactly. This is a deliberate simplicity choice."
+      "decision": "Normalizer outputs to '<stem>.wav' in output_dir, not alongside source files",
+      "rationale": "The task explicitly says 'Output as .wav files (separate from source video to avoid re-encoding).' Using a dedicated output_dir prevents cluttering the source footage directory and makes cleanup/re-processing simple."
     },
     {
-      "decision": "Return dict|None from single-row getters, list[dict] from multi-row getters",
-      "rationale": "Consistent API: get_* methods return a single dict (converted from Row) or None if not found. list_* and batch get methods return list[dict]. This avoids callers needing to understand sqlite3.Row objects."
+      "decision": "scan_directory uses ProcessPoolExecutor (not ThreadPoolExecutor) per the task spec",
+      "rationale": "The task requires 'Parallelize across CPU cores using concurrent.futures.ProcessPoolExecutor.' Subprocesses (ffprobe, exiftool) release the GIL anyway, but ProcessPoolExecutor is specified explicitly, likely for CPU-bound JSON parsing of large metadata sets."
     },
     {
-      "decision": "BLOB columns for embeddings and crop_paths path_data, TEXT for JSON",
-      "rationale": "Per the PRD and task: embeddings are dense float32 arrays best stored as BLOB (768-dim * 4 bytes = 3072 bytes each), crop paths are packed binary arrays. JSON metadata uses TEXT columns for readability and json_extract() support."
+      "decision": "Graceful error handling in scan_directory — skip files that fail to probe",
+      "rationale": "In a real footage directory there may be corrupted files, temporary files, or files with unusual formats. The scanner should log a warning and skip problematic files rather than aborting the entire scan. This matches the production use case of batch-processing hundreds of files."
     },
     {
-      "decision": "Namespace activity_clusters methods to avoid collision with face_clusters",
-      "rationale": "Both face_clusters and activity_clusters have insert_cluster/get_clusters methods. Use method names that include the table context: e.g., insert_face_cluster, insert_activity_cluster, or use a prefix pattern to disambiguate."
+      "decision": "Exiftool -n flag for numeric GPS coordinates",
+      "rationale": "Without -n, exiftool returns GPS as strings like '13 deg 45\\' 22.68\\\" N'. With -n, it returns numeric values (13.7563) that can be stored directly as REAL in SQLite. This avoids complex string parsing of DMS notation."
     },
     {
-      "decision": "Enable PRAGMA foreign_keys=ON at connection time",
-      "rationale": "SQLite has foreign key support disabled by default. Enabling it ensures referential integrity (e.g., can't insert a transcript for a nonexistent media_id), which is critical for data consistency in the catalog."
+      "decision": "EBU R128 loudnorm parameters: I=-16, TP=-1.5, LRA=11",
+      "rationale": "These exact values are specified in the task: -16 LUFS integrated loudness, -1.5 dBTP true peak, 11 LU loudness range. These are the EBU R128 broadcast standard values, appropriate for YouTube content."
     },
     {
-      "decision": "Remove self.conn.commit() from all CRUD methods; context manager is sole commit point",
-      "rationale": "Review identified that per-method commit() calls break the context manager's rollback guarantee. With commits inside each method, wrapping multiple writes in 'with db:' gives a false promise of atomicity — rollback in __exit__ is a no-op since data is already committed. The fix: CRUD methods only execute SQL; callers control commit boundaries via 'with db:' (auto commit/rollback) or explicit db.conn.commit(). This matches the standard Python DB-API pattern and enables true transactional atomicity across multiple operations."
-    },
-    {
-      "decision": "Wrap __init__ post-connect setup in try/except to close connection on failure",
-      "rationale": "Review identified that if _create_schema() raises (disk full, corrupted DB, etc.), the connection opened on the previous line is leaked. The fix wraps PRAGMA + _create_schema() in try/except, calling self.conn.close() before re-raising. This prevents file descriptor leaks and WAL/SHM file locks in long-running processes."
-    },
-    {
-      "decision": "Existing CRUD tests use autocommit fixture after removing per-method commits",
-      "rationale": "Existing tests (steps 5-16) call CRUD methods directly without 'with db:' blocks and expect data to be immediately visible. After removing auto-commit from CRUD methods, the conftest catalog_db fixture needs adjustment. Options: (a) set isolation_level=None on the fixture's connection for autocommit, (b) wrap fixture usage in context managers, or (c) add explicit commits. Option (a) is cleanest since it only affects test convenience without changing the CatalogDB class API."
+      "decision": "Normalized audio at 48kHz stereo",
+      "rationale": "48kHz is the standard for video production (vs 44.1kHz for CD audio). Stereo (2 channels) is the standard for YouTube. The ffmpeg command includes -ar 48000 -ac 2 to ensure consistent output regardless of input format."
     }
   ],
   "reuse": [
     {
-      "what": "PRD SQLite schema (12 CREATE TABLE statements)",
-      "where": "docs/prd-autopilot-editor.md lines 537-643",
-      "how": "Copy the exact CREATE TABLE statements from the PRD into _create_schema(). These are the canonical table definitions."
+      "what": "CatalogDB class with insert_media, find_by_hash, update_media_status, list_by_status",
+      "where": "autopilot/db.py",
+      "how": "dedup.py uses CatalogDB.find_by_hash() for individual lookups, conn.execute() for GROUP BY duplicate queries, and update_media_status() to mark duplicates. Scanner's MediaFile fields map directly to insert_media() parameters."
     },
     {
-      "what": "Existing conftest.py project_root fixture",
+      "what": "catalog_db conftest fixture (in-memory autocommit SQLite)",
       "where": "tests/conftest.py",
-      "how": "Extend conftest.py with a catalog_db fixture that creates in-memory CatalogDB instances, building on the existing fixture pattern."
+      "how": "Reuse the existing catalog_db fixture for dedup tests that need database interaction. The fixture provides an in-memory CatalogDB with autocommit enabled for test convenience."
     },
     {
-      "what": "Existing test_scaffolding.py patterns",
-      "where": "tests/test_scaffolding.py",
-      "how": "Follow the same test style: docstrings, clear assertion messages, grouping related tests with section comments, using project_root fixture."
+      "what": "pytest tmp_path fixture for filesystem tests",
+      "where": "pytest built-in",
+      "how": "Use tmp_path to create temporary directory structures with dummy media files for scan_directory tests, temporary files for compute_hash tests, and temporary output directories for normalize_audio tests."
     },
     {
-      "what": "Python stdlib sqlite3 module",
+      "what": "Existing test patterns from test_db.py and test_scaffolding.py",
+      "where": "tests/test_db.py, tests/test_scaffolding.py",
+      "how": "Follow the same conventions: TestClass grouping for related tests, descriptive docstrings, clear assertion messages, conftest fixture reuse, helper functions prefixed with underscore."
+    },
+    {
+      "what": "config.yaml processing.num_cpu_workers and output.target_loudness_lufs",
+      "where": "config.yaml",
+      "how": "The scanner's max_workers parameter defaults to None (CPU count) but can be set from config. The normalizer's loudnorm I= parameter matches config's target_loudness_lufs (-16). These values inform the API design but the ingest modules accept them as parameters rather than reading config directly."
+    },
+    {
+      "what": "Python stdlib hashlib, subprocess, concurrent.futures, json, pathlib",
       "where": "Python 3.11+ standard library",
-      "how": "No external dependencies needed. sqlite3 in Python 3.11+ includes JSON1 extension support and WAL mode. Use sqlite3.connect(), sqlite3.Row, executemany, and PRAGMA commands."
+      "how": "No external dependencies needed for the ingest pipeline. hashlib.sha256 for hashing, subprocess.run for CLI tools, ProcessPoolExecutor for parallelization, json for parsing ffprobe/exiftool output, Path for filesystem operations."
     }
   ]
 }
