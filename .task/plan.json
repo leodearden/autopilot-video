@@ -5,7 +5,7 @@
     "autopilot/ingest",
     "tests"
   ],
-  "analysis": "Task 5 requires implementing three modules in autopilot/ingest/: scanner.py (directory walking + ffprobe/exiftool metadata extraction), normalizer.py (EBU R128 loudnorm via ffmpeg), and dedup.py (SHA-256 first-64MB hashing + duplicate detection). All three modules depend on the CatalogDB from task 3 (already implemented) and rely on external CLI tools (ffprobe, exiftool, ffmpeg) that must be mocked in tests.\n\nKey design considerations:\n1. **MediaFile dataclass** — a structured data object in scanner.py that maps directly to CatalogDB.insert_media() parameters, holding all metadata fields from the media_files table.\n2. **Subprocess isolation** — all ffprobe, exiftool, and ffmpeg calls go through thin wrapper functions that are easily mockable. Tests mock subprocess.run to control output and verify command construction.\n3. **Parallelization** — scan_directory uses concurrent.futures.ProcessPoolExecutor for CPU-parallel metadata extraction. The number of workers comes from config or defaults to os.cpu_count().\n4. **Dedup strategy** — compute_hash reads only the first 64MB (67,108,864 bytes) for speed on large video files. find_duplicates uses a SQL GROUP BY query on sha256_prefix. mark_duplicates keeps the first-ingested file (lowest rowid) and marks others as 'duplicate'.\n5. **Normalizer skip logic** — derives output filename from input stem + '.wav', checks if it already exists in output_dir before running ffmpeg.\n6. **Supported extensions** — video: .mp4, .mov; audio: .wav, .mp3, .aac; image: .jpg, .jpeg, .png, .tif, .tiff, .bmp, .webp (per PRD, DJI footage is primarily .mp4).\n\nExisting reusable infrastructure: CatalogDB with insert_media/find_by_hash/update_media_status/list_by_status, conftest.py catalog_db fixture (in-memory autocommit SQLite), pytest tmp_path for filesystem tests. Tests will follow existing patterns (TestClass grouping, docstrings, clear assertion messages).",
+  "analysis": "Task 5 requires implementing three modules in autopilot/ingest/: scanner.py (directory walking + ffprobe/exiftool metadata extraction), normalizer.py (EBU R128 loudnorm via ffmpeg), and dedup.py (SHA-256 first-64MB hashing + duplicate detection). All three modules depend on the CatalogDB from task 3 (already implemented) and rely on external CLI tools (ffprobe, exiftool, ffmpeg) that must be mocked in tests.\n\nKey design considerations:\n1. **MediaFile dataclass** — a structured data object in scanner.py that maps directly to CatalogDB.insert_media() parameters, holding all metadata fields from the media_files table.\n2. **Subprocess isolation** — all ffprobe, exiftool, and ffmpeg calls go through thin wrapper functions that are easily mockable. Tests mock subprocess.run to control output and verify command construction.\n3. **Parallelization** — scan_directory uses concurrent.futures.ProcessPoolExecutor for CPU-parallel metadata extraction. The number of workers comes from config or defaults to os.cpu_count().\n4. **Dedup strategy** — compute_hash reads only the first 64MB (67,108,864 bytes) for speed on large video files. find_duplicates uses a SQL GROUP BY query on sha256_prefix. mark_duplicates keeps the first-ingested file (lowest rowid) and marks others as 'duplicate'.\n5. **Normalizer skip logic** — derives output filename from input stem + '.wav', checks if it already exists in output_dir before running ffmpeg.\n6. **Supported extensions** — video: .mp4, .mov; audio: .wav, .mp3, .aac; image: .jpg, .jpeg, .png, .tif, .tiff, .bmp, .webp (per PRD, DJI footage is primarily .mp4).\n\nExisting reusable infrastructure: CatalogDB with insert_media/find_by_hash/update_media_status/list_by_status, conftest.py catalog_db fixture (in-memory autocommit SQLite), pytest tmp_path for filesystem tests. Tests will follow existing patterns (TestClass grouping, docstrings, clear assertion messages).\n\n**Post-review fixes (steps 25-30):** Code review identified four blocking issues requiring fixes:\n1. **fault_isolation_violation + error_handling_truncates_results** (scanner.py) — executor.map wraps the entire iteration in a single try/except. When one future raises, the for-loop exits and all unprocessed files after the failing one are silently dropped. Fix: refactor to executor.submit + as_completed with per-future try/except.\n2. **non_deterministic_deduplication_key** (dedup.py) — GROUP_CONCAT(id) without ORDER BY has undefined ordering per SQLite docs. The keeper assignment is non-deterministic. Fix: use a subquery with ORDER BY rowid before GROUP_CONCAT.\n3. **output_filename_collision_data_corruption** (normalizer.py) — output_path uses only media_path.stem, so files from different subdirectories with the same stem (e.g. day1/DJI_0001.mp4, day2/DJI_0001.mp4) map to the same output, causing silent data corruption. Fix: add root_dir parameter to mirror input directory structure under output_dir.",
   "prerequisites": [
     {
       "id": "pre-1",
@@ -183,6 +183,48 @@
       "description": "Update autopilot/ingest/__init__.py to export the public API: MediaFile, scan_directory, probe_file from scanner; normalize_audio from normalizer; compute_hash, find_duplicates, mark_duplicates from dedup. Run full test suite (pytest tests/ -v), ruff check autopilot/ingest/, and pyright autopilot/ingest/ to ensure quality. Fix any remaining issues.",
       "status": "done",
       "commit": "42b9117"
+    },
+    {
+      "id": "step-25",
+      "type": "test",
+      "description": "REVIEW FIX [fault_isolation_violation + error_handling_truncates_results]: Write a failing test that exposes the executor.map fault isolation bug. Add test_scan_returns_all_non_failing_files to TestScanDirectoryParallel in tests/test_ingest_scanner.py. Create 3 files in tmp_path: aaa_good.mp4, mmm_bad.mp4, zzz_good.mp4 (sorted order ensures mmm_bad is in the middle). Mock ProcessPoolExecutor with a synchronous executor mock where the map function yields MediaFile for aaa_good, then raises Exception for mmm_bad, which aborts the iteration — zzz_good is never yielded. Assert len(results) == 2 (both aaa_good and zzz_good should be returned). This test FAILS with the current implementation because the single try/except around executor.map catches the exception after aaa_good is collected but before zzz_good can be processed, returning only 1 result instead of 2. The test documents the desired behavior: individual probe failures should be isolated so ALL non-failing files are returned.",
+      "status": "done",
+      "commit": "ac3cadd"
+    },
+    {
+      "id": "step-26",
+      "type": "impl",
+      "description": "REVIEW FIX [fault_isolation_violation + error_handling_truncates_results]: Refactor scan_directory in autopilot/ingest/scanner.py to use executor.submit + as_completed instead of executor.map for per-future error isolation. Implementation: (1) Add 'from concurrent.futures import as_completed' to imports. (2) Replace the executor.map block with: futures = {executor.submit(_probe_file, f): f for f in files}; for fut in as_completed(futures): try: results.append(fut.result()) except Exception: logger.warning('Probe failed for %s, skipping', futures[fut]). (3) Update the _sync_executor_mock helper in tests/test_ingest_scanner.py to mock executor.submit instead of executor.map — submit should return mock Future objects, and patch as_completed to return those futures in order. (4) Update all TestScanDirectory tests (test_scan_finds_video_files, test_scan_finds_audio_files, test_scan_finds_image_files, test_scan_ignores_unsupported_extensions, test_scan_walks_subdirectories) to use the new submit-style mock. (5) Update TestScanDirectoryParallel tests (test_scan_uses_process_pool to check executor.submit was called instead of executor.map, test_scan_default_workers, test_scan_handles_probe_failure) for the new pattern. (6) Update the step-25 test to use submit-style mocking. ALL scanner tests must pass. Run ruff check on scanner.py.",
+      "status": "done",
+      "commit": "507ccab"
+    },
+    {
+      "id": "step-27",
+      "type": "test",
+      "description": "REVIEW FIX [non_deterministic_deduplication_key]: Write a test that validates deterministic rowid-based keeper assignment. Add test_find_duplicates_keeper_is_first_by_rowid to TestFindDuplicates in tests/test_ingest_dedup.py. Insert 3 media files with the same sha256_prefix in deliberate order: first insert id='z_third' (gets rowid 1), then id='m_second' (rowid 2), then id='a_first' (rowid 3). The id strings are chosen so alphabetical order (a_first < m_second < z_third) DIFFERS from insertion/rowid order (z_third=1, m_second=2, a_first=3). Assert that the keeper in all returned pairs is 'z_third' (the first-inserted by rowid), NOT 'a_first' (which would be first alphabetically). Assert pairs are ('z_third', 'm_second') and ('z_third', 'a_first'). This test documents the contract that 'first by rowid order is kept'. While it may pass accidentally on some SQLite builds (since GROUP_CONCAT without ORDER BY often follows insertion order), the behavior is not guaranteed and the fix in step-28 makes it deterministic.",
+      "status": "done",
+      "commit": "4d6c533"
+    },
+    {
+      "id": "step-28",
+      "type": "impl",
+      "description": "REVIEW FIX [non_deterministic_deduplication_key]: Fix the find_duplicates SQL query in autopilot/ingest/dedup.py to guarantee rowid-based ordering in GROUP_CONCAT. Replace the current query: 'SELECT sha256_prefix, GROUP_CONCAT(id) FROM media_files WHERE sha256_prefix IS NOT NULL GROUP BY sha256_prefix HAVING COUNT(*) > 1' with a subquery that forces rowid ordering before aggregation: 'SELECT sha256_prefix, GROUP_CONCAT(id) FROM (SELECT sha256_prefix, id FROM media_files WHERE sha256_prefix IS NOT NULL ORDER BY rowid) GROUP BY sha256_prefix HAVING COUNT(*) > 1'. This ensures the first id in each GROUP_CONCAT result is always the earliest-inserted row (lowest rowid), making keeper assignment deterministic as specified by the design decision. Verify ALL dedup tests pass including the new step-27 test. Run ruff check on dedup.py.",
+      "status": "done",
+      "commit": "41f1cbb"
+    },
+    {
+      "id": "step-29",
+      "type": "test",
+      "description": "REVIEW FIX [output_filename_collision_data_corruption]: Write failing tests that expose the filename collision bug. Add TestNormalizeCollisionFix class to tests/test_ingest_normalizer.py with two tests: (1) test_normalize_disambiguates_same_stem_different_dirs — create two input files with the same stem in different subdirectories: tmp_path/day1/DJI_0001.mp4 and tmp_path/day2/DJI_0001.mp4, mock subprocess.run, call normalize_audio for both files with the same output_dir and root_dir=tmp_path, assert that the two returned output paths are DIFFERENT (not the same file). This test FAILS with the current implementation since both would produce output_dir/DJI_0001.wav. (2) test_normalize_with_root_dir_mirrors_structure — create tmp_path/day1/clip.mp4, mock subprocess.run, call normalize_audio(media_path, output_dir, root_dir=tmp_path), verify the output path is output_dir/day1/clip.wav (mirrors the subdirectory structure), and verify the output_dir/day1 directory is created. (3) test_normalize_without_root_dir_uses_stem — verify backward compatibility: call normalize_audio WITHOUT root_dir, verify the output path is still output_dir/<stem>.wav as before (no regression for simple use cases).",
+      "status": "done",
+      "commit": "6dfb1d2"
+    },
+    {
+      "id": "step-30",
+      "type": "impl",
+      "description": "REVIEW FIX [output_filename_collision_data_corruption]: Add an optional keyword parameter root_dir: Path | None = None to normalize_audio in autopilot/ingest/normalizer.py. When root_dir is provided, compute the relative parent directory via media_path.parent.relative_to(root_dir) and mirror that structure under output_dir: target_dir = output_dir / relative_parent. The output filename remains media_path.stem + '.wav'. When root_dir is None, behavior is unchanged (target_dir = output_dir, backward compatible). Move the mkdir call to use target_dir. Update output_path to use target_dir. Update the skip-if-exists check to use the new output_path. This ensures files from different subdirectories with the same stem (e.g., day1/DJI_0001.mp4 and day2/DJI_0001.mp4) produce distinct output paths (output_dir/day1/DJI_0001.wav vs output_dir/day2/DJI_0001.wav). Verify ALL normalizer tests pass including the new step-29 tests and all existing tests (which don't pass root_dir and should be unaffected). Run ruff check on normalizer.py.",
+      "status": "done",
+      "commit": "dd4090e"
     }
   ],
   "design_decisions": [
@@ -225,6 +267,18 @@
     {
       "decision": "Normalized audio at 48kHz stereo",
       "rationale": "48kHz is the standard for video production (vs 44.1kHz for CD audio). Stereo (2 channels) is the standard for YouTube. The ffmpeg command includes -ar 48000 -ac 2 to ensure consistent output regardless of input format."
+    },
+    {
+      "decision": "Use executor.submit + as_completed instead of executor.map for per-future fault isolation in scan_directory",
+      "rationale": "Review identified that executor.map wraps the entire iteration in a single try/except. When one future raises during iteration, the for-loop exits immediately and all unprocessed files after the failing one are silently dropped — violating the design intent of 'skip problematic files rather than aborting'. The submit + as_completed pattern wraps each future.result() call in its own try/except, so a single probe failure only skips that one file. All other files (regardless of submission order) are still processed and returned."
+    },
+    {
+      "decision": "Use ORDER BY rowid subquery in find_duplicates GROUP_CONCAT for deterministic keeper assignment",
+      "rationale": "SQLite documentation states that GROUP_CONCAT ordering is arbitrary without an explicit ORDER BY. The design contract says 'the first ID by rowid order is kept', but the original query did not enforce this ordering guarantee. A subquery with ORDER BY rowid before GROUP_CONCAT ensures the first concatenated id is always the earliest-inserted row, making keeper-vs-duplicate assignment deterministic and correct regardless of SQLite query plan or version."
+    },
+    {
+      "decision": "normalize_audio accepts optional root_dir parameter to mirror directory structure for collision-free output filenames",
+      "rationale": "Review identified that using only media_path.stem for the output filename causes silent data corruption when two input files from different subdirectories share the same stem (common with DJI footage: day1/DJI_0001.mp4, day2/DJI_0001.mp4). With root_dir, normalize_audio computes the relative parent path and mirrors it under output_dir, producing distinct output paths (output_dir/day1/DJI_0001.wav vs output_dir/day2/DJI_0001.wav). The parameter is backward compatible: when root_dir is None (default), the old stem-only behavior is preserved. Pipeline code processing nested directories MUST pass root_dir to avoid collisions."
     }
   ],
   "reuse": [
@@ -257,6 +311,11 @@
       "what": "Python stdlib hashlib, subprocess, concurrent.futures, json, pathlib",
       "where": "Python 3.11+ standard library",
       "how": "No external dependencies needed for the ingest pipeline. hashlib.sha256 for hashing, subprocess.run for CLI tools, ProcessPoolExecutor for parallelization, json for parsing ffprobe/exiftool output, Path for filesystem operations."
+    },
+    {
+      "what": "concurrent.futures.as_completed for per-future error isolation",
+      "where": "Python 3.11+ standard library (concurrent.futures)",
+      "how": "Used in the refactored scan_directory to iterate over completed futures individually, allowing per-future try/except so that one probe failure doesn't abort processing of remaining files."
     }
   ]
 }
