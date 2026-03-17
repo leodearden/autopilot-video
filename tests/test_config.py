@@ -312,3 +312,56 @@ def test_load_config_invalid_enums(
     config_file.write_text(f"{_BASE_REQUIRED}{section}:\n  {field}: {bad_value}\n")
     with pytest.raises(ConfigError, match=field):
         load_config(config_file)
+
+
+# ---------------------------------------------------------------------------
+# Step 13: Numeric bounds validation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "section,field,bad_value",
+    [
+        ("output", "quality_crf", -1),
+        ("output", "quality_crf", 52),
+        ("models", "yolo_sample_every_n_frames", 0),
+        ("processing", "max_wall_clock_hours", 0),
+        ("processing", "num_cpu_workers", 0),
+        ("processing", "batch_size_yolo", 0),
+        ("processing", "batch_size_whisper", 0),
+        ("processing", "gpu_device", -1),
+    ],
+)
+def test_load_config_numeric_bounds_invalid(
+    tmp_path: pathlib.Path, section: str, field: str, bad_value: int
+) -> None:
+    """ConfigError raised for out-of-bounds numeric values."""
+    from autopilot.config import ConfigError, load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(f"{_BASE_REQUIRED}{section}:\n  {field}: {bad_value}\n")
+    with pytest.raises(ConfigError, match=field):
+        load_config(config_file)
+
+
+@pytest.mark.parametrize(
+    "section,field,good_value",
+    [
+        ("output", "quality_crf", 0),
+        ("output", "quality_crf", 51),
+        ("processing", "gpu_device", 0),
+        ("models", "yolo_sample_every_n_frames", 1),
+    ],
+)
+def test_load_config_numeric_bounds_valid(
+    tmp_path: pathlib.Path, section: str, field: str, good_value: int
+) -> None:
+    """Valid boundary values do not raise."""
+    from autopilot.config import load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(f"{_BASE_REQUIRED}{section}:\n  {field}: {good_value}\n")
+    cfg = load_config(config_file)
+    # Reach into the right sub-config
+    sub = getattr(cfg, section if section != "models" else "models")
+    assert getattr(sub, field) == good_value
