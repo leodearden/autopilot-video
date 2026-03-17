@@ -1,6 +1,7 @@
 """Tests for autopilot.config — typed configuration dataclasses and loader."""
 
 import dataclasses
+import os
 import pathlib
 
 import pytest
@@ -561,8 +562,6 @@ def test_load_config_camera_float_coercion_error(tmp_path: pathlib.Path) -> None
 # ---------------------------------------------------------------------------
 # Step 23: OS errors — directory-as-file, permission denied
 # ---------------------------------------------------------------------------
-
-import os
 
 
 def test_load_config_directory_as_file(tmp_path: pathlib.Path) -> None:

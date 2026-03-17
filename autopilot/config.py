@@ -221,7 +221,9 @@ def _build_output(data: dict[str, Any]) -> OutputConfig:
     if "audio_bitrate" in data:
         result.audio_bitrate = str(data["audio_bitrate"])
     if "target_loudness_lufs" in data:
-        result.target_loudness_lufs = _coerce_int("target_loudness_lufs", data["target_loudness_lufs"])
+        result.target_loudness_lufs = _coerce_int(
+            "target_loudness_lufs", data["target_loudness_lufs"]
+        )
     return result
 
 
@@ -233,7 +235,9 @@ def _build_models(data: dict[str, Any]) -> ModelConfig:
     if "yolo_variant" in data:
         result.yolo_variant = str(data["yolo_variant"])
     if "yolo_sample_every_n_frames" in data:
-        result.yolo_sample_every_n_frames = _coerce_int("yolo_sample_every_n_frames", data["yolo_sample_every_n_frames"])
+        result.yolo_sample_every_n_frames = _coerce_int(
+            "yolo_sample_every_n_frames", data["yolo_sample_every_n_frames"]
+        )
     if "clip_model" in data:
         result.clip_model = str(data["clip_model"])
     if "face_model" in data:
@@ -273,7 +277,9 @@ def _build_processing(data: dict[str, Any]) -> ProcessingConfig:
     """Build ProcessingConfig from parsed YAML dict."""
     result = ProcessingConfig()
     if "max_wall_clock_hours" in data:
-        result.max_wall_clock_hours = _coerce_int("max_wall_clock_hours", data["max_wall_clock_hours"])
+        result.max_wall_clock_hours = _coerce_int(
+            "max_wall_clock_hours", data["max_wall_clock_hours"]
+        )
     if "gpu_device" in data:
         result.gpu_device = _coerce_int("gpu_device", data["gpu_device"])
     if "num_cpu_workers" in data:
@@ -319,6 +325,16 @@ def load_config(path: str | Path) -> AutopilotConfig:
         raise ConfigError(f"Missing required config fields: {', '.join(missing)}")
 
     # Build sub-configs from sections (defaulting to empty dicts)
+    # Validate section types: each must be a dict (or null/absent)
+    _section_names = ("creator", "cameras", "output", "models", "llm", "youtube", "processing")
+    for _sec_name in _section_names:
+        _sec_val = raw.get(_sec_name)
+        if _sec_val is not None and not isinstance(_sec_val, dict):
+            raise ConfigError(
+                f'Expected a mapping for section "{_sec_name}", '
+                f"got {type(_sec_val).__name__}"
+            )
+
     creator = _build_creator(raw.get("creator") or {})
 
     cameras_raw = raw.get("cameras") or {}
