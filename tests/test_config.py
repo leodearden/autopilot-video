@@ -283,3 +283,32 @@ def test_load_config_empty_yaml(tmp_path: pathlib.Path) -> None:
     config_file.write_text("")
     with pytest.raises(ConfigError):
         load_config(config_file)
+
+
+# ---------------------------------------------------------------------------
+# Step 11: Invalid enum values
+# ---------------------------------------------------------------------------
+
+_BASE_REQUIRED = "input_dir: /tmp/in\noutput_dir: /tmp/out\n"
+
+
+@pytest.mark.parametrize(
+    "section,field,bad_value",
+    [
+        ("models", "whisper_size", "tiny"),
+        ("models", "yolo_variant", "yolo5"),
+        ("models", "tts_engine", "openai"),
+        ("models", "music_engine", "suno"),
+        ("youtube", "privacy_status", "public"),
+    ],
+)
+def test_load_config_invalid_enums(
+    tmp_path: pathlib.Path, section: str, field: str, bad_value: str
+) -> None:
+    """ConfigError raised for invalid enum-like values, mentioning field and value."""
+    from autopilot.config import ConfigError, load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(f"{_BASE_REQUIRED}{section}:\n  {field}: {bad_value}\n")
+    with pytest.raises(ConfigError, match=field):
+        load_config(config_file)
