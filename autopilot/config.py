@@ -314,16 +314,16 @@ def load_config(path: str | Path) -> AutopilotConfig:
         raise ConfigError(f"Missing required config fields: {', '.join(missing)}")
 
     # Build sub-configs from sections (defaulting to empty dicts)
-    creator = _build_creator(raw.get("creator", {}))
+    creator = _build_creator(raw.get("creator") or {})
 
-    cameras_raw = raw.get("cameras", {}) or {}
+    cameras_raw = raw.get("cameras") or {}
     cameras = {name: _build_camera(cam) for name, cam in cameras_raw.items()}
 
-    output = _build_output(raw.get("output", {}))
-    models = _build_models(raw.get("models", {}))
-    llm = _build_llm(raw.get("llm", {}))
-    youtube = _build_youtube(raw.get("youtube", {}))
-    processing = _build_processing(raw.get("processing", {}))
+    output = _build_output(raw.get("output") or {})
+    models = _build_models(raw.get("models") or {})
+    llm = _build_llm(raw.get("llm") or {})
+    youtube = _build_youtube(raw.get("youtube") or {})
+    processing = _build_processing(raw.get("processing") or {})
 
     # Validate constrained string fields
     _validate_choice("whisper_size", models.whisper_size)
