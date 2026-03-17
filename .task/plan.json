@@ -1,14 +1,17 @@
 {
-  "task_id": "24",
-  "title": "LLM prompt templates",
-  "modules": ["autopilot/prompts", "tests"],
-  "analysis": "Task 24 creates 4 markdown prompt template files in autopilot/prompts/ for pipeline stages 2-5: activity labeling (Claude Sonnet), narrative planning (Claude Opus), script writing (Claude Opus), and EDL generation with tool-use schemas (Claude Opus). The worktree currently has no autopilot/ directory — task 1 scaffolding hasn't been merged, so prerequisites must create the directory structure including autopilot/prompts/ and tests/. The existing test pattern (worktree 1) uses pytest with a project_root fixture from conftest.py. Tests are structural/content validation only — no LLM invocations. The PRD (docs/prd-autopilot-editor.md) defines exact tool signatures for Stage 5: select_clip, add_transition, set_crop_mode, add_title, set_audio, add_music, add_voiceover, request_broll. Creator profile placeholders come from config.yaml's creator section: name, channel_style, target_audience, default_video_duration_minutes, narration_style, music_preference. The narrative_planner.md needs these 6 placeholders for runtime substitution via Python str.format_map(). Output JSON field names align with SQLite table columns from the PRD data model (activity_clusters.label/description, narratives.title/arc_notes, edit_plans.edl_json). Each prompt is a self-contained markdown system prompt — no cross-references between prompt files. The prompts/ directory is NOT a Python package (no __init__.py), consistent with the scaffolding task's explicit test for this convention.",
+  "task_id": "3",
+  "title": "SQLite catalog and db interface",
+  "modules": [
+    "autopilot",
+    "tests"
+  ],
+  "analysis": "Task 3 requires implementing autopilot/db.py with a CatalogDB class that wraps SQLite with WAL mode, thread safety (check_same_thread=False), and the full 12-table schema from the PRD (media_files, transcripts, shot_boundaries, detections, face_clusters, clip_embeddings, audio_events, activity_clusters, narratives, edit_plans, crop_paths, uploads). The class needs CRUD helper methods for each table, context manager support for transactions, and proper handling of TEXT-based JSON columns and BLOB columns for binary data. The PRD provides the exact CREATE TABLE statements (lines 537-643 of prd-autopilot-editor.md). Tests should use in-memory SQLite (:memory:) per the task's testStrategy. The project uses Python 3.11+, pytest, ruff, pyright. SQLite JSON1 extension is built into Python's sqlite3 module since 3.9+. No external dependencies needed — sqlite3 is stdlib. The plan uses incremental TDD: first test/impl the CatalogDB class with connection management, WAL mode, and schema creation, then progressively test/impl CRUD helpers for each table grouped by complexity. Prerequisites: a conftest.py fixture for in-memory CatalogDB instances.\n\nREVIEW FIXES (steps 19-24): The review identified critical issues with transaction semantics and a resource leak. All CRUD write methods call self.conn.commit() unconditionally, which means the context manager's rollback in __exit__ is a no-op for public API calls. The fix: (1) remove self.conn.commit() from all CRUD methods so they participate in caller-managed transactions via the context manager, (2) fix __init__ to close the connection if _create_schema() fails (resource leak), (3) rewrite the transaction tests to actually exercise the context manager's commit/rollback with public API methods, not raw SQL, (4) update the conftest fixture and existing tests to work with the new non-autocommit behavior.",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Create directory structure: autopilot/prompts/ (with .gitkeep to match worktree 1 convention) and tests/ directory. Create tests/__init__.py and tests/conftest.py with project_root fixture (matching worktree 1 pattern: pathlib.Path(__file__).resolve().parent.parent) plus a prompts_dir fixture returning project_root / 'autopilot' / 'prompts'. Add a helper function extract_json_blocks(text) that finds all fenced ```json code blocks in markdown and parses them as JSON, returning a list of parsed objects. This helper is used by test_prompt_edit_planner.py to validate tool schemas.",
+      "description": "Add a catalog_db fixture to tests/conftest.py that creates an in-memory CatalogDB instance for each test. This fixture will be used by all subsequent test steps.",
       "status": "done",
-      "commit": "b2b6458",
+      "commit": "1497814",
       "tests": []
     }
   ],
@@ -16,120 +19,242 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing test tests/test_prompt_activity_label.py: (1) verify autopilot/prompts/activity_label.md exists and is non-empty (>100 chars to ensure real content); (2) verify content references all required input signals: 'transcript' (or 'transcription'), 'YOLO' (or 'object detect'), 'audio event', 'GPS' (or 'location'), 'time range' (or 'time_range'/'temporal'); (3) verify output format section mentions required JSON fields: 'label', 'description', 'split_recommended' (or 'split'); (4) verify the word 'JSON' appears in the output format section to confirm structured output.",
+      "description": "Write tests/test_db.py with tests for CatalogDB class basics: (1) test_catalogdb_creates_connection — instantiate CatalogDB with ':memory:', assert connection is not None; (2) test_catalogdb_wal_mode — verify PRAGMA journal_mode returns 'wal' (note: WAL doesn't work with :memory:, so test with a tmp_path file DB); (3) test_catalogdb_thread_safety — verify connection was created with check_same_thread=False by accessing from a different thread; (4) test_catalogdb_context_manager — verify __enter__ returns self and __exit__ commits; (5) test_catalogdb_close — verify close() closes the connection.",
       "status": "done",
-      "commit": "2d42d69"
+      "commit": "c254a4f"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Create autopilot/prompts/activity_label.md: system prompt for Claude Sonnet activity labeling (Stage 2). Structure: (1) Role definition as activity classification specialist for a video editing pipeline. (2) Input format section specifying the cluster summary with transcript excerpts, top YOLO detection classes, audio event classifications, GPS reverse-geocoded location, and time range. (3) Output format section requiring JSON with fields: label (short descriptive name, 3-8 words), description (1-paragraph summary of what happens), split_recommended (boolean), split_reason (string or null). (4) Labeling guidelines: prefer specific over generic labels, include location when relevant, capture the primary activity. (5) Split detection heuristics: flag when transcript topics shift dramatically, when YOLO class distributions change significantly, or when there's a temporal gap >30min within the cluster.",
+      "description": "Create autopilot/db.py with CatalogDB class: __init__(self, db_path) opens sqlite3.connect with check_same_thread=False, enables WAL mode (PRAGMA journal_mode=WAL), enables foreign keys (PRAGMA foreign_keys=ON). Implement __enter__/__exit__ for transaction context manager (BEGIN on enter, COMMIT on exit, ROLLBACK on exception). Implement close() method. Make all step-1 tests pass.",
       "status": "done",
-      "commit": "8d29d7b"
+      "commit": "fa33ab0"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write failing test tests/test_prompt_narrative_planner.py: (1) verify autopilot/prompts/narrative_planner.md exists and is non-empty (>200 chars); (2) verify all 6 creator profile placeholders are present in the file: {creator_name}, {channel_style}, {target_audience}, {default_video_duration}, {narration_style}, {music_preference}; (3) verify input section references 'storyboard' or 'master storyboard'; (4) verify output format references required JSON fields: 'title', 'activity_cluster_ids', 'proposed_duration' (or 'duration'), 'arc', 'emotional_journey', 'reasoning'; (5) verify 'JSON' appears to confirm structured output expectation.",
+      "description": "Write tests for schema creation: (1) test_schema_creates_all_12_tables — call _create_schema() and verify all 12 tables exist via sqlite_master query; (2) test_schema_media_files_columns — verify media_files table has all expected columns (id, file_path, sha256_prefix, codec, resolution_w, resolution_h, fps, duration_seconds, created_at, gps_lat, gps_lon, audio_channels, status, metadata_json); (3) test_schema_is_idempotent — call _create_schema() twice without error; (4) test_schema_foreign_keys — verify foreign key constraints exist (e.g., transcripts.media_id references media_files.id).",
       "status": "done",
-      "commit": "f8235ec"
+      "commit": "903ea94"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Create autopilot/prompts/narrative_planner.md: system prompt for Claude Opus narrative planning (Stage 3). Structure: (1) Role definition as narrative architect for video editing pipeline. (2) Creator profile section with all 6 placeholders: {creator_name}, {channel_style}, {target_audience}, {default_video_duration}, {narration_style}, {music_preference}. (3) Input format: master storyboard with per-activity summaries (label, duration, key moments, people present, emotional tone, visual quality). (4) Output format: JSON array of narrative proposals, each with title, activity_cluster_ids, proposed_duration_seconds, arc (object with beginning/middle/end descriptions), emotional_journey (string), target_audience (string), reasoning (string explaining inclusion/exclusion). (5) Narrative construction guidelines: story arc principles, pacing advice, duration targeting, when to combine vs. separate activities, handling excluded footage.",
+      "description": "Implement _create_schema() method in CatalogDB that executes CREATE TABLE IF NOT EXISTS for all 12 tables using the exact schema from the PRD. Call _create_schema() from __init__. Tables: media_files, transcripts, shot_boundaries, detections, face_clusters, clip_embeddings, audio_events, activity_clusters, narratives, edit_plans, crop_paths, uploads. Make all step-3 tests pass.",
       "status": "done",
-      "commit": "9527317"
+      "commit": "13a52ed"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write failing test tests/test_prompt_script_writer.py: (1) verify autopilot/prompts/script_writer.md exists and is non-empty (>200 chars); (2) verify input section references 'narrative' and 'storyboard' (or 'L-Storyboard'); (3) verify output format mentions required elements: 'scene' (or 'scenes'), 'voiceover', 'title' (or 'titles'), 'music' (or 'music_mood'), and b-roll (any of 'broll', 'b-roll', 'b_roll'); (4) verify 'quality_flag' (or 'quality flag') is referenced for flagging source footage issues; (5) verify 'JSON' appears to confirm structured output.",
+      "description": "Write tests for media_files CRUD: (1) test_insert_media — insert a media file row and verify it's retrievable; (2) test_get_media — get by id returns correct row; (3) test_get_media_not_found — returns None for nonexistent id; (4) test_update_status — change status from 'ingested' to 'analyzing' and verify; (5) test_list_by_status — insert multiple files with different statuses, list_by_status('ingested') returns only matching; (6) test_find_by_hash — insert media with sha256_prefix, find_by_hash returns it; (7) test_find_by_hash_not_found — returns None for nonexistent hash; (8) test_insert_media_duplicate_id — verify raises on duplicate primary key.",
       "status": "done",
-      "commit": "f10cf59"
+      "commit": "76f6f50"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Create autopilot/prompts/script_writer.md: system prompt for Claude Opus script generation (Stage 4). Structure: (1) Role definition as professional video script writer. (2) Input format: approved narrative description from Stage 3 plus full L-Storyboard for included activities (per-shot: transcript, visual description, detected objects with tracking IDs, people present, audio events, duration, timestamps). (3) Output format: JSON with top-level 'scenes' array (each: scene_number, description, estimated_duration_seconds, source_clips array, voiceover_text or null, titles array, music_mood), 'broll_needs' array (each: description, duration_seconds, placement_after_scene), 'quality_flags' array (each: scene_number, issue, severity, suggestion). (4) Scripting guidelines: pacing principles, voiceover integration, when to use titles vs narration, music mood transitions, B-roll identification, quality issue detection (blur, darkness, audio issues).",
+      "description": "Implement media_files CRUD methods: insert_media(id, file_path, sha256_prefix=None, codec=None, resolution_w=None, resolution_h=None, fps=None, duration_seconds=None, created_at=None, gps_lat=None, gps_lon=None, audio_channels=None, status='ingested', metadata_json=None), get_media(id) -> dict|None, update_status(id, status), list_by_status(status) -> list[dict], find_by_hash(sha256_prefix) -> dict|None. Use Row factory for dict-like returns. Make all step-5 tests pass.",
       "status": "done",
-      "commit": "072ebb7"
+      "commit": "94c55c4"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write failing test tests/test_prompt_edit_planner.py: (1) verify autopilot/prompts/edit_planner.md exists and is non-empty (>500 chars given tool schemas); (2) use extract_json_blocks() helper from conftest.py to extract all fenced JSON code blocks; (3) verify exactly 8 tool definitions found; (4) verify each has keys 'name', 'description', 'input_schema'; (5) collect tool names and assert the set equals {select_clip, add_transition, set_crop_mode, add_title, set_audio, add_music, add_voiceover, request_broll}; (6) verify each input_schema has 'type': 'object' and 'properties' dict; (7) verify key required parameters: select_clip must have clip_id, in_timecode, out_timecode, track in properties; set_crop_mode must have clip_id, mode; add_title must have text; set_audio must have clip_id, level_db; (8) verify the prompt text contains instructions about timeline construction and validation (references 'overlap' or 'overlapping', 'duration', 'audio level' or 'broadcast').",
+      "description": "Write tests for transcripts and shot_boundaries CRUD: (1) test_upsert_transcript — insert then update transcript, verify latest value; (2) test_get_transcript — retrieve by media_id; (3) test_get_transcript_not_found — returns None; (4) test_upsert_boundaries — insert shot boundaries with method; (5) test_get_boundaries — retrieve by media_id; (6) test_boundaries_composite_key — same media_id with different methods stored separately; (7) test_transcript_json_roundtrip — store JSON string, retrieve identical string.",
       "status": "done",
-      "commit": "dcffdc1"
+      "commit": "78fb10a"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Create autopilot/prompts/edit_planner.md: system prompt for Claude Opus EDL generation (Stage 5) with Anthropic tool-use. Structure: (1) Role definition as professional video editor constructing precise edit decision lists. (2) Input format: script from Stage 4 plus detailed storyboard data for all candidate clips. (3) Tool definitions section with 8 tools, each as a fenced JSON block with Anthropic API format {name, description, input_schema}: select_clip(clip_id:string, in_timecode:string HH:MM:SS.mmm, out_timecode:string, track:integer >=1), add_transition(type:enum[crossfade,cut,fade_in,fade_out,dissolve], duration:number seconds, position:string timecode), set_crop_mode(clip_id:string, mode:enum[auto_subject,center,manual_offset], subject_track_id:integer|null), add_title(text:string, style:enum[full_screen,lower_third,subtitle], position:string timecode, duration:number), set_audio(clip_id:string, level_db:number -48 to +18, fade_in:number seconds, fade_out:number), add_music(mood:string, duration:number, start_time:string timecode), add_voiceover(text:string, start_time:string timecode, duration:number), request_broll(description:string, duration:number, start_time:string timecode). (4) Edit construction instructions: build timeline sequentially, use track 1 for primary footage and track 2+ for overlays/B-roll, maintain audio continuity. (5) Validation constraints: no overlapping clips on same track, total duration within ±10% of script target, all clip_ids must exist in provided storyboard, in/out points within clip duration bounds, audio levels broadcast-safe (-24dB to 0dB for speech, -30dB to -12dB for music).",
+      "description": "Implement transcripts CRUD: upsert_transcript(media_id, segments_json, language), get_transcript(media_id) -> dict|None. Implement shot_boundaries CRUD: upsert_boundaries(media_id, boundaries_json, method), get_boundaries(media_id, method=None) -> dict|list[dict]. Use INSERT OR REPLACE for upserts. Make all step-7 tests pass.",
       "status": "done",
-      "commit": "67fdc3a"
+      "commit": "d7f9894"
+    },
+    {
+      "id": "step-9",
+      "type": "test",
+      "description": "Write tests for detections CRUD: (1) test_batch_insert_detections — insert 100 detection rows in one call and verify count; (2) test_get_detections_for_frame — retrieve detections for a specific media_id + frame_number; (3) test_get_detections_for_range — retrieve detections for media_id between frame_start and frame_end; (4) test_batch_insert_detections_empty — batch insert with empty list does not error; (5) test_detections_json_roundtrip — verify JSON text stored and retrieved identically.",
+      "status": "done",
+      "commit": "28c627a"
+    },
+    {
+      "id": "step-10",
+      "type": "impl",
+      "description": "Implement detections CRUD: batch_insert_detections(rows: list[tuple[str, int, str]]) using executemany for efficiency, get_detections_for_frame(media_id, frame_number) -> dict|None, get_detections_for_range(media_id, frame_start, frame_end) -> list[dict]. Make all step-9 tests pass.",
+      "status": "done",
+      "commit": "70f4232"
+    },
+    {
+      "id": "step-11",
+      "type": "test",
+      "description": "Write tests for face_clusters and clip_embeddings CRUD: (1) test_insert_face_cluster — insert cluster with label and BLOB embedding; (2) test_update_face_label — update label for existing cluster; (3) test_get_clusters — list all face clusters; (4) test_get_cluster_by_id — retrieve single cluster by id; (5) test_batch_insert_embeddings — insert multiple embeddings with BLOB data; (6) test_get_embeddings_for_media — retrieve all embeddings for a media_id; (7) test_embedding_blob_roundtrip — verify binary data survives round-trip.",
+      "status": "done",
+      "commit": "7ade66b"
+    },
+    {
+      "id": "step-12",
+      "type": "impl",
+      "description": "Implement face_clusters CRUD: insert_cluster(cluster_id, label=None, representative_embedding=None, sample_image_paths=None), update_label(cluster_id, label), get_clusters() -> list[dict], get_cluster_by_id(cluster_id) -> dict|None. Implement clip_embeddings CRUD: batch_insert_embeddings(rows: list[tuple[str, int, bytes]]) using executemany, get_embeddings_for_media(media_id) -> list[dict]. Make all step-11 tests pass.",
+      "status": "done",
+      "commit": "e803e9f"
+    },
+    {
+      "id": "step-13",
+      "type": "test",
+      "description": "Write tests for audio_events and activity_clusters CRUD: (1) test_batch_insert_audio_events — insert multiple events; (2) test_get_events_for_range — retrieve events for media_id between start and end timestamps; (3) test_insert_activity_cluster — insert cluster with all fields; (4) test_get_activity_clusters — list all clusters; (5) test_update_activity_cluster — update label and description; (6) test_activity_cluster_json_roundtrip — verify clip_ids_json round-trips.",
+      "status": "done",
+      "commit": "1e49285"
+    },
+    {
+      "id": "step-14",
+      "type": "impl",
+      "description": "Implement audio_events CRUD: batch_insert_events(rows: list[tuple[str, float, str]]) using executemany, get_events_for_range(media_id, start_seconds, end_seconds) -> list[dict]. Implement activity_clusters CRUD: insert_cluster(cluster_id, label=None, description=None, time_start=None, time_end=None, location_label=None, gps_center_lat=None, gps_center_lon=None, clip_ids_json=None), get_clusters() -> list[dict], update_cluster(cluster_id, **kwargs). Make all step-13 tests pass.",
+      "status": "done",
+      "commit": "6129b78"
+    },
+    {
+      "id": "step-15",
+      "type": "test",
+      "description": "Write tests for narratives, edit_plans, crop_paths, uploads CRUD: (1) test_insert_narrative — insert with all fields; (2) test_get_narrative — retrieve by id; (3) test_update_narrative_status — change status; (4) test_list_narratives — list all, optionally filter by status; (5) test_upsert_edit_plan — insert and update plan; (6) test_get_edit_plan — retrieve by narrative_id; (7) test_upsert_crop_path — insert crop path with BLOB data; (8) test_get_crop_path — retrieve by composite key; (9) test_insert_upload — insert upload record; (10) test_get_upload — retrieve by narrative_id.",
+      "status": "done",
+      "commit": "4b00b94"
+    },
+    {
+      "id": "step-16",
+      "type": "impl",
+      "description": "Implement narratives CRUD: insert_narrative(narrative_id, title=None, description=None, proposed_duration_seconds=None, activity_cluster_ids_json=None, arc_notes=None, status='proposed'), get_narrative(narrative_id) -> dict|None, update_status(narrative_id, status), list_narratives(status=None) -> list[dict]. Implement edit_plans CRUD: upsert_plan(narrative_id, edl_json, otio_path=None, validation_json=None), get_plan(narrative_id) -> dict|None. Implement crop_paths CRUD: upsert_crop_path(media_id, target_aspect, subject_track_id, smoothing_tau=None, path_data=None), get_crop_path(media_id, target_aspect, subject_track_id) -> dict|None. Implement uploads CRUD: insert_upload(narrative_id, youtube_video_id=None, youtube_url=None, uploaded_at=None, privacy_status='unlisted'), get_upload(narrative_id) -> dict|None. Make all step-15 tests pass.",
+      "status": "done",
+      "commit": "dae1d92"
+    },
+    {
+      "id": "step-17",
+      "type": "test",
+      "description": "Write integration/edge-case tests: (1) test_transaction_commit — use context manager, insert data, verify persisted after exit; (2) test_transaction_rollback — use context manager, insert data, raise exception, verify data not persisted; (3) test_batch_insert_performance — insert 1000 detection rows, verify completes in <1 second; (4) test_foreign_key_enforcement — insert transcript referencing nonexistent media_id, verify raises IntegrityError; (5) test_json1_extension_available — verify json_extract works via a SQL query on a JSON column.",
+      "status": "done",
+      "commit": "8e30e4a"
+    },
+    {
+      "id": "step-18",
+      "type": "impl",
+      "description": "Fix any remaining issues from step-17 tests. Ensure transaction rollback works correctly in __exit__, foreign keys are enforced, and JSON1 extension queries work. Add any missing indexes for performance (e.g., index on media_files.sha256_prefix, media_files.status). Make all tests pass. Run ruff check and pyright to ensure code quality.",
+      "status": "done",
+      "commit": "8c7ae83"
+    },
+    {
+      "id": "step-19",
+      "type": "test",
+      "description": "REVIEW FIX: Write failing tests for correct transaction semantics using public CRUD API methods (not raw SQL). In tests/test_db.py, add a new TestTransactionSemantics class with these tests: (1) test_crud_does_not_autocommit — create a fresh CatalogDB(':memory:'), call insert_media() WITHOUT a 'with' block, then call db.conn.rollback(), then verify the row is NOT present (proves CRUD methods don't commit internally); (2) test_context_manager_commits_crud — use 'with db:' block to call insert_media(), verify data persists after __exit__ by querying outside the block; (3) test_context_manager_rollback_crud — use 'with db:' block to call insert_media() then raise an exception, verify insert_media's data is rolled back and NOT persisted; (4) test_multi_op_atomicity — inside a 'with db:' block call insert_media() then upsert_transcript(), raise after transcript insert, verify NEITHER media nor transcript row persists; (5) test_explicit_commit_without_context_manager — call insert_media() then db.conn.commit() manually (no context manager), verify data persists. These tests will FAIL against the current implementation because CRUD methods call self.conn.commit() internally.",
+      "status": "done",
+      "commit": "a26cf78"
+    },
+    {
+      "id": "step-20",
+      "type": "impl",
+      "description": "REVIEW FIX: Fix transaction semantics in autopilot/db.py. (1) Remove self.conn.commit() from ALL individual CRUD write methods — every method that currently calls self.conn.commit() after its SQL operation (insert_media, update_media_status, upsert_transcript, upsert_boundaries, batch_insert_detections, insert_face_cluster, update_face_label, batch_insert_embeddings, batch_insert_audio_events, insert_activity_cluster, update_activity_cluster, insert_narrative, update_narrative_status, upsert_plan, upsert_crop_path, insert_upload — approximately 16 call sites). The context manager __exit__ becomes the sole commit point. (2) Update the class docstring to document that callers must either use 'with db:' for automatic commit/rollback, or call db.conn.commit() explicitly after writes. (3) Update the conftest.py catalog_db fixture so that existing tests (steps 5-16) continue to pass. The fixture should yield a CatalogDB that auto-commits for convenience in unit tests. Preferred approach: after creating the CatalogDB instance, set db.conn.isolation_level = None (autocommit mode) in the fixture, OR wrap each test's CRUD calls in a context manager. Alternative: create a helper that commits after each CRUD call. (4) Make all step-19 tests pass AND verify all existing tests still pass. Run full test suite.",
+      "status": "done",
+      "commit": "02d532c"
+    },
+    {
+      "id": "step-21",
+      "type": "test",
+      "description": "REVIEW FIX: Write failing test for resource leak on init failure. In tests/test_db.py, add to TestTransactionSemantics or a new TestInitSafety class: test_init_failure_closes_connection — monkeypatch CatalogDB._create_schema to raise RuntimeError, then instantiate CatalogDB in a try/except, and verify that the connection was closed. Use a mock or monkeypatch to track whether conn.close() was called. This test will FAIL against the current implementation because __init__ does not wrap _create_schema() in try/except.",
+      "status": "done",
+      "commit": "f07fca4"
+    },
+    {
+      "id": "step-22",
+      "type": "impl",
+      "description": "REVIEW FIX: Fix resource leak in CatalogDB.__init__. Wrap the post-connect initialization (PRAGMA journal_mode=WAL, PRAGMA foreign_keys=ON, and _create_schema() call) in a try/except block. On any exception, call self.conn.close() before re-raising. This ensures the SQLite connection and associated file handles (WAL, SHM sidecar files) are properly released if initialization fails. Make step-21 test pass. Run full test suite.",
+      "status": "done",
+      "commit": "6149857"
+    },
+    {
+      "id": "step-23",
+      "type": "test",
+      "description": "REVIEW FIX: Rewrite the existing flawed transaction tests in TestIntegration. (1) Rewrite test_transaction_commit to use raw db.conn.execute('INSERT INTO media_files ...') WITHOUT any explicit commit inside the 'with' block, then verify the data persists after __exit__ — this actually exercises __exit__'s commit() path rather than relying on CRUD auto-commit. (2) Rewrite test_transaction_rollback to use public CRUD methods (db.insert_media()) inside a 'with' block followed by a deliberate exception, and verify the data is NOT persisted — proving rollback works for public API calls now that CRUD methods no longer auto-commit. Update both docstrings to accurately describe what each test exercises. These should now pass (since step-20 already fixed the implementation).",
+      "status": "done",
+      "commit": "06dde9e"
+    },
+    {
+      "id": "step-24",
+      "type": "impl",
+      "description": "REVIEW FIX: Final verification and cleanup. (1) Run the full test suite (pytest tests/test_db.py -v) and ensure ALL tests pass — both the new transaction semantics tests AND all existing CRUD tests. (2) Run ruff check autopilot/db.py tests/test_db.py to verify no lint issues. (3) Run pyright autopilot/db.py tests/test_db.py to verify no type errors. (4) Review that no test bypasses the public API in a misleading way. Fix any remaining failures.",
+      "status": "done",
+      "commit": "8166ee5"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use {placeholder} syntax (Python str.format_map compatible) for template variables in narrative_planner.md",
-      "rationale": "The task spec explicitly mentions '{creator_name}' as the placeholder style. Python's built-in str.format_map() handles simple key-value substitution without requiring Jinja2. The 6 placeholders map directly to config.yaml creator section keys. Other prompts don't need runtime substitution — only narrative_planner.md uses creator profile context."
+      "decision": "Use sqlite3.Row as row_factory for dict-like access",
+      "rationale": "sqlite3.Row provides both index-based and key-based access to columns, making CRUD return values easy to work with without external dependencies. Callers can access row['column_name'] naturally."
     },
     {
-      "decision": "Tool schemas in edit_planner.md use Anthropic API tool_use format: {name, description, input_schema} with JSON Schema for input_schema",
-      "rationale": "The PRD specifies Claude Opus with function-calling tools for Stage 5. The Anthropic API expects tools in this exact format. Embedding schemas as fenced ```json code blocks makes them both human-readable and programmatically extractable by the downstream edl.py module (task 17). The extract_json_blocks() test helper validates parsability."
+      "decision": "Use INSERT OR REPLACE for upsert operations",
+      "rationale": "SQLite supports INSERT OR REPLACE which maps naturally to upsert semantics for tables with primary keys (transcripts, shot_boundaries, edit_plans, crop_paths, uploads). This is simpler than INSERT ... ON CONFLICT DO UPDATE for our use case."
     },
     {
-      "decision": "Specify structured JSON output formats in each prompt template rather than free-form text",
-      "rationale": "Downstream pipeline stages (classify.py, narratives.py, script.py, edl.py) must parse LLM responses programmatically. Explicit JSON output schemas in prompts ensure parseable responses. Output field names align with corresponding SQLite table columns from the PRD data model (activity_clusters.label/description, narratives.title/proposed_duration_seconds, edit_plans.edl_json)."
+      "decision": "Use executemany for batch inserts (detections, embeddings, audio_events)",
+      "rationale": "executemany is the idiomatic and performant way to insert multiple rows in sqlite3. Combined with a single transaction, this handles the 1000+ row batch inserts efficiently."
     },
     {
-      "decision": "Each prompt file is self-contained markdown with complete instructions — no cross-references between prompts",
-      "rationale": "Self-contained prompts support: (1) isolated iteration during Phase 5 prompt tuning, (2) direct testing in the Anthropic console without needing other files, (3) clear pipeline stage boundaries, (4) independent modification without cascading changes."
+      "decision": "WAL mode test uses tmp_path file DB, not :memory:",
+      "rationale": "SQLite WAL mode is not supported with :memory: databases. The WAL test needs a real file-backed database (via pytest tmp_path fixture) to verify journal_mode=wal is actually set."
     },
     {
-      "decision": "Tests validate structural completeness and content correctness, not LLM output quality",
-      "rationale": "LLM output quality is subjective and prompt-dependent. Structural tests verify: files exist, are non-empty with substantial content (length thresholds), contain required sections/placeholders, embed valid parseable JSON schemas, and reference all expected input/output fields. This catches broken prompts (missing placeholders, malformed JSON) without requiring LLM API calls in CI."
+      "decision": "No external ORM — use raw sqlite3 with helper methods",
+      "rationale": "The task specifies a CatalogDB class with explicit CRUD helpers. Raw sqlite3 is sufficient for a single-user pipeline, avoids dependency bloat, and keeps the schema matching the PRD SQL exactly. This is a deliberate simplicity choice."
     },
     {
-      "decision": "Separate test file per prompt template, not one monolithic test file",
-      "rationale": "Each prompt is an independent artifact with distinct validation requirements. Separate test files enable: (1) running tests for individual prompts during TDD development, (2) clearer failure attribution, (3) natural TDD cycle (test file → impl file alternation), (4) independent CI pass/fail granularity."
+      "decision": "Return dict|None from single-row getters, list[dict] from multi-row getters",
+      "rationale": "Consistent API: get_* methods return a single dict (converted from Row) or None if not found. list_* and batch get methods return list[dict]. This avoids callers needing to understand sqlite3.Row objects."
     },
     {
-      "decision": "Use flexible regex/substring matching in tests (e.g., accept 'transcript' or 'transcription', 'broll' or 'b-roll' or 'b_roll') rather than exact string matches",
-      "rationale": "Prompt wording should be natural and may evolve. Overly rigid string matching creates brittle tests that break on cosmetic rephrasing. Testing for semantic presence of required concepts (input signals, output fields) rather than exact phrasing gives the prompt author freedom to iterate on wording while ensuring completeness."
+      "decision": "BLOB columns for embeddings and crop_paths path_data, TEXT for JSON",
+      "rationale": "Per the PRD and task: embeddings are dense float32 arrays best stored as BLOB (768-dim * 4 bytes = 3072 bytes each), crop paths are packed binary arrays. JSON metadata uses TEXT columns for readability and json_extract() support."
+    },
+    {
+      "decision": "Namespace activity_clusters methods to avoid collision with face_clusters",
+      "rationale": "Both face_clusters and activity_clusters have insert_cluster/get_clusters methods. Use method names that include the table context: e.g., insert_face_cluster, insert_activity_cluster, or use a prefix pattern to disambiguate."
+    },
+    {
+      "decision": "Enable PRAGMA foreign_keys=ON at connection time",
+      "rationale": "SQLite has foreign key support disabled by default. Enabling it ensures referential integrity (e.g., can't insert a transcript for a nonexistent media_id), which is critical for data consistency in the catalog."
+    },
+    {
+      "decision": "Remove self.conn.commit() from all CRUD methods; context manager is sole commit point",
+      "rationale": "Review identified that per-method commit() calls break the context manager's rollback guarantee. With commits inside each method, wrapping multiple writes in 'with db:' gives a false promise of atomicity — rollback in __exit__ is a no-op since data is already committed. The fix: CRUD methods only execute SQL; callers control commit boundaries via 'with db:' (auto commit/rollback) or explicit db.conn.commit(). This matches the standard Python DB-API pattern and enables true transactional atomicity across multiple operations."
+    },
+    {
+      "decision": "Wrap __init__ post-connect setup in try/except to close connection on failure",
+      "rationale": "Review identified that if _create_schema() raises (disk full, corrupted DB, etc.), the connection opened on the previous line is leaked. The fix wraps PRAGMA + _create_schema() in try/except, calling self.conn.close() before re-raising. This prevents file descriptor leaks and WAL/SHM file locks in long-running processes."
+    },
+    {
+      "decision": "Existing CRUD tests use autocommit fixture after removing per-method commits",
+      "rationale": "Existing tests (steps 5-16) call CRUD methods directly without 'with db:' blocks and expect data to be immediately visible. After removing auto-commit from CRUD methods, the conftest catalog_db fixture needs adjustment. Options: (a) set isolation_level=None on the fixture's connection for autocommit, (b) wrap fixture usage in context managers, or (c) add explicit commits. Option (a) is cleanest since it only affects test convenience without changing the CatalogDB class API."
     }
   ],
   "reuse": [
     {
-      "what": "project_root pytest fixture pattern",
-      "where": "/home/leo/src/autopilot-video/.worktrees/1/tests/conftest.py",
-      "how": "Reuse the exact same fixture pattern: pathlib.Path(__file__).resolve().parent.parent. Extend with a prompts_dir fixture (project_root / 'autopilot' / 'prompts') and an extract_json_blocks() helper for parsing fenced JSON from markdown."
+      "what": "PRD SQLite schema (12 CREATE TABLE statements)",
+      "where": "docs/prd-autopilot-editor.md lines 537-643",
+      "how": "Copy the exact CREATE TABLE statements from the PRD into _create_schema(). These are the canonical table definitions."
     },
     {
-      "what": "PRD Stage 2-5 specifications",
-      "where": "/home/leo/src/autopilot-video/docs/prd-autopilot-editor.md (lines 211-302)",
-      "how": "Each pipeline stage's Goal, Approach, Input, and Output sections define what the corresponding prompt template must operationalize. Stage 2 (Activity Classification) → activity_label.md, Stage 3 (Narrative Organization) → narrative_planner.md, Stage 4 (Script Each Narrative) → script_writer.md, Stage 5 (Edit Plan) → edit_planner.md."
+      "what": "Existing conftest.py project_root fixture",
+      "where": "tests/conftest.py",
+      "how": "Extend conftest.py with a catalog_db fixture that creates in-memory CatalogDB instances, building on the existing fixture pattern."
     },
     {
-      "what": "PRD Stage 5 tool function signatures",
-      "where": "/home/leo/src/autopilot-video/docs/prd-autopilot-editor.md (lines 281-289)",
-      "how": "The PRD defines 8 tool signatures with parameter names and types: select_clip, add_transition, set_crop_mode, add_title, set_audio, add_music, add_voiceover, request_broll. These are formalized as JSON Schema tool definitions in edit_planner.md."
+      "what": "Existing test_scaffolding.py patterns",
+      "where": "tests/test_scaffolding.py",
+      "how": "Follow the same test style: docstrings, clear assertion messages, grouping related tests with section comments, using project_root fixture."
     },
     {
-      "what": "Config.yaml creator profile structure for placeholder mapping",
-      "where": "/home/leo/src/autopilot-video/.worktrees/1/config.yaml (lines 7-13) and PRD config section (lines 737-751)",
-      "how": "The 6 creator section fields (name, channel_style, target_audience, default_video_duration_minutes, narration_style, music_preference) map to {creator_name}, {channel_style}, {target_audience}, {default_video_duration}, {narration_style}, {music_preference} placeholders in narrative_planner.md."
-    },
-    {
-      "what": "SQLite schema column names for output field alignment",
-      "where": "/home/leo/src/autopilot-video/docs/prd-autopilot-editor.md (lines 537-643)",
-      "how": "JSON output field names in prompts align with SQLite columns: activity_clusters.label/description (activity_label.md), narratives.title/proposed_duration_seconds/activity_cluster_ids_json/arc_notes (narrative_planner.md), edit_plans.edl_json (edit_planner.md). This minimizes transformation in pipeline code."
-    },
-    {
-      "what": "Test assertion style from test_scaffolding.py",
-      "where": "/home/leo/src/autopilot-video/.worktrees/1/tests/test_scaffolding.py",
-      "how": "Follow the same assertion style: clear failure messages as second argument to assert, pathlib.Path-based file existence checks, content-based validation with descriptive test names. Maintain consistent test quality and readability."
+      "what": "Python stdlib sqlite3 module",
+      "where": "Python 3.11+ standard library",
+      "how": "No external dependencies needed. sqlite3 in Python 3.11+ includes JSON1 extension support and WAL mode. Use sqlite3.connect(), sqlite3.Row, executemany, and PRAGMA commands."
     }
   ]
 }
