@@ -483,3 +483,33 @@ class TestScanDirectoryParallel:
         # aaa_good.mp4 yielded before the exception, so partial results returned
         assert len(results) == 1
         assert results[0].file_path.name == "aaa_good.mp4"
+
+
+class TestIngestPackage:
+    """Tests verifying the ingest package exports."""
+
+    def test_scanner_exports(self) -> None:
+        """Scanner public API should be importable from autopilot.ingest.scanner."""
+        from autopilot.ingest.scanner import MediaFile as MF
+        from autopilot.ingest.scanner import probe_file as pf
+        from autopilot.ingest.scanner import scan_directory as sd
+
+        assert callable(pf)
+        assert callable(sd)
+        assert MF is not None
+
+    def test_normalizer_exports(self) -> None:
+        """Normalizer public API should be importable from autopilot.ingest.normalizer."""
+        from autopilot.ingest.normalizer import normalize_audio as na
+
+        assert callable(na)
+
+    def test_dedup_exports(self) -> None:
+        """Dedup public API should be importable from autopilot.ingest.dedup."""
+        from autopilot.ingest.dedup import compute_hash as ch
+        from autopilot.ingest.dedup import find_duplicates as fd
+        from autopilot.ingest.dedup import mark_duplicates as md
+
+        assert callable(ch)
+        assert callable(fd)
+        assert callable(md)
