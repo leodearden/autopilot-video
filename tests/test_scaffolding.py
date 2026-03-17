@@ -83,7 +83,11 @@ def test_pyproject_toml_has_all_dependencies(project_root: pathlib.Path) -> None
 
     deps = data["project"].get("dependencies", [])
     # Normalize: lowercase, strip extras/version specifiers for matching
-    dep_names = {d.split("[")[0].split(">")[0].split("<")[0].split("=")[0].split("!")[0].strip().lower() for d in deps}
+    dep_names = {
+        d.split("[")[0].split(">")[0].split("<")[0]
+        .split("=")[0].split("!")[0].strip().lower()
+        for d in deps
+    }
 
     required = [
         "click",
@@ -116,7 +120,11 @@ def test_pyproject_toml_has_dev_dependencies(project_root: pathlib.Path) -> None
         data = tomllib.load(f)
 
     dev_deps = data["project"]["optional-dependencies"]["dev"]
-    dev_names = {d.split("[")[0].split(">")[0].split("<")[0].split("=")[0].split("!")[0].strip().lower() for d in dev_deps}
+    dev_names = {
+        d.split("[")[0].split(">")[0].split("<")[0]
+        .split("=")[0].split("!")[0].strip().lower()
+        for d in dev_deps
+    }
 
     for tool in ["pytest", "ruff", "pyright"]:
         assert tool in dev_names, f"Missing dev dependency: {tool}"
