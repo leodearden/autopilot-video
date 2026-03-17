@@ -143,6 +143,17 @@ def _validate_choice(field_name: str, value: str) -> None:
         )
 
 
+def _validate_range(
+    field_name: str, value: int, min_val: int, max_val: int | None = None
+) -> None:
+    """Validate that value is within [min_val, max_val] inclusive."""
+    if value < min_val or (max_val is not None and value > max_val):
+        bound = f"[{min_val}, {max_val}]" if max_val is not None else f">= {min_val}"
+        raise ConfigError(
+            f"Invalid value for {field_name}: {value} (must be {bound})"
+        )
+
+
 def _build_creator(data: dict[str, Any]) -> CreatorConfig:
     """Build CreatorConfig from parsed YAML dict."""
     return CreatorConfig(
@@ -293,6 +304,15 @@ def load_config(path: str | Path) -> AutopilotConfig:
     _validate_choice("tts_engine", models.tts_engine)
     _validate_choice("music_engine", models.music_engine)
     _validate_choice("privacy_status", youtube.privacy_status)
+
+    # Validate numeric bounds
+    _validate_range("quality_crf", output.quality_crf, 0, 51)
+    _validate_range("yolo_sample_every_n_frames", models.yolo_sample_every_n_frames, 1)
+    _validate_range("max_wall_clock_hours", processing.max_wall_clock_hours, 1)
+    _validate_range("num_cpu_workers", processing.num_cpu_workers, 1)
+    _validate_range("batch_size_yolo", processing.batch_size_yolo, 1)
+    _validate_range("batch_size_whisper", processing.batch_size_whisper, 1)
+    _validate_range("gpu_device", processing.gpu_device, 0)
 
     # Expand ~ in path fields
     youtube.credentials_path = youtube.credentials_path.expanduser()
