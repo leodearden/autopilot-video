@@ -754,3 +754,100 @@ class TestIntegration:
         row = cur.fetchone()
         assert row is not None
         assert row["camera"] == "GoPro"
+
+
+# -- Transaction semantics tests (review fix) --------------------------------
+
+
+class TestTransactionSemantics:
+    """Tests for correct transaction semantics using public CRUD API methods.
+
+    These tests verify that CRUD methods do NOT auto-commit, so that the
+    context manager's commit/rollback is the sole commit point.
+    """
+
+    def test_crud_does_not_autocommit(self):
+        """CRUD methods should not commit internally; rollback undoes them."""
+        from autopilot.db import CatalogDB
+
+        db = CatalogDB(":memory:")
+        try:
+            db.insert_media(id="m1", file_path="/a.mp4")
+            db.conn.rollback()
+            # After rollback, the insert should be undone
+            result = db.get_media("m1")
+            assert result is None, (
+                "insert_media should not auto-commit; rollback should undo the insert"
+            )
+        finally:
+            db.close()
+
+    def test_context_manager_commits_crud(self):
+        """Context manager commits CRUD operations on successful exit."""
+        from autopilot.db import CatalogDB
+
+        db = CatalogDB(":memory:")
+        try:
+            with db:
+                db.insert_media(id="m1", file_path="/a.mp4")
+            # After __exit__ commits, data should persist
+            result = db.get_media("m1")
+            assert result is not None
+            assert result["id"] == "m1"
+        finally:
+            db.close()
+
+    def test_context_manager_rollback_crud(self):
+        """Context manager rolls back CRUD operations on exception."""
+        from autopilot.db import CatalogDB
+
+        db = CatalogDB(":memory:")
+        try:
+            try:
+                with db:
+                    db.insert_media(id="m1", file_path="/a.mp4")
+                    raise ValueError("intentional error")
+            except ValueError:
+                pass
+            # insert_media's data should be rolled back
+            result = db.get_media("m1")
+            assert result is None, (
+                "insert_media inside 'with' block should be rolled back on exception"
+            )
+        finally:
+            db.close()
+
+    def test_multi_op_atomicity(self):
+        """Multiple CRUD ops in a 'with' block are atomic — all or nothing."""
+        from autopilot.db import CatalogDB
+
+        db = CatalogDB(":memory:")
+        try:
+            try:
+                with db:
+                    db.insert_media(id="m1", file_path="/a.mp4")
+                    db.upsert_transcript("m1", segments_json="[]", language="en")
+                    raise ValueError("intentional error after both inserts")
+            except ValueError:
+                pass
+            # NEITHER media nor transcript should persist
+            assert db.get_media("m1") is None, "media row should be rolled back"
+            assert db.get_transcript("m1") is None, "transcript row should be rolled back"
+        finally:
+            db.close()
+
+    def test_explicit_commit_without_context_manager(self):
+        """Calling db.conn.commit() explicitly persists CRUD data."""
+        from autopilot.db import CatalogDB
+
+        db = CatalogDB(":memory:")
+        try:
+            db.insert_media(id="m1", file_path="/a.mp4")
+            db.conn.commit()
+            # After explicit commit, data should persist even after rollback
+            db.conn.rollback()
+            result = db.get_media("m1")
+            assert result is not None
+            assert result["id"] == "m1"
+        finally:
+            db.close()
