@@ -205,3 +205,46 @@ def test_load_config_partial_section(tmp_path: pathlib.Path) -> None:
     assert cfg.models.yolo_variant == "yolo11x"
     assert cfg.models.tts_engine == "kokoro"
     assert cfg.models.music_engine == "musicgen"
+
+
+# ---------------------------------------------------------------------------
+# Step 7: Path expansion — ~ is expanded in path fields
+# ---------------------------------------------------------------------------
+
+
+def test_load_config_path_expansion(tmp_path: pathlib.Path) -> None:
+    """Tilde in path fields is expanded to absolute paths."""
+    from autopilot.config import load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "input_dir: ~/footage\n"
+        "output_dir: ~/output\n"
+        "youtube:\n"
+        "  credentials_path: ~/.config/creds.json\n"
+    )
+    cfg = load_config(config_file)
+
+    # All path fields must be absolute (no ~ remaining)
+    assert cfg.input_dir.is_absolute(), f"input_dir not absolute: {cfg.input_dir}"
+    assert "~" not in str(cfg.input_dir)
+    assert cfg.output_dir.is_absolute(), f"output_dir not absolute: {cfg.output_dir}"
+    assert "~" not in str(cfg.output_dir)
+    assert cfg.youtube.credentials_path.is_absolute(), (
+        f"credentials_path not absolute: {cfg.youtube.credentials_path}"
+    )
+    assert "~" not in str(cfg.youtube.credentials_path)
+
+
+def test_load_config_default_credentials_path_expanded(tmp_path: pathlib.Path) -> None:
+    """Default credentials_path (youtube section omitted) is also expanded."""
+    from autopilot.config import load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("input_dir: /tmp/in\noutput_dir: /tmp/out\n")
+    cfg = load_config(config_file)
+
+    assert cfg.youtube.credentials_path.is_absolute(), (
+        f"default credentials_path not absolute: {cfg.youtube.credentials_path}"
+    )
+    assert "~" not in str(cfg.youtube.credentials_path)
