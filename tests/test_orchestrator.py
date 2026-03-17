@@ -151,3 +151,55 @@ class TestStageStubs:
         for stage in orch.stages:
             # Should not raise
             stage.func(config=mock_config, db=mock_db)
+
+
+class TestRun:
+    """Tests for PipelineOrchestrator.run() basic execution."""
+
+    def test_run_calls_all_stages_in_order(self) -> None:
+        """run() calls all 9 stage functions in topological order."""
+        orch = PipelineOrchestrator()
+        call_order: list[str] = []
+        for stage in orch.stages:
+            name = stage.name
+            mock_fn = MagicMock(side_effect=lambda _n=name, **kw: call_order.append(_n))
+            stage.func = mock_fn
+
+        mock_config = MagicMock()
+        mock_db = MagicMock()
+        orch.run(config=mock_config, db=mock_db)
+
+        assert call_order == orch.execution_order()
+
+    def test_run_passes_config_and_db(self) -> None:
+        """run() passes config and db to each stage function."""
+        orch = PipelineOrchestrator()
+        mocks: dict[str, MagicMock] = {}
+        for stage in orch.stages:
+            mock_fn = MagicMock()
+            mocks[stage.name] = mock_fn
+            stage.func = mock_fn
+
+        mock_config = MagicMock()
+        mock_db = MagicMock()
+        orch.run(config=mock_config, db=mock_db)
+
+        for name, mock_fn in mocks.items():
+            mock_fn.assert_called_once_with(config=mock_config, db=mock_db)
+
+    def test_run_returns_results_dict(self) -> None:
+        """run() returns a dict mapping stage names to StageResult."""
+        from autopilot.orchestrator import StageResult
+
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        results = orch.run(config=MagicMock(), db=MagicMock())
+
+        assert isinstance(results, dict)
+        assert set(results.keys()) == {s.name for s in orch.stages}
+        for name, result in results.items():
+            assert isinstance(result, StageResult), f"{name} result not a StageResult"
+            assert result.status == StageStatus.DONE
+            assert result.elapsed_seconds >= 0
