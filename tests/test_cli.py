@@ -150,3 +150,74 @@ class TestCLIConfigIntegration:
                     called_config = stage_call.call_args[1].get("config")
                     if called_config:
                         assert called_config.input_dir == override_dir
+
+
+class TestRunSubcommand:
+    """Tests for the 'run' subcommand wiring to orchestrator."""
+
+    def test_run_creates_orchestrator(self, tmp_path: Path) -> None:
+        """'run' subcommand instantiates PipelineOrchestrator."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+            mock_db_cls.return_value = MagicMock()
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch_cls.return_value = MagicMock()
+                result = runner.invoke(
+                    main,
+                    ["--config", str(config_file), "run"],
+                )
+                mock_orch_cls.assert_called_once()
+
+    def test_run_calls_orchestrator_run(self, tmp_path: Path) -> None:
+        """'run' subcommand calls orchestrator.run() with config and db."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+            mock_db = MagicMock()
+            mock_db_cls.return_value = mock_db
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch = MagicMock()
+                mock_orch_cls.return_value = mock_orch
+                result = runner.invoke(
+                    main,
+                    ["--config", str(config_file), "run"],
+                )
+                mock_orch.run.assert_called_once()
+                call_kwargs = mock_orch.run.call_args[1]
+                assert "config" in call_kwargs
+                assert call_kwargs["db"] is mock_db
+
+    def test_run_passes_dry_run(self, tmp_path: Path) -> None:
+        """'run --dry-run' passes dry_run=True to orchestrator.run()."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+            mock_db_cls.return_value = MagicMock()
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch = MagicMock()
+                mock_orch_cls.return_value = mock_orch
+                result = runner.invoke(
+                    main,
+                    ["--config", str(config_file), "run", "--dry-run"],
+                )
+                call_kwargs = mock_orch.run.call_args[1]
+                assert call_kwargs["dry_run"] is True
+
+    def test_run_exits_zero_on_success(self, tmp_path: Path) -> None:
+        """'run' exits 0 on successful completion."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+            mock_db_cls.return_value = MagicMock()
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch_cls.return_value = MagicMock()
+                result = runner.invoke(
+                    main,
+                    ["--config", str(config_file), "run"],
+                )
+                assert result.exit_code == 0, f"Exit code: {result.exit_code}, Output: {result.output}"
