@@ -275,8 +275,13 @@ def load_config(path: str | Path) -> AutopilotConfig:
     """
     path = Path(path)
 
-    with open(path) as f:
-        raw = yaml.safe_load(f)
+    try:
+        with open(path) as f:
+            raw = yaml.safe_load(f)
+    except FileNotFoundError as e:
+        raise ConfigError(f"Config file not found: {path}") from e
+    except yaml.YAMLError as e:
+        raise ConfigError(f"Invalid YAML in {path}: {e}") from e
 
     if raw is None:
         raw = {}
