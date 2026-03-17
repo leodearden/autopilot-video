@@ -73,6 +73,7 @@ def _setup_context(
     if verbose:
         logging.basicConfig(level=logging.DEBUG)
 
+    config.output_dir.mkdir(parents=True, exist_ok=True)
     db_path = config.output_dir / "catalog.db"
     db = CatalogDB(str(db_path))
     return config, db
