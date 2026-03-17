@@ -1,17 +1,17 @@
 {
-  "task_id": "5",
-  "title": "Ingest pipeline",
+  "task_id": "4",
+  "title": "CLI entry point and pipeline orchestrator skeleton",
   "modules": [
-    "autopilot/ingest",
+    "autopilot",
     "tests"
   ],
-  "analysis": "Task 5 requires implementing three modules in autopilot/ingest/: scanner.py (directory walking + ffprobe/exiftool metadata extraction), normalizer.py (EBU R128 loudnorm via ffmpeg), and dedup.py (SHA-256 first-64MB hashing + duplicate detection). All three modules depend on the CatalogDB from task 3 (already implemented) and rely on external CLI tools (ffprobe, exiftool, ffmpeg) that must be mocked in tests.\n\nKey design considerations:\n1. **MediaFile dataclass** — a structured data object in scanner.py that maps directly to CatalogDB.insert_media() parameters, holding all metadata fields from the media_files table.\n2. **Subprocess isolation** — all ffprobe, exiftool, and ffmpeg calls go through thin wrapper functions that are easily mockable. Tests mock subprocess.run to control output and verify command construction.\n3. **Parallelization** — scan_directory uses concurrent.futures.ProcessPoolExecutor for CPU-parallel metadata extraction. The number of workers comes from config or defaults to os.cpu_count().\n4. **Dedup strategy** — compute_hash reads only the first 64MB (67,108,864 bytes) for speed on large video files. find_duplicates uses a SQL GROUP BY query on sha256_prefix. mark_duplicates keeps the first-ingested file (lowest rowid) and marks others as 'duplicate'.\n5. **Normalizer skip logic** — derives output filename from input stem + '.wav', checks if it already exists in output_dir before running ffmpeg.\n6. **Supported extensions** — video: .mp4, .mov; audio: .wav, .mp3, .aac; image: .jpg, .jpeg, .png, .tif, .tiff, .bmp, .webp (per PRD, DJI footage is primarily .mp4).\n\nExisting reusable infrastructure: CatalogDB with insert_media/find_by_hash/update_media_status/list_by_status, conftest.py catalog_db fixture (in-memory autocommit SQLite), pytest tmp_path for filesystem tests. Tests will follow existing patterns (TestClass grouping, docstrings, clear assertion messages).\n\n**Post-review fixes (steps 25-30):** Code review identified four blocking issues requiring fixes:\n1. **fault_isolation_violation + error_handling_truncates_results** (scanner.py) — executor.map wraps the entire iteration in a single try/except. When one future raises, the for-loop exits and all unprocessed files after the failing one are silently dropped. Fix: refactor to executor.submit + as_completed with per-future try/except.\n2. **non_deterministic_deduplication_key** (dedup.py) — GROUP_CONCAT(id) without ORDER BY has undefined ordering per SQLite docs. The keeper assignment is non-deterministic. Fix: use a subquery with ORDER BY rowid before GROUP_CONCAT.\n3. **output_filename_collision_data_corruption** (normalizer.py) — output_path uses only media_path.stem, so files from different subdirectories with the same stem (e.g. day1/DJI_0001.mp4, day2/DJI_0001.mp4) map to the same output, causing silent data corruption. Fix: add root_dir parameter to mirror input directory structure under output_dir.",
+  "analysis": "Task 4 requires two new files: autopilot/cli.py (Click-based CLI entry point) and autopilot/orchestrator.py (pipeline DAG runner). No existing cli.py or orchestrator.py exist in the project.\n\n**Orchestrator design:** PipelineOrchestrator class manages a DAG of 9 stages: INGEST -> ANALYZE -> CLASSIFY -> NARRATE -> SCRIPT -> EDL -> SOURCE_ASSETS -> RENDER -> UPLOAD. Each stage is a dataclass (StageDefinition) with name, callable function, dependency list, and estimated_time. The run() method performs topological sort and executes stages sequentially, tracking elapsed time and reporting progress. Stage functions are stubs that log 'Stage X not yet implemented'. Error handling catches per-stage exceptions and reports status (running/done/skipped/error). Dry-run mode logs what would run without executing.\n\n**CLI design:** Click group 'autopilot' with --config option (default: config.yaml). Subcommands: ingest, analyze, plan, edit, render, upload, run. Common options: --input-dir, --output-dir, --verbose, --dry-run. Each subcommand loads config via load_config(), opens CatalogDB, and delegates to the appropriate orchestrator stage(s). The 'run' subcommand invokes the full pipeline. Click's CliRunner is used for testing.\n\n**Dependencies:** Task depends on task 2 (config.py, already done) and task 3 (db.py, already done). Both are fully implemented and tested. We reuse load_config() and CatalogDB directly.\n\n**Test approach:** Click's CliRunner for CLI tests (invokes commands in-process, captures output). For orchestrator tests, we use unittest.mock to verify stage function calls and ordering. Tests use tmp_path for config files and in-memory DB. Follows existing test patterns: class-based grouping, docstrings, clear assertions.",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Create empty test files tests/test_ingest_scanner.py, tests/test_ingest_normalizer.py, tests/test_ingest_dedup.py with module docstrings and standard imports (pytest, Path, unittest.mock). These serve as the test homes for the three ingest submodules.",
+      "description": "Create empty test files tests/test_orchestrator.py and tests/test_cli.py with module docstrings and standard imports (pytest, unittest.mock, Path). These serve as the test homes for the two new modules.",
       "status": "done",
-      "commit": "e8641a2",
+      "commit": "d61f1a1",
       "tests": []
     }
   ],
@@ -19,303 +19,297 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing tests for the MediaFile dataclass in tests/test_ingest_scanner.py. TestMediaFile class: (1) test_mediafile_fields — instantiate MediaFile with all fields (file_path, codec, resolution_w, resolution_h, fps, duration_seconds, created_at, gps_lat, gps_lon, audio_channels, sha256_prefix, metadata_json), verify all attributes are set correctly; (2) test_mediafile_defaults — instantiate with only file_path, verify all optional fields default to None; (3) test_mediafile_file_path_is_path — verify file_path is stored as a Path object.",
+      "description": "Write failing tests for StageDefinition dataclass and StageStatus enum in tests/test_orchestrator.py. TestStageDefinition class: (1) test_stage_definition_fields — instantiate StageDefinition with name='INGEST', func=lambda, dependencies=[], estimated_seconds=300, verify all attributes; (2) test_stage_definition_defaults — verify dependencies defaults to empty list and estimated_seconds defaults to 0; (3) test_stage_status_enum — verify StageStatus has PENDING, RUNNING, DONE, SKIPPED, ERROR values.",
       "status": "done",
-      "commit": "81833bf"
+      "commit": "2147717"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Create autopilot/ingest/scanner.py with the MediaFile dataclass. Fields: file_path (Path, required), codec (str | None), resolution_w (int | None), resolution_h (int | None), fps (float | None), duration_seconds (float | None), created_at (str | None), gps_lat (float | None), gps_lon (float | None), audio_channels (int | None), sha256_prefix (str | None), metadata_json (str | None). All optional fields default to None. Make step-1 tests pass.",
+      "description": "Create autopilot/orchestrator.py with StageDefinition dataclass (name: str, func: Callable, dependencies: list[str], estimated_seconds: float) and StageStatus enum (PENDING, RUNNING, DONE, SKIPPED, ERROR). Make step-1 tests pass.",
       "status": "done",
-      "commit": "81c20d9"
+      "commit": "10ae03e"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write failing tests for scan_directory file discovery. TestScanDirectory class: (1) test_scan_finds_video_files — create tmp_path with .mp4, .mov files, verify scan_directory returns MediaFile objects for each; (2) test_scan_finds_audio_files — create tmp_path with .wav, .mp3, .aac files, verify they're found; (3) test_scan_finds_image_files — create tmp_path with .jpg, .png, .tiff files, verify they're found; (4) test_scan_ignores_unsupported_extensions — create .txt, .pdf, .py files, verify they're NOT returned; (5) test_scan_walks_subdirectories — create nested dirs with media files, verify all are found; (6) test_scan_empty_directory — verify returns empty list. Note: mock _probe_file to return a minimal MediaFile since we're only testing file discovery here.",
+      "description": "Write failing tests for PipelineOrchestrator initialization. TestPipelineOrchestrator class: (1) test_has_all_nine_stages — instantiate PipelineOrchestrator, verify it has exactly 9 stages with names INGEST, ANALYZE, CLASSIFY, NARRATE, SCRIPT, EDL, SOURCE_ASSETS, RENDER, UPLOAD; (2) test_stage_dependencies — verify INGEST has no deps, ANALYZE depends on INGEST, CLASSIFY depends on ANALYZE, NARRATE depends on CLASSIFY, SCRIPT depends on NARRATE, EDL depends on SCRIPT, SOURCE_ASSETS depends on EDL, RENDER depends on EDL and SOURCE_ASSETS, UPLOAD depends on RENDER; (3) test_stages_have_callable_functions — verify each stage's func is callable; (4) test_stages_have_positive_estimated_seconds — verify each stage has estimated_seconds >= 0.",
       "status": "done",
-      "commit": "37300d4"
+      "commit": "28c5506"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement the file-walking part of scan_directory(input_dir: Path) -> list[MediaFile]. Define SUPPORTED_EXTENSIONS as a frozenset of video (.mp4, .mov), audio (.wav, .mp3, .aac), and image (.jpg, .jpeg, .png, .tif, .tiff, .bmp, .webp) extensions. Use Path.rglob('*') to walk the directory tree, filter by suffix (case-insensitive). For now, create a stub _probe_file that returns a MediaFile with just file_path set. Make step-3 tests pass.",
+      "description": "Implement PipelineOrchestrator.__init__ with 9 stage definitions. Each stage uses a stub function. Wire up the dependency DAG: INGEST(no deps) -> ANALYZE(INGEST) -> CLASSIFY(ANALYZE) -> NARRATE(CLASSIFY) -> SCRIPT(NARRATE) -> EDL(SCRIPT) -> SOURCE_ASSETS(EDL) -> RENDER(EDL, SOURCE_ASSETS) -> UPLOAD(RENDER). Set reasonable estimated_seconds per stage. Make step-3 tests pass.",
       "status": "done",
-      "commit": "17e5b1a"
+      "commit": "e3b2268"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write failing tests for ffprobe metadata extraction. TestRunFfprobe class: (1) test_parse_ffprobe_video — mock subprocess.run to return ffprobe JSON for a video file (codec_name='h264', width=3840, height=3840, r_frame_rate='30/1', duration='120.5', channels=2), verify _run_ffprobe returns dict with correct codec, resolution, fps, duration, audio_channels; (2) test_parse_ffprobe_audio_only — mock ffprobe JSON for a .wav file (no video stream, only audio), verify resolution/fps are None, duration and audio_channels are set; (3) test_parse_ffprobe_image — mock ffprobe JSON for a .jpg file, verify codec and resolution are set, duration is None or 0; (4) test_ffprobe_failure — mock subprocess.run to raise CalledProcessError, verify _run_ffprobe returns empty dict or handles gracefully without crashing.",
+      "description": "Write failing tests for topological sort. TestTopologicalSort class: (1) test_execution_order_respects_dependencies — call orchestrator.execution_order(), verify stages appear in topologically valid order (each stage appears after all its dependencies); (2) test_execution_order_is_deterministic — call execution_order() multiple times, verify same result each time; (3) test_ingest_is_first — verify INGEST is always the first stage; (4) test_upload_is_last — verify UPLOAD is always the last stage.",
       "status": "done",
-      "commit": "e91617b"
+      "commit": "1ab96c6"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Implement _run_ffprobe(file_path: Path) -> dict function in scanner.py. Run ffprobe via subprocess.run with args: ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', file_path]. Parse the JSON output. Extract: codec (from first video stream codec_name, or first audio stream if no video), resolution_w/h (from video stream width/height), fps (from r_frame_rate, parse 'num/den' fraction), duration_seconds (from format.duration), audio_channels (from first audio stream channels). Return dict with these keys. Handle CalledProcessError and JSONDecodeError gracefully by returning empty dict. Make step-5 tests pass.",
+      "description": "Implement execution_order() method on PipelineOrchestrator. Uses Kahn's algorithm for topological sort on the stage DAG. Returns list[str] of stage names in execution order. Make step-5 tests pass.",
       "status": "done",
-      "commit": "4d374bd"
+      "commit": "3129c38"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write failing tests for exiftool metadata extraction. TestRunExiftool class: (1) test_parse_exiftool_dji_mp4 — mock subprocess.run to return exiftool JSON for a DJI Osmo Action file with CreateDate='2026:01:15 10:30:00', GPSLatitude=13.7563, GPSLongitude=100.5018, verify _run_exiftool returns dict with created_at (ISO format) and gps_lat/gps_lon; (2) test_parse_exiftool_no_gps — mock exiftool JSON without GPS fields, verify gps_lat/gps_lon are None, created_at is still extracted; (3) test_parse_exiftool_no_date — mock exiftool JSON without date fields, verify created_at is None; (4) test_exiftool_failure — mock subprocess failure, verify returns empty dict gracefully.",
+      "description": "Write failing tests for stage stub functions. TestStageStubs class: (1) test_stub_functions_log_not_implemented — for each stage, call its func with mock config and db args, capture log output, verify log message contains 'not yet implemented' and the stage name; (2) test_stub_functions_accept_config_and_db — verify each stage func accepts (config, db) keyword arguments without error.",
       "status": "done",
-      "commit": "21f7a96"
+      "commit": "03f6550"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Implement _run_exiftool(file_path: Path) -> dict function in scanner.py. Run exiftool via subprocess.run with args: ['exiftool', '-j', '-n', '-CreateDate', '-DateTimeOriginal', '-GPSLatitude', '-GPSLongitude', file_path]. Parse JSON output (array of one object). Extract: created_at from CreateDate or DateTimeOriginal (convert 'YYYY:MM:DD HH:MM:SS' to ISO 8601 format), gps_lat and gps_lon from GPSLatitude/GPSLongitude (with -n flag these are numeric). Handle missing fields, subprocess errors, and JSON errors gracefully. Make step-7 tests pass.",
+      "description": "Implement stub stage functions: _stage_ingest, _stage_analyze, _stage_classify, _stage_narrate, _stage_script, _stage_edl, _stage_source_assets, _stage_render, _stage_upload. Each accepts (config: AutopilotConfig, db: CatalogDB) and logs 'Stage {NAME} not yet implemented' via the logging module. Wire these as the func references in PipelineOrchestrator.__init__. Make step-7 tests pass.",
       "status": "done",
-      "commit": "8e189e6"
+      "commit": "e3b2268"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write failing tests for probe_file combining ffprobe + exiftool. TestProbeFile class: (1) test_probe_file_combines_metadata — mock both _run_ffprobe and _run_exiftool to return valid dicts, verify probe_file returns a MediaFile with all fields populated from both sources; (2) test_probe_file_ffprobe_only — mock _run_exiftool to return empty dict, verify MediaFile has ffprobe fields but None for gps/created_at; (3) test_probe_file_stores_raw_metadata — verify metadata_json field contains the raw ffprobe JSON stringified.",
+      "description": "Write failing tests for PipelineOrchestrator.run() basic execution. TestRun class: (1) test_run_calls_all_stages_in_order — replace all stage funcs with mocks, call run(config, db), verify all 9 mocks were called exactly once in topological order using mock.call_args_list; (2) test_run_passes_config_and_db — verify each mock received config and db as arguments; (3) test_run_returns_results_dict — verify run() returns a dict mapping stage names to StageResult (with status, elapsed_seconds).",
       "status": "done",
-      "commit": "1f29ec5"
+      "commit": "f435c47"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Implement probe_file(file_path: Path) -> MediaFile function in scanner.py. Calls _run_ffprobe and _run_exiftool, merges results into a MediaFile dataclass instance. Stores the full raw ffprobe output as metadata_json (json.dumps). Make step-9 tests pass.",
+      "description": "Implement PipelineOrchestrator.run(config, db) method. Iterates over execution_order(), calls each stage's func(config=config, db=db), measures elapsed time with time.monotonic(), collects results into a dict[str, StageResult]. Add StageResult dataclass (status: StageStatus, elapsed_seconds: float). Make step-9 tests pass.",
       "status": "done",
-      "commit": "4bc054f"
+      "commit": "f5b05d4"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write failing tests for parallel scanning. TestScanDirectoryParallel class: (1) test_scan_uses_process_pool — mock ProcessPoolExecutor and probe_file, create tmp_path with 5 .mp4 files, call scan_directory with max_workers=2, verify ProcessPoolExecutor was instantiated with max_workers=2 and executor.map was called with probe_file and the file list; (2) test_scan_default_workers — call scan_directory without max_workers, verify ProcessPoolExecutor uses None (defaults to CPU count); (3) test_scan_handles_probe_failure — mock probe_file to raise an exception for one file, verify scan_directory returns results for the other files without crashing (graceful error handling).",
+      "description": "Write failing tests for progress reporting. TestProgressReporting class: (1) test_run_prints_stage_status — replace stage funcs with mocks, call run(), capture stdout/stderr, verify each stage name and status ('running'/'done') appears in output; (2) test_run_prints_elapsed_time — verify elapsed time is printed for each completed stage; (3) test_run_prints_total_elapsed — verify total pipeline elapsed time is printed at end.",
       "status": "done",
-      "commit": "a16050d"
+      "commit": "95cd4b0"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Update scan_directory to accept optional max_workers parameter and parallelize probe_file calls using concurrent.futures.ProcessPoolExecutor. Use executor.map or submit+as_completed pattern. Handle individual probe failures gracefully (log warning, skip file, continue). Wire the full pipeline: walk directory -> filter extensions -> parallel probe -> return list[MediaFile]. Make step-11 tests pass. Run ruff check on scanner.py.",
+      "description": "Add progress reporting to PipelineOrchestrator.run(). Before each stage: print/log '[RUNNING] {stage_name}'. After each stage: print/log '[DONE] {stage_name} ({elapsed:.1f}s)'. At end: print/log 'Pipeline complete ({total:.1f}s)'. Use logging module for structured output. Make step-11 tests pass.",
       "status": "done",
-      "commit": "bac7183"
+      "commit": "f5b05d4"
     },
     {
       "id": "step-13",
       "type": "test",
-      "description": "Write failing tests for normalize_audio in tests/test_ingest_normalizer.py. TestNormalizeAudio class: (1) test_normalize_builds_correct_ffmpeg_command — mock subprocess.run, call normalize_audio with a .mp4 path and output_dir, verify subprocess.run was called with ffmpeg args including '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', output format wav, and correct output path; (2) test_normalize_returns_output_path — verify returned Path matches expected output_dir / '<stem>.wav'; (3) test_normalize_creates_output_dir — mock subprocess.run, pass non-existent output_dir, verify it's created (or verify mkdir is called); (4) test_normalize_audio_file — mock subprocess.run, pass a .wav input, verify ffmpeg command handles audio-only files correctly.",
+      "description": "Write failing tests for error handling. TestErrorHandling class: (1) test_run_catches_stage_error — set one stage's func to raise RuntimeError, verify run() doesn't crash, returns ERROR status for that stage; (2) test_run_skips_dependents_on_error — set ANALYZE to raise, verify CLASSIFY and all downstream stages get SKIPPED status; (3) test_run_reports_error_message — verify error message is captured in the stage result or logged.",
       "status": "done",
-      "commit": "e7d1c23"
+      "commit": "705e811"
     },
     {
       "id": "step-14",
       "type": "impl",
-      "description": "Create autopilot/ingest/normalizer.py with normalize_audio(media_path: Path, output_dir: Path) -> Path function. Build ffmpeg command: ['ffmpeg', '-i', str(media_path), '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-ar', '48000', '-ac', '2', '-y', str(output_path)]. Output path is output_dir / f'{media_path.stem}.wav'. Create output_dir if it doesn't exist (output_dir.mkdir(parents=True, exist_ok=True)). Run via subprocess.run with check=True. Return output_path. Make step-13 tests pass.",
+      "description": "Add error handling to PipelineOrchestrator.run(). Wrap each stage call in try/except. On exception: set stage status to ERROR, log the error, mark all dependent stages as SKIPPED. Track which stages errored to propagate skips through the DAG. Add error_message field to StageResult. Make step-13 tests pass.",
       "status": "done",
-      "commit": "0f92820"
+      "commit": "f5b05d4"
     },
     {
       "id": "step-15",
       "type": "test",
-      "description": "Write failing tests for normalizer skip logic. TestNormalizeSkip class: (1) test_normalize_skips_existing_output — create output_dir with an existing '<stem>.wav' file (non-empty), call normalize_audio, verify subprocess.run was NOT called and the existing path is returned; (2) test_normalize_does_not_skip_if_missing — verify subprocess.run IS called when output file doesn't exist; (3) test_normalize_ffmpeg_failure — mock subprocess.run to raise CalledProcessError, verify normalize_audio raises or propagates the error cleanly.",
+      "description": "Write failing tests for dry-run mode. TestDryRun class: (1) test_dry_run_does_not_call_stages — call run(config, db, dry_run=True) with mock stage funcs, verify none were called; (2) test_dry_run_prints_execution_plan — capture output, verify all stage names appear with '[DRY-RUN]' prefix; (3) test_dry_run_shows_estimated_time — verify estimated_seconds for each stage appears in dry-run output.",
       "status": "done",
-      "commit": "1161345"
+      "commit": "f0f3cfd"
     },
     {
       "id": "step-16",
       "type": "impl",
-      "description": "Add skip logic to normalize_audio: before running ffmpeg, check if output_path already exists and is non-empty (output_path.exists() and output_path.stat().st_size > 0). If so, return output_path immediately without running ffmpeg. Let subprocess.CalledProcessError propagate to the caller. Make step-15 tests pass. Run ruff check on normalizer.py.",
+      "description": "Add dry_run parameter to PipelineOrchestrator.run(). When dry_run=True, iterate execution_order() and print '[DRY-RUN] {stage_name} (est. {estimated_seconds}s)' for each stage without calling func. Return results with SKIPPED status. Make step-15 tests pass.",
       "status": "done",
-      "commit": "1161345"
+      "commit": "f5b05d4"
     },
     {
       "id": "step-17",
       "type": "test",
-      "description": "Write failing tests for compute_hash in tests/test_ingest_dedup.py. TestComputeHash class: (1) test_hash_small_file — create a tmp_path file with known content (< 64MB), verify compute_hash returns the expected SHA-256 hex digest of the full content; (2) test_hash_large_file — create a tmp_path file larger than 64MB (write 65MB of data), verify compute_hash returns SHA-256 of only the first 64MB (compute expected hash independently); (3) test_hash_empty_file — create empty file, verify returns SHA-256 of empty bytes; (4) test_hash_deterministic — call compute_hash twice on same file, verify same result; (5) test_hash_different_files — create two files with different content, verify different hashes.",
+      "description": "Write failing tests for wall-clock budget tracking. TestBudgetTracking class: (1) test_run_tracks_total_vs_budget — create orchestrator with budget_seconds=3600, after run(), verify result includes total_elapsed and budget_seconds; (2) test_run_warns_when_over_budget — mock a stage to sleep(0.01), set a very small budget, verify a warning is logged when cumulative time exceeds budget.",
       "status": "done",
-      "commit": "bacddc9"
+      "commit": "d7b0767"
     },
     {
       "id": "step-18",
       "type": "impl",
-      "description": "Create autopilot/ingest/dedup.py with compute_hash(file_path: Path) -> str function. Open file in binary mode, read up to HASH_SIZE = 64 * 1024 * 1024 bytes (67,108,864), compute SHA-256, return hex digest string. Use hashlib.sha256() with chunked reads (e.g., 8KB chunks) up to the 64MB limit for memory efficiency. Make step-17 tests pass.",
+      "description": "Add budget_seconds parameter to PipelineOrchestrator.__init__ (default from config.processing.max_wall_clock_hours * 3600). Track cumulative elapsed in run(). Log warning when cumulative time exceeds budget_seconds. Include budget_seconds and total_elapsed in return value. Make step-17 tests pass.",
       "status": "done",
-      "commit": "cd812ca"
+      "commit": "f5b05d4"
     },
     {
       "id": "step-19",
       "type": "test",
-      "description": "Write failing tests for find_duplicates using the catalog_db fixture. TestFindDuplicates class: (1) test_find_duplicates_with_matches — insert 3 media files into catalog_db, two with matching sha256_prefix='abc123' and one with 'def456', call find_duplicates, verify returns list containing the pair of matching IDs; (2) test_find_duplicates_no_matches — insert 3 files all with unique hashes, verify returns empty list; (3) test_find_duplicates_null_hash — insert files with sha256_prefix=None, verify they're excluded from results; (4) test_find_duplicates_triple — insert 3 files with same hash, verify returns all pairs or all IDs in the group.",
+      "description": "Write failing tests for CLI main group in tests/test_cli.py using Click's CliRunner. TestMainGroup class: (1) test_main_group_exists — import main from autopilot.cli, verify it's a Click Group; (2) test_main_help — invoke with --help, verify exit code 0 and output contains 'autopilot'; (3) test_main_has_config_option — verify --config option exists in main.params.",
       "status": "done",
-      "commit": "f5d1b98"
+      "commit": "3202ed4"
     },
     {
       "id": "step-20",
       "type": "impl",
-      "description": "Implement find_duplicates(catalog_db: CatalogDB) -> list[tuple[str, str]] in dedup.py. Query: SELECT sha256_prefix, GROUP_CONCAT(id) FROM media_files WHERE sha256_prefix IS NOT NULL GROUP BY sha256_prefix HAVING COUNT(*) > 1. Parse results into list of tuples where each tuple is (kept_id, duplicate_id) — the first id (by rowid order) is kept, subsequent ones are duplicates. For groups of 3+, emit multiple pairs (kept, dup1), (kept, dup2), etc. Make step-19 tests pass.",
+      "description": "Create autopilot/cli.py with Click main group. Define @click.group() with name='autopilot' and --config option (type=click.Path(), default='config.yaml', help='Path to config YAML'). The group callback stores config path in click context (ctx.ensure_object(dict); ctx.obj['config_path'] = config). Make step-19 tests pass.",
       "status": "done",
-      "commit": "4f0c0ad"
+      "commit": "a40d478"
     },
     {
       "id": "step-21",
       "type": "test",
-      "description": "Write failing tests for mark_duplicates. TestMarkDuplicates class: (1) test_mark_duplicates_updates_status — insert 3 media files (two with same hash), call mark_duplicates, verify the first-ingested keeps status='ingested' and the second gets status='duplicate'; (2) test_mark_duplicates_no_duplicates — insert files with unique hashes, call mark_duplicates, verify no statuses changed; (3) test_mark_duplicates_preserves_non_duplicate_status — insert a file with status='analyzing' and unique hash, verify its status is unchanged after mark_duplicates.",
+      "description": "Write failing tests for CLI subcommands existence. TestSubcommands class: (1) test_all_subcommands_registered — verify main group has commands: ingest, analyze, plan, edit, render, upload, run; (2) test_each_subcommand_help — for each subcommand, invoke with --help, verify exit code 0; (3) test_subcommands_have_common_options — for each subcommand, verify --input-dir, --output-dir, --verbose, --dry-run options exist.",
       "status": "done",
-      "commit": "3e4559e"
+      "commit": "5a54b1d"
     },
     {
       "id": "step-22",
       "type": "impl",
-      "description": "Implement mark_duplicates(catalog_db: CatalogDB) -> int in dedup.py. Call find_duplicates to get pairs, then for each (kept_id, duplicate_id) pair call catalog_db.update_media_status(duplicate_id, 'duplicate'). Return count of files marked as duplicate. Make step-21 tests pass. Run ruff check on dedup.py.",
+      "description": "Add all 7 subcommands to the Click group: ingest, analyze, plan, edit, render, upload, run. Each subcommand is decorated with common options: --input-dir (type=click.Path(), default=None), --output-dir (type=click.Path(), default=None), --verbose (is_flag=True), --dry-run (is_flag=True). Subcommand callbacks are minimal stubs that pass ctx. Make step-21 tests pass.",
       "status": "done",
-      "commit": "6312de1"
+      "commit": "88081b8"
     },
     {
       "id": "step-23",
       "type": "test",
-      "description": "Write integration test verifying the __init__.py exports. TestIngestPackage class: (1) test_ingest_exports — verify 'from autopilot.ingest.scanner import MediaFile, scan_directory, probe_file' works; (2) test_normalizer_exports — verify 'from autopilot.ingest.normalizer import normalize_audio' works; (3) test_dedup_exports — verify 'from autopilot.ingest.dedup import compute_hash, find_duplicates, mark_duplicates' works.",
+      "description": "Write failing tests for CLI config loading and DB opening. TestCLIConfigIntegration class: (1) test_subcommand_loads_config — create a valid config yaml in tmp_path, invoke 'ingest' with --config pointing to it, mock the stage function, verify load_config was called with the right path; (2) test_subcommand_opens_catalog_db — mock CatalogDB, invoke 'ingest', verify CatalogDB was instantiated with the expected db path (output_dir/catalog.db); (3) test_verbose_sets_logging_level — invoke with --verbose, verify logging level is set to DEBUG; (4) test_input_dir_override — pass --input-dir to override config's input_dir, verify the overridden path is used.",
       "status": "done",
-      "commit": "28bcca0"
+      "commit": "bfaaf2e"
     },
     {
       "id": "step-24",
       "type": "impl",
-      "description": "Update autopilot/ingest/__init__.py to export the public API: MediaFile, scan_directory, probe_file from scanner; normalize_audio from normalizer; compute_hash, find_duplicates, mark_duplicates from dedup. Run full test suite (pytest tests/ -v), ruff check autopilot/ingest/, and pyright autopilot/ingest/ to ensure quality. Fix any remaining issues.",
+      "description": "Implement config loading and DB opening in CLI subcommands. Create a shared helper _setup_context(ctx, config_path, input_dir, output_dir, verbose) that: (1) calls load_config(config_path), (2) overrides input_dir/output_dir if provided, (3) sets logging level to DEBUG if verbose, (4) opens CatalogDB(output_dir / 'catalog.db'), (5) stores config and db in ctx.obj. Each subcommand calls _setup_context at the start. Make step-23 tests pass.",
       "status": "done",
-      "commit": "42b9117"
+      "commit": "88081b8"
     },
     {
       "id": "step-25",
       "type": "test",
-      "description": "REVIEW FIX [fault_isolation_violation + error_handling_truncates_results]: Write a failing test that exposes the executor.map fault isolation bug. Add test_scan_returns_all_non_failing_files to TestScanDirectoryParallel in tests/test_ingest_scanner.py. Create 3 files in tmp_path: aaa_good.mp4, mmm_bad.mp4, zzz_good.mp4 (sorted order ensures mmm_bad is in the middle). Mock ProcessPoolExecutor with a synchronous executor mock where the map function yields MediaFile for aaa_good, then raises Exception for mmm_bad, which aborts the iteration — zzz_good is never yielded. Assert len(results) == 2 (both aaa_good and zzz_good should be returned). This test FAILS with the current implementation because the single try/except around executor.map catches the exception after aaa_good is collected but before zzz_good can be processed, returning only 1 result instead of 2. The test documents the desired behavior: individual probe failures should be isolated so ALL non-failing files are returned.",
+      "description": "Write failing tests for the 'run' subcommand wiring to orchestrator. TestRunSubcommand class: (1) test_run_creates_orchestrator — mock PipelineOrchestrator, invoke 'run' with valid config, verify PipelineOrchestrator was instantiated; (2) test_run_calls_orchestrator_run — verify orchestrator.run() was called with config and db; (3) test_run_passes_dry_run — invoke with --dry-run flag, verify orchestrator.run() was called with dry_run=True; (4) test_run_exits_zero_on_success — verify exit code 0 on successful completion.",
       "status": "done",
-      "commit": "ac3cadd"
+      "commit": "0ff842b"
     },
     {
       "id": "step-26",
       "type": "impl",
-      "description": "REVIEW FIX [fault_isolation_violation + error_handling_truncates_results]: Refactor scan_directory in autopilot/ingest/scanner.py to use executor.submit + as_completed instead of executor.map for per-future error isolation. Implementation: (1) Add 'from concurrent.futures import as_completed' to imports. (2) Replace the executor.map block with: futures = {executor.submit(_probe_file, f): f for f in files}; for fut in as_completed(futures): try: results.append(fut.result()) except Exception: logger.warning('Probe failed for %s, skipping', futures[fut]). (3) Update the _sync_executor_mock helper in tests/test_ingest_scanner.py to mock executor.submit instead of executor.map — submit should return mock Future objects, and patch as_completed to return those futures in order. (4) Update all TestScanDirectory tests (test_scan_finds_video_files, test_scan_finds_audio_files, test_scan_finds_image_files, test_scan_ignores_unsupported_extensions, test_scan_walks_subdirectories) to use the new submit-style mock. (5) Update TestScanDirectoryParallel tests (test_scan_uses_process_pool to check executor.submit was called instead of executor.map, test_scan_default_workers, test_scan_handles_probe_failure) for the new pattern. (6) Update the step-25 test to use submit-style mocking. ALL scanner tests must pass. Run ruff check on scanner.py.",
+      "description": "Wire the 'run' subcommand to PipelineOrchestrator. In the run callback: call _setup_context, create PipelineOrchestrator(budget_seconds=config.processing.max_wall_clock_hours * 3600), call orchestrator.run(config=config, db=db, dry_run=dry_run), print summary. Make step-25 tests pass.",
       "status": "done",
-      "commit": "507ccab"
+      "commit": "88081b8"
     },
     {
       "id": "step-27",
       "type": "test",
-      "description": "REVIEW FIX [non_deterministic_deduplication_key]: Write a test that validates deterministic rowid-based keeper assignment. Add test_find_duplicates_keeper_is_first_by_rowid to TestFindDuplicates in tests/test_ingest_dedup.py. Insert 3 media files with the same sha256_prefix in deliberate order: first insert id='z_third' (gets rowid 1), then id='m_second' (rowid 2), then id='a_first' (rowid 3). The id strings are chosen so alphabetical order (a_first < m_second < z_third) DIFFERS from insertion/rowid order (z_third=1, m_second=2, a_first=3). Assert that the keeper in all returned pairs is 'z_third' (the first-inserted by rowid), NOT 'a_first' (which would be first alphabetically). Assert pairs are ('z_third', 'm_second') and ('z_third', 'a_first'). This test documents the contract that 'first by rowid order is kept'. While it may pass accidentally on some SQLite builds (since GROUP_CONCAT without ORDER BY often follows insertion order), the behavior is not guaranteed and the fix in step-28 makes it deterministic.",
+      "description": "Write failing tests for individual stage subcommands. TestStageSubcommands class: (1) test_ingest_delegates_to_stage — mock the ingest stage function, invoke 'ingest' with valid config, verify the ingest stage func was called; (2) test_analyze_delegates_to_stage — same for analyze; (3) test_plan_delegates — same for plan (maps to NARRATE+SCRIPT stages); (4) test_edit_delegates — same for edit (maps to EDL stage); (5) test_render_delegates — same for render; (6) test_upload_delegates — same for upload.",
       "status": "done",
-      "commit": "4d6c533"
+      "commit": "18a2588"
     },
     {
       "id": "step-28",
       "type": "impl",
-      "description": "REVIEW FIX [non_deterministic_deduplication_key]: Fix the find_duplicates SQL query in autopilot/ingest/dedup.py to guarantee rowid-based ordering in GROUP_CONCAT. Replace the current query: 'SELECT sha256_prefix, GROUP_CONCAT(id) FROM media_files WHERE sha256_prefix IS NOT NULL GROUP BY sha256_prefix HAVING COUNT(*) > 1' with a subquery that forces rowid ordering before aggregation: 'SELECT sha256_prefix, GROUP_CONCAT(id) FROM (SELECT sha256_prefix, id FROM media_files WHERE sha256_prefix IS NOT NULL ORDER BY rowid) GROUP BY sha256_prefix HAVING COUNT(*) > 1'. This ensures the first id in each GROUP_CONCAT result is always the earliest-inserted row (lowest rowid), making keeper assignment deterministic as specified by the design decision. Verify ALL dedup tests pass including the new step-27 test. Run ruff check on dedup.py.",
+      "description": "Wire each subcommand to its corresponding stage function(s). ingest -> _stage_ingest, analyze -> _stage_analyze + _stage_classify, plan -> _stage_narrate + _stage_script, edit -> _stage_edl + _stage_source_assets, render -> _stage_render, upload -> _stage_upload. Each subcommand calls _setup_context, then invokes the stage function(s) directly (not through orchestrator.run). Make step-27 tests pass.",
       "status": "done",
-      "commit": "41f1cbb"
+      "commit": "88081b8"
     },
     {
       "id": "step-29",
       "type": "test",
-      "description": "REVIEW FIX [output_filename_collision_data_corruption]: Write failing tests that expose the filename collision bug. Add TestNormalizeCollisionFix class to tests/test_ingest_normalizer.py with two tests: (1) test_normalize_disambiguates_same_stem_different_dirs — create two input files with the same stem in different subdirectories: tmp_path/day1/DJI_0001.mp4 and tmp_path/day2/DJI_0001.mp4, mock subprocess.run, call normalize_audio for both files with the same output_dir and root_dir=tmp_path, assert that the two returned output paths are DIFFERENT (not the same file). This test FAILS with the current implementation since both would produce output_dir/DJI_0001.wav. (2) test_normalize_with_root_dir_mirrors_structure — create tmp_path/day1/clip.mp4, mock subprocess.run, call normalize_audio(media_path, output_dir, root_dir=tmp_path), verify the output path is output_dir/day1/clip.wav (mirrors the subdirectory structure), and verify the output_dir/day1 directory is created. (3) test_normalize_without_root_dir_uses_stem — verify backward compatibility: call normalize_audio WITHOUT root_dir, verify the output path is still output_dir/<stem>.wav as before (no regression for simple use cases).",
+      "description": "Write failing tests for CLI error handling. TestCLIErrors class: (1) test_missing_config_file — invoke with --config pointing to nonexistent file, verify exit code != 0 and error message contains 'config'; (2) test_invalid_config — invoke with --config pointing to invalid YAML, verify exit code != 0; (3) test_stage_error_prints_message — mock stage func to raise, invoke subcommand, verify error is reported to user.",
       "status": "done",
-      "commit": "6dfb1d2"
+      "commit": "2b827b2"
     },
     {
       "id": "step-30",
       "type": "impl",
-      "description": "REVIEW FIX [output_filename_collision_data_corruption]: Add an optional keyword parameter root_dir: Path | None = None to normalize_audio in autopilot/ingest/normalizer.py. When root_dir is provided, compute the relative parent directory via media_path.parent.relative_to(root_dir) and mirror that structure under output_dir: target_dir = output_dir / relative_parent. The output filename remains media_path.stem + '.wav'. When root_dir is None, behavior is unchanged (target_dir = output_dir, backward compatible). Move the mkdir call to use target_dir. Update output_path to use target_dir. Update the skip-if-exists check to use the new output_path. This ensures files from different subdirectories with the same stem (e.g., day1/DJI_0001.mp4 and day2/DJI_0001.mp4) produce distinct output paths (output_dir/day1/DJI_0001.wav vs output_dir/day2/DJI_0001.wav). Verify ALL normalizer tests pass including the new step-29 tests and all existing tests (which don't pass root_dir and should be unaffected). Run ruff check on normalizer.py.",
+      "description": "Add error handling to CLI. Wrap _setup_context in try/except for ConfigError, print user-friendly error message and sys.exit(1). Wrap stage calls in try/except, print error message with click.echo and set exit code. Make step-29 tests pass.",
       "status": "done",
-      "commit": "dd4090e"
+      "commit": "88081b8"
+    },
+    {
+      "id": "step-31",
+      "type": "test",
+      "description": "Write integration test. TestCLIIntegration class: (1) test_run_end_to_end — create valid config in tmp_path, invoke 'run' subcommand, verify all 9 stages appear in output with 'not yet implemented' messages and exit code 0; (2) test_run_dry_run_end_to_end — invoke 'run --dry-run', verify all stages listed without execution.",
+      "status": "done",
+      "commit": "d042289"
+    },
+    {
+      "id": "step-32",
+      "type": "impl",
+      "description": "Final integration wiring and cleanup. Ensure all imports are correct, add __all__ exports to orchestrator.py and cli.py, verify pyproject.toml has click dependency (already present). Add [project.scripts] entry point 'autopilot = autopilot.cli:main' to pyproject.toml if not present. Make step-31 tests pass.",
+      "status": "done",
+      "commit": "8736e4e"
     }
   ],
   "design_decisions": [
     {
-      "decision": "MediaFile is a dataclass in scanner.py, not a separate models module",
-      "rationale": "The task explicitly says scanner.py returns MediaFile objects. Since it's the only data structure needed for the ingest pipeline and maps 1:1 to CatalogDB.insert_media() parameters, keeping it in scanner.py avoids an extra module. If other pipeline stages need it later, it can be moved to ingest/__init__.py."
+      "decision": "Use dataclasses for StageDefinition and StageResult rather than plain dicts",
+      "rationale": "Follows the project's convention (AutopilotConfig, CameraConfig, MediaFile are all dataclasses). Provides type safety, IDE completion, and self-documenting field names."
     },
     {
-      "decision": "Mock subprocess.run for all external tool tests (ffprobe, exiftool, ffmpeg)",
-      "rationale": "Tests must run in CI environments without ffprobe, exiftool, or ffmpeg installed. Mocking subprocess.run with controlled JSON output lets us test parsing logic, command construction, and error handling deterministically. Real integration tests with actual media files would be a separate, optional test suite."
+      "decision": "Topological sort via Kahn's algorithm rather than DFS",
+      "rationale": "Kahn's algorithm is iterative, deterministic when using a sorted queue, and naturally detects cycles. DFS-based topo-sort can produce different orderings depending on iteration order."
     },
     {
-      "decision": "Use chunked reads in compute_hash for memory efficiency",
-      "rationale": "Reading 64MB in one call (file.read(64*1024*1024)) would allocate a 64MB buffer. Instead, read in 8KB chunks while accumulating the SHA-256 hash, with a byte counter to stop at the 64MB boundary. This keeps memory usage constant regardless of file size."
+      "decision": "Stage stubs accept (config, db) keyword arguments",
+      "rationale": "Establishes the contract that all stage functions share a uniform signature. Makes swapping stubs for real implementations a non-breaking change. Config and DB are the two shared resources across all pipeline stages."
     },
     {
-      "decision": "find_duplicates returns (kept_id, duplicate_id) tuples, not raw hash groups",
-      "rationale": "The caller (mark_duplicates) needs to know which file to keep and which to mark. By returning oriented pairs where the first element is the keeper (first ingested by rowid), the caller can directly iterate and update statuses without additional sorting/grouping logic."
+      "decision": "Orchestrator is separate from CLI — run() method takes config and db as arguments",
+      "rationale": "Separation of concerns: orchestrator handles DAG execution and progress, CLI handles argument parsing and user interaction. Orchestrator is testable without Click, CLI delegates to orchestrator."
     },
     {
-      "decision": "Normalizer outputs to '<stem>.wav' in output_dir, not alongside source files",
-      "rationale": "The task explicitly says 'Output as .wav files (separate from source video to avoid re-encoding).' Using a dedicated output_dir prevents cluttering the source footage directory and makes cleanup/re-processing simple."
+      "decision": "Individual subcommands call stage functions directly, not through orchestrator.run()",
+      "rationale": "The 'ingest' subcommand should only run ingest, not the full DAG. Using orchestrator.run() would require a subset-execution feature. Direct invocation is simpler and matches user intent. Only 'run' uses the full orchestrator."
     },
     {
-      "decision": "scan_directory uses ProcessPoolExecutor (not ThreadPoolExecutor) per the task spec",
-      "rationale": "The task requires 'Parallelize across CPU cores using concurrent.futures.ProcessPoolExecutor.' Subprocesses (ffprobe, exiftool) release the GIL anyway, but ProcessPoolExecutor is specified explicitly, likely for CPU-bound JSON parsing of large metadata sets."
+      "decision": "CLI common options implemented as a shared decorator rather than repeated per-subcommand",
+      "rationale": "DRY principle — all 7 subcommands share --input-dir, --output-dir, --verbose, --dry-run. A decorator or Click callback avoids repeating option definitions 7 times."
     },
     {
-      "decision": "Graceful error handling in scan_directory — skip files that fail to probe",
-      "rationale": "In a real footage directory there may be corrupted files, temporary files, or files with unusual formats. The scanner should log a warning and skip problematic files rather than aborting the entire scan. This matches the production use case of batch-processing hundreds of files."
+      "decision": "Catalog DB path is output_dir / 'catalog.db'",
+      "rationale": "Keeps the catalog co-located with output artifacts. Follows the catalog-first architecture from the PRD where the catalog is the persistent ground truth alongside rendered outputs."
     },
     {
-      "decision": "Exiftool -n flag for numeric GPS coordinates",
-      "rationale": "Without -n, exiftool returns GPS as strings like '13 deg 45\\' 22.68\\\" N'. With -n, it returns numeric values (13.7563) that can be stored directly as REAL in SQLite. This avoids complex string parsing of DMS notation."
-    },
-    {
-      "decision": "EBU R128 loudnorm parameters: I=-16, TP=-1.5, LRA=11",
-      "rationale": "These exact values are specified in the task: -16 LUFS integrated loudness, -1.5 dBTP true peak, 11 LU loudness range. These are the EBU R128 broadcast standard values, appropriate for YouTube content."
-    },
-    {
-      "decision": "Normalized audio at 48kHz stereo",
-      "rationale": "48kHz is the standard for video production (vs 44.1kHz for CD audio). Stereo (2 channels) is the standard for YouTube. The ffmpeg command includes -ar 48000 -ac 2 to ensure consistent output regardless of input format."
-    },
-    {
-      "decision": "Use executor.submit + as_completed instead of executor.map for per-future fault isolation in scan_directory",
-      "rationale": "Review identified that executor.map wraps the entire iteration in a single try/except. When one future raises during iteration, the for-loop exits immediately and all unprocessed files after the failing one are silently dropped — violating the design intent of 'skip problematic files rather than aborting'. The submit + as_completed pattern wraps each future.result() call in its own try/except, so a single probe failure only skips that one file. All other files (regardless of submission order) are still processed and returned."
-    },
-    {
-      "decision": "Use ORDER BY rowid subquery in find_duplicates GROUP_CONCAT for deterministic keeper assignment",
-      "rationale": "SQLite documentation states that GROUP_CONCAT ordering is arbitrary without an explicit ORDER BY. The design contract says 'the first ID by rowid order is kept', but the original query did not enforce this ordering guarantee. A subquery with ORDER BY rowid before GROUP_CONCAT ensures the first concatenated id is always the earliest-inserted row, making keeper-vs-duplicate assignment deterministic and correct regardless of SQLite query plan or version."
-    },
-    {
-      "decision": "normalize_audio accepts optional root_dir parameter to mirror directory structure for collision-free output filenames",
-      "rationale": "Review identified that using only media_path.stem for the output filename causes silent data corruption when two input files from different subdirectories share the same stem (common with DJI footage: day1/DJI_0001.mp4, day2/DJI_0001.mp4). With root_dir, normalize_audio computes the relative parent path and mirrors it under output_dir, producing distinct output paths (output_dir/day1/DJI_0001.wav vs output_dir/day2/DJI_0001.wav). The parameter is backward compatible: when root_dir is None (default), the old stem-only behavior is preserved. Pipeline code processing nested directories MUST pass root_dir to avoid collisions."
+      "decision": "Error propagation in DAG: errored stage causes all dependents to be SKIPPED",
+      "rationale": "If ANALYZE fails, it makes no sense to run CLASSIFY (which depends on ANALYZE's output). Cascading skip is the safe default. Users can re-run the pipeline after fixing the issue."
     }
   ],
   "reuse": [
     {
-      "what": "CatalogDB class with insert_media, find_by_hash, update_media_status, list_by_status",
-      "where": "autopilot/db.py",
-      "how": "dedup.py uses CatalogDB.find_by_hash() for individual lookups, conn.execute() for GROUP BY duplicate queries, and update_media_status() to mark duplicates. Scanner's MediaFile fields map directly to insert_media() parameters."
+      "what": "load_config() from autopilot.config",
+      "where": "autopilot/cli.py",
+      "how": "CLI subcommands call load_config(config_path) to get AutopilotConfig. This handles YAML parsing, validation, path expansion, and defaults."
     },
     {
-      "what": "catalog_db conftest fixture (in-memory autocommit SQLite)",
-      "where": "tests/conftest.py",
-      "how": "Reuse the existing catalog_db fixture for dedup tests that need database interaction. The fixture provides an in-memory CatalogDB with autocommit enabled for test convenience."
+      "what": "CatalogDB from autopilot.db",
+      "where": "autopilot/cli.py",
+      "how": "CLI opens CatalogDB(str(output_dir / 'catalog.db')) and passes it to stage functions. The DB is the shared state store across all stages."
     },
     {
-      "what": "pytest tmp_path fixture for filesystem tests",
-      "where": "pytest built-in",
-      "how": "Use tmp_path to create temporary directory structures with dummy media files for scan_directory tests, temporary files for compute_hash tests, and temporary output directories for normalize_audio tests."
+      "what": "catalog_db fixture from tests/conftest.py",
+      "where": "tests/test_orchestrator.py, tests/test_cli.py",
+      "how": "Reuse the existing in-memory CatalogDB fixture for tests that need a real database instance."
     },
     {
-      "what": "Existing test patterns from test_db.py and test_scaffolding.py",
-      "where": "tests/test_db.py, tests/test_scaffolding.py",
-      "how": "Follow the same conventions: TestClass grouping for related tests, descriptive docstrings, clear assertion messages, conftest fixture reuse, helper functions prefixed with underscore."
+      "what": "tests/fixtures/minimal_config.yaml and valid_config.yaml",
+      "where": "tests/test_cli.py",
+      "how": "Reuse existing YAML fixtures for CLI integration tests that need valid config files."
     },
     {
-      "what": "config.yaml processing.num_cpu_workers and output.target_loudness_lufs",
-      "where": "config.yaml",
-      "how": "The scanner's max_workers parameter defaults to None (CPU count) but can be set from config. The normalizer's loudnorm I= parameter matches config's target_loudness_lufs (-16). These values inform the API design but the ingest modules accept them as parameters rather than reading config directly."
+      "what": "ConfigError exception from autopilot.config",
+      "where": "autopilot/cli.py",
+      "how": "Catch ConfigError in CLI to provide user-friendly error messages instead of raw tracebacks."
     },
     {
-      "what": "Python stdlib hashlib, subprocess, concurrent.futures, json, pathlib",
-      "where": "Python 3.11+ standard library",
-      "how": "No external dependencies needed for the ingest pipeline. hashlib.sha256 for hashing, subprocess.run for CLI tools, ProcessPoolExecutor for parallelization, json for parsing ffprobe/exiftool output, Path for filesystem operations."
+      "what": "Click CliRunner",
+      "where": "tests/test_cli.py",
+      "how": "Click's built-in test runner invokes CLI commands in-process, captures output and exit codes. Standard pattern for testing Click applications."
     },
     {
-      "what": "concurrent.futures.as_completed for per-future error isolation",
-      "where": "Python 3.11+ standard library (concurrent.futures)",
-      "how": "Used in the refactored scan_directory to iterate over completed futures individually, allowing per-future try/except so that one probe failure doesn't abort processing of remaining files."
+      "what": "logging module pattern from scanner.py",
+      "where": "autopilot/orchestrator.py",
+      "how": "scanner.py uses logger = logging.getLogger(__name__) at module level. Follow the same pattern in orchestrator.py for stage stub logging and progress reporting."
     }
   ]
 }
