@@ -89,3 +89,37 @@ class TestPipelineOrchestrator:
             assert stage.estimated_seconds >= 0, (
                 f"{stage.name} has negative estimated_seconds"
             )
+
+
+class TestTopologicalSort:
+    """Tests for execution_order() topological sort."""
+
+    def test_execution_order_respects_dependencies(self) -> None:
+        """Each stage appears after all its dependencies in execution_order()."""
+        orch = PipelineOrchestrator()
+        order = orch.execution_order()
+        positions = {name: i for i, name in enumerate(order)}
+        for stage in orch.stages:
+            for dep in stage.dependencies:
+                assert positions[dep] < positions[stage.name], (
+                    f"{dep} must come before {stage.name}"
+                )
+
+    def test_execution_order_is_deterministic(self) -> None:
+        """execution_order() returns the same result each call."""
+        orch = PipelineOrchestrator()
+        first = orch.execution_order()
+        for _ in range(5):
+            assert orch.execution_order() == first
+
+    def test_ingest_is_first(self) -> None:
+        """INGEST is always the first stage in execution order."""
+        orch = PipelineOrchestrator()
+        order = orch.execution_order()
+        assert order[0] == "INGEST"
+
+    def test_upload_is_last(self) -> None:
+        """UPLOAD is always the last stage in execution order."""
+        orch = PipelineOrchestrator()
+        order = orch.execution_order()
+        assert order[-1] == "UPLOAD"
