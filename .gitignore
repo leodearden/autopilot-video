@@ -1,1 +1,21 @@
+# Worktrees
 .worktrees/
+
+# Rendered output
+output/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.eggs/
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+.env
+
+# Credentials
+*.credentials.json
