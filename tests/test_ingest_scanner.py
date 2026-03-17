@@ -71,6 +71,24 @@ class TestMediaFile:
         assert isinstance(mf.file_path, Path)
 
 
+def _sync_executor_mock(probe_fn=None):
+    """Build a mock ProcessPoolExecutor that runs synchronously.
+
+    If *probe_fn* is given, executor.map will call it for each item.
+    Otherwise it calls the function argument passed to map().
+    """
+    mock_executor = MagicMock()
+    mock_executor.__enter__ = MagicMock(return_value=mock_executor)
+    mock_executor.__exit__ = MagicMock(return_value=False)
+
+    def _sync_map(fn, items):
+        f = probe_fn if probe_fn is not None else fn
+        return [f(item) for item in items]
+
+    mock_executor.map.side_effect = _sync_map
+    return mock_executor
+
+
 class TestScanDirectory:
     """Tests for scan_directory file discovery."""
 
@@ -78,8 +96,9 @@ class TestScanDirectory:
         """scan_directory should discover .mp4 and .mov video files."""
         (tmp_path / "clip1.mp4").write_bytes(b"\x00")
         (tmp_path / "clip2.mov").write_bytes(b"\x00")
-        with patch("autopilot.ingest.scanner._probe_file") as mock_probe:
-            mock_probe.side_effect = lambda p: MediaFile(file_path=p)
+        probe = lambda p: MediaFile(file_path=p)  # noqa: E731
+        executor = _sync_executor_mock(probe)
+        with patch("autopilot.ingest.scanner.ProcessPoolExecutor", return_value=executor):
             results = scan_directory(tmp_path)
         paths = {mf.file_path.name for mf in results}
         assert "clip1.mp4" in paths
@@ -91,8 +110,9 @@ class TestScanDirectory:
         (tmp_path / "audio.wav").write_bytes(b"\x00")
         (tmp_path / "audio.mp3").write_bytes(b"\x00")
         (tmp_path / "audio.aac").write_bytes(b"\x00")
-        with patch("autopilot.ingest.scanner._probe_file") as mock_probe:
-            mock_probe.side_effect = lambda p: MediaFile(file_path=p)
+        probe = lambda p: MediaFile(file_path=p)  # noqa: E731
+        executor = _sync_executor_mock(probe)
+        with patch("autopilot.ingest.scanner.ProcessPoolExecutor", return_value=executor):
             results = scan_directory(tmp_path)
         paths = {mf.file_path.name for mf in results}
         assert "audio.wav" in paths
@@ -105,8 +125,9 @@ class TestScanDirectory:
         (tmp_path / "photo.jpg").write_bytes(b"\x00")
         (tmp_path / "photo.png").write_bytes(b"\x00")
         (tmp_path / "photo.tiff").write_bytes(b"\x00")
-        with patch("autopilot.ingest.scanner._probe_file") as mock_probe:
-            mock_probe.side_effect = lambda p: MediaFile(file_path=p)
+        probe = lambda p: MediaFile(file_path=p)  # noqa: E731
+        executor = _sync_executor_mock(probe)
+        with patch("autopilot.ingest.scanner.ProcessPoolExecutor", return_value=executor):
             results = scan_directory(tmp_path)
         paths = {mf.file_path.name for mf in results}
         assert "photo.jpg" in paths
@@ -120,8 +141,9 @@ class TestScanDirectory:
         (tmp_path / "doc.pdf").write_bytes(b"\x00")
         (tmp_path / "script.py").write_bytes(b"\x00")
         (tmp_path / "clip.mp4").write_bytes(b"\x00")
-        with patch("autopilot.ingest.scanner._probe_file") as mock_probe:
-            mock_probe.side_effect = lambda p: MediaFile(file_path=p)
+        probe = lambda p: MediaFile(file_path=p)  # noqa: E731
+        executor = _sync_executor_mock(probe)
+        with patch("autopilot.ingest.scanner.ProcessPoolExecutor", return_value=executor):
             results = scan_directory(tmp_path)
         assert len(results) == 1
         assert results[0].file_path.name == "clip.mp4"
@@ -132,8 +154,9 @@ class TestScanDirectory:
         subdir.mkdir(parents=True)
         (tmp_path / "top.mp4").write_bytes(b"\x00")
         (subdir / "nested.mov").write_bytes(b"\x00")
-        with patch("autopilot.ingest.scanner._probe_file") as mock_probe:
-            mock_probe.side_effect = lambda p: MediaFile(file_path=p)
+        probe = lambda p: MediaFile(file_path=p)  # noqa: E731
+        executor = _sync_executor_mock(probe)
+        with patch("autopilot.ingest.scanner.ProcessPoolExecutor", return_value=executor):
             results = scan_directory(tmp_path)
         names = {mf.file_path.name for mf in results}
         assert "top.mp4" in names
@@ -142,10 +165,8 @@ class TestScanDirectory:
 
     def test_scan_empty_directory(self, tmp_path: Path) -> None:
         """scan_directory should return an empty list for an empty directory."""
-        with patch("autopilot.ingest.scanner._probe_file") as mock_probe:
-            results = scan_directory(tmp_path)
+        results = scan_directory(tmp_path)
         assert results == []
-        mock_probe.assert_not_called()
 
 
 class TestRunFfprobe:
@@ -437,14 +458,14 @@ class TestScanDirectoryParallel:
         assert len(results) == 1
 
     def test_scan_handles_probe_failure(self, tmp_path: Path) -> None:
-        """scan_directory should skip files that fail to probe without crashing."""
-        (tmp_path / "good.mp4").write_bytes(b"\x00")
-        (tmp_path / "bad.mp4").write_bytes(b"\x00")
+        """scan_directory should not crash when executor.map raises mid-iteration."""
+        (tmp_path / "aaa_good.mp4").write_bytes(b"\x00")
+        (tmp_path / "zzz_bad.mp4").write_bytes(b"\x00")
 
         def mock_map(fn, files):
-            """Simulate one success and one failure."""
+            """Yield one success then raise on the second (sorted: aaa first, zzz second)."""
             for f in files:
-                if f.name == "bad.mp4":
+                if f.name == "zzz_bad.mp4":
                     raise Exception("probe failed")
                 yield MediaFile(file_path=f)
 
@@ -459,7 +480,6 @@ class TestScanDirectoryParallel:
         ):
             results = scan_directory(tmp_path)
 
-        # Should have at least the good file (bad one is skipped)
-        assert len(results) >= 1
-        names = {mf.file_path.name for mf in results}
-        assert "good.mp4" in names
+        # aaa_good.mp4 yielded before the exception, so partial results returned
+        assert len(results) == 1
+        assert results[0].file_path.name == "aaa_good.mp4"

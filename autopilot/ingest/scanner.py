@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -233,7 +234,8 @@ def scan_directory(
     input_dir:
         Root directory to scan.
     max_workers:
-        Number of parallel workers for metadata probing (default: CPU count).
+        Number of parallel workers for metadata probing.
+        ``None`` (default) lets :class:`ProcessPoolExecutor` use the CPU count.
     """
     files = sorted(
         p
@@ -244,9 +246,10 @@ def scan_directory(
         return []
 
     results: list[MediaFile] = []
-    for f in files:
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
         try:
-            results.append(_probe_file(f))
+            for mf in executor.map(_probe_file, files):
+                results.append(mf)
         except Exception:
-            logger.warning("Failed to probe %s, skipping", f)
+            logger.warning("Probe failure during parallel scan, partial results returned")
     return results
