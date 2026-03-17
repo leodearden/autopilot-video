@@ -166,6 +166,26 @@ def _build_creator(data: dict[str, Any]) -> CreatorConfig:
     )
 
 
+def _coerce_int(field_name: str, value: Any) -> int:
+    """Coerce a value to int, raising ConfigError on failure."""
+    try:
+        return int(value)
+    except (ValueError, TypeError) as e:
+        raise ConfigError(
+            f"Invalid value for {field_name}: expected integer, got {value!r}"
+        ) from e
+
+
+def _coerce_float(field_name: str, value: Any) -> float:
+    """Coerce a value to float, raising ConfigError on failure."""
+    try:
+        return float(value)
+    except (ValueError, TypeError) as e:
+        raise ConfigError(
+            f"Invalid value for {field_name}: expected number, got {value!r}"
+        ) from e
+
+
 def _build_camera(data: dict[str, Any]) -> CameraConfig:
     """Build CameraConfig from parsed YAML dict."""
     result = CameraConfig()
@@ -178,7 +198,7 @@ def _build_camera(data: dict[str, Any]) -> CameraConfig:
     if "default_crop_target" in data:
         result.default_crop_target = str(data["default_crop_target"])
     if "crop_smoothing_tau" in data:
-        result.crop_smoothing_tau = float(data["crop_smoothing_tau"])
+        result.crop_smoothing_tau = _coerce_float("crop_smoothing_tau", data["crop_smoothing_tau"])
     return result
 
 
@@ -192,11 +212,11 @@ def _build_output(data: dict[str, Any]) -> OutputConfig:
     if "codec" in data:
         result.codec = str(data["codec"])
     if "quality_crf" in data:
-        result.quality_crf = int(data["quality_crf"])
+        result.quality_crf = _coerce_int("quality_crf", data["quality_crf"])
     if "audio_bitrate" in data:
         result.audio_bitrate = str(data["audio_bitrate"])
     if "target_loudness_lufs" in data:
-        result.target_loudness_lufs = int(data["target_loudness_lufs"])
+        result.target_loudness_lufs = _coerce_int("target_loudness_lufs", data["target_loudness_lufs"])
     return result
 
 
@@ -208,7 +228,7 @@ def _build_models(data: dict[str, Any]) -> ModelConfig:
     if "yolo_variant" in data:
         result.yolo_variant = str(data["yolo_variant"])
     if "yolo_sample_every_n_frames" in data:
-        result.yolo_sample_every_n_frames = int(data["yolo_sample_every_n_frames"])
+        result.yolo_sample_every_n_frames = _coerce_int("yolo_sample_every_n_frames", data["yolo_sample_every_n_frames"])
     if "clip_model" in data:
         result.clip_model = str(data["clip_model"])
     if "face_model" in data:
@@ -248,15 +268,15 @@ def _build_processing(data: dict[str, Any]) -> ProcessingConfig:
     """Build ProcessingConfig from parsed YAML dict."""
     result = ProcessingConfig()
     if "max_wall_clock_hours" in data:
-        result.max_wall_clock_hours = int(data["max_wall_clock_hours"])
+        result.max_wall_clock_hours = _coerce_int("max_wall_clock_hours", data["max_wall_clock_hours"])
     if "gpu_device" in data:
-        result.gpu_device = int(data["gpu_device"])
+        result.gpu_device = _coerce_int("gpu_device", data["gpu_device"])
     if "num_cpu_workers" in data:
-        result.num_cpu_workers = int(data["num_cpu_workers"])
+        result.num_cpu_workers = _coerce_int("num_cpu_workers", data["num_cpu_workers"])
     if "batch_size_yolo" in data:
-        result.batch_size_yolo = int(data["batch_size_yolo"])
+        result.batch_size_yolo = _coerce_int("batch_size_yolo", data["batch_size_yolo"])
     if "batch_size_whisper" in data:
-        result.batch_size_whisper = int(data["batch_size_whisper"])
+        result.batch_size_whisper = _coerce_int("batch_size_whisper", data["batch_size_whisper"])
     return result
 
 
