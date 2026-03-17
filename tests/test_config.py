@@ -365,3 +365,36 @@ def test_load_config_numeric_bounds_valid(
     # Reach into the right sub-config
     sub = getattr(cfg, section if section != "models" else "models")
     assert getattr(sub, field) == good_value
+
+
+# ---------------------------------------------------------------------------
+# Step 15: File-level errors (missing file, invalid YAML)
+# ---------------------------------------------------------------------------
+
+
+def test_load_config_nonexistent_file(tmp_path: pathlib.Path) -> None:
+    """ConfigError (not FileNotFoundError) raised for missing file."""
+    from autopilot.config import ConfigError, load_config
+
+    with pytest.raises(ConfigError):
+        load_config(tmp_path / "nonexistent.yaml")
+
+
+def test_load_config_invalid_yaml_syntax(tmp_path: pathlib.Path) -> None:
+    """ConfigError (not yaml.YAMLError) raised for malformed YAML."""
+    from autopilot.config import ConfigError, load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("key: [invalid\n  yaml: {{{\n")
+    with pytest.raises(ConfigError):
+        load_config(config_file)
+
+
+def test_load_config_yaml_null_document(tmp_path: pathlib.Path) -> None:
+    """YAML null document raises ConfigError about missing required fields."""
+    from autopilot.config import ConfigError, load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("---\n...\n")
+    with pytest.raises(ConfigError):
+        load_config(config_file)
