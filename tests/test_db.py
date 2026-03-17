@@ -233,3 +233,95 @@ class TestMediaFilesCRUD:
         catalog_db.insert_media(id="m1", file_path="/a.mp4")
         with pytest.raises(sqlite3.IntegrityError):
             catalog_db.insert_media(id="m1", file_path="/b.mp4")
+
+
+# -- transcripts & shot_boundaries CRUD --------------------------------------
+
+
+def _insert_test_media(catalog_db, media_id: str = "m1") -> None:
+    """Helper to insert a media file for FK-dependent tests."""
+    catalog_db.insert_media(id=media_id, file_path=f"/{media_id}.mp4")
+
+
+class TestTranscriptsCRUD:
+    """Tests for transcripts table CRUD operations."""
+
+    def test_upsert_transcript(self, catalog_db):
+        """Insert then update a transcript, verify latest value."""
+        _insert_test_media(catalog_db)
+        catalog_db.upsert_transcript(
+            "m1", segments_json='[{"start": 0}]', language="en"
+        )
+        result = catalog_db.get_transcript("m1")
+        assert result is not None
+        assert result["language"] == "en"
+
+        # Update
+        catalog_db.upsert_transcript(
+            "m1", segments_json='[{"start": 0}, {"start": 5}]', language="fr"
+        )
+        result = catalog_db.get_transcript("m1")
+        assert result is not None
+        assert result["language"] == "fr"
+        assert result["segments_json"] == '[{"start": 0}, {"start": 5}]'
+
+    def test_get_transcript(self, catalog_db):
+        """Retrieve transcript by media_id."""
+        _insert_test_media(catalog_db)
+        catalog_db.upsert_transcript("m1", segments_json="[]", language="en")
+        result = catalog_db.get_transcript("m1")
+        assert result is not None
+        assert result["media_id"] == "m1"
+
+    def test_get_transcript_not_found(self, catalog_db):
+        """get_transcript returns None for nonexistent media_id."""
+        assert catalog_db.get_transcript("nonexistent") is None
+
+    def test_transcript_json_roundtrip(self, catalog_db):
+        """Store JSON string, retrieve identical string."""
+        _insert_test_media(catalog_db)
+        json_str = '{"segments": [{"start": 0.0, "end": 1.5, "text": "hello"}]}'
+        catalog_db.upsert_transcript("m1", segments_json=json_str, language="en")
+        result = catalog_db.get_transcript("m1")
+        assert result is not None
+        assert result["segments_json"] == json_str
+
+
+class TestShotBoundariesCRUD:
+    """Tests for shot_boundaries table CRUD operations."""
+
+    def test_upsert_boundaries(self, catalog_db):
+        """Insert shot boundaries with method."""
+        _insert_test_media(catalog_db)
+        catalog_db.upsert_boundaries(
+            "m1",
+            boundaries_json="[[0, 100, 'cut']]",
+            method="transnetv2",
+        )
+        result = catalog_db.get_boundaries("m1", method="transnetv2")
+        assert result is not None
+        assert result["method"] == "transnetv2"
+
+    def test_get_boundaries(self, catalog_db):
+        """Retrieve boundaries by media_id."""
+        _insert_test_media(catalog_db)
+        catalog_db.upsert_boundaries(
+            "m1", boundaries_json="[]", method="transnetv2"
+        )
+        result = catalog_db.get_boundaries("m1", method="transnetv2")
+        assert result is not None
+        assert result["media_id"] == "m1"
+
+    def test_boundaries_composite_key(self, catalog_db):
+        """Same media_id with different methods stored separately."""
+        _insert_test_media(catalog_db)
+        catalog_db.upsert_boundaries(
+            "m1", boundaries_json="[1]", method="transnetv2"
+        )
+        catalog_db.upsert_boundaries(
+            "m1", boundaries_json="[2]", method="pyscenedetect"
+        )
+        results = catalog_db.get_boundaries("m1")
+        assert len(results) == 2
+        methods = {r["method"] for r in results}
+        assert methods == {"transnetv2", "pyscenedetect"}
