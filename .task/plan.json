@@ -2,7 +2,7 @@
   "task_id": "2",
   "title": "Configuration system",
   "modules": ["autopilot", "tests"],
-  "analysis": "Task 2 requires implementing autopilot/config.py with typed dataclasses for every config section plus a load_config() function that reads YAML, validates, applies defaults, and expands paths.\n\nExisting codebase state:\n- config.yaml already exists at project root with all sections matching the PRD exactly (lines 735-799 of PRD)\n- pyproject.toml lists pyyaml as a dependency but NOT pydantic, so we use stdlib dataclasses\n- Python 3.11+ is required, so we can use modern dataclass features\n- tests/conftest.py has a project_root fixture\n- tests/test_scaffolding.py already tests config.yaml structure (raw YAML keys)\n- tests/fixtures/ directory exists with .gitkeep\n\nApproach: Use stdlib dataclasses with centralized validation in load_config(). Define string-set validation for constrained fields (whisper_size, yolo_variant, tts_engine, music_engine, privacy_status). Cameras is a dict[str, CameraConfig] since the YAML uses camera names as keys. All defaults match PRD values. Path fields (input_dir, output_dir, credentials_path) are expanded at load time. A custom ConfigError exception wraps all failure modes (missing file, parse error, missing required fields, invalid values). Test fixtures use a mix of committed fixture files (for valid/minimal configs) and tmp_path inline YAML (for invalid config tests).",
+  "analysis": "Task 2 requires implementing autopilot/config.py with typed dataclasses for every config section plus a load_config() function that reads YAML, validates, applies defaults, and expands paths.\n\nExisting codebase state:\n- config.yaml already exists at project root with all sections matching the PRD exactly (lines 735-799 of PRD)\n- pyproject.toml lists pyyaml as a dependency but NOT pydantic, so we use stdlib dataclasses\n- Python 3.11+ is required, so we can use modern dataclass features\n- tests/conftest.py has a project_root fixture\n- tests/test_scaffolding.py already tests config.yaml structure (raw YAML keys)\n- tests/fixtures/ directory exists with .gitkeep\n\nApproach: Use stdlib dataclasses with centralized validation in load_config(). Define string-set validation for constrained fields (whisper_size, yolo_variant, tts_engine, music_engine, privacy_status). Cameras is a dict[str, CameraConfig] since the YAML uses camera names as keys. All defaults match PRD values. Path fields (input_dir, output_dir, credentials_path) are expanded at load time. A custom ConfigError exception wraps all failure modes (missing file, parse error, missing required fields, invalid values). Test fixtures use a mix of committed fixture files (for valid/minimal configs) and tmp_path inline YAML (for invalid config tests).\n\nReview feedback (post step-20): Six blocking robustness issues identified: (1) numeric type-coercion failures (int/float on non-numeric strings) raise raw ValueError instead of ConfigError, (2) only FileNotFoundError caught from open(), not broader OSError (PermissionError, IsADirectoryError, etc.), (3) null YAML sections (e.g. 'creator:' with no value) pass None to builder functions expecting dicts, (4) _to_tuple lacks error handling for short lists or non-numeric elements, (5) null camera entries in cameras dict pass None to _build_camera, (6) non-dict values for sections (e.g. 'cameras: mystring') cause AttributeError. Steps 21-32 address these in TDD order.",
   "prerequisites": [
     {
       "id": "pre-1",
@@ -159,6 +159,90 @@
       "description": "Final polish: add module docstring, verify __all__ exports, run ruff lint and fix any issues. Ensure all tests pass.",
       "status": "done",
       "commit": "ca3d248"
+    },
+    {
+      "id": "step-21",
+      "type": "test",
+      "description": "Write parametrized test_load_config_type_coercion_error() using tmp_path: ConfigError (not ValueError) raised when numeric fields receive non-numeric strings. Parametrize over: (output, quality_crf, 'abc'), (output, target_loudness_lufs, 'loud'), (models, yolo_sample_every_n_frames, 'often'), (processing, max_wall_clock_hours, 'forever'), (processing, gpu_device, 'auto'), (processing, num_cpu_workers, 'many'), (processing, batch_size_yolo, 'big'), (processing, batch_size_whisper, 'huge'). Each should pytest.raises(ConfigError) with a message mentioning the field name. Also test float coercion failure in camera: (cameras with crop_smoothing_tau: 'smooth') raises ConfigError.",
+      "status": "done",
+      "commit": "5acffab"
+    },
+    {
+      "id": "step-22",
+      "type": "impl",
+      "description": "Wrap all int() and float() calls in _build_output, _build_models, _build_processing, and _build_camera with try/except (ValueError, TypeError) that re-raises as ConfigError with the field name and offending value. Pattern: try: result.field = int(data['field']) except (ValueError, TypeError) as e: raise ConfigError(f'Invalid value for field: expected integer, got {data[\"field\"]!r}') from e.",
+      "status": "done",
+      "commit": "e160c75"
+    },
+    {
+      "id": "step-23",
+      "type": "test",
+      "description": "Write test_load_config_os_errors() using tmp_path: (1) Create a directory at config path, call load_config on it — ConfigError raised (not IsADirectoryError). (2) Create a file with no read permission (os.chmod 0o000), call load_config — ConfigError raised (not PermissionError). Skip permission test if running as root. Both error messages should mention the path.",
+      "status": "done",
+      "commit": "1054ee1"
+    },
+    {
+      "id": "step-24",
+      "type": "impl",
+      "description": "In load_config, broaden the file-open except clause from 'except FileNotFoundError' to 'except OSError as e: raise ConfigError(f\"Cannot read config file {path}: {e}\") from e'. Since FileNotFoundError is a subclass of OSError, this single handler covers both. Keep the specific error message for the common FileNotFoundError case by checking isinstance inside the handler: if isinstance(e, FileNotFoundError): raise ConfigError(f'Config file not found: {path}') from e, else: raise ConfigError(f'Cannot read config file {path}: {e}') from e.",
+      "status": "done",
+      "commit": "f57023b"
+    },
+    {
+      "id": "step-25",
+      "type": "test",
+      "description": "Write parametrized test_load_config_null_section() using tmp_path: ConfigError (not AttributeError) raised when any YAML section key exists with null value. Parametrize over each section: 'creator:', 'output:', 'models:', 'llm:', 'youtube:', 'processing:'. Each config has required fields plus the null section. All should load successfully (treated as empty dict, getting defaults) rather than raising errors — the null section should be equivalent to the section being absent.",
+      "status": "done",
+      "commit": "1ee5510"
+    },
+    {
+      "id": "step-26",
+      "type": "impl",
+      "description": "Apply 'or {}' guard to every section retrieval in load_config, matching the existing cameras pattern. Change: creator = _build_creator(raw.get('creator') or {}), output = _build_output(raw.get('output') or {}), models = _build_models(raw.get('models') or {}), llm = _build_llm(raw.get('llm') or {}), youtube = _build_youtube(raw.get('youtube') or {}), processing = _build_processing(raw.get('processing') or {}).",
+      "status": "done",
+      "commit": "6ca954b"
+    },
+    {
+      "id": "step-27",
+      "type": "test",
+      "description": "Write test_load_config_to_tuple_errors() using tmp_path: ConfigError raised for malformed resolution values. (1) source_resolution: [1920] (too few elements) — ConfigError not IndexError. (2) source_resolution: ['abc', 'def'] (non-numeric) — ConfigError not ValueError. (3) resolution: [1920] in output section — ConfigError not IndexError. (4) source_resolution: 'not-a-list' (scalar instead of list) — ConfigError not TypeError. Each error message should mention 'resolution' or be descriptive.",
+      "status": "done",
+      "commit": "ccfe20c"
+    },
+    {
+      "id": "step-28",
+      "type": "impl",
+      "description": "Add error handling to _to_tuple: accept an optional field_name parameter for error messages. Wrap body in try/except (IndexError, TypeError, ValueError) as e: raise ConfigError(f'Expected a 2-element integer list for {field_name}, got {value!r}') from e. Update all call sites to pass field_name: _to_tuple(data['source_resolution'], 'source_resolution'), _to_tuple(data['resolution'], 'resolution').",
+      "status": "done",
+      "commit": "86e09fe"
+    },
+    {
+      "id": "step-29",
+      "type": "test",
+      "description": "Write test_load_config_null_camera_entry() using tmp_path: config with 'cameras:\\n  gopro:\\n' (null camera value) should load successfully with gopro getting all CameraConfig defaults (source_resolution=(1920,1080), has_gyro_data=False, etc.), not raise TypeError. This matches the 'or {}' defensive pattern.",
+      "status": "done",
+      "commit": "4208fea"
+    },
+    {
+      "id": "step-30",
+      "type": "impl",
+      "description": "Guard each camera entry in the dict comprehension in load_config: cameras = {name: _build_camera(cam or {}) for name, cam in cameras_raw.items()}. This converts None camera values to empty dicts, producing default CameraConfig instances.",
+      "status": "done",
+      "commit": "27acfbc"
+    },
+    {
+      "id": "step-31",
+      "type": "test",
+      "description": "Write parametrized test_load_config_wrong_section_type() using tmp_path: ConfigError (not AttributeError) raised when a YAML section has a non-dict type. Parametrize: (creator, 'a string'), (output, 42), (models, '[a, list]'), (llm, 'true'), (youtube, '99'), (processing, '[1, 2, 3]'), (cameras, 'mystring'). Each should raise ConfigError mentioning the section name and that a mapping was expected.",
+      "status": "done",
+      "commit": "bd77d5a"
+    },
+    {
+      "id": "step-32",
+      "type": "impl",
+      "description": "Add type checking after retrieving each section value in load_config. After applying 'or {}', check isinstance(value, dict) for each section. If not a dict, raise ConfigError(f'Expected a mapping for section \"{section}\", got {type(value).__name__}'). Apply to: creator, cameras, output, models, llm, youtube, processing. This catches strings, lists, numbers, booleans passed as section values.",
+      "status": "done",
+      "commit": "a1eae25"
     }
   ],
   "design_decisions": [
@@ -197,6 +281,22 @@
     {
       "decision": "Fixture files for valid/minimal configs; tmp_path for invalid configs",
       "rationale": "Valid configs are reusable across tests and worth committing. Invalid configs are single-purpose and better created inline via tmp_path."
+    },
+    {
+      "decision": "Null YAML sections treated as absent (empty dict), not as errors",
+      "rationale": "A null section (e.g. 'creator:' with no value) is a common YAML authoring pattern meaning 'use defaults'. Treating it as equivalent to omission is more user-friendly than raising an error. This is consistent with the existing cameras_raw 'or {}' pattern."
+    },
+    {
+      "decision": "Null camera entries treated as default CameraConfig, not as errors",
+      "rationale": "A null camera entry (e.g. 'gopro:' with no value) is analogous to a null section — the user intends to declare the camera exists but with all defaults. This is more forgiving than erroring out."
+    },
+    {
+      "decision": "Broaden OSError catch with specific FileNotFoundError message preserved",
+      "rationale": "FileNotFoundError is the most common case and deserves a clean 'not found' message. Other OSError subclasses (PermissionError, IsADirectoryError, etc.) get a generic 'cannot read' message that includes the OS error details. Single except clause handles all via isinstance check."
+    },
+    {
+      "decision": "Type validation at builder boundaries, not centralized",
+      "rationale": "Each _build_* function wraps its own int()/float() calls in try/except, raising ConfigError with the specific field name. This keeps error messages precise and co-locates the conversion with the field it applies to, rather than adding a generic catch-all that loses context."
     }
   ],
   "reuse": [
@@ -229,6 +329,16 @@
       "what": "PRD configuration section",
       "where": "docs/prd-autopilot-editor.md lines 735-799",
       "how": "All default values, enum allowed-value sets, and field names derived from PRD"
+    },
+    {
+      "what": "Existing _BASE_REQUIRED constant in test_config.py",
+      "where": "tests/test_config.py line 291",
+      "how": "Reuse in all new tmp_path-based tests as the base YAML with required fields"
+    },
+    {
+      "what": "Existing 'or {}' pattern for cameras_raw",
+      "where": "autopilot/config.py line 297",
+      "how": "Extend same pattern to all section retrievals for null-section handling"
     }
   ]
 }
