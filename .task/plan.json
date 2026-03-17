@@ -181,8 +181,8 @@
       "id": "step-24",
       "type": "impl",
       "description": "REVIEW FIX: Final verification and cleanup. (1) Run the full test suite (pytest tests/test_db.py -v) and ensure ALL tests pass — both the new transaction semantics tests AND all existing CRUD tests. (2) Run ruff check autopilot/db.py tests/test_db.py to verify no lint issues. (3) Run pyright autopilot/db.py tests/test_db.py to verify no type errors. (4) Review that no test bypasses the public API in a misleading way. Fix any remaining failures.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "8166ee5"
     }
   ],
   "design_decisions": [
