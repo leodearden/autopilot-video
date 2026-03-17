@@ -398,3 +398,85 @@ def test_load_config_yaml_null_document(tmp_path: pathlib.Path) -> None:
     config_file.write_text("---\n...\n")
     with pytest.raises(ConfigError):
         load_config(config_file)
+
+
+# ---------------------------------------------------------------------------
+# Step 17: Camera parsing edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_load_config_two_cameras(tmp_path: pathlib.Path) -> None:
+    """Multiple camera profiles parsed into dict[str, CameraConfig]."""
+    from autopilot.config import CameraConfig, load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        f"{_BASE_REQUIRED}"
+        "cameras:\n"
+        "  cam_a:\n"
+        "    source_resolution: [3840, 2160]\n"
+        "    aspect_mode: landscape\n"
+        "  cam_b:\n"
+        "    source_resolution: [1920, 1080]\n"
+        "    has_gyro_data: true\n"
+    )
+    cfg = load_config(config_file)
+    assert len(cfg.cameras) == 2
+    assert "cam_a" in cfg.cameras
+    assert "cam_b" in cfg.cameras
+    assert isinstance(cfg.cameras["cam_a"], CameraConfig)
+    assert cfg.cameras["cam_a"].source_resolution == (3840, 2160)
+    assert cfg.cameras["cam_a"].aspect_mode == "landscape"
+    assert cfg.cameras["cam_b"].source_resolution == (1920, 1080)
+    assert cfg.cameras["cam_b"].has_gyro_data is True
+
+
+def test_load_config_cameras_empty_dict(tmp_path: pathlib.Path) -> None:
+    """cameras: {} -> empty dict."""
+    from autopilot.config import load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(f"{_BASE_REQUIRED}cameras: {{}}\n")
+    cfg = load_config(config_file)
+    assert cfg.cameras == {}
+
+
+def test_load_config_camera_types(tmp_path: pathlib.Path) -> None:
+    """Camera fields have correct types: tuple, float, bool."""
+    from autopilot.config import load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        f"{_BASE_REQUIRED}"
+        "cameras:\n"
+        "  test_cam:\n"
+        "    source_resolution: [4096, 2160]\n"
+        "    crop_smoothing_tau: 0.3\n"
+        "    has_gyro_data: false\n"
+    )
+    cfg = load_config(config_file)
+    cam = cfg.cameras["test_cam"]
+    assert isinstance(cam.source_resolution, tuple)
+    assert isinstance(cam.crop_smoothing_tau, float)
+    assert isinstance(cam.has_gyro_data, bool)
+
+
+def test_load_config_camera_partial_defaults(tmp_path: pathlib.Path) -> None:
+    """Partial camera profile fills in CameraConfig defaults."""
+    from autopilot.config import load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        f"{_BASE_REQUIRED}"
+        "cameras:\n"
+        "  minimal_cam:\n"
+        "    aspect_mode: portrait\n"
+    )
+    cfg = load_config(config_file)
+    cam = cfg.cameras["minimal_cam"]
+    assert cam.aspect_mode == "portrait"
+    # Defaults
+    assert cam.source_resolution == (1920, 1080)
+    assert cam.has_gyro_data is False
+    assert cam.default_crop_target == "16:9"
+    assert cam.crop_smoothing_tau == 0.5
