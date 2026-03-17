@@ -5,6 +5,10 @@ from __future__ import annotations
 import hashlib
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from autopilot.db import CatalogDB
 
 logger = logging.getLogger(__name__)
 
@@ -29,3 +33,27 @@ def compute_hash(file_path: Path) -> str:
             h.update(chunk)
             bytes_read += len(chunk)
     return h.hexdigest()
+
+
+def find_duplicates(catalog_db: CatalogDB) -> list[tuple[str, str]]:
+    """Find duplicate media files by sha256_prefix.
+
+    Returns a list of ``(kept_id, duplicate_id)`` tuples.  The first ID in each
+    group (by rowid order — i.e. first ingested) is kept; subsequent ones are
+    duplicates.  Groups of 3+ produce multiple pairs: ``(kept, dup1)``,
+    ``(kept, dup2)``, etc.
+    """
+    cur = catalog_db.conn.execute(
+        "SELECT sha256_prefix, GROUP_CONCAT(id) "
+        "FROM media_files "
+        "WHERE sha256_prefix IS NOT NULL "
+        "GROUP BY sha256_prefix "
+        "HAVING COUNT(*) > 1"
+    )
+    pairs: list[tuple[str, str]] = []
+    for row in cur.fetchall():
+        ids = row[1].split(",")
+        kept = ids[0]
+        for dup in ids[1:]:
+            pairs.append((kept, dup))
+    return pairs
