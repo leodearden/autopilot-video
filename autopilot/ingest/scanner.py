@@ -132,6 +132,63 @@ def _run_ffprobe(file_path: Path) -> dict:
     return out
 
 
+def _run_exiftool(file_path: Path) -> dict:
+    """Run exiftool on *file_path* and return a dict of extracted metadata.
+
+    Keys: created_at (ISO 8601 string), gps_lat, gps_lon.
+
+    Returns an empty dict on any error.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "exiftool",
+                "-j",
+                "-n",
+                "-CreateDate",
+                "-DateTimeOriginal",
+                "-GPSLatitude",
+                "-GPSLongitude",
+                str(file_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError:
+        logger.warning("exiftool failed for %s", file_path)
+        return {}
+
+    try:
+        data = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError):
+        logger.warning("exiftool returned invalid JSON for %s", file_path)
+        return {}
+
+    if not data or not isinstance(data, list):
+        return {}
+
+    info = data[0]
+    out: dict = {}
+
+    # Extract creation date — prefer CreateDate, fall back to DateTimeOriginal
+    raw_date = info.get("CreateDate") or info.get("DateTimeOriginal")
+    if raw_date and isinstance(raw_date, str):
+        # Convert 'YYYY:MM:DD HH:MM:SS' to ISO 8601 'YYYY-MM-DDTHH:MM:SS'
+        out["created_at"] = raw_date.replace(":", "-", 2).replace(" ", "T", 1)
+
+    # GPS coordinates (numeric with -n flag)
+    gps_lat = info.get("GPSLatitude")
+    if gps_lat is not None and isinstance(gps_lat, (int, float)):
+        out["gps_lat"] = float(gps_lat)
+
+    gps_lon = info.get("GPSLongitude")
+    if gps_lon is not None and isinstance(gps_lon, (int, float)):
+        out["gps_lon"] = float(gps_lon)
+
+    return out
+
+
 def _probe_file(file_path: Path) -> MediaFile:
     """Extract metadata from a single file (stub — returns minimal MediaFile)."""
     return MediaFile(file_path=file_path)
