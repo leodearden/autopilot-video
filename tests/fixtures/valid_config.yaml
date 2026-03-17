@@ -1,0 +1,55 @@
+# Test fixture: complete config with all sections.
+# Values intentionally differ from PRD defaults to verify reading from file.
+
+input_dir: /tmp/test-footage
+output_dir: /tmp/test-output
+
+creator:
+  name: "Test Creator"
+  channel_style: "cinematic, dramatic, fast-paced"
+  target_audience: "filmmakers, 18-30"
+  default_video_duration_minutes: 5-10
+  narration_style: "heavy voiceover, storytelling"
+  music_preference: "electronic, synth, atmospheric"
+
+cameras:
+  gopro_hero12:
+    source_resolution: [3840, 2160]
+    aspect_mode: "landscape"
+    has_gyro_data: false
+    default_crop_target: "9:16"
+    crop_smoothing_tau: 0.8
+
+output:
+  primary_aspect: "9:16"
+  resolution: [1080, 1920]
+  codec: "h264"
+  quality_crf: 23
+  audio_bitrate: "192k"
+  target_loudness_lufs: -14
+
+models:
+  whisper_size: "large-v3-turbo"
+  yolo_variant: "yolo11l"
+  yolo_sample_every_n_frames: 5
+  clip_model: "openai/clip-vit-large"
+  face_model: "buffalo_s"
+  tts_engine: "elevenlabs"
+  music_engine: "fetch_list_only"
+
+llm:
+  provider: "openai"
+  planning_model: "gpt-4o"
+  utility_model: "gpt-4o-mini"
+
+youtube:
+  privacy_status: "private"
+  default_category: "22"
+  credentials_path: /tmp/test-creds.json
+
+processing:
+  max_wall_clock_hours: 12
+  gpu_device: 1
+  num_cpu_workers: 4
+  batch_size_yolo: 8
+  batch_size_whisper: 12
