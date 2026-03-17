@@ -121,3 +121,32 @@ class PipelineOrchestrator:
         self._stage_map: dict[str, StageDefinition] = {
             s.name: s for s in self.stages
         }
+
+    def execution_order(self) -> list[str]:
+        """Return stage names in topologically sorted execution order.
+
+        Uses Kahn's algorithm with sorted queue for determinism.
+        """
+        # Build in-degree map and adjacency list
+        in_degree: dict[str, int] = {s.name: 0 for s in self.stages}
+        dependents: dict[str, list[str]] = {s.name: [] for s in self.stages}
+
+        for stage in self.stages:
+            in_degree[stage.name] = len(stage.dependencies)
+            for dep in stage.dependencies:
+                dependents[dep].append(stage.name)
+
+        # Start with nodes that have no dependencies
+        queue = sorted([name for name, deg in in_degree.items() if deg == 0])
+        result: list[str] = []
+
+        while queue:
+            current = queue.pop(0)
+            result.append(current)
+            for dependent in sorted(dependents[current]):
+                in_degree[dependent] -= 1
+                if in_degree[dependent] == 0:
+                    queue.append(dependent)
+                    queue.sort()
+
+        return result
