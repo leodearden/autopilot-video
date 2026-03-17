@@ -718,3 +718,85 @@ class TestUploadsCRUD:
         assert result["privacy_status"] == "unlisted"
         # Nonexistent
         assert catalog_db.get_upload("nonexistent") is None
+
+
+# -- Integration / edge-case tests -------------------------------------------
+
+import time
+
+
+class TestIntegration:
+    """Integration and edge-case tests for CatalogDB."""
+
+    def test_transaction_commit(self):
+        """Context manager commits data that persists after exit."""
+        from autopilot.db import CatalogDB
+
+        db = CatalogDB(":memory:")
+        try:
+            with db:
+                db.insert_media(id="m1", file_path="/a.mp4")
+            # Data should be committed and visible
+            result = db.get_media("m1")
+            assert result is not None
+            assert result["id"] == "m1"
+        finally:
+            db.close()
+
+    def test_transaction_rollback(self):
+        """Context manager rolls back on exception, data not persisted."""
+        from autopilot.db import CatalogDB
+
+        db = CatalogDB(":memory:")
+        try:
+            try:
+                with db:
+                    db.conn.execute(
+                        "INSERT INTO media_files (id, file_path) "
+                        "VALUES ('m1', '/a.mp4')"
+                    )
+                    raise ValueError("intentional error")
+            except ValueError:
+                pass
+            # Data should NOT be persisted due to rollback
+            cur = db.conn.execute(
+                "SELECT * FROM media_files WHERE id = 'm1'"
+            )
+            assert cur.fetchone() is None
+        finally:
+            db.close()
+
+    def test_batch_insert_performance(self, catalog_db):
+        """Insert 1000 detection rows in under 1 second."""
+        catalog_db.insert_media(id="m1", file_path="/a.mp4")
+        rows = [("m1", i, f'{{"frame": {i}}}') for i in range(1000)]
+        start = time.monotonic()
+        catalog_db.batch_insert_detections(rows)
+        elapsed = time.monotonic() - start
+        assert elapsed < 1.0, f"Batch insert took {elapsed:.2f}s, expected <1s"
+        cur = catalog_db.conn.execute(
+            "SELECT count(*) FROM detections WHERE media_id = 'm1'"
+        )
+        assert cur.fetchone()[0] == 1000
+
+    def test_foreign_key_enforcement(self, catalog_db):
+        """Insert transcript referencing nonexistent media_id raises IntegrityError."""
+        with pytest.raises(sqlite3.IntegrityError):
+            catalog_db.upsert_transcript(
+                "nonexistent_media", segments_json="[]", language="en"
+            )
+
+    def test_json1_extension_available(self, catalog_db):
+        """Verify json_extract works via a SQL query on a JSON column."""
+        catalog_db.insert_media(
+            id="m1",
+            file_path="/a.mp4",
+            metadata_json='{"camera": "GoPro", "model": "Hero12"}',
+        )
+        cur = catalog_db.conn.execute(
+            "SELECT json_extract(metadata_json, '$.camera') AS camera "
+            "FROM media_files WHERE id = 'm1'"
+        )
+        row = cur.fetchone()
+        assert row is not None
+        assert row["camera"] == "GoPro"
