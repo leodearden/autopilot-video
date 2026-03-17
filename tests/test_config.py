@@ -131,3 +131,77 @@ def test_load_config_valid() -> None:
     assert cfg.processing.num_cpu_workers == 4
     assert cfg.processing.batch_size_yolo == 8
     assert cfg.processing.batch_size_whisper == 12
+
+
+# ---------------------------------------------------------------------------
+# Step 5: Defaults — all omitted fields get PRD values
+# ---------------------------------------------------------------------------
+
+
+def test_load_config_defaults() -> None:
+    """Loading minimal_config.yaml applies all PRD default values."""
+    from autopilot.config import load_config
+
+    cfg = load_config(FIXTURES / "minimal_config.yaml")
+
+    # Required fields present
+    assert cfg.input_dir == pathlib.Path("/tmp/input")
+    assert cfg.output_dir == pathlib.Path("/tmp/output")
+
+    # Creator defaults
+    assert cfg.creator.default_video_duration_minutes == "8-15"
+
+    # Output defaults
+    assert cfg.output.primary_aspect == "16:9"
+    assert cfg.output.resolution == (1920, 1080)
+    assert cfg.output.codec == "h264"
+    assert cfg.output.quality_crf == 18
+    assert cfg.output.audio_bitrate == "256k"
+    assert cfg.output.target_loudness_lufs == -16
+
+    # Model defaults
+    assert cfg.models.whisper_size == "large-v3"
+    assert cfg.models.yolo_variant == "yolo11x"
+    assert cfg.models.yolo_sample_every_n_frames == 3
+    assert cfg.models.clip_model == "google/siglip2-so400m-patch14"
+    assert cfg.models.face_model == "buffalo_l"
+    assert cfg.models.tts_engine == "kokoro"
+    assert cfg.models.music_engine == "musicgen"
+
+    # LLM defaults
+    assert cfg.llm.provider == "anthropic"
+    assert cfg.llm.planning_model == "claude-opus-4-20250514"
+    assert cfg.llm.utility_model == "claude-sonnet-4-20250514"
+
+    # YouTube defaults
+    assert cfg.youtube.privacy_status == "unlisted"
+    assert cfg.youtube.default_category == "19"
+
+    # Processing defaults
+    assert cfg.processing.max_wall_clock_hours == 36
+    assert cfg.processing.gpu_device == 0
+    assert cfg.processing.num_cpu_workers == 12
+    assert cfg.processing.batch_size_yolo == 16
+    assert cfg.processing.batch_size_whisper == 24
+
+    # Cameras defaults to empty dict
+    assert cfg.cameras == {}
+
+
+def test_load_config_partial_section(tmp_path: pathlib.Path) -> None:
+    """Partial model section: specified fields override, rest get defaults."""
+    from autopilot.config import load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "input_dir: /tmp/in\n"
+        "output_dir: /tmp/out\n"
+        "models:\n"
+        '  whisper_size: "large-v3-turbo"\n'
+    )
+    cfg = load_config(config_file)
+    assert cfg.models.whisper_size == "large-v3-turbo"
+    # Remaining fields get defaults
+    assert cfg.models.yolo_variant == "yolo11x"
+    assert cfg.models.tts_engine == "kokoro"
+    assert cfg.models.music_engine == "musicgen"
