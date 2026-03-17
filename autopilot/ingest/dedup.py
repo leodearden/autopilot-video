@@ -57,3 +57,14 @@ def find_duplicates(catalog_db: CatalogDB) -> list[tuple[str, str]]:
         for dup in ids[1:]:
             pairs.append((kept, dup))
     return pairs
+
+
+def mark_duplicates(catalog_db: CatalogDB) -> int:
+    """Find duplicates and set their status to ``'duplicate'``.
+
+    Returns the number of files marked as duplicate.
+    """
+    pairs = find_duplicates(catalog_db)
+    for _kept, dup in pairs:
+        catalog_db.update_media_status(dup, "duplicate")
+    return len(pairs)
