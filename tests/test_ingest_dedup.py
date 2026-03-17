@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from autopilot.ingest.dedup import compute_hash, find_duplicates
+from autopilot.ingest.dedup import compute_hash, find_duplicates, mark_duplicates
 
 
 class TestComputeHash:
@@ -105,3 +105,46 @@ class TestFindDuplicates:
         assert len(pairs) == 2
         assert ("m1", "m2") in pairs
         assert ("m1", "m3") in pairs
+
+
+class TestMarkDuplicates:
+    """Tests for mark_duplicates status updates."""
+
+    def test_mark_duplicates_updates_status(self, catalog_db) -> None:  # type: ignore[no-untyped-def]
+        """mark_duplicates should set status='duplicate' on duplicate files."""
+        catalog_db.insert_media("m1", "/a.mp4", sha256_prefix="abc123")
+        catalog_db.insert_media("m2", "/b.mp4", sha256_prefix="abc123")
+        catalog_db.insert_media("m3", "/c.mp4", sha256_prefix="def456")
+
+        count = mark_duplicates(catalog_db)
+        assert count == 1
+
+        m1 = catalog_db.get_media("m1")
+        m2 = catalog_db.get_media("m2")
+        m3 = catalog_db.get_media("m3")
+        assert m1 is not None and m1["status"] == "ingested"
+        assert m2 is not None and m2["status"] == "duplicate"
+        assert m3 is not None and m3["status"] == "ingested"
+
+    def test_mark_duplicates_no_duplicates(self, catalog_db) -> None:  # type: ignore[no-untyped-def]
+        """mark_duplicates should return 0 when no duplicates exist."""
+        catalog_db.insert_media("m1", "/a.mp4", sha256_prefix="aaa")
+        catalog_db.insert_media("m2", "/b.mp4", sha256_prefix="bbb")
+
+        count = mark_duplicates(catalog_db)
+        assert count == 0
+
+        m1 = catalog_db.get_media("m1")
+        m2 = catalog_db.get_media("m2")
+        assert m1 is not None and m1["status"] == "ingested"
+        assert m2 is not None and m2["status"] == "ingested"
+
+    def test_mark_duplicates_preserves_non_duplicate_status(self, catalog_db) -> None:  # type: ignore[no-untyped-def]
+        """mark_duplicates should not change status of non-duplicate files."""
+        catalog_db.insert_media("m1", "/a.mp4", sha256_prefix="unique1", status="analyzing")
+        catalog_db.insert_media("m2", "/b.mp4", sha256_prefix="unique2")
+
+        mark_duplicates(catalog_db)
+
+        m1 = catalog_db.get_media("m1")
+        assert m1 is not None and m1["status"] == "analyzing"
