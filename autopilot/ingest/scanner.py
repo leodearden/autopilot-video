@@ -78,6 +78,10 @@ def _run_ffprobe(file_path: Path) -> dict:
             text=True,
             check=True,
         )
+    except FileNotFoundError:
+        raise RuntimeError(
+            "ffprobe not found — install ffmpeg to use the ingest pipeline"
+        )
     except subprocess.CalledProcessError:
         logger.warning("ffprobe failed for %s", file_path)
         return {}
@@ -155,6 +159,10 @@ def _run_exiftool(file_path: Path) -> dict:
             capture_output=True,
             text=True,
             check=True,
+        )
+    except FileNotFoundError:
+        raise RuntimeError(
+            "exiftool not found — install exiftool to use the ingest pipeline"
         )
     except subprocess.CalledProcessError:
         logger.warning("exiftool failed for %s", file_path)
