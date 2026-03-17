@@ -588,3 +588,25 @@ def test_load_config_permission_denied(tmp_path: pathlib.Path) -> None:
             load_config(config_file)
     finally:
         config_file.chmod(0o644)
+
+
+# ---------------------------------------------------------------------------
+# Step 25: Null YAML sections treated as absent (use defaults)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "section",
+    ["creator", "output", "models", "llm", "youtube", "processing"],
+)
+def test_load_config_null_section(tmp_path: pathlib.Path, section: str) -> None:
+    """Null YAML section (key with no value) loads with defaults, not error."""
+    from autopilot.config import load_config
+
+    config_file = tmp_path / "config.yaml"
+    # Section key present but null value (e.g. "creator:\n")
+    config_file.write_text(f"{_BASE_REQUIRED}{section}:\n")
+    cfg = load_config(config_file)
+    # Should succeed and the section gets defaults
+    sub = getattr(cfg, section)
+    assert sub is not None
