@@ -189,9 +189,36 @@ def _run_exiftool(file_path: Path) -> dict:
     return out
 
 
+def probe_file(file_path: Path) -> MediaFile:
+    """Extract full metadata from a single file using ffprobe and exiftool.
+
+    Merges results from both tools into a :class:`MediaFile` dataclass.
+    Raw ffprobe JSON is stored in ``metadata_json``.
+    """
+    ffprobe_data = _run_ffprobe(file_path)
+    exiftool_data = _run_exiftool(file_path)
+
+    raw = ffprobe_data.pop("_raw", None)
+    metadata_json = json.dumps(raw) if raw is not None else None
+
+    return MediaFile(
+        file_path=file_path,
+        codec=ffprobe_data.get("codec"),
+        resolution_w=ffprobe_data.get("resolution_w"),
+        resolution_h=ffprobe_data.get("resolution_h"),
+        fps=ffprobe_data.get("fps"),
+        duration_seconds=ffprobe_data.get("duration_seconds"),
+        audio_channels=ffprobe_data.get("audio_channels"),
+        created_at=exiftool_data.get("created_at"),
+        gps_lat=exiftool_data.get("gps_lat"),
+        gps_lon=exiftool_data.get("gps_lon"),
+        metadata_json=metadata_json,
+    )
+
+
 def _probe_file(file_path: Path) -> MediaFile:
-    """Extract metadata from a single file (stub — returns minimal MediaFile)."""
-    return MediaFile(file_path=file_path)
+    """Wrapper for probe_file used internally by scan_directory."""
+    return probe_file(file_path)
 
 
 def scan_directory(
