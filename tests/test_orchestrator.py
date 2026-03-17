@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
@@ -123,3 +124,30 @@ class TestTopologicalSort:
         orch = PipelineOrchestrator()
         order = orch.execution_order()
         assert order[-1] == "UPLOAD"
+
+
+class TestStageStubs:
+    """Tests for stage stub functions."""
+
+    def test_stub_functions_log_not_implemented(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Each stub logs 'not yet implemented' with the stage name."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            caplog.clear()
+            with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+                stage.func(config=MagicMock(), db=MagicMock())
+            assert any("not yet implemented" in r.message for r in caplog.records), (
+                f"{stage.name} stub did not log 'not yet implemented'"
+            )
+            assert any(stage.name in r.message for r in caplog.records), (
+                f"{stage.name} stub did not log stage name"
+            )
+
+    def test_stub_functions_accept_config_and_db(self) -> None:
+        """Each stub accepts config and db keyword arguments without error."""
+        orch = PipelineOrchestrator()
+        mock_config = MagicMock()
+        mock_db = MagicMock()
+        for stage in orch.stages:
+            # Should not raise
+            stage.func(config=mock_config, db=mock_db)
