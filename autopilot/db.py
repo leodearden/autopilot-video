@@ -289,6 +289,44 @@ class CatalogDB:
         )
         return [dict(row) for row in cur.fetchall()]
 
+    # -- detections CRUD --------------------------------------------------------
+
+    def batch_insert_detections(
+        self, rows: list[tuple[str, int, str]]
+    ) -> None:
+        """Batch insert detection rows: (media_id, frame_number, detections_json)."""
+        if not rows:
+            return
+        self.conn.executemany(
+            "INSERT INTO detections "
+            "(media_id, frame_number, detections_json) VALUES (?, ?, ?)",
+            rows,
+        )
+        self.conn.commit()
+
+    def get_detections_for_frame(
+        self, media_id: str, frame_number: int
+    ) -> dict[str, object] | None:
+        """Get detections for a specific frame, or None if not found."""
+        cur = self.conn.execute(
+            "SELECT * FROM detections "
+            "WHERE media_id = ? AND frame_number = ?",
+            (media_id, frame_number),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+    def get_detections_for_range(
+        self, media_id: str, frame_start: int, frame_end: int
+    ) -> list[dict[str, object]]:
+        """Get all detections for a media file within a frame range."""
+        cur = self.conn.execute(
+            "SELECT * FROM detections "
+            "WHERE media_id = ? AND frame_number >= ? AND frame_number <= ?",
+            (media_id, frame_start, frame_end),
+        )
+        return [dict(row) for row in cur.fetchall()]
+
     def close(self) -> None:
         """Close the underlying database connection."""
         self.conn.close()
