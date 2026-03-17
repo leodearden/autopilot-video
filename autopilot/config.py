@@ -322,7 +322,7 @@ def load_config(path: str | Path) -> AutopilotConfig:
     creator = _build_creator(raw.get("creator") or {})
 
     cameras_raw = raw.get("cameras") or {}
-    cameras = {name: _build_camera(cam) for name, cam in cameras_raw.items()}
+    cameras = {name: _build_camera(cam or {}) for name, cam in cameras_raw.items()}
 
     output = _build_output(raw.get("output") or {})
     models = _build_models(raw.get("models") or {})
