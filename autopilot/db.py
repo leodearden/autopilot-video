@@ -477,6 +477,167 @@ class CatalogDB:
         )
         self.conn.commit()
 
+    # -- narratives CRUD --------------------------------------------------------
+
+    def insert_narrative(
+        self,
+        narrative_id: str,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        proposed_duration_seconds: float | None = None,
+        activity_cluster_ids_json: str | None = None,
+        arc_notes: str | None = None,
+        status: str = "proposed",
+    ) -> None:
+        """Insert a new narrative."""
+        self.conn.execute(
+            "INSERT INTO narratives "
+            "(narrative_id, title, description, proposed_duration_seconds, "
+            "activity_cluster_ids_json, arc_notes, status) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                narrative_id,
+                title,
+                description,
+                proposed_duration_seconds,
+                activity_cluster_ids_json,
+                arc_notes,
+                status,
+            ),
+        )
+        self.conn.commit()
+
+    def get_narrative(self, narrative_id: str) -> dict[str, object] | None:
+        """Get a narrative by id, or None if not found."""
+        cur = self.conn.execute(
+            "SELECT * FROM narratives WHERE narrative_id = ?",
+            (narrative_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+    def update_narrative_status(
+        self, narrative_id: str, status: str
+    ) -> None:
+        """Update the status of a narrative."""
+        self.conn.execute(
+            "UPDATE narratives SET status = ? WHERE narrative_id = ?",
+            (status, narrative_id),
+        )
+        self.conn.commit()
+
+    def list_narratives(
+        self, status: str | None = None
+    ) -> list[dict[str, object]]:
+        """List all narratives, optionally filtered by status."""
+        if status is not None:
+            cur = self.conn.execute(
+                "SELECT * FROM narratives WHERE status = ?", (status,)
+            )
+        else:
+            cur = self.conn.execute("SELECT * FROM narratives")
+        return [dict(row) for row in cur.fetchall()]
+
+    # -- edit_plans CRUD --------------------------------------------------------
+
+    def upsert_edit_plan(
+        self,
+        narrative_id: str,
+        edl_json: str,
+        *,
+        otio_path: str | None = None,
+        validation_json: str | None = None,
+    ) -> None:
+        """Insert or replace an edit plan for a narrative."""
+        self.conn.execute(
+            "INSERT OR REPLACE INTO edit_plans "
+            "(narrative_id, edl_json, otio_path, validation_json) "
+            "VALUES (?, ?, ?, ?)",
+            (narrative_id, edl_json, otio_path, validation_json),
+        )
+        self.conn.commit()
+
+    def get_edit_plan(self, narrative_id: str) -> dict[str, object] | None:
+        """Get an edit plan by narrative_id, or None if not found."""
+        cur = self.conn.execute(
+            "SELECT * FROM edit_plans WHERE narrative_id = ?",
+            (narrative_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+    # -- crop_paths CRUD --------------------------------------------------------
+
+    def upsert_crop_path(
+        self,
+        media_id: str,
+        target_aspect: str,
+        subject_track_id: int,
+        *,
+        smoothing_tau: float | None = None,
+        path_data: bytes | None = None,
+    ) -> None:
+        """Insert or replace a crop path."""
+        self.conn.execute(
+            "INSERT OR REPLACE INTO crop_paths "
+            "(media_id, target_aspect, subject_track_id, "
+            "smoothing_tau, path_data) VALUES (?, ?, ?, ?, ?)",
+            (media_id, target_aspect, subject_track_id, smoothing_tau, path_data),
+        )
+        self.conn.commit()
+
+    def get_crop_path(
+        self,
+        media_id: str,
+        target_aspect: str,
+        subject_track_id: int,
+    ) -> dict[str, object] | None:
+        """Get a crop path by composite key, or None if not found."""
+        cur = self.conn.execute(
+            "SELECT * FROM crop_paths "
+            "WHERE media_id = ? AND target_aspect = ? "
+            "AND subject_track_id = ?",
+            (media_id, target_aspect, subject_track_id),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+    # -- uploads CRUD -----------------------------------------------------------
+
+    def insert_upload(
+        self,
+        narrative_id: str,
+        *,
+        youtube_video_id: str | None = None,
+        youtube_url: str | None = None,
+        uploaded_at: str | None = None,
+        privacy_status: str = "unlisted",
+    ) -> None:
+        """Insert an upload record."""
+        self.conn.execute(
+            "INSERT INTO uploads "
+            "(narrative_id, youtube_video_id, youtube_url, "
+            "uploaded_at, privacy_status) VALUES (?, ?, ?, ?, ?)",
+            (
+                narrative_id,
+                youtube_video_id,
+                youtube_url,
+                uploaded_at,
+                privacy_status,
+            ),
+        )
+        self.conn.commit()
+
+    def get_upload(self, narrative_id: str) -> dict[str, object] | None:
+        """Get an upload by narrative_id, or None if not found."""
+        cur = self.conn.execute(
+            "SELECT * FROM uploads WHERE narrative_id = ?",
+            (narrative_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
     def close(self) -> None:
         """Close the underlying database connection."""
         self.conn.close()
