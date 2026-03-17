@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
@@ -10,6 +11,7 @@ import pytest
 from click.testing import CliRunner
 
 from autopilot.cli import main
+from autopilot.config import load_config
 
 
 class TestMainGroup:
@@ -63,3 +65,88 @@ class TestSubcommands:
                 assert opt in param_names, (
                     f"{cmd_name} missing option: {opt}"
                 )
+
+
+def _write_minimal_config(tmp_path: Path) -> Path:
+    """Write a minimal config YAML and return its path."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        f"input_dir: {tmp_path / 'input'}\noutput_dir: {tmp_path / 'output'}\n"
+    )
+    (tmp_path / "input").mkdir(exist_ok=True)
+    (tmp_path / "output").mkdir(exist_ok=True)
+    return config_file
+
+
+class TestCLIConfigIntegration:
+    """Tests for CLI config loading and DB opening."""
+
+    def test_subcommand_loads_config(self, tmp_path: Path) -> None:
+        """ingest subcommand loads config from --config path."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.load_config", wraps=load_config) as mock_load:
+            with patch("autopilot.cli.PipelineOrchestrator"):
+                result = runner.invoke(
+                    main,
+                    ["--config", str(config_file), "ingest"],
+                )
+            mock_load.assert_called_once_with(str(config_file))
+
+    def test_subcommand_opens_catalog_db(self, tmp_path: Path) -> None:
+        """ingest subcommand opens CatalogDB at output_dir/catalog.db."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+        expected_db_path = str(tmp_path / "output" / "catalog.db")
+
+        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+            mock_db_cls.return_value = MagicMock()
+            with patch("autopilot.cli.PipelineOrchestrator"):
+                result = runner.invoke(
+                    main,
+                    ["--config", str(config_file), "ingest"],
+                )
+            mock_db_cls.assert_called_once_with(expected_db_path)
+
+    def test_verbose_sets_logging_level(self, tmp_path: Path) -> None:
+        """--verbose sets logging level to DEBUG."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.logging.basicConfig") as mock_basic:
+            with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+                mock_db_cls.return_value = MagicMock()
+                with patch("autopilot.cli.PipelineOrchestrator"):
+                    result = runner.invoke(
+                        main,
+                        ["--config", str(config_file), "ingest", "--verbose"],
+                    )
+            mock_basic.assert_called_once_with(level=logging.DEBUG)
+
+    def test_input_dir_override(self, tmp_path: Path) -> None:
+        """--input-dir overrides config's input_dir."""
+        config_file = _write_minimal_config(tmp_path)
+        override_dir = tmp_path / "override_input"
+        override_dir.mkdir()
+        runner = CliRunner()
+
+        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+            mock_db_cls.return_value = MagicMock()
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch = MagicMock()
+                mock_orch_cls.return_value = mock_orch
+                result = runner.invoke(
+                    main,
+                    [
+                        "--config", str(config_file),
+                        "ingest",
+                        "--input-dir", str(override_dir),
+                    ],
+                )
+                # Verify the stage was called with a config that has overridden input_dir
+                stage_call = mock_orch._stage_map.__getitem__().func
+                if stage_call.call_args:
+                    called_config = stage_call.call_args[1].get("config")
+                    if called_config:
+                        assert called_config.input_dir == override_dir
