@@ -75,3 +75,48 @@ class TestNormalizeAudio:
         mock_run.assert_called_once()
         cmd = mock_run.call_args[0][0]
         assert str(media_path) in cmd
+
+
+class TestNormalizeSkip:
+    """Tests for normalizer skip logic and error handling."""
+
+    def test_normalize_skips_existing_output(self, tmp_path: Path) -> None:
+        """normalize_audio should skip ffmpeg when output already exists and is non-empty."""
+        media_path = tmp_path / "clip.mp4"
+        media_path.write_bytes(b"\x00")
+        output_dir = tmp_path / "normalized"
+        output_dir.mkdir()
+        existing = output_dir / "clip.wav"
+        existing.write_bytes(b"\x00\x01\x02")  # non-empty
+
+        with patch("subprocess.run") as mock_run:
+            result = normalize_audio(media_path, output_dir)
+
+        assert result == existing
+        mock_run.assert_not_called()
+
+    def test_normalize_does_not_skip_if_missing(self, tmp_path: Path) -> None:
+        """normalize_audio should run ffmpeg when output file doesn't exist."""
+        media_path = tmp_path / "clip.mp4"
+        media_path.write_bytes(b"\x00")
+        output_dir = tmp_path / "normalized"
+
+        with patch("subprocess.run") as mock_run:
+            normalize_audio(media_path, output_dir)
+
+        mock_run.assert_called_once()
+
+    def test_normalize_ffmpeg_failure(self, tmp_path: Path) -> None:
+        """normalize_audio should propagate CalledProcessError from ffmpeg."""
+        media_path = tmp_path / "clip.mp4"
+        media_path.write_bytes(b"\x00")
+        output_dir = tmp_path / "normalized"
+
+        with (
+            patch(
+                "subprocess.run",
+                side_effect=subprocess.CalledProcessError(1, "ffmpeg"),
+            ),
+            pytest.raises(subprocess.CalledProcessError),
+        ):
+            normalize_audio(media_path, output_dir)
