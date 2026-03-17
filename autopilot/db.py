@@ -152,6 +152,18 @@ class CatalogDB:
                 privacy_status TEXT DEFAULT 'unlisted',
                 PRIMARY KEY (narrative_id)
             );
+
+            -- Performance indexes
+            CREATE INDEX IF NOT EXISTS idx_media_files_sha256
+                ON media_files(sha256_prefix);
+            CREATE INDEX IF NOT EXISTS idx_media_files_status
+                ON media_files(status);
+            CREATE INDEX IF NOT EXISTS idx_detections_media_frame
+                ON detections(media_id, frame_number);
+            CREATE INDEX IF NOT EXISTS idx_audio_events_media_time
+                ON audio_events(media_id, timestamp_seconds);
+            CREATE INDEX IF NOT EXISTS idx_narratives_status
+                ON narratives(status);
             """
         )
 
@@ -203,9 +215,7 @@ class CatalogDB:
 
     def get_media(self, media_id: str) -> dict[str, object] | None:
         """Get a media file by id, or None if not found."""
-        cur = self.conn.execute(
-            "SELECT * FROM media_files WHERE id = ?", (media_id,)
-        )
+        cur = self.conn.execute("SELECT * FROM media_files WHERE id = ?", (media_id,))
         row = cur.fetchone()
         return dict(row) if row else None
 
@@ -219,9 +229,7 @@ class CatalogDB:
 
     def list_by_status(self, status: str) -> list[dict[str, object]]:
         """List all media files with a given status."""
-        cur = self.conn.execute(
-            "SELECT * FROM media_files WHERE status = ?", (status,)
-        )
+        cur = self.conn.execute("SELECT * FROM media_files WHERE status = ?", (status,))
         return [dict(row) for row in cur.fetchall()]
 
     def find_by_hash(self, sha256_prefix: str) -> dict[str, object] | None:
@@ -235,9 +243,7 @@ class CatalogDB:
 
     # -- transcripts CRUD -------------------------------------------------------
 
-    def upsert_transcript(
-        self, media_id: str, segments_json: str, language: str
-    ) -> None:
+    def upsert_transcript(self, media_id: str, segments_json: str, language: str) -> None:
         """Insert or replace a transcript for a media file."""
         self.conn.execute(
             "INSERT OR REPLACE INTO transcripts "
@@ -248,17 +254,13 @@ class CatalogDB:
 
     def get_transcript(self, media_id: str) -> dict[str, object] | None:
         """Get a transcript by media_id, or None if not found."""
-        cur = self.conn.execute(
-            "SELECT * FROM transcripts WHERE media_id = ?", (media_id,)
-        )
+        cur = self.conn.execute("SELECT * FROM transcripts WHERE media_id = ?", (media_id,))
         row = cur.fetchone()
         return dict(row) if row else None
 
     # -- shot_boundaries CRUD ---------------------------------------------------
 
-    def upsert_boundaries(
-        self, media_id: str, boundaries_json: str, method: str
-    ) -> None:
+    def upsert_boundaries(self, media_id: str, boundaries_json: str, method: str) -> None:
         """Insert or replace shot boundaries for a media file and method."""
         self.conn.execute(
             "INSERT OR REPLACE INTO shot_boundaries "
@@ -277,8 +279,7 @@ class CatalogDB:
         """
         if method is not None:
             cur = self.conn.execute(
-                "SELECT * FROM shot_boundaries "
-                "WHERE media_id = ? AND method = ?",
+                "SELECT * FROM shot_boundaries WHERE media_id = ? AND method = ?",
                 (media_id, method),
             )
             row = cur.fetchone()
@@ -291,15 +292,12 @@ class CatalogDB:
 
     # -- detections CRUD --------------------------------------------------------
 
-    def batch_insert_detections(
-        self, rows: list[tuple[str, int, str]]
-    ) -> None:
+    def batch_insert_detections(self, rows: list[tuple[str, int, str]]) -> None:
         """Batch insert detection rows: (media_id, frame_number, detections_json)."""
         if not rows:
             return
         self.conn.executemany(
-            "INSERT INTO detections "
-            "(media_id, frame_number, detections_json) VALUES (?, ?, ?)",
+            "INSERT INTO detections (media_id, frame_number, detections_json) VALUES (?, ?, ?)",
             rows,
         )
         self.conn.commit()
@@ -309,8 +307,7 @@ class CatalogDB:
     ) -> dict[str, object] | None:
         """Get detections for a specific frame, or None if not found."""
         cur = self.conn.execute(
-            "SELECT * FROM detections "
-            "WHERE media_id = ? AND frame_number = ?",
+            "SELECT * FROM detections WHERE media_id = ? AND frame_number = ?",
             (media_id, frame_number),
         )
         row = cur.fetchone()
@@ -358,9 +355,7 @@ class CatalogDB:
         cur = self.conn.execute("SELECT * FROM face_clusters")
         return [dict(row) for row in cur.fetchall()]
 
-    def get_face_cluster_by_id(
-        self, cluster_id: int
-    ) -> dict[str, object] | None:
+    def get_face_cluster_by_id(self, cluster_id: int) -> dict[str, object] | None:
         """Get a face cluster by id, or None if not found."""
         cur = self.conn.execute(
             "SELECT * FROM face_clusters WHERE cluster_id = ?",
@@ -371,22 +366,17 @@ class CatalogDB:
 
     # -- clip_embeddings CRUD ---------------------------------------------------
 
-    def batch_insert_embeddings(
-        self, rows: list[tuple[str, int, bytes]]
-    ) -> None:
+    def batch_insert_embeddings(self, rows: list[tuple[str, int, bytes]]) -> None:
         """Batch insert clip embeddings: (media_id, frame_number, embedding)."""
         if not rows:
             return
         self.conn.executemany(
-            "INSERT INTO clip_embeddings "
-            "(media_id, frame_number, embedding) VALUES (?, ?, ?)",
+            "INSERT INTO clip_embeddings (media_id, frame_number, embedding) VALUES (?, ?, ?)",
             rows,
         )
         self.conn.commit()
 
-    def get_embeddings_for_media(
-        self, media_id: str
-    ) -> list[dict[str, object]]:
+    def get_embeddings_for_media(self, media_id: str) -> list[dict[str, object]]:
         """Get all clip embeddings for a media file."""
         cur = self.conn.execute(
             "SELECT * FROM clip_embeddings WHERE media_id = ?",
@@ -396,15 +386,12 @@ class CatalogDB:
 
     # -- audio_events CRUD ------------------------------------------------------
 
-    def batch_insert_audio_events(
-        self, rows: list[tuple[str, float, str]]
-    ) -> None:
+    def batch_insert_audio_events(self, rows: list[tuple[str, float, str]]) -> None:
         """Batch insert audio events: (media_id, timestamp_seconds, events_json)."""
         if not rows:
             return
         self.conn.executemany(
-            "INSERT INTO audio_events "
-            "(media_id, timestamp_seconds, events_json) VALUES (?, ?, ?)",
+            "INSERT INTO audio_events (media_id, timestamp_seconds, events_json) VALUES (?, ?, ?)",
             rows,
         )
         self.conn.commit()
@@ -461,9 +448,7 @@ class CatalogDB:
         cur = self.conn.execute("SELECT * FROM activity_clusters")
         return [dict(row) for row in cur.fetchall()]
 
-    def update_activity_cluster(
-        self, cluster_id: str, **kwargs: object
-    ) -> None:
+    def update_activity_cluster(self, cluster_id: str, **kwargs: object) -> None:
         """Update fields of an activity cluster by keyword arguments."""
         if not kwargs:
             return
@@ -517,9 +502,7 @@ class CatalogDB:
         row = cur.fetchone()
         return dict(row) if row else None
 
-    def update_narrative_status(
-        self, narrative_id: str, status: str
-    ) -> None:
+    def update_narrative_status(self, narrative_id: str, status: str) -> None:
         """Update the status of a narrative."""
         self.conn.execute(
             "UPDATE narratives SET status = ? WHERE narrative_id = ?",
@@ -527,14 +510,10 @@ class CatalogDB:
         )
         self.conn.commit()
 
-    def list_narratives(
-        self, status: str | None = None
-    ) -> list[dict[str, object]]:
+    def list_narratives(self, status: str | None = None) -> list[dict[str, object]]:
         """List all narratives, optionally filtered by status."""
         if status is not None:
-            cur = self.conn.execute(
-                "SELECT * FROM narratives WHERE status = ?", (status,)
-            )
+            cur = self.conn.execute("SELECT * FROM narratives WHERE status = ?", (status,))
         else:
             cur = self.conn.execute("SELECT * FROM narratives")
         return [dict(row) for row in cur.fetchall()]

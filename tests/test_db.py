@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import sqlite3
+import struct
 import threading
+import time
 
 import pytest
-
 
 # -- CatalogDB class basics --------------------------------------------------
 
@@ -57,9 +58,7 @@ class TestCatalogDBBasics:
             with db as ctx:
                 assert ctx is db
                 # Create a temp table and insert inside context manager
-                ctx.conn.execute(
-                    "CREATE TABLE IF NOT EXISTS _test (val TEXT)"
-                )
+                ctx.conn.execute("CREATE TABLE IF NOT EXISTS _test (val TEXT)")
                 ctx.conn.execute("INSERT INTO _test VALUES ('hello')")
             # After __exit__, data should be committed
             cur = db.conn.execute("SELECT val FROM _test")
@@ -76,20 +75,22 @@ class TestCatalogDBBasics:
 
 # -- Schema creation ----------------------------------------------------------
 
-EXPECTED_TABLES = sorted([
-    "media_files",
-    "transcripts",
-    "shot_boundaries",
-    "detections",
-    "face_clusters",
-    "clip_embeddings",
-    "audio_events",
-    "activity_clusters",
-    "narratives",
-    "edit_plans",
-    "crop_paths",
-    "uploads",
-])
+EXPECTED_TABLES = sorted(
+    [
+        "media_files",
+        "transcripts",
+        "shot_boundaries",
+        "detections",
+        "face_clusters",
+        "clip_embeddings",
+        "audio_events",
+        "activity_clusters",
+        "narratives",
+        "edit_plans",
+        "crop_paths",
+        "uploads",
+    ]
+)
 
 EXPECTED_MEDIA_FILES_COLUMNS = [
     "id",
@@ -133,16 +134,13 @@ class TestSchema:
         catalog_db._create_schema()
         # Verify tables still exist
         cur = catalog_db.conn.execute(
-            "SELECT count(*) FROM sqlite_master "
-            "WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
         )
         assert cur.fetchone()[0] == 12
 
     def test_schema_foreign_keys(self, catalog_db):
         """Foreign key constraints exist on child tables."""
-        cur = catalog_db.conn.execute(
-            "PRAGMA foreign_key_list(transcripts)"
-        )
+        cur = catalog_db.conn.execute("PRAGMA foreign_key_list(transcripts)")
         fks = cur.fetchall()
         assert len(fks) >= 1
         # Check the FK references media_files.id
@@ -170,9 +168,7 @@ class TestMediaFilesCRUD:
             fps=30.0,
             duration_seconds=120.5,
         )
-        cur = catalog_db.conn.execute(
-            "SELECT * FROM media_files WHERE id = ?", ("m1",)
-        )
+        cur = catalog_db.conn.execute("SELECT * FROM media_files WHERE id = ?", ("m1",))
         row = cur.fetchone()
         assert row is not None
         assert row["file_path"] == "/videos/test.mp4"
@@ -201,15 +197,9 @@ class TestMediaFilesCRUD:
 
     def test_list_by_status(self, catalog_db):
         """list_by_status returns only matching rows."""
-        catalog_db.insert_media(
-            id="m1", file_path="/a.mp4", status="ingested"
-        )
-        catalog_db.insert_media(
-            id="m2", file_path="/b.mp4", status="analyzing"
-        )
-        catalog_db.insert_media(
-            id="m3", file_path="/c.mp4", status="ingested"
-        )
+        catalog_db.insert_media(id="m1", file_path="/a.mp4", status="ingested")
+        catalog_db.insert_media(id="m2", file_path="/b.mp4", status="analyzing")
+        catalog_db.insert_media(id="m3", file_path="/c.mp4", status="ingested")
         results = catalog_db.list_by_status("ingested")
         assert len(results) == 2
         ids = {r["id"] for r in results}
@@ -217,9 +207,7 @@ class TestMediaFilesCRUD:
 
     def test_find_by_hash(self, catalog_db):
         """find_by_hash returns the media with matching sha256_prefix."""
-        catalog_db.insert_media(
-            id="m1", file_path="/a.mp4", sha256_prefix="abc123"
-        )
+        catalog_db.insert_media(id="m1", file_path="/a.mp4", sha256_prefix="abc123")
         result = catalog_db.find_by_hash("abc123")
         assert result is not None
         assert result["id"] == "m1"
@@ -249,9 +237,7 @@ class TestTranscriptsCRUD:
     def test_upsert_transcript(self, catalog_db):
         """Insert then update a transcript, verify latest value."""
         _insert_test_media(catalog_db)
-        catalog_db.upsert_transcript(
-            "m1", segments_json='[{"start": 0}]', language="en"
-        )
+        catalog_db.upsert_transcript("m1", segments_json='[{"start": 0}]', language="en")
         result = catalog_db.get_transcript("m1")
         assert result is not None
         assert result["language"] == "en"
@@ -305,9 +291,7 @@ class TestShotBoundariesCRUD:
     def test_get_boundaries(self, catalog_db):
         """Retrieve boundaries by media_id."""
         _insert_test_media(catalog_db)
-        catalog_db.upsert_boundaries(
-            "m1", boundaries_json="[]", method="transnetv2"
-        )
+        catalog_db.upsert_boundaries("m1", boundaries_json="[]", method="transnetv2")
         result = catalog_db.get_boundaries("m1", method="transnetv2")
         assert result is not None
         assert result["media_id"] == "m1"
@@ -315,12 +299,8 @@ class TestShotBoundariesCRUD:
     def test_boundaries_composite_key(self, catalog_db):
         """Same media_id with different methods stored separately."""
         _insert_test_media(catalog_db)
-        catalog_db.upsert_boundaries(
-            "m1", boundaries_json="[1]", method="transnetv2"
-        )
-        catalog_db.upsert_boundaries(
-            "m1", boundaries_json="[2]", method="pyscenedetect"
-        )
+        catalog_db.upsert_boundaries("m1", boundaries_json="[1]", method="transnetv2")
+        catalog_db.upsert_boundaries("m1", boundaries_json="[2]", method="pyscenedetect")
         results = catalog_db.get_boundaries("m1")
         assert len(results) == 2
         methods = {r["method"] for r in results}
@@ -336,23 +316,20 @@ class TestDetectionsCRUD:
     def test_batch_insert_detections(self, catalog_db):
         """Insert 100 detection rows in one call and verify count."""
         _insert_test_media(catalog_db)
-        rows = [
-            ("m1", i, f'{{"track_id": {i}}}')
-            for i in range(100)
-        ]
+        rows = [("m1", i, f'{{"track_id": {i}}}') for i in range(100)]
         catalog_db.batch_insert_detections(rows)
-        cur = catalog_db.conn.execute(
-            "SELECT count(*) FROM detections WHERE media_id = 'm1'"
-        )
+        cur = catalog_db.conn.execute("SELECT count(*) FROM detections WHERE media_id = 'm1'")
         assert cur.fetchone()[0] == 100
 
     def test_get_detections_for_frame(self, catalog_db):
         """Retrieve detections for a specific media_id + frame_number."""
         _insert_test_media(catalog_db)
-        catalog_db.batch_insert_detections([
-            ("m1", 10, '{"class": "person"}'),
-            ("m1", 20, '{"class": "car"}'),
-        ])
+        catalog_db.batch_insert_detections(
+            [
+                ("m1", 10, '{"class": "person"}'),
+                ("m1", 20, '{"class": "car"}'),
+            ]
+        )
         result = catalog_db.get_detections_for_frame("m1", 10)
         assert result is not None
         assert result["frame_number"] == 10
@@ -361,12 +338,14 @@ class TestDetectionsCRUD:
     def test_get_detections_for_range(self, catalog_db):
         """Retrieve detections for media_id between frame_start and frame_end."""
         _insert_test_media(catalog_db)
-        catalog_db.batch_insert_detections([
-            ("m1", 5, "[]"),
-            ("m1", 10, "[]"),
-            ("m1", 15, "[]"),
-            ("m1", 20, "[]"),
-        ])
+        catalog_db.batch_insert_detections(
+            [
+                ("m1", 5, "[]"),
+                ("m1", 10, "[]"),
+                ("m1", 15, "[]"),
+                ("m1", 20, "[]"),
+            ]
+        )
         results = catalog_db.get_detections_for_range("m1", 8, 18)
         assert len(results) == 2
         frames = {r["frame_number"] for r in results}
@@ -387,8 +366,6 @@ class TestDetectionsCRUD:
 
 
 # -- face_clusters & clip_embeddings CRUD ------------------------------------
-
-import struct
 
 
 def _make_embedding(dim: int = 512) -> bytes:
@@ -447,19 +424,19 @@ class TestClipEmbeddingsCRUD:
         emb = _make_embedding(768)
         rows = [("m1", i, emb) for i in range(10)]
         catalog_db.batch_insert_embeddings(rows)
-        cur = catalog_db.conn.execute(
-            "SELECT count(*) FROM clip_embeddings WHERE media_id = 'm1'"
-        )
+        cur = catalog_db.conn.execute("SELECT count(*) FROM clip_embeddings WHERE media_id = 'm1'")
         assert cur.fetchone()[0] == 10
 
     def test_get_embeddings_for_media(self, catalog_db):
         """Retrieve all embeddings for a media_id."""
         _insert_test_media(catalog_db)
         emb = _make_embedding(768)
-        catalog_db.batch_insert_embeddings([
-            ("m1", 0, emb),
-            ("m1", 10, emb),
-        ])
+        catalog_db.batch_insert_embeddings(
+            [
+                ("m1", 0, emb),
+                ("m1", 10, emb),
+            ]
+        )
         results = catalog_db.get_embeddings_for_media("m1")
         assert len(results) == 2
         frames = {r["frame_number"] for r in results}
@@ -494,20 +471,20 @@ class TestAudioEventsCRUD:
             ("m1", 3.0, '{"class": "silence"}'),
         ]
         catalog_db.batch_insert_audio_events(rows)
-        cur = catalog_db.conn.execute(
-            "SELECT count(*) FROM audio_events WHERE media_id = 'm1'"
-        )
+        cur = catalog_db.conn.execute("SELECT count(*) FROM audio_events WHERE media_id = 'm1'")
         assert cur.fetchone()[0] == 3
 
     def test_get_events_for_range(self, catalog_db):
         """Retrieve events for media_id between start and end timestamps."""
         _insert_test_media(catalog_db)
-        catalog_db.batch_insert_audio_events([
-            ("m1", 0.5, '{"class": "speech"}'),
-            ("m1", 1.5, '{"class": "music"}'),
-            ("m1", 3.0, '{"class": "silence"}'),
-            ("m1", 5.0, '{"class": "speech"}'),
-        ])
+        catalog_db.batch_insert_audio_events(
+            [
+                ("m1", 0.5, '{"class": "speech"}'),
+                ("m1", 1.5, '{"class": "music"}'),
+                ("m1", 3.0, '{"class": "silence"}'),
+                ("m1", 5.0, '{"class": "speech"}'),
+            ]
+        )
         results = catalog_db.get_audio_events_for_range("m1", 1.0, 4.0)
         assert len(results) == 2
         timestamps = {r["timestamp_seconds"] for r in results}
@@ -543,12 +520,8 @@ class TestActivityClustersCRUD:
 
     def test_update_activity_cluster(self, catalog_db):
         """Update label and description of an activity cluster."""
-        catalog_db.insert_activity_cluster(
-            cluster_id="ac1", label="Old", description="Old desc"
-        )
-        catalog_db.update_activity_cluster(
-            "ac1", label="New", description="New desc"
-        )
+        catalog_db.insert_activity_cluster(cluster_id="ac1", label="Old", description="Old desc")
+        catalog_db.update_activity_cluster("ac1", label="New", description="New desc")
         results = catalog_db.get_activity_clusters()
         assert results[0]["label"] == "New"
         assert results[0]["description"] == "New desc"
@@ -556,9 +529,7 @@ class TestActivityClustersCRUD:
     def test_activity_cluster_json_roundtrip(self, catalog_db):
         """Verify clip_ids_json round-trips."""
         json_str = '["m1", "m2", "m3"]'
-        catalog_db.insert_activity_cluster(
-            cluster_id="ac1", clip_ids_json=json_str
-        )
+        catalog_db.insert_activity_cluster(cluster_id="ac1", clip_ids_json=json_str)
         results = catalog_db.get_activity_clusters()
         assert results[0]["clip_ids_json"] == json_str
 
@@ -603,15 +574,9 @@ class TestNarrativesCRUD:
 
     def test_list_narratives(self, catalog_db):
         """List all narratives, optionally filter by status."""
-        catalog_db.insert_narrative(
-            narrative_id="n1", title="A", status="proposed"
-        )
-        catalog_db.insert_narrative(
-            narrative_id="n2", title="B", status="approved"
-        )
-        catalog_db.insert_narrative(
-            narrative_id="n3", title="C", status="proposed"
-        )
+        catalog_db.insert_narrative(narrative_id="n1", title="A", status="proposed")
+        catalog_db.insert_narrative(narrative_id="n2", title="B", status="approved")
+        catalog_db.insert_narrative(narrative_id="n3", title="C", status="proposed")
         # All
         assert len(catalog_db.list_narratives()) == 3
         # Filtered
@@ -649,9 +614,7 @@ class TestEditPlansCRUD:
     def test_get_edit_plan(self, catalog_db):
         """Retrieve edit plan by narrative_id."""
         catalog_db.insert_narrative(narrative_id="n1", title="Test")
-        catalog_db.upsert_edit_plan(
-            narrative_id="n1", edl_json="{}"
-        )
+        catalog_db.upsert_edit_plan(narrative_id="n1", edl_json="{}")
         result = catalog_db.get_edit_plan("n1")
         assert result is not None
         # Nonexistent
@@ -722,8 +685,6 @@ class TestUploadsCRUD:
 
 # -- Integration / edge-case tests -------------------------------------------
 
-import time
-
 
 class TestIntegration:
     """Integration and edge-case tests for CatalogDB."""
@@ -752,16 +713,13 @@ class TestIntegration:
             try:
                 with db:
                     db.conn.execute(
-                        "INSERT INTO media_files (id, file_path) "
-                        "VALUES ('m1', '/a.mp4')"
+                        "INSERT INTO media_files (id, file_path) VALUES ('m1', '/a.mp4')"
                     )
                     raise ValueError("intentional error")
             except ValueError:
                 pass
             # Data should NOT be persisted due to rollback
-            cur = db.conn.execute(
-                "SELECT * FROM media_files WHERE id = 'm1'"
-            )
+            cur = db.conn.execute("SELECT * FROM media_files WHERE id = 'm1'")
             assert cur.fetchone() is None
         finally:
             db.close()
@@ -774,17 +732,13 @@ class TestIntegration:
         catalog_db.batch_insert_detections(rows)
         elapsed = time.monotonic() - start
         assert elapsed < 1.0, f"Batch insert took {elapsed:.2f}s, expected <1s"
-        cur = catalog_db.conn.execute(
-            "SELECT count(*) FROM detections WHERE media_id = 'm1'"
-        )
+        cur = catalog_db.conn.execute("SELECT count(*) FROM detections WHERE media_id = 'm1'")
         assert cur.fetchone()[0] == 1000
 
     def test_foreign_key_enforcement(self, catalog_db):
         """Insert transcript referencing nonexistent media_id raises IntegrityError."""
         with pytest.raises(sqlite3.IntegrityError):
-            catalog_db.upsert_transcript(
-                "nonexistent_media", segments_json="[]", language="en"
-            )
+            catalog_db.upsert_transcript("nonexistent_media", segments_json="[]", language="en")
 
     def test_json1_extension_available(self, catalog_db):
         """Verify json_extract works via a SQL query on a JSON column."""
