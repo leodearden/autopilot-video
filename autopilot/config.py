@@ -123,6 +123,26 @@ def _to_tuple(value: Any) -> tuple[int, int]:
     return (int(value[0]), int(value[1]))
 
 
+# Allowed values for constrained string fields
+_ALLOWED_VALUES: dict[str, set[str]] = {
+    "whisper_size": {"large-v3", "large-v3-turbo"},
+    "yolo_variant": {"yolo11x", "yolo11l", "yolo11m"},
+    "tts_engine": {"kokoro", "elevenlabs"},
+    "music_engine": {"musicgen", "fetch_list_only"},
+    "privacy_status": {"unlisted", "private"},
+}
+
+
+def _validate_choice(field_name: str, value: str) -> None:
+    """Validate that value is in the allowed set for field_name."""
+    allowed = _ALLOWED_VALUES.get(field_name)
+    if allowed is not None and value not in allowed:
+        raise ConfigError(
+            f"Invalid value for {field_name}: {value!r} "
+            f"(allowed: {sorted(allowed)})"
+        )
+
+
 def _build_creator(data: dict[str, Any]) -> CreatorConfig:
     """Build CreatorConfig from parsed YAML dict."""
     return CreatorConfig(
@@ -266,6 +286,13 @@ def load_config(path: str | Path) -> AutopilotConfig:
     llm = _build_llm(raw.get("llm", {}))
     youtube = _build_youtube(raw.get("youtube", {}))
     processing = _build_processing(raw.get("processing", {}))
+
+    # Validate constrained string fields
+    _validate_choice("whisper_size", models.whisper_size)
+    _validate_choice("yolo_variant", models.yolo_variant)
+    _validate_choice("tts_engine", models.tts_engine)
+    _validate_choice("music_engine", models.music_engine)
+    _validate_choice("privacy_status", youtube.privacy_status)
 
     # Expand ~ in path fields
     youtube.credentials_path = youtube.credentials_path.expanduser()
