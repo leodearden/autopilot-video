@@ -155,6 +155,84 @@ class CatalogDB:
             """
         )
 
+    # -- media_files CRUD -------------------------------------------------------
+
+    def insert_media(
+        self,
+        id: str,
+        file_path: str,
+        *,
+        sha256_prefix: str | None = None,
+        codec: str | None = None,
+        resolution_w: int | None = None,
+        resolution_h: int | None = None,
+        fps: float | None = None,
+        duration_seconds: float | None = None,
+        created_at: str | None = None,
+        gps_lat: float | None = None,
+        gps_lon: float | None = None,
+        audio_channels: int | None = None,
+        status: str = "ingested",
+        metadata_json: str | None = None,
+    ) -> None:
+        """Insert a new media file row."""
+        self.conn.execute(
+            "INSERT INTO media_files "
+            "(id, file_path, sha256_prefix, codec, resolution_w, "
+            "resolution_h, fps, duration_seconds, created_at, "
+            "gps_lat, gps_lon, audio_channels, status, metadata_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                id,
+                file_path,
+                sha256_prefix,
+                codec,
+                resolution_w,
+                resolution_h,
+                fps,
+                duration_seconds,
+                created_at,
+                gps_lat,
+                gps_lon,
+                audio_channels,
+                status,
+                metadata_json,
+            ),
+        )
+        self.conn.commit()
+
+    def get_media(self, media_id: str) -> dict[str, object] | None:
+        """Get a media file by id, or None if not found."""
+        cur = self.conn.execute(
+            "SELECT * FROM media_files WHERE id = ?", (media_id,)
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+    def update_media_status(self, media_id: str, status: str) -> None:
+        """Update the status of a media file."""
+        self.conn.execute(
+            "UPDATE media_files SET status = ? WHERE id = ?",
+            (status, media_id),
+        )
+        self.conn.commit()
+
+    def list_by_status(self, status: str) -> list[dict[str, object]]:
+        """List all media files with a given status."""
+        cur = self.conn.execute(
+            "SELECT * FROM media_files WHERE status = ?", (status,)
+        )
+        return [dict(row) for row in cur.fetchall()]
+
+    def find_by_hash(self, sha256_prefix: str) -> dict[str, object] | None:
+        """Find a media file by its SHA-256 prefix, or None if not found."""
+        cur = self.conn.execute(
+            "SELECT * FROM media_files WHERE sha256_prefix = ?",
+            (sha256_prefix,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
     def close(self) -> None:
         """Close the underlying database connection."""
         self.conn.close()
