@@ -8,7 +8,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from autopilot.ingest.scanner import MediaFile, _run_ffprobe, scan_directory
+from autopilot.ingest.scanner import (
+    MediaFile,
+    _run_exiftool,
+    _run_ffprobe,
+    scan_directory,
+)
 
 
 class TestMediaFile:
@@ -238,4 +243,75 @@ class TestRunFfprobe:
             side_effect=subprocess.CalledProcessError(1, "ffprobe"),
         ):
             result = _run_ffprobe(Path("/footage/corrupt.mp4"))
+        assert result == {}
+
+
+class TestRunExiftool:
+    """Tests for _run_exiftool metadata extraction."""
+
+    def test_parse_exiftool_dji_mp4(self) -> None:
+        """Exiftool JSON for a DJI file should yield created_at and GPS coords."""
+        output = json.dumps(
+            [
+                {
+                    "SourceFile": "/footage/DJI_0001.mp4",
+                    "CreateDate": "2026:01:15 10:30:00",
+                    "GPSLatitude": 13.7563,
+                    "GPSLongitude": 100.5018,
+                }
+            ]
+        )
+        mock_result = MagicMock()
+        mock_result.stdout = output
+        with patch("subprocess.run", return_value=mock_result):
+            result = _run_exiftool(Path("/footage/DJI_0001.mp4"))
+        assert result["created_at"] == "2026-01-15T10:30:00"
+        assert result["gps_lat"] == 13.7563
+        assert result["gps_lon"] == 100.5018
+
+    def test_parse_exiftool_no_gps(self) -> None:
+        """Exiftool JSON without GPS fields should yield None for gps_lat/gps_lon."""
+        output = json.dumps(
+            [
+                {
+                    "SourceFile": "/footage/clip.mp4",
+                    "CreateDate": "2026:01:15 10:30:00",
+                }
+            ]
+        )
+        mock_result = MagicMock()
+        mock_result.stdout = output
+        with patch("subprocess.run", return_value=mock_result):
+            result = _run_exiftool(Path("/footage/clip.mp4"))
+        assert result["created_at"] == "2026-01-15T10:30:00"
+        assert result.get("gps_lat") is None
+        assert result.get("gps_lon") is None
+
+    def test_parse_exiftool_no_date(self) -> None:
+        """Exiftool JSON without date fields should yield None for created_at."""
+        output = json.dumps(
+            [
+                {
+                    "SourceFile": "/footage/clip.mp4",
+                    "GPSLatitude": 13.7563,
+                    "GPSLongitude": 100.5018,
+                }
+            ]
+        )
+        mock_result = MagicMock()
+        mock_result.stdout = output
+        with patch("subprocess.run", return_value=mock_result):
+            result = _run_exiftool(Path("/footage/clip.mp4"))
+        assert result.get("created_at") is None
+        assert result["gps_lat"] == 13.7563
+
+    def test_exiftool_failure(self) -> None:
+        """_run_exiftool should return empty dict on subprocess failure."""
+        import subprocess
+
+        with patch(
+            "subprocess.run",
+            side_effect=subprocess.CalledProcessError(1, "exiftool"),
+        ):
+            result = _run_exiftool(Path("/footage/corrupt.mp4"))
         assert result == {}
