@@ -45,8 +45,8 @@ def find_duplicates(catalog_db: CatalogDB) -> list[tuple[str, str]]:
     """
     cur = catalog_db.conn.execute(
         "SELECT sha256_prefix, GROUP_CONCAT(id) "
-        "FROM media_files "
-        "WHERE sha256_prefix IS NOT NULL "
+        "FROM (SELECT sha256_prefix, id FROM media_files "
+        "WHERE sha256_prefix IS NOT NULL ORDER BY rowid) "
         "GROUP BY sha256_prefix "
         "HAVING COUNT(*) > 1"
     )
