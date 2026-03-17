@@ -27,12 +27,16 @@ class CatalogDB:
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
 
-        # Enable WAL mode for concurrent read access
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        # Enable foreign key enforcement
-        self.conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            # Enable WAL mode for concurrent read access
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            # Enable foreign key enforcement
+            self.conn.execute("PRAGMA foreign_keys=ON")
 
-        self._create_schema()
+            self._create_schema()
+        except Exception:
+            self.conn.close()
+            raise
 
     def __enter__(self) -> Self:
         return self
