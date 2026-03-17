@@ -262,9 +262,12 @@ def load_config(path: str | Path) -> AutopilotConfig:
     youtube = _build_youtube(raw.get("youtube", {}))
     processing = _build_processing(raw.get("processing", {}))
 
+    # Expand ~ in path fields
+    youtube.credentials_path = youtube.credentials_path.expanduser()
+
     return AutopilotConfig(
-        input_dir=Path(str(raw.get("input_dir", "."))),
-        output_dir=Path(str(raw.get("output_dir", "."))),
+        input_dir=Path(str(raw.get("input_dir", "."))).expanduser(),
+        output_dir=Path(str(raw.get("output_dir", "."))).expanduser(),
         creator=creator,
         cameras=cameras,
         output=output,
