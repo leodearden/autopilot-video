@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -33,7 +32,10 @@ class TestStageDefinition:
 
     def test_stage_definition_fields(self) -> None:
         """StageDefinition stores name, func, dependencies, and estimated_seconds."""
-        func = lambda config, db: None
+
+        def func(config: object, db: object) -> None:
+            pass
+
         stage = StageDefinition(
             name="INGEST",
             func=func,
@@ -47,7 +49,11 @@ class TestStageDefinition:
 
     def test_stage_definition_defaults(self) -> None:
         """Dependencies defaults to empty list, estimated_seconds defaults to 0."""
-        stage = StageDefinition(name="TEST", func=lambda c, d: None)
+
+        def noop(config: object, db: object) -> None:
+            pass
+
+        stage = StageDefinition(name="TEST", func=noop)
         assert stage.dependencies == []
         assert stage.estimated_seconds == 0
 

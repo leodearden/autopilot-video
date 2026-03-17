@@ -35,6 +35,9 @@ dependencies = [
     "google-api-python-client",
 ]
 
+[project.scripts]
+autopilot = "autopilot.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest",

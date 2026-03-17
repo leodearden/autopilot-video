@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import click
-import pytest
 from click.testing import CliRunner
 
 from autopilot.cli import main
@@ -88,7 +87,7 @@ class TestCLIConfigIntegration:
 
         with patch("autopilot.cli.load_config", wraps=load_config) as mock_load:
             with patch("autopilot.cli.PipelineOrchestrator"):
-                result = runner.invoke(
+                runner.invoke(
                     main,
                     ["--config", str(config_file), "ingest"],
                 )
@@ -103,7 +102,7 @@ class TestCLIConfigIntegration:
         with patch("autopilot.cli.CatalogDB") as mock_db_cls:
             mock_db_cls.return_value = MagicMock()
             with patch("autopilot.cli.PipelineOrchestrator"):
-                result = runner.invoke(
+                runner.invoke(
                     main,
                     ["--config", str(config_file), "ingest"],
                 )
@@ -118,7 +117,7 @@ class TestCLIConfigIntegration:
             with patch("autopilot.cli.CatalogDB") as mock_db_cls:
                 mock_db_cls.return_value = MagicMock()
                 with patch("autopilot.cli.PipelineOrchestrator"):
-                    result = runner.invoke(
+                    runner.invoke(
                         main,
                         ["--config", str(config_file), "ingest", "--verbose"],
                     )
@@ -136,7 +135,7 @@ class TestCLIConfigIntegration:
             with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
                 mock_orch = MagicMock()
                 mock_orch_cls.return_value = mock_orch
-                result = runner.invoke(
+                runner.invoke(
                     main,
                     [
                         "--config", str(config_file),
@@ -164,7 +163,7 @@ class TestRunSubcommand:
             mock_db_cls.return_value = MagicMock()
             with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
                 mock_orch_cls.return_value = MagicMock()
-                result = runner.invoke(
+                runner.invoke(
                     main,
                     ["--config", str(config_file), "run"],
                 )
@@ -181,7 +180,7 @@ class TestRunSubcommand:
             with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
                 mock_orch = MagicMock()
                 mock_orch_cls.return_value = mock_orch
-                result = runner.invoke(
+                runner.invoke(
                     main,
                     ["--config", str(config_file), "run"],
                 )
@@ -200,7 +199,7 @@ class TestRunSubcommand:
             with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
                 mock_orch = MagicMock()
                 mock_orch_cls.return_value = mock_orch
-                result = runner.invoke(
+                runner.invoke(
                     main,
                     ["--config", str(config_file), "run", "--dry-run"],
                 )
@@ -220,7 +219,9 @@ class TestRunSubcommand:
                     main,
                     ["--config", str(config_file), "run"],
                 )
-                assert result.exit_code == 0, f"Exit code: {result.exit_code}, Output: {result.output}"
+                assert result.exit_code == 0, (
+                    f"Exit code: {result.exit_code}, Output: {result.output}"
+                )
 
 
 class TestStageSubcommands:
