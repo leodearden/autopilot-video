@@ -355,3 +355,73 @@ class TestCLIIntegration:
             ["--config", str(config_file), "run", "--dry-run"],
         )
         assert result.exit_code == 0, f"Output: {result.output}"
+
+
+def _write_config_with_missing_output_dir(tmp_path: Path, output_dir: Path) -> Path:
+    """Write a config YAML where output_dir does NOT exist on disk."""
+    config_file = tmp_path / "config.yaml"
+    input_dir = tmp_path / "input"
+    input_dir.mkdir(exist_ok=True)
+    config_file.write_text(
+        f"input_dir: {input_dir}\noutput_dir: {output_dir}\n"
+    )
+    return config_file
+
+
+class TestOutputDirCreation:
+    """Tests for output directory auto-creation in _setup_context."""
+
+    def test_setup_context_creates_output_dir_when_missing(self, tmp_path: Path) -> None:
+        """_setup_context creates output_dir when it does not exist."""
+        output_dir = tmp_path / "nonexistent" / "deep" / "output"
+        config_file = _write_config_with_missing_output_dir(tmp_path, output_dir)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.PipelineOrchestrator"):
+            result = runner.invoke(
+                main,
+                ["--config", str(config_file), "ingest"],
+            )
+        assert result.exit_code == 0, (
+            f"Expected exit 0 but got {result.exit_code}: {result.output}"
+        )
+        assert output_dir.is_dir(), "output_dir should have been created"
+
+    def test_setup_context_creates_catalog_db_in_new_dir(self, tmp_path: Path) -> None:
+        """catalog.db is created inside the newly created output directory."""
+        output_dir = tmp_path / "fresh_output"
+        config_file = _write_config_with_missing_output_dir(tmp_path, output_dir)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.PipelineOrchestrator"):
+            result = runner.invoke(
+                main,
+                ["--config", str(config_file), "ingest"],
+            )
+        assert result.exit_code == 0, (
+            f"Expected exit 0 but got {result.exit_code}: {result.output}"
+        )
+        assert (output_dir / "catalog.db").exists(), (
+            "catalog.db should exist in the new output directory"
+        )
+
+    def test_setup_context_existing_output_dir_unchanged(self, tmp_path: Path) -> None:
+        """mkdir with exist_ok=True does not clobber existing directory contents."""
+        output_dir = tmp_path / "existing_output"
+        output_dir.mkdir(parents=True)
+        marker = output_dir / "marker.txt"
+        marker.write_text("keep me")
+
+        config_file = _write_config_with_missing_output_dir(tmp_path, output_dir)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.PipelineOrchestrator"):
+            result = runner.invoke(
+                main,
+                ["--config", str(config_file), "ingest"],
+            )
+        assert result.exit_code == 0, (
+            f"Expected exit 0 but got {result.exit_code}: {result.output}"
+        )
+        assert marker.exists(), "Existing marker file should not be removed"
+        assert marker.read_text() == "keep me"
