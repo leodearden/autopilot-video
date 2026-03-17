@@ -7,7 +7,24 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from autopilot.orchestrator import StageDefinition, StageStatus
+from autopilot.orchestrator import PipelineOrchestrator, StageDefinition, StageStatus
+
+EXPECTED_STAGES = [
+    "INGEST", "ANALYZE", "CLASSIFY", "NARRATE", "SCRIPT",
+    "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD",
+]
+
+EXPECTED_DEPS = {
+    "INGEST": [],
+    "ANALYZE": ["INGEST"],
+    "CLASSIFY": ["ANALYZE"],
+    "NARRATE": ["CLASSIFY"],
+    "SCRIPT": ["NARRATE"],
+    "EDL": ["SCRIPT"],
+    "SOURCE_ASSETS": ["EDL"],
+    "RENDER": ["EDL", "SOURCE_ASSETS"],
+    "UPLOAD": ["RENDER"],
+}
 
 
 class TestStageDefinition:
@@ -40,3 +57,35 @@ class TestStageDefinition:
         assert StageStatus.DONE.value == "done"
         assert StageStatus.SKIPPED.value == "skipped"
         assert StageStatus.ERROR.value == "error"
+
+
+class TestPipelineOrchestrator:
+    """Tests for PipelineOrchestrator initialization."""
+
+    def test_has_all_nine_stages(self) -> None:
+        """PipelineOrchestrator has exactly 9 stages with correct names."""
+        orch = PipelineOrchestrator()
+        stage_names = [s.name for s in orch.stages]
+        assert stage_names == EXPECTED_STAGES
+
+    def test_stage_dependencies(self) -> None:
+        """Each stage has the correct dependency list."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            assert stage.dependencies == EXPECTED_DEPS[stage.name], (
+                f"{stage.name} deps mismatch"
+            )
+
+    def test_stages_have_callable_functions(self) -> None:
+        """Every stage has a callable func attribute."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            assert callable(stage.func), f"{stage.name} func is not callable"
+
+    def test_stages_have_positive_estimated_seconds(self) -> None:
+        """Every stage has estimated_seconds >= 0."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            assert stage.estimated_seconds >= 0, (
+                f"{stage.name} has negative estimated_seconds"
+            )
