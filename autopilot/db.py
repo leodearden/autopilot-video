@@ -394,6 +394,89 @@ class CatalogDB:
         )
         return [dict(row) for row in cur.fetchall()]
 
+    # -- audio_events CRUD ------------------------------------------------------
+
+    def batch_insert_audio_events(
+        self, rows: list[tuple[str, float, str]]
+    ) -> None:
+        """Batch insert audio events: (media_id, timestamp_seconds, events_json)."""
+        if not rows:
+            return
+        self.conn.executemany(
+            "INSERT INTO audio_events "
+            "(media_id, timestamp_seconds, events_json) VALUES (?, ?, ?)",
+            rows,
+        )
+        self.conn.commit()
+
+    def get_audio_events_for_range(
+        self, media_id: str, start_seconds: float, end_seconds: float
+    ) -> list[dict[str, object]]:
+        """Get audio events for a media file within a time range."""
+        cur = self.conn.execute(
+            "SELECT * FROM audio_events "
+            "WHERE media_id = ? "
+            "AND timestamp_seconds >= ? AND timestamp_seconds <= ?",
+            (media_id, start_seconds, end_seconds),
+        )
+        return [dict(row) for row in cur.fetchall()]
+
+    # -- activity_clusters CRUD -------------------------------------------------
+
+    def insert_activity_cluster(
+        self,
+        cluster_id: str,
+        *,
+        label: str | None = None,
+        description: str | None = None,
+        time_start: str | None = None,
+        time_end: str | None = None,
+        location_label: str | None = None,
+        gps_center_lat: float | None = None,
+        gps_center_lon: float | None = None,
+        clip_ids_json: str | None = None,
+    ) -> None:
+        """Insert a new activity cluster."""
+        self.conn.execute(
+            "INSERT INTO activity_clusters "
+            "(cluster_id, label, description, time_start, time_end, "
+            "location_label, gps_center_lat, gps_center_lon, clip_ids_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                cluster_id,
+                label,
+                description,
+                time_start,
+                time_end,
+                location_label,
+                gps_center_lat,
+                gps_center_lon,
+                clip_ids_json,
+            ),
+        )
+        self.conn.commit()
+
+    def get_activity_clusters(self) -> list[dict[str, object]]:
+        """List all activity clusters."""
+        cur = self.conn.execute("SELECT * FROM activity_clusters")
+        return [dict(row) for row in cur.fetchall()]
+
+    def update_activity_cluster(
+        self, cluster_id: str, **kwargs: object
+    ) -> None:
+        """Update fields of an activity cluster by keyword arguments."""
+        if not kwargs:
+            return
+        set_clause = ", ".join(f"{k} = ?" for k in kwargs)
+        values = list(kwargs.values())
+        values.append(cluster_id)
+        self.conn.execute(
+            f"UPDATE activity_clusters SET {set_clause} "  # noqa: S608
+            "WHERE cluster_id = ?",
+            values,
+        )
+        self.conn.commit()
+
     def close(self) -> None:
         """Close the underlying database connection."""
         self.conn.close()
