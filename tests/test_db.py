@@ -477,3 +477,87 @@ class TestClipEmbeddingsCRUD:
         values = struct.unpack(f"{768}f", results[0]["embedding"])
         assert values[0] == 0.0
         assert values[767] == 767.0
+
+
+# -- audio_events & activity_clusters CRUD ------------------------------------
+
+
+class TestAudioEventsCRUD:
+    """Tests for audio_events table CRUD operations."""
+
+    def test_batch_insert_audio_events(self, catalog_db):
+        """Insert multiple audio events."""
+        _insert_test_media(catalog_db)
+        rows = [
+            ("m1", 0.5, '{"class": "speech"}'),
+            ("m1", 1.5, '{"class": "music"}'),
+            ("m1", 3.0, '{"class": "silence"}'),
+        ]
+        catalog_db.batch_insert_audio_events(rows)
+        cur = catalog_db.conn.execute(
+            "SELECT count(*) FROM audio_events WHERE media_id = 'm1'"
+        )
+        assert cur.fetchone()[0] == 3
+
+    def test_get_events_for_range(self, catalog_db):
+        """Retrieve events for media_id between start and end timestamps."""
+        _insert_test_media(catalog_db)
+        catalog_db.batch_insert_audio_events([
+            ("m1", 0.5, '{"class": "speech"}'),
+            ("m1", 1.5, '{"class": "music"}'),
+            ("m1", 3.0, '{"class": "silence"}'),
+            ("m1", 5.0, '{"class": "speech"}'),
+        ])
+        results = catalog_db.get_audio_events_for_range("m1", 1.0, 4.0)
+        assert len(results) == 2
+        timestamps = {r["timestamp_seconds"] for r in results}
+        assert timestamps == {1.5, 3.0}
+
+
+class TestActivityClustersCRUD:
+    """Tests for activity_clusters table CRUD operations."""
+
+    def test_insert_activity_cluster(self, catalog_db):
+        """Insert activity cluster with all fields."""
+        catalog_db.insert_activity_cluster(
+            cluster_id="ac1",
+            label="Beach Day",
+            description="Fun at the beach",
+            time_start="2024-01-01T09:00:00",
+            time_end="2024-01-01T17:00:00",
+            location_label="Santa Monica",
+            gps_center_lat=34.0195,
+            gps_center_lon=-118.4912,
+            clip_ids_json='["m1", "m2"]',
+        )
+        results = catalog_db.get_activity_clusters()
+        assert len(results) == 1
+        assert results[0]["label"] == "Beach Day"
+
+    def test_get_activity_clusters(self, catalog_db):
+        """List all activity clusters."""
+        catalog_db.insert_activity_cluster(cluster_id="ac1", label="A")
+        catalog_db.insert_activity_cluster(cluster_id="ac2", label="B")
+        results = catalog_db.get_activity_clusters()
+        assert len(results) == 2
+
+    def test_update_activity_cluster(self, catalog_db):
+        """Update label and description of an activity cluster."""
+        catalog_db.insert_activity_cluster(
+            cluster_id="ac1", label="Old", description="Old desc"
+        )
+        catalog_db.update_activity_cluster(
+            "ac1", label="New", description="New desc"
+        )
+        results = catalog_db.get_activity_clusters()
+        assert results[0]["label"] == "New"
+        assert results[0]["description"] == "New desc"
+
+    def test_activity_cluster_json_roundtrip(self, catalog_db):
+        """Verify clip_ids_json round-trips."""
+        json_str = '["m1", "m2", "m3"]'
+        catalog_db.insert_activity_cluster(
+            cluster_id="ac1", clip_ids_json=json_str
+        )
+        results = catalog_db.get_activity_clusters()
+        assert results[0]["clip_ids_json"] == json_str
