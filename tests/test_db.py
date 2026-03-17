@@ -561,3 +561,160 @@ class TestActivityClustersCRUD:
         )
         results = catalog_db.get_activity_clusters()
         assert results[0]["clip_ids_json"] == json_str
+
+
+# -- narratives, edit_plans, crop_paths, uploads CRUD -------------------------
+
+
+class TestNarrativesCRUD:
+    """Tests for narratives table CRUD operations."""
+
+    def test_insert_narrative(self, catalog_db):
+        """Insert a narrative with all fields."""
+        catalog_db.insert_narrative(
+            narrative_id="n1",
+            title="Beach Day Video",
+            description="A fun day at the beach",
+            proposed_duration_seconds=180.0,
+            activity_cluster_ids_json='["ac1", "ac2"]',
+            arc_notes="Start with arrival, end with sunset",
+        )
+        result = catalog_db.get_narrative("n1")
+        assert result is not None
+        assert result["title"] == "Beach Day Video"
+        assert result["status"] == "proposed"
+
+    def test_get_narrative(self, catalog_db):
+        """Retrieve narrative by id."""
+        catalog_db.insert_narrative(narrative_id="n1", title="Test")
+        result = catalog_db.get_narrative("n1")
+        assert result is not None
+        assert result["narrative_id"] == "n1"
+        # Nonexistent
+        assert catalog_db.get_narrative("nonexistent") is None
+
+    def test_update_narrative_status(self, catalog_db):
+        """Change narrative status."""
+        catalog_db.insert_narrative(narrative_id="n1", title="Test")
+        catalog_db.update_narrative_status("n1", "approved")
+        result = catalog_db.get_narrative("n1")
+        assert result is not None
+        assert result["status"] == "approved"
+
+    def test_list_narratives(self, catalog_db):
+        """List all narratives, optionally filter by status."""
+        catalog_db.insert_narrative(
+            narrative_id="n1", title="A", status="proposed"
+        )
+        catalog_db.insert_narrative(
+            narrative_id="n2", title="B", status="approved"
+        )
+        catalog_db.insert_narrative(
+            narrative_id="n3", title="C", status="proposed"
+        )
+        # All
+        assert len(catalog_db.list_narratives()) == 3
+        # Filtered
+        proposed = catalog_db.list_narratives(status="proposed")
+        assert len(proposed) == 2
+        ids = {r["narrative_id"] for r in proposed}
+        assert ids == {"n1", "n3"}
+
+
+class TestEditPlansCRUD:
+    """Tests for edit_plans table CRUD operations."""
+
+    def test_upsert_edit_plan(self, catalog_db):
+        """Insert and update an edit plan."""
+        catalog_db.insert_narrative(narrative_id="n1", title="Test")
+        catalog_db.upsert_edit_plan(
+            narrative_id="n1",
+            edl_json='{"timeline": []}',
+            otio_path="/exports/n1.otio",
+        )
+        result = catalog_db.get_edit_plan("n1")
+        assert result is not None
+        assert result["edl_json"] == '{"timeline": []}'
+
+        # Update
+        catalog_db.upsert_edit_plan(
+            narrative_id="n1",
+            edl_json='{"timeline": [{"clip": "m1"}]}',
+            validation_json='{"ok": true}',
+        )
+        result = catalog_db.get_edit_plan("n1")
+        assert result is not None
+        assert '{"clip": "m1"}' in result["edl_json"]
+
+    def test_get_edit_plan(self, catalog_db):
+        """Retrieve edit plan by narrative_id."""
+        catalog_db.insert_narrative(narrative_id="n1", title="Test")
+        catalog_db.upsert_edit_plan(
+            narrative_id="n1", edl_json="{}"
+        )
+        result = catalog_db.get_edit_plan("n1")
+        assert result is not None
+        # Nonexistent
+        assert catalog_db.get_edit_plan("nonexistent") is None
+
+
+class TestCropPathsCRUD:
+    """Tests for crop_paths table CRUD operations."""
+
+    def test_upsert_crop_path(self, catalog_db):
+        """Insert crop path with BLOB data."""
+        _insert_test_media(catalog_db)
+        path_data = b"\x00\x01\x02\x03" * 100
+        catalog_db.upsert_crop_path(
+            media_id="m1",
+            target_aspect="16:9",
+            subject_track_id=1,
+            smoothing_tau=0.5,
+            path_data=path_data,
+        )
+        result = catalog_db.get_crop_path("m1", "16:9", 1)
+        assert result is not None
+        assert result["path_data"] == path_data
+
+    def test_get_crop_path(self, catalog_db):
+        """Retrieve crop path by composite key."""
+        _insert_test_media(catalog_db)
+        catalog_db.upsert_crop_path(
+            media_id="m1",
+            target_aspect="9:16",
+            subject_track_id=0,
+        )
+        result = catalog_db.get_crop_path("m1", "9:16", 0)
+        assert result is not None
+        assert result["target_aspect"] == "9:16"
+        # Nonexistent combo
+        assert catalog_db.get_crop_path("m1", "16:9", 0) is None
+
+
+class TestUploadsCRUD:
+    """Tests for uploads table CRUD operations."""
+
+    def test_insert_upload(self, catalog_db):
+        """Insert an upload record."""
+        catalog_db.insert_narrative(narrative_id="n1", title="Test")
+        catalog_db.insert_upload(
+            narrative_id="n1",
+            youtube_video_id="abc123",
+            youtube_url="https://youtube.com/watch?v=abc123",
+            uploaded_at="2024-01-15T12:00:00",
+            privacy_status="public",
+        )
+        result = catalog_db.get_upload("n1")
+        assert result is not None
+        assert result["youtube_video_id"] == "abc123"
+        assert result["privacy_status"] == "public"
+
+    def test_get_upload(self, catalog_db):
+        """Retrieve upload by narrative_id."""
+        catalog_db.insert_narrative(narrative_id="n1", title="Test")
+        catalog_db.insert_upload(narrative_id="n1")
+        result = catalog_db.get_upload("n1")
+        assert result is not None
+        assert result["privacy_status"] == "unlisted"
+        # Nonexistent
+        assert catalog_db.get_upload("nonexistent") is None
