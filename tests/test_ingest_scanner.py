@@ -482,6 +482,47 @@ class TestScanDirectoryParallel:
         assert len(results) == 1
         assert results[0].file_path.name == "aaa_good.mp4"
 
+    def test_scan_returns_all_non_failing_files(self, tmp_path: Path) -> None:
+        """Probe failure for one file should NOT drop subsequent non-failing files.
+
+        With executor.map, the entire iteration aborts when one future raises,
+        silently dropping all files after the failing one.  The desired behavior
+        is per-future fault isolation: only the failing file is skipped.
+        """
+        (tmp_path / "aaa_good.mp4").write_bytes(b"\x00")
+        (tmp_path / "mmm_bad.mp4").write_bytes(b"\x00")
+        (tmp_path / "zzz_good.mp4").write_bytes(b"\x00")
+
+        def _make_result(file_path):
+            if file_path.name == "mmm_bad.mp4":
+                raise Exception("probe failed for mmm_bad")
+            return MediaFile(file_path=file_path)
+
+        def mock_map(fn, files):
+            """Simulates executor.map — raises mid-iteration, aborting the rest."""
+            for f in files:
+                yield _make_result(f)
+
+        mock_executor = MagicMock()
+        mock_executor.__enter__ = MagicMock(return_value=mock_executor)
+        mock_executor.__exit__ = MagicMock(return_value=False)
+        mock_executor.map.side_effect = mock_map
+
+        with patch(
+            "autopilot.ingest.scanner.ProcessPoolExecutor",
+            return_value=mock_executor,
+        ):
+            results = scan_directory(tmp_path)
+
+        # Both aaa_good and zzz_good should be returned; only mmm_bad is skipped
+        names = {mf.file_path.name for mf in results}
+        assert len(results) == 2, (
+            f"Expected 2 results (aaa_good + zzz_good), got {len(results)}: {names}"
+        )
+        assert "aaa_good.mp4" in names
+        assert "zzz_good.mp4" in names
+        assert "mmm_bad.mp4" not in names
+
 
 class TestIngestPackage:
     """Tests verifying the ingest package exports."""
