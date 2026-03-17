@@ -128,7 +128,8 @@ class TestNormalizeCollisionFix:
     def test_normalize_disambiguates_same_stem_different_dirs(
         self, tmp_path: Path
     ) -> None:
-        """Two input files with the same stem in different subdirs should produce different outputs."""
+        """Two input files with the same stem in different subdirs
+        should produce different outputs."""
         day1 = tmp_path / "day1"
         day2 = tmp_path / "day2"
         day1.mkdir()
