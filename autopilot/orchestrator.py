@@ -46,6 +46,21 @@ class StageDefinition:
     estimated_seconds: float = 0
 
 
+@dataclass
+class StageResult:
+    """Result of executing a single pipeline stage.
+
+    Attributes:
+        status: Final status after execution.
+        elapsed_seconds: Wall-clock time spent on this stage.
+        error_message: Error description if status is ERROR, else None.
+    """
+
+    status: StageStatus
+    elapsed_seconds: float = 0.0
+    error_message: str | None = None
+
+
 def _stage_stub(name: str) -> Callable[..., Any]:
     """Create a stub function for an unimplemented stage."""
 
@@ -150,3 +165,88 @@ class PipelineOrchestrator:
                     queue.sort()
 
         return result
+
+    def run(
+        self,
+        config: Any,
+        db: Any,
+        dry_run: bool = False,
+    ) -> dict[str, StageResult]:
+        """Execute pipeline stages in topological order.
+
+        Args:
+            config: AutopilotConfig instance.
+            db: CatalogDB instance.
+            dry_run: If True, log execution plan without calling stage functions.
+
+        Returns:
+            Dict mapping stage names to their StageResult.
+        """
+        order = self.execution_order()
+        results: dict[str, StageResult] = {}
+        errored_stages: set[str] = set()
+        pipeline_start = time.monotonic()
+
+        for stage_name in order:
+            stage = self._stage_map[stage_name]
+
+            # Check if any dependency errored — skip if so
+            skip = False
+            for dep in stage.dependencies:
+                if dep in errored_stages:
+                    skip = True
+                    break
+
+            if skip:
+                results[stage_name] = StageResult(
+                    status=StageStatus.SKIPPED,
+                    elapsed_seconds=0.0,
+                )
+                errored_stages.add(stage_name)
+                logger.info("[SKIPPED] %s (dependency failed)", stage_name)
+                continue
+
+            if dry_run:
+                logger.info(
+                    "[DRY-RUN] %s (est. %ss)",
+                    stage_name,
+                    stage.estimated_seconds,
+                )
+                results[stage_name] = StageResult(
+                    status=StageStatus.SKIPPED,
+                    elapsed_seconds=0.0,
+                )
+                continue
+
+            logger.info("[RUNNING] %s", stage_name)
+            t0 = time.monotonic()
+            try:
+                stage.func(config=config, db=db)
+                elapsed = time.monotonic() - t0
+                results[stage_name] = StageResult(
+                    status=StageStatus.DONE,
+                    elapsed_seconds=elapsed,
+                )
+                logger.info("[DONE] %s (%.1fs)", stage_name, elapsed)
+            except Exception as exc:
+                elapsed = time.monotonic() - t0
+                results[stage_name] = StageResult(
+                    status=StageStatus.ERROR,
+                    elapsed_seconds=elapsed,
+                    error_message=str(exc),
+                )
+                errored_stages.add(stage_name)
+                logger.error("[ERROR] %s: %s", stage_name, exc)
+
+        total_elapsed = time.monotonic() - pipeline_start
+        logger.info("Pipeline complete (%.1fs)", total_elapsed)
+
+        # Check budget
+        if self.budget_seconds is not None and total_elapsed > self.budget_seconds:
+            logger.warning(
+                "Pipeline exceeded budget: %.1fs elapsed vs %.1fs budget",
+                total_elapsed,
+                self.budget_seconds,
+            )
+
+        return results
