@@ -556,3 +556,35 @@ def test_load_config_camera_float_coercion_error(tmp_path: pathlib.Path) -> None
     )
     with pytest.raises(ConfigError, match="crop_smoothing_tau"):
         load_config(config_file)
+
+
+# ---------------------------------------------------------------------------
+# Step 23: OS errors — directory-as-file, permission denied
+# ---------------------------------------------------------------------------
+
+import os
+
+
+def test_load_config_directory_as_file(tmp_path: pathlib.Path) -> None:
+    """ConfigError (not IsADirectoryError) raised when path is a directory."""
+    from autopilot.config import ConfigError, load_config
+
+    dir_path = tmp_path / "config_dir"
+    dir_path.mkdir()
+    with pytest.raises(ConfigError, match=str(dir_path)):
+        load_config(dir_path)
+
+
+@pytest.mark.skipif(os.getuid() == 0, reason="root bypasses permissions")
+def test_load_config_permission_denied(tmp_path: pathlib.Path) -> None:
+    """ConfigError (not PermissionError) raised when file is not readable."""
+    from autopilot.config import ConfigError, load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("input_dir: /tmp/in\noutput_dir: /tmp/out\n")
+    config_file.chmod(0o000)
+    try:
+        with pytest.raises(ConfigError, match=str(config_file)):
+            load_config(config_file)
+    finally:
+        config_file.chmod(0o644)
