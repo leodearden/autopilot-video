@@ -250,6 +250,11 @@ def load_config(path: str | Path) -> AutopilotConfig:
     if raw is None:
         raw = {}
 
+    # Validate required fields
+    missing = [f for f in ("input_dir", "output_dir") if f not in raw]
+    if missing:
+        raise ConfigError(f"Missing required config fields: {', '.join(missing)}")
+
     # Build sub-configs from sections (defaulting to empty dicts)
     creator = _build_creator(raw.get("creator", {}))
 
