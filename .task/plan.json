@@ -1,8 +1,11 @@
 {
   "task_id": "3",
   "title": "SQLite catalog and db interface",
-  "modules": ["autopilot", "tests"],
-  "analysis": "Task 3 requires implementing autopilot/db.py with a CatalogDB class that wraps SQLite with WAL mode, thread safety (check_same_thread=False), and the full 12-table schema from the PRD (media_files, transcripts, shot_boundaries, detections, face_clusters, clip_embeddings, audio_events, activity_clusters, narratives, edit_plans, crop_paths, uploads). The class needs CRUD helper methods for each table, context manager support for transactions, and proper handling of TEXT-based JSON columns and BLOB columns for binary data. The PRD provides the exact CREATE TABLE statements (lines 537-643 of prd-autopilot-editor.md). Tests should use in-memory SQLite (:memory:) per the task's testStrategy. The project uses Python 3.11+, pytest, ruff, pyright. SQLite JSON1 extension is built into Python's sqlite3 module since 3.9+. No external dependencies needed — sqlite3 is stdlib. The plan uses incremental TDD: first test/impl the CatalogDB class with connection management, WAL mode, and schema creation, then progressively test/impl CRUD helpers for each table grouped by complexity. Prerequisites: a conftest.py fixture for in-memory CatalogDB instances.",
+  "modules": [
+    "autopilot",
+    "tests"
+  ],
+  "analysis": "Task 3 requires implementing autopilot/db.py with a CatalogDB class that wraps SQLite with WAL mode, thread safety (check_same_thread=False), and the full 12-table schema from the PRD (media_files, transcripts, shot_boundaries, detections, face_clusters, clip_embeddings, audio_events, activity_clusters, narratives, edit_plans, crop_paths, uploads). The class needs CRUD helper methods for each table, context manager support for transactions, and proper handling of TEXT-based JSON columns and BLOB columns for binary data. The PRD provides the exact CREATE TABLE statements (lines 537-643 of prd-autopilot-editor.md). Tests should use in-memory SQLite (:memory:) per the task's testStrategy. The project uses Python 3.11+, pytest, ruff, pyright. SQLite JSON1 extension is built into Python's sqlite3 module since 3.9+. No external dependencies needed — sqlite3 is stdlib. The plan uses incremental TDD: first test/impl the CatalogDB class with connection management, WAL mode, and schema creation, then progressively test/impl CRUD helpers for each table grouped by complexity. Prerequisites: a conftest.py fixture for in-memory CatalogDB instances.\n\nREVIEW FIXES (steps 19-24): The review identified critical issues with transaction semantics and a resource leak. All CRUD write methods call self.conn.commit() unconditionally, which means the context manager's rollback in __exit__ is a no-op for public API calls. The fix: (1) remove self.conn.commit() from all CRUD methods so they participate in caller-managed transactions via the context manager, (2) fix __init__ to close the connection if _create_schema() fails (resource leak), (3) rewrite the transaction tests to actually exercise the context manager's commit/rollback with public API methods, not raw SQL, (4) update the conftest fixture and existing tests to work with the new non-autocommit behavior.",
   "prerequisites": [
     {
       "id": "pre-1",
@@ -138,6 +141,48 @@
       "description": "Fix any remaining issues from step-17 tests. Ensure transaction rollback works correctly in __exit__, foreign keys are enforced, and JSON1 extension queries work. Add any missing indexes for performance (e.g., index on media_files.sha256_prefix, media_files.status). Make all tests pass. Run ruff check and pyright to ensure code quality.",
       "status": "done",
       "commit": "8c7ae83"
+    },
+    {
+      "id": "step-19",
+      "type": "test",
+      "description": "REVIEW FIX: Write failing tests for correct transaction semantics using public CRUD API methods (not raw SQL). In tests/test_db.py, add a new TestTransactionSemantics class with these tests: (1) test_crud_does_not_autocommit — create a fresh CatalogDB(':memory:'), call insert_media() WITHOUT a 'with' block, then call db.conn.rollback(), then verify the row is NOT present (proves CRUD methods don't commit internally); (2) test_context_manager_commits_crud — use 'with db:' block to call insert_media(), verify data persists after __exit__ by querying outside the block; (3) test_context_manager_rollback_crud — use 'with db:' block to call insert_media() then raise an exception, verify insert_media's data is rolled back and NOT persisted; (4) test_multi_op_atomicity — inside a 'with db:' block call insert_media() then upsert_transcript(), raise after transcript insert, verify NEITHER media nor transcript row persists; (5) test_explicit_commit_without_context_manager — call insert_media() then db.conn.commit() manually (no context manager), verify data persists. These tests will FAIL against the current implementation because CRUD methods call self.conn.commit() internally.",
+      "status": "done",
+      "commit": "a26cf78"
+    },
+    {
+      "id": "step-20",
+      "type": "impl",
+      "description": "REVIEW FIX: Fix transaction semantics in autopilot/db.py. (1) Remove self.conn.commit() from ALL individual CRUD write methods — every method that currently calls self.conn.commit() after its SQL operation (insert_media, update_media_status, upsert_transcript, upsert_boundaries, batch_insert_detections, insert_face_cluster, update_face_label, batch_insert_embeddings, batch_insert_audio_events, insert_activity_cluster, update_activity_cluster, insert_narrative, update_narrative_status, upsert_plan, upsert_crop_path, insert_upload — approximately 16 call sites). The context manager __exit__ becomes the sole commit point. (2) Update the class docstring to document that callers must either use 'with db:' for automatic commit/rollback, or call db.conn.commit() explicitly after writes. (3) Update the conftest.py catalog_db fixture so that existing tests (steps 5-16) continue to pass. The fixture should yield a CatalogDB that auto-commits for convenience in unit tests. Preferred approach: after creating the CatalogDB instance, set db.conn.isolation_level = None (autocommit mode) in the fixture, OR wrap each test's CRUD calls in a context manager. Alternative: create a helper that commits after each CRUD call. (4) Make all step-19 tests pass AND verify all existing tests still pass. Run full test suite.",
+      "status": "done",
+      "commit": "02d532c"
+    },
+    {
+      "id": "step-21",
+      "type": "test",
+      "description": "REVIEW FIX: Write failing test for resource leak on init failure. In tests/test_db.py, add to TestTransactionSemantics or a new TestInitSafety class: test_init_failure_closes_connection — monkeypatch CatalogDB._create_schema to raise RuntimeError, then instantiate CatalogDB in a try/except, and verify that the connection was closed. Use a mock or monkeypatch to track whether conn.close() was called. This test will FAIL against the current implementation because __init__ does not wrap _create_schema() in try/except.",
+      "status": "done",
+      "commit": "f07fca4"
+    },
+    {
+      "id": "step-22",
+      "type": "impl",
+      "description": "REVIEW FIX: Fix resource leak in CatalogDB.__init__. Wrap the post-connect initialization (PRAGMA journal_mode=WAL, PRAGMA foreign_keys=ON, and _create_schema() call) in a try/except block. On any exception, call self.conn.close() before re-raising. This ensures the SQLite connection and associated file handles (WAL, SHM sidecar files) are properly released if initialization fails. Make step-21 test pass. Run full test suite.",
+      "status": "done",
+      "commit": "6149857"
+    },
+    {
+      "id": "step-23",
+      "type": "test",
+      "description": "REVIEW FIX: Rewrite the existing flawed transaction tests in TestIntegration. (1) Rewrite test_transaction_commit to use raw db.conn.execute('INSERT INTO media_files ...') WITHOUT any explicit commit inside the 'with' block, then verify the data persists after __exit__ — this actually exercises __exit__'s commit() path rather than relying on CRUD auto-commit. (2) Rewrite test_transaction_rollback to use public CRUD methods (db.insert_media()) inside a 'with' block followed by a deliberate exception, and verify the data is NOT persisted — proving rollback works for public API calls now that CRUD methods no longer auto-commit. Update both docstrings to accurately describe what each test exercises. These should now pass (since step-20 already fixed the implementation).",
+      "status": "done",
+      "commit": "06dde9e"
+    },
+    {
+      "id": "step-24",
+      "type": "impl",
+      "description": "REVIEW FIX: Final verification and cleanup. (1) Run the full test suite (pytest tests/test_db.py -v) and ensure ALL tests pass — both the new transaction semantics tests AND all existing CRUD tests. (2) Run ruff check autopilot/db.py tests/test_db.py to verify no lint issues. (3) Run pyright autopilot/db.py tests/test_db.py to verify no type errors. (4) Review that no test bypasses the public API in a misleading way. Fix any remaining failures.",
+      "status": "pending",
+      "commit": null
     }
   ],
   "design_decisions": [
@@ -176,6 +221,18 @@
     {
       "decision": "Enable PRAGMA foreign_keys=ON at connection time",
       "rationale": "SQLite has foreign key support disabled by default. Enabling it ensures referential integrity (e.g., can't insert a transcript for a nonexistent media_id), which is critical for data consistency in the catalog."
+    },
+    {
+      "decision": "Remove self.conn.commit() from all CRUD methods; context manager is sole commit point",
+      "rationale": "Review identified that per-method commit() calls break the context manager's rollback guarantee. With commits inside each method, wrapping multiple writes in 'with db:' gives a false promise of atomicity — rollback in __exit__ is a no-op since data is already committed. The fix: CRUD methods only execute SQL; callers control commit boundaries via 'with db:' (auto commit/rollback) or explicit db.conn.commit(). This matches the standard Python DB-API pattern and enables true transactional atomicity across multiple operations."
+    },
+    {
+      "decision": "Wrap __init__ post-connect setup in try/except to close connection on failure",
+      "rationale": "Review identified that if _create_schema() raises (disk full, corrupted DB, etc.), the connection opened on the previous line is leaked. The fix wraps PRAGMA + _create_schema() in try/except, calling self.conn.close() before re-raising. This prevents file descriptor leaks and WAL/SHM file locks in long-running processes."
+    },
+    {
+      "decision": "Existing CRUD tests use autocommit fixture after removing per-method commits",
+      "rationale": "Existing tests (steps 5-16) call CRUD methods directly without 'with db:' blocks and expect data to be immediately visible. After removing auto-commit from CRUD methods, the conftest catalog_db fixture needs adjustment. Options: (a) set isolation_level=None on the fixture's connection for autocommit, (b) wrap fixture usage in context managers, or (c) add explicit commits. Option (a) is cleanest since it only affects test convenience without changing the CatalogDB class API."
     }
   ],
   "reuse": [
