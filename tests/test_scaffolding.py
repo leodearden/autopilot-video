@@ -3,6 +3,8 @@
 import pathlib
 import tomllib
 
+import yaml
+
 
 def test_directory_structure_exists(project_root: pathlib.Path) -> None:
     """All required directories exist."""
@@ -118,3 +120,116 @@ def test_pyproject_toml_has_dev_dependencies(project_root: pathlib.Path) -> None
 
     for tool in ["pytest", "ruff", "pyright"]:
         assert tool in dev_names, f"Missing dev dependency: {tool}"
+
+
+# ---------------------------------------------------------------------------
+# config.yaml tests
+# ---------------------------------------------------------------------------
+
+
+def _load_config(project_root: pathlib.Path) -> dict:
+    """Helper to load and parse config.yaml."""
+    config_path = project_root / "config.yaml"
+    assert config_path.is_file(), "config.yaml must exist"
+    with open(config_path) as f:
+        return yaml.safe_load(f)
+
+
+def test_config_yaml_valid(project_root: pathlib.Path) -> None:
+    """config.yaml is valid YAML with all required top-level keys."""
+    data = _load_config(project_root)
+    required_keys = [
+        "input_dir",
+        "output_dir",
+        "creator",
+        "cameras",
+        "output",
+        "models",
+        "llm",
+        "youtube",
+        "processing",
+    ]
+    for key in required_keys:
+        assert key in data, f"Missing top-level key: {key}"
+
+
+def test_config_yaml_creator_section(project_root: pathlib.Path) -> None:
+    """Creator section has all required keys."""
+    data = _load_config(project_root)
+    creator = data["creator"]
+    required = [
+        "name",
+        "channel_style",
+        "target_audience",
+        "default_video_duration_minutes",
+        "narration_style",
+        "music_preference",
+    ]
+    for key in required:
+        assert key in creator, f"Missing creator key: {key}"
+
+
+def test_config_yaml_models_section(project_root: pathlib.Path) -> None:
+    """Models section has all required keys."""
+    data = _load_config(project_root)
+    models = data["models"]
+    required = [
+        "whisper_size",
+        "yolo_variant",
+        "yolo_sample_every_n_frames",
+        "clip_model",
+        "face_model",
+        "tts_engine",
+        "music_engine",
+    ]
+    for key in required:
+        assert key in models, f"Missing models key: {key}"
+
+
+def test_config_yaml_processing_section(project_root: pathlib.Path) -> None:
+    """Processing section has all required keys."""
+    data = _load_config(project_root)
+    processing = data["processing"]
+    required = [
+        "max_wall_clock_hours",
+        "gpu_device",
+        "num_cpu_workers",
+        "batch_size_yolo",
+        "batch_size_whisper",
+    ]
+    for key in required:
+        assert key in processing, f"Missing processing key: {key}"
+
+
+def test_config_yaml_output_section(project_root: pathlib.Path) -> None:
+    """Output section has all required keys."""
+    data = _load_config(project_root)
+    output = data["output"]
+    required = [
+        "primary_aspect",
+        "resolution",
+        "codec",
+        "quality_crf",
+        "audio_bitrate",
+        "target_loudness_lufs",
+    ]
+    for key in required:
+        assert key in output, f"Missing output key: {key}"
+
+
+def test_config_yaml_llm_section(project_root: pathlib.Path) -> None:
+    """LLM section has all required keys."""
+    data = _load_config(project_root)
+    llm = data["llm"]
+    required = ["provider", "planning_model", "utility_model"]
+    for key in required:
+        assert key in llm, f"Missing llm key: {key}"
+
+
+def test_config_yaml_youtube_section(project_root: pathlib.Path) -> None:
+    """YouTube section has all required keys."""
+    data = _load_config(project_root)
+    youtube = data["youtube"]
+    required = ["privacy_status", "default_category", "credentials_path"]
+    for key in required:
+        assert key in youtube, f"Missing youtube key: {key}"
