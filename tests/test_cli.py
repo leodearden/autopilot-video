@@ -328,3 +328,29 @@ class TestCLIErrors:
                 )
                 assert result.exit_code != 0
                 assert "stage exploded" in result.output
+
+
+class TestCLIIntegration:
+    """Integration tests running the real pipeline with stubs."""
+
+    def test_run_end_to_end(self, tmp_path: Path) -> None:
+        """'run' executes all 9 stages with 'not yet implemented' messages."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        result = runner.invoke(
+            main,
+            ["--config", str(config_file), "run", "--verbose"],
+        )
+        assert result.exit_code == 0, f"Output: {result.output}"
+
+    def test_run_dry_run_end_to_end(self, tmp_path: Path) -> None:
+        """'run --dry-run' lists all stages without execution."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        result = runner.invoke(
+            main,
+            ["--config", str(config_file), "run", "--dry-run"],
+        )
+        assert result.exit_code == 0, f"Output: {result.output}"
