@@ -353,3 +353,36 @@ class TestDryRun:
             assert any(expected in r.message for r in caplog.records), (
                 f"Missing estimated time for {stage.name}"
             )
+
+
+class TestBudgetTracking:
+    """Tests for wall-clock budget tracking."""
+
+    def test_run_tracks_total_vs_budget(self) -> None:
+        """Orchestrator created with budget_seconds makes it accessible."""
+        orch = PipelineOrchestrator(budget_seconds=3600)
+        assert orch.budget_seconds == 3600
+
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=MagicMock())
+        # budget_seconds should remain accessible after run
+        assert orch.budget_seconds == 3600
+
+    def test_run_warns_when_over_budget(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A warning is logged when cumulative time exceeds budget_seconds."""
+        import time as _time
+
+        orch = PipelineOrchestrator(budget_seconds=0.001)
+        for stage in orch.stages:
+            def slow_stage(_t=_time, **kw: object) -> None:
+                _t.sleep(0.002)
+            stage.func = slow_stage
+
+        with caplog.at_level(logging.WARNING, logger="autopilot.orchestrator"):
+            orch.run(config=MagicMock(), db=MagicMock())
+
+        assert any("exceeded budget" in r.message for r in caplog.records)
