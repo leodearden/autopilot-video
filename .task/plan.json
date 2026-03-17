@@ -1,28 +1,21 @@
 {
-  "task_id": "1",
-  "title": "Project scaffolding",
-  "modules": [
-    "autopilot",
-    "autopilot/ingest",
-    "autopilot/analyze",
-    "autopilot/organize",
-    "autopilot/plan",
-    "autopilot/source",
-    "autopilot/render",
-    "autopilot/upload",
-    "autopilot/prompts",
-    "tests",
-    "tests/fixtures",
-    "scripts",
-    "output"
-  ],
-  "analysis": "Task 1 is project scaffolding: create pyproject.toml with all PRD dependencies, config.yaml template matching the PRD configuration section exactly, and the full directory structure with __init__.py files. This is a greenfield project — the repo currently only has CLAUDE.md, .gitignore, orchestrator-config.yaml, docs/prd-autopilot-editor.md, and task infrastructure. The PRD specifies a detailed project structure (autopilot/ with 7 subpackages + prompts dir), tests/fixtures/, scripts/, and output/. The config.yaml must have: input_dir, output_dir, creator profile, cameras, output targets, models, llm, youtube, processing sections. pyproject.toml must use uv/hatch build system with Python 3.11+. There is a chicken-and-egg issue: we need pyproject.toml to run pytest, but we want to TDD the pyproject.toml contents. Solution: prerequisite creates a minimal pyproject.toml + tests dir so pytest can execute, then TDD steps verify and expand from there.",
+  "task_id": "2",
+  "title": "Configuration system",
+  "modules": ["autopilot", "tests"],
+  "analysis": "Task 2 requires implementing autopilot/config.py with typed dataclasses for every config section plus a load_config() function that reads YAML, validates, applies defaults, and expands paths.\n\nExisting codebase state:\n- config.yaml already exists at project root with all sections matching the PRD exactly (lines 735-799 of PRD)\n- pyproject.toml lists pyyaml as a dependency but NOT pydantic, so we use stdlib dataclasses\n- Python 3.11+ is required, so we can use modern dataclass features\n- tests/conftest.py has a project_root fixture\n- tests/test_scaffolding.py already tests config.yaml structure (raw YAML keys)\n- tests/fixtures/ directory exists with .gitkeep\n\nApproach: Use stdlib dataclasses with centralized validation in load_config(). Define string-set validation for constrained fields (whisper_size, yolo_variant, tts_engine, music_engine, privacy_status). Cameras is a dict[str, CameraConfig] since the YAML uses camera names as keys. All defaults match PRD values. Path fields (input_dir, output_dir, credentials_path) are expanded at load time. A custom ConfigError exception wraps all failure modes (missing file, parse error, missing required fields, invalid values). Test fixtures use a mix of committed fixture files (for valid/minimal configs) and tmp_path inline YAML (for invalid config tests).",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Create minimal pyproject.toml with hatchling build system, Python >=3.11, and pytest as dev dependency so we can run tests. Create tests/__init__.py and tests/conftest.py with a helper that resolves project root.",
+      "description": "Create tests/fixtures/valid_config.yaml — a complete config with all sections, using /tmp paths to avoid home-dir dependency. Values should differ from PRD defaults where possible to verify reading from file rather than returning defaults.",
       "status": "done",
-      "commit": "bbe7481",
+      "commit": "dbcb4e9",
+      "tests": []
+    },
+    {
+      "id": "pre-2",
+      "description": "Create tests/fixtures/minimal_config.yaml — config with only the two required fields (input_dir: /tmp/input, output_dir: /tmp/output). Used to verify all section defaults are applied correctly when omitted.",
+      "status": "done",
+      "commit": "2fdfd1c",
       "tests": []
     }
   ],
@@ -30,114 +23,212 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write tests/test_scaffolding.py with test_directory_structure_exists() that asserts all required directories exist (autopilot/, autopilot/ingest/, autopilot/analyze/, autopilot/organize/, autopilot/plan/, autopilot/source/, autopilot/render/, autopilot/upload/, autopilot/prompts/, tests/fixtures/, scripts/, output/) and that each Python package has an __init__.py file (autopilot/ and its 7 subpackages). Also assert prompts/ does NOT have __init__.py (it's not a Python package).",
+      "description": "Write tests/test_config.py with tests that import all public names from autopilot.config: CreatorConfig, CameraConfig, OutputConfig, ModelConfig, LLMConfig, YouTubeConfig, ProcessingConfig, AutopilotConfig, ConfigError, load_config. Test each is a dataclass (dataclasses.is_dataclass). Test ConfigError is an Exception subclass.",
       "status": "done",
-      "commit": "9bc1a02"
+      "commit": "a24c742"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Create all directories and __init__.py files: autopilot/__init__.py (with __version__ = '0.1.0'), autopilot/ingest/__init__.py, autopilot/analyze/__init__.py, autopilot/organize/__init__.py, autopilot/plan/__init__.py, autopilot/source/__init__.py, autopilot/render/__init__.py, autopilot/upload/__init__.py, autopilot/prompts/ (empty dir with .gitkeep), tests/fixtures/ (empty dir with .gitkeep), scripts/ (empty dir with .gitkeep), output/ (empty dir with .gitkeep). Verify test passes.",
+      "description": "Create autopilot/config.py with all @dataclass definitions: CreatorConfig, CameraConfig, OutputConfig, ModelConfig, LLMConfig, YouTubeConfig, ProcessingConfig, AutopilotConfig. Define ConfigError(Exception). Add stub load_config(path) raising NotImplementedError. Define __all__.",
       "status": "done",
-      "commit": "6aaf989"
+      "commit": "e24c73e"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write test_pyproject_toml_valid() that: (1) parses pyproject.toml as valid TOML, (2) asserts build-system requires hatchling, (3) asserts project.requires-python >= '3.11', (4) asserts project.name == 'autopilot-video', (5) asserts all required dependency groups exist. Write test_pyproject_toml_has_all_dependencies() that checks the dependencies list contains all required packages: click, pyyaml, whisperx, faster-whisper, ultralytics, insightface, transformers, faiss-gpu, panns-inference, audiocraft, scikit-learn, moviepy, pyav, opentimelineio, scenedetect, kokoro, anthropic, google-api-python-client, requests. Write test_pyproject_toml_has_dev_dependencies() checking pytest, ruff, pyright are in dev optional-dependencies.",
+      "description": "Write test_load_config_valid() that calls load_config() on tests/fixtures/valid_config.yaml. Assert: returns AutopilotConfig, input_dir and output_dir are Path objects, creator fields match fixture, cameras dict has expected key with correct CameraConfig field values (source_resolution as tuple, has_gyro_data as bool), output/models/llm/youtube/processing match fixture.",
       "status": "done",
-      "commit": "cbc1cee"
+      "commit": "a6dfef9"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Update pyproject.toml with all dependencies from the PRD technology stack. Use hatchling build backend. Set name='autopilot-video', version from autopilot/__init__.py, requires-python='>=3.11'. Group deps: core runtime (click, pyyaml, requests), ML (whisperx, faster-whisper, ultralytics, insightface, transformers, faiss-gpu, panns-inference, audiocraft, scikit-learn), video (moviepy>=2.0, pyav, opentimelineio, scenedetect), TTS (kokoro), API (anthropic, google-api-python-client). Dev deps as optional [dev]: pytest, ruff, pyright. Add [tool.pytest.ini_options] with testpaths=['tests']. Add [tool.ruff] config. Add [tool.pyright] config. Verify test passes.",
+      "description": "Implement load_config(path) core: read YAML with yaml.safe_load, construct each sub-config dataclass from parsed dict, handle cameras as dict[str, CameraConfig], convert lists to tuples for resolution fields, convert path strings to Path objects, return AutopilotConfig.",
       "status": "done",
-      "commit": "bd538d6"
+      "commit": "667503b"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write test_config_yaml_valid() that: (1) parses config.yaml as valid YAML, (2) asserts all required top-level keys exist: input_dir, output_dir, creator, cameras, output, models, llm, youtube, processing. Write test_config_yaml_creator_section() checking creator has keys: name, channel_style, target_audience, default_video_duration_minutes, narration_style, music_preference. Write test_config_yaml_models_section() checking models has: whisper_size, yolo_variant, yolo_sample_every_n_frames, clip_model, face_model, tts_engine, music_engine. Write test_config_yaml_processing_section() checking processing has: max_wall_clock_hours, gpu_device, num_cpu_workers, batch_size_yolo, batch_size_whisper. Write test_config_yaml_output_section() checking output has: primary_aspect, resolution, codec, quality_crf, audio_bitrate, target_loudness_lufs. Write test_config_yaml_llm_section() checking llm has: provider, planning_model, utility_model. Write test_config_yaml_youtube_section() checking youtube has: privacy_status, default_category, credentials_path.",
+      "description": "Write test_load_config_defaults() that loads minimal_config.yaml. Assert all defaults match PRD: models.whisper_size='large-v3', models.yolo_variant='yolo11x', models.tts_engine='kokoro', models.music_engine='musicgen', output.quality_crf=18, output.codec='h264', processing.max_wall_clock_hours=36, etc. Also test partial section: tmp_path config with models section specifying only whisper_size='large-v3-turbo' — remaining fields get defaults.",
       "status": "done",
-      "commit": "1386c9a"
+      "commit": "f785b45"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Create config.yaml matching the PRD configuration section exactly. Include all sections with the exact default values from the PRD: input_dir (placeholder ~/footage/), output_dir (placeholder ~/output/), creator profile, camera profiles (dji_osmo_action_6 with source_resolution, aspect_mode, has_gyro_data, default_crop_target, crop_smoothing_tau), output targets, model preferences, LLM config (anthropic provider, claude-opus-4-20250514 planning, claude-sonnet-4-20250514 utility), YouTube config, processing config. Verify test passes.",
+      "description": "Add PRD default values to all optional dataclass fields. Update load_config to merge provided YAML values over defaults: missing sections use all-default dataclass, partial sections merge provided keys over defaults.",
       "status": "done",
-      "commit": "83042fc"
+      "commit": "f785b45"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write test_gitignore_has_output_dir() that verifies .gitignore contains 'output/' to prevent committing rendered videos. Write test_package_version() that imports autopilot and checks __version__ is a valid semver string.",
+      "description": "Write test_load_config_path_expansion() using tmp_path: config with input_dir='~/footage', output_dir='~/output', youtube.credentials_path='~/.config/creds.json'. Assert all three are absolute Paths with no '~'. Also verify default credentials_path (youtube section omitted) is expanded.",
       "status": "done",
-      "commit": "95dd8cd"
+      "commit": "a32a41f"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Update .gitignore to include output/, __pycache__/, *.pyc, .eggs/, *.egg-info/, dist/, build/, .venv/, .env, *.credentials.json entries. Ensure autopilot/__init__.py has __version__ = '0.1.0'. Verify all tests pass.",
+      "description": "Add Path.expanduser() calls in load_config for input_dir, output_dir, and youtube.credentials_path after constructing the AutopilotConfig.",
       "status": "done",
-      "commit": "54d9ce7"
+      "commit": "f5fa084"
+    },
+    {
+      "id": "step-9",
+      "type": "test",
+      "description": "Write test_load_config_missing_required() using tmp_path: (1) config with only output_dir raises ConfigError mentioning 'input_dir', (2) config with only input_dir raises ConfigError mentioning 'output_dir', (3) empty YAML (None from safe_load) raises ConfigError. Use pytest.raises(ConfigError, match=...).",
+      "status": "done",
+      "commit": "f20990e"
+    },
+    {
+      "id": "step-10",
+      "type": "impl",
+      "description": "Add required field validation at start of load_config: convert None to empty dict, check for 'input_dir' and 'output_dir', raise ConfigError listing all missing required fields.",
+      "status": "done",
+      "commit": "bf1e137"
+    },
+    {
+      "id": "step-11",
+      "type": "test",
+      "description": "Write test_load_config_invalid_enums() using tmp_path: ConfigError raised for whisper_size='tiny', yolo_variant='yolo5', tts_engine='openai', music_engine='suno', privacy_status='public'. Each error message contains field name and invalid value.",
+      "status": "done",
+      "commit": "acf0926"
+    },
+    {
+      "id": "step-12",
+      "type": "impl",
+      "description": "Add enum validation via _validate_choice() helper. Validate: whisper_size in {'large-v3','large-v3-turbo'}, yolo_variant in {'yolo11x','yolo11l','yolo11m'}, tts_engine in {'kokoro','elevenlabs'}, music_engine in {'musicgen','fetch_list_only'}, privacy_status in {'unlisted','private'}. Raise ConfigError with field, value, and allowed set.",
+      "status": "done",
+      "commit": "3e0763f"
+    },
+    {
+      "id": "step-13",
+      "type": "test",
+      "description": "Write test_load_config_numeric_bounds() using tmp_path: ConfigError for quality_crf=-1, quality_crf=52, yolo_sample_every_n_frames=0, max_wall_clock_hours=0, num_cpu_workers=0, batch_size_yolo=0, batch_size_whisper=0, gpu_device=-1. Valid boundaries pass: crf=0, crf=51, gpu_device=0, yolo_sample_every_n_frames=1.",
+      "status": "done",
+      "commit": "2a2488f"
+    },
+    {
+      "id": "step-14",
+      "type": "impl",
+      "description": "Add numeric bounds validation via _validate_range() helper. Validate: quality_crf [0,51], yolo_sample_every_n_frames >= 1, max_wall_clock_hours >= 1, num_cpu_workers >= 1, batch_size_yolo >= 1, batch_size_whisper >= 1, gpu_device >= 0. Raise ConfigError with field, value, and valid range.",
+      "status": "done",
+      "commit": "a604c49"
+    },
+    {
+      "id": "step-15",
+      "type": "test",
+      "description": "Write test_load_config_file_errors(): (1) nonexistent path raises ConfigError (not FileNotFoundError), (2) invalid YAML syntax raises ConfigError (not yaml.YAMLError), (3) YAML null document raises ConfigError about missing required fields.",
+      "status": "done",
+      "commit": "0a0d8ae"
+    },
+    {
+      "id": "step-16",
+      "type": "impl",
+      "description": "Wrap file I/O and YAML parsing in try/except: FileNotFoundError -> ConfigError, yaml.YAMLError -> ConfigError. Chain via 'raise ... from e'.",
+      "status": "done",
+      "commit": "4e1e922"
+    },
+    {
+      "id": "step-17",
+      "type": "test",
+      "description": "Write test_load_config_cameras(): (1) config with two camera profiles parses into dict[str, CameraConfig] with correct keys and values, (2) cameras: {} -> empty dict, (3) source_resolution is tuple, crop_smoothing_tau is float, has_gyro_data is bool, (4) partial camera profile uses CameraConfig defaults.",
+      "status": "done",
+      "commit": "a98a113"
+    },
+    {
+      "id": "step-18",
+      "type": "impl",
+      "description": "Ensure camera parsing handles: multiple cameras, empty dict, type conversions (list->tuple for source_resolution), partial profiles with defaults. Add sensible CameraConfig defaults: source_resolution=(1920,1080), aspect_mode='landscape', has_gyro_data=False, default_crop_target='16:9', crop_smoothing_tau=0.5.",
+      "status": "done",
+      "commit": "a98a113"
+    },
+    {
+      "id": "step-19",
+      "type": "test",
+      "description": "Write test_load_config_integration() using project_root fixture: load the actual project config.yaml, verify it returns valid AutopilotConfig, cameras has 'dji_osmo_action_6' key with source_resolution=(4096,4096), models.whisper_size='large-v3', output.quality_crf=18, llm.provider='anthropic'.",
+      "status": "done",
+      "commit": "9c0a126"
+    },
+    {
+      "id": "step-20",
+      "type": "impl",
+      "description": "Final polish: add module docstring, verify __all__ exports, run ruff lint and fix any issues. Ensure all tests pass.",
+      "status": "done",
+      "commit": "ca3d248"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use hatchling as build backend (not setuptools)",
-      "rationale": "The task specifies 'uv/hatch build system'. Hatchling is the modern Python build backend that pairs with uv for dependency management. It supports dynamic version reading from __init__.py."
+      "decision": "Use stdlib dataclasses instead of Pydantic",
+      "rationale": "Pydantic is not in pyproject.toml dependencies. Stdlib dataclasses with centralized validation in load_config() avoid adding a new dependency while providing full type safety via annotations."
     },
     {
-      "decision": "Put __version__ in autopilot/__init__.py, read dynamically in pyproject.toml",
-      "rationale": "Single source of truth for version. Hatchling supports [tool.hatch.version] with path-based version reading. This is the standard hatch pattern."
+      "decision": "Custom ConfigError exception wrapping all failure modes",
+      "rationale": "Provides a single catchable exception type for all config-related failures (missing file, parse error, missing required fields, invalid values). Original exceptions chained via 'from' for debugging."
     },
     {
-      "decision": "autopilot/prompts/ gets .gitkeep not __init__.py",
-      "rationale": "The prompts directory holds .md template files, not Python modules. It should not be a Python package. .gitkeep ensures git tracks the empty directory."
+      "decision": "Centralize validation in load_config() not __post_init__",
+      "rationale": "Keeps dataclasses as simple data holders freely constructable in tests without triggering validation. All validation in one function for easy auditing."
     },
     {
-      "decision": "Dev dependencies go in [project.optional-dependencies] dev group, not separate requirements file",
-      "rationale": "Modern Python packaging puts dev deps in optional-dependencies. Installable via 'uv pip install -e .[dev]' or 'pip install -e .[dev]'. Keeps everything in one file."
+      "decision": "Store resolution as tuple[int, int] not list[int]",
+      "rationale": "Tuples are immutable and semantically represent fixed-size coordinate pairs. YAML lists converted to tuples at load time."
     },
     {
-      "decision": "Use tomllib (stdlib in 3.11+) to parse pyproject.toml in tests",
-      "rationale": "Python 3.11+ includes tomllib in stdlib, so no extra test dependency needed. This validates the TOML is well-formed programmatically."
+      "decision": "cameras as dict[str, CameraConfig] with empty dict default",
+      "rationale": "Config YAML uses camera names as dict keys (e.g. 'dji_osmo_action_6'). Empty dict is sensible when cameras section is omitted."
     },
     {
-      "decision": "Prerequisite creates minimal pyproject.toml before TDD steps",
-      "rationale": "Chicken-and-egg: pytest needs pyproject.toml to discover tests. The prerequisite creates just enough to run pytest (project name, python version, pytest dep), then step-3/step-4 TDD the full dependency list."
+      "decision": "default_video_duration_minutes stored as str",
+      "rationale": "PRD value is '8-15' (a range string, not a number). Storing as str preserves original semantics for LLM prompt consumption."
     },
     {
-      "decision": "Config values match PRD defaults exactly, not placeholders",
-      "rationale": "The task says 'matching the PRD configuration section exactly'. We use the exact values from the PRD (e.g., CRF 18, LUFS -16, claude-opus-4-20250514) so downstream tasks can rely on these defaults."
+      "decision": "String-set validation instead of stdlib Enum",
+      "rationale": "YAML values come in as plain strings. String sets avoid Enum serialization complexity while providing clear error messages. Migration to Enum later is straightforward."
     },
     {
-      "decision": "output/ and tests/fixtures/ get .gitkeep files",
-      "rationale": "Git doesn't track empty directories. .gitkeep is the convention for ensuring empty directories are committed. output/ will later hold rendered videos (gitignored), but the directory should exist in the repo."
+      "decision": "Path expansion limited to input_dir, output_dir, and credentials_path",
+      "rationale": "Only these fields represent filesystem paths where ~ notation is meaningful. Model names and codec strings are not filesystem paths."
+    },
+    {
+      "decision": "Fixture files for valid/minimal configs; tmp_path for invalid configs",
+      "rationale": "Valid configs are reusable across tests and worth committing. Invalid configs are single-purpose and better created inline via tmp_path."
     }
   ],
   "reuse": [
     {
+      "what": "project_root fixture from conftest.py",
+      "where": "tests/conftest.py",
+      "how": "Reuse in test_load_config_integration() to locate the project's config.yaml"
+    },
+    {
+      "what": "pyyaml (yaml.safe_load)",
+      "where": "pyproject.toml dependencies — already installed",
+      "how": "Use for YAML parsing in load_config(). No new dependency needed."
+    },
+    {
+      "what": "tests/fixtures/ directory",
+      "where": "tests/fixtures/ (created in Task 1 scaffolding)",
+      "how": "Place valid_config.yaml and minimal_config.yaml fixture files here"
+    },
+    {
+      "what": "config.yaml at project root",
+      "where": "Project root (created in Task 1)",
+      "how": "Use as integration test subject and reference for PRD default values"
+    },
+    {
+      "what": "pytest tmp_path built-in fixture",
+      "where": "pytest stdlib",
+      "how": "Create ephemeral YAML configs for validation error tests"
+    },
+    {
       "what": "PRD configuration section",
-      "where": "docs/prd-autopilot-editor.md lines 737-799",
-      "how": "Copy the exact YAML from the PRD as the config.yaml template, with all sections and default values preserved."
-    },
-    {
-      "what": "PRD project structure",
-      "where": "docs/prd-autopilot-editor.md lines 648-731",
-      "how": "Use the exact directory layout specified in the PRD to create the project skeleton. The 7 subpackages under autopilot/ and the support directories match the PRD exactly."
-    },
-    {
-      "what": "PRD technology stack / dependency list",
-      "where": "docs/prd-autopilot-editor.md lines 502-521",
-      "how": "Map the 'Key Python Libraries' table directly to pyproject.toml dependencies. Every library listed becomes a dependency entry."
-    },
-    {
-      "what": "orchestrator-config.yaml verification commands",
-      "where": "orchestrator-config.yaml lines 41-43",
-      "how": "The test_command (pytest), lint_command (ruff check), and type_check_command (pyright) confirm the dev tooling choices. Configure these in pyproject.toml [tool.*] sections."
+      "where": "docs/prd-autopilot-editor.md lines 735-799",
+      "how": "All default values, enum allowed-value sets, and field names derived from PRD"
     }
   ]
 }
