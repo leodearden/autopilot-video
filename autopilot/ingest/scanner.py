@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import Future, ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -247,9 +247,14 @@ def scan_directory(
 
     results: list[MediaFile] = []
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        try:
-            for mf in executor.map(_probe_file, files):
-                results.append(mf)
-        except Exception:
-            logger.warning("Probe failure during parallel scan, partial results returned")
+        futures: dict[Future[MediaFile], Path] = {
+            executor.submit(_probe_file, f): f for f in files
+        }
+        for fut in as_completed(futures):
+            try:
+                results.append(fut.result())
+            except Exception:
+                logger.warning(
+                    "Probe failed for %s, skipping", futures[fut]
+                )
     return results

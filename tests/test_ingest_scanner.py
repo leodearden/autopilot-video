@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import Future
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -69,26 +70,47 @@ class TestMediaFile:
         assert isinstance(mf.file_path, Path)
 
 
+def _make_future(result=None, *, exception=None):
+    """Create a resolved Future with the given result or exception."""
+    fut: Future = Future()
+    if exception is not None:
+        fut.set_exception(exception)
+    else:
+        fut.set_result(result)
+    return fut
+
+
 def _sync_executor_mock(probe_fn=None):
     """Build a mock ProcessPoolExecutor that runs synchronously.
 
-    If *probe_fn* is given, executor.map will call it for each item.
-    Otherwise it calls the function argument passed to map().
+    If *probe_fn* is given, ``executor.submit(fn, item)`` calls *probe_fn(item)*
+    and wraps the result in a resolved :class:`Future`.  Otherwise it calls the
+    function argument passed to submit.
     """
     mock_executor = MagicMock()
     mock_executor.__enter__ = MagicMock(return_value=mock_executor)
     mock_executor.__exit__ = MagicMock(return_value=False)
 
-    def _sync_map(fn, items):
+    def _sync_submit(fn, item):
         f = probe_fn if probe_fn is not None else fn
-        return [f(item) for item in items]
+        try:
+            return _make_future(result=f(item))
+        except Exception as exc:
+            return _make_future(exception=exc)
 
-    mock_executor.map.side_effect = _sync_map
+    mock_executor.submit.side_effect = _sync_submit
     return mock_executor
 
 
 class TestScanDirectory:
     """Tests for scan_directory file discovery."""
+
+    def _patch_scanner(self, executor):
+        """Return a combined patch context for ProcessPoolExecutor and as_completed."""
+        return (
+            patch("autopilot.ingest.scanner.ProcessPoolExecutor", return_value=executor),
+            patch("autopilot.ingest.scanner.as_completed", side_effect=lambda futs: futs),
+        )
 
     def test_scan_finds_video_files(self, tmp_path: Path) -> None:
         """scan_directory should discover .mp4 and .mov video files."""
@@ -96,7 +118,8 @@ class TestScanDirectory:
         (tmp_path / "clip2.mov").write_bytes(b"\x00")
         probe = lambda p: MediaFile(file_path=p)  # noqa: E731
         executor = _sync_executor_mock(probe)
-        with patch("autopilot.ingest.scanner.ProcessPoolExecutor", return_value=executor):
+        p1, p2 = self._patch_scanner(executor)
+        with p1, p2:
             results = scan_directory(tmp_path)
         paths = {mf.file_path.name for mf in results}
         assert "clip1.mp4" in paths
@@ -110,7 +133,8 @@ class TestScanDirectory:
         (tmp_path / "audio.aac").write_bytes(b"\x00")
         probe = lambda p: MediaFile(file_path=p)  # noqa: E731
         executor = _sync_executor_mock(probe)
-        with patch("autopilot.ingest.scanner.ProcessPoolExecutor", return_value=executor):
+        p1, p2 = self._patch_scanner(executor)
+        with p1, p2:
             results = scan_directory(tmp_path)
         paths = {mf.file_path.name for mf in results}
         assert "audio.wav" in paths
@@ -125,7 +149,8 @@ class TestScanDirectory:
         (tmp_path / "photo.tiff").write_bytes(b"\x00")
         probe = lambda p: MediaFile(file_path=p)  # noqa: E731
         executor = _sync_executor_mock(probe)
-        with patch("autopilot.ingest.scanner.ProcessPoolExecutor", return_value=executor):
+        p1, p2 = self._patch_scanner(executor)
+        with p1, p2:
             results = scan_directory(tmp_path)
         paths = {mf.file_path.name for mf in results}
         assert "photo.jpg" in paths
@@ -141,7 +166,8 @@ class TestScanDirectory:
         (tmp_path / "clip.mp4").write_bytes(b"\x00")
         probe = lambda p: MediaFile(file_path=p)  # noqa: E731
         executor = _sync_executor_mock(probe)
-        with patch("autopilot.ingest.scanner.ProcessPoolExecutor", return_value=executor):
+        p1, p2 = self._patch_scanner(executor)
+        with p1, p2:
             results = scan_directory(tmp_path)
         assert len(results) == 1
         assert results[0].file_path.name == "clip.mp4"
@@ -154,7 +180,8 @@ class TestScanDirectory:
         (subdir / "nested.mov").write_bytes(b"\x00")
         probe = lambda p: MediaFile(file_path=p)  # noqa: E731
         executor = _sync_executor_mock(probe)
-        with patch("autopilot.ingest.scanner.ProcessPoolExecutor", return_value=executor):
+        p1, p2 = self._patch_scanner(executor)
+        with p1, p2:
             results = scan_directory(tmp_path)
         names = {mf.file_path.name for mf in results}
         assert "top.mp4" in names
@@ -418,21 +445,30 @@ class TestScanDirectoryParallel:
         for i in range(5):
             (tmp_path / f"clip{i}.mp4").write_bytes(b"\x00")
 
+        futures = [
+            _make_future(result=MediaFile(file_path=tmp_path / f"clip{i}.mp4"))
+            for i in range(5)
+        ]
+
         mock_executor = MagicMock()
         mock_executor.__enter__ = MagicMock(return_value=mock_executor)
         mock_executor.__exit__ = MagicMock(return_value=False)
-        mock_executor.map.return_value = [
-            MediaFile(file_path=tmp_path / f"clip{i}.mp4") for i in range(5)
-        ]
+        mock_executor.submit.side_effect = futures
 
-        with patch(
-            "autopilot.ingest.scanner.ProcessPoolExecutor",
-            return_value=mock_executor,
-        ) as mock_pool_cls:
+        with (
+            patch(
+                "autopilot.ingest.scanner.ProcessPoolExecutor",
+                return_value=mock_executor,
+            ) as mock_pool_cls,
+            patch(
+                "autopilot.ingest.scanner.as_completed",
+                side_effect=lambda futs: futs,
+            ),
+        ):
             results = scan_directory(tmp_path, max_workers=2)
 
         mock_pool_cls.assert_called_once_with(max_workers=2)
-        assert mock_executor.map.called
+        assert mock_executor.submit.called
         assert len(results) == 5
 
     def test_scan_default_workers(self, tmp_path: Path) -> None:
@@ -442,75 +478,79 @@ class TestScanDirectoryParallel:
         mock_executor = MagicMock()
         mock_executor.__enter__ = MagicMock(return_value=mock_executor)
         mock_executor.__exit__ = MagicMock(return_value=False)
-        mock_executor.map.return_value = [
-            MediaFile(file_path=tmp_path / "clip.mp4"),
-        ]
+        mock_executor.submit.return_value = _make_future(
+            result=MediaFile(file_path=tmp_path / "clip.mp4")
+        )
 
-        with patch(
-            "autopilot.ingest.scanner.ProcessPoolExecutor",
-            return_value=mock_executor,
-        ) as mock_pool_cls:
+        with (
+            patch(
+                "autopilot.ingest.scanner.ProcessPoolExecutor",
+                return_value=mock_executor,
+            ) as mock_pool_cls,
+            patch(
+                "autopilot.ingest.scanner.as_completed",
+                side_effect=lambda futs: futs,
+            ),
+        ):
             results = scan_directory(tmp_path)
 
         mock_pool_cls.assert_called_once_with(max_workers=None)
         assert len(results) == 1
 
     def test_scan_handles_probe_failure(self, tmp_path: Path) -> None:
-        """scan_directory should not crash when executor.map raises mid-iteration."""
+        """scan_directory should skip files whose probe raises an exception."""
         (tmp_path / "aaa_good.mp4").write_bytes(b"\x00")
         (tmp_path / "zzz_bad.mp4").write_bytes(b"\x00")
 
-        def mock_map(fn, files):
-            """Yield one success then raise on the second (sorted: aaa first, zzz second)."""
-            for f in files:
-                if f.name == "zzz_bad.mp4":
-                    raise Exception("probe failed")
-                yield MediaFile(file_path=f)
+        def _probe(file_path):
+            if file_path.name == "zzz_bad.mp4":
+                raise Exception("probe failed")
+            return MediaFile(file_path=file_path)
 
-        mock_executor = MagicMock()
-        mock_executor.__enter__ = MagicMock(return_value=mock_executor)
-        mock_executor.__exit__ = MagicMock(return_value=False)
-        mock_executor.map.side_effect = mock_map
+        executor = _sync_executor_mock(_probe)
 
-        with patch(
-            "autopilot.ingest.scanner.ProcessPoolExecutor",
-            return_value=mock_executor,
+        with (
+            patch(
+                "autopilot.ingest.scanner.ProcessPoolExecutor",
+                return_value=executor,
+            ),
+            patch(
+                "autopilot.ingest.scanner.as_completed",
+                side_effect=lambda futs: futs,
+            ),
         ):
             results = scan_directory(tmp_path)
 
-        # aaa_good.mp4 yielded before the exception, so partial results returned
+        # zzz_bad fails but aaa_good is still returned
         assert len(results) == 1
         assert results[0].file_path.name == "aaa_good.mp4"
 
     def test_scan_returns_all_non_failing_files(self, tmp_path: Path) -> None:
         """Probe failure for one file should NOT drop subsequent non-failing files.
 
-        With executor.map, the entire iteration aborts when one future raises,
-        silently dropping all files after the failing one.  The desired behavior
-        is per-future fault isolation: only the failing file is skipped.
+        With per-future fault isolation (submit + as_completed), only the
+        failing file is skipped — all other files are still returned.
         """
         (tmp_path / "aaa_good.mp4").write_bytes(b"\x00")
         (tmp_path / "mmm_bad.mp4").write_bytes(b"\x00")
         (tmp_path / "zzz_good.mp4").write_bytes(b"\x00")
 
-        def _make_result(file_path):
+        def _probe(file_path):
             if file_path.name == "mmm_bad.mp4":
                 raise Exception("probe failed for mmm_bad")
             return MediaFile(file_path=file_path)
 
-        def mock_map(fn, files):
-            """Simulates executor.map — raises mid-iteration, aborting the rest."""
-            for f in files:
-                yield _make_result(f)
+        executor = _sync_executor_mock(_probe)
 
-        mock_executor = MagicMock()
-        mock_executor.__enter__ = MagicMock(return_value=mock_executor)
-        mock_executor.__exit__ = MagicMock(return_value=False)
-        mock_executor.map.side_effect = mock_map
-
-        with patch(
-            "autopilot.ingest.scanner.ProcessPoolExecutor",
-            return_value=mock_executor,
+        with (
+            patch(
+                "autopilot.ingest.scanner.ProcessPoolExecutor",
+                return_value=executor,
+            ),
+            patch(
+                "autopilot.ingest.scanner.as_completed",
+                side_effect=lambda futs: futs,
+            ),
         ):
             results = scan_directory(tmp_path)
 
