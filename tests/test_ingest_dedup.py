@@ -103,6 +103,27 @@ class TestFindDuplicates:
         assert ("m1", "m2") in pairs
         assert ("m1", "m3") in pairs
 
+    def test_find_duplicates_keeper_is_first_by_rowid(self, catalog_db) -> None:  # type: ignore[no-untyped-def]
+        """Keeper must be the first-inserted row (lowest rowid), not alphabetical.
+
+        IDs are chosen so alphabetical order differs from insertion/rowid order:
+        z_third (rowid 1), m_second (rowid 2), a_first (rowid 3).
+        The keeper must be z_third (first inserted), not a_first (alphabetically first).
+        """
+        catalog_db.insert_media("z_third", "/z.mp4", sha256_prefix="same_hash")
+        catalog_db.insert_media("m_second", "/m.mp4", sha256_prefix="same_hash")
+        catalog_db.insert_media("a_first", "/a.mp4", sha256_prefix="same_hash")
+
+        pairs = find_duplicates(catalog_db)
+        assert len(pairs) == 2
+        # The keeper in every pair must be z_third (first by rowid)
+        keepers = {kept for kept, _ in pairs}
+        assert keepers == {"z_third"}, (
+            f"Expected keeper='z_third' (first by rowid), got keepers={keepers}"
+        )
+        assert ("z_third", "m_second") in pairs
+        assert ("z_third", "a_first") in pairs
+
 
 class TestMarkDuplicates:
     """Tests for mark_duplicates status updates."""
