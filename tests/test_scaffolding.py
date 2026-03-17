@@ -233,3 +233,43 @@ def test_config_yaml_youtube_section(project_root: pathlib.Path) -> None:
     required = ["privacy_status", "default_category", "credentials_path"]
     for key in required:
         assert key in youtube, f"Missing youtube key: {key}"
+
+
+# ---------------------------------------------------------------------------
+# .gitignore and package version tests
+# ---------------------------------------------------------------------------
+
+
+def test_gitignore_has_output_dir(project_root: pathlib.Path) -> None:
+    """'.gitignore' contains 'output/' to prevent committing rendered videos."""
+    gitignore_path = project_root / ".gitignore"
+    assert gitignore_path.is_file(), ".gitignore must exist"
+    content = gitignore_path.read_text()
+    assert "output/" in content, ".gitignore must contain 'output/'"
+
+
+def test_package_version(project_root: pathlib.Path) -> None:
+    """autopilot package exposes a valid semver __version__."""
+    import re
+    import sys
+
+    # Ensure the project root is on sys.path so we can import autopilot
+    root_str = str(project_root)
+    if root_str not in sys.path:
+        sys.path.insert(0, root_str)
+
+    import importlib
+
+    # Force reimport in case it was cached
+    if "autopilot" in sys.modules:
+        importlib.reload(sys.modules["autopilot"])
+    else:
+        importlib.import_module("autopilot")
+
+    import autopilot
+
+    assert hasattr(autopilot, "__version__"), "autopilot must have __version__"
+    # Basic semver: MAJOR.MINOR.PATCH
+    assert re.match(r"^\d+\.\d+\.\d+", autopilot.__version__), (
+        f"__version__ must be valid semver, got: {autopilot.__version__}"
+    )
