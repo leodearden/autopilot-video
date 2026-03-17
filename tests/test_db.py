@@ -72,3 +72,81 @@ class TestCatalogDBBasics:
         catalog_db.close()
         with pytest.raises(sqlite3.ProgrammingError):
             catalog_db.conn.execute("SELECT 1")
+
+
+# -- Schema creation ----------------------------------------------------------
+
+EXPECTED_TABLES = sorted([
+    "media_files",
+    "transcripts",
+    "shot_boundaries",
+    "detections",
+    "face_clusters",
+    "clip_embeddings",
+    "audio_events",
+    "activity_clusters",
+    "narratives",
+    "edit_plans",
+    "crop_paths",
+    "uploads",
+])
+
+EXPECTED_MEDIA_FILES_COLUMNS = [
+    "id",
+    "file_path",
+    "sha256_prefix",
+    "codec",
+    "resolution_w",
+    "resolution_h",
+    "fps",
+    "duration_seconds",
+    "created_at",
+    "gps_lat",
+    "gps_lon",
+    "audio_channels",
+    "status",
+    "metadata_json",
+]
+
+
+class TestSchema:
+    """Tests for CatalogDB._create_schema()."""
+
+    def test_schema_creates_all_12_tables(self, catalog_db):
+        """_create_schema() creates all 12 expected tables."""
+        cur = catalog_db.conn.execute(
+            "SELECT name FROM sqlite_master "
+            "WHERE type='table' AND name NOT LIKE 'sqlite_%' "
+            "ORDER BY name"
+        )
+        tables = sorted(row[0] for row in cur.fetchall())
+        assert tables == EXPECTED_TABLES
+
+    def test_schema_media_files_columns(self, catalog_db):
+        """media_files table has all expected columns."""
+        cur = catalog_db.conn.execute("PRAGMA table_info(media_files)")
+        columns = [row[1] for row in cur.fetchall()]
+        assert columns == EXPECTED_MEDIA_FILES_COLUMNS
+
+    def test_schema_is_idempotent(self, catalog_db):
+        """Calling _create_schema() twice does not error."""
+        catalog_db._create_schema()
+        # Verify tables still exist
+        cur = catalog_db.conn.execute(
+            "SELECT count(*) FROM sqlite_master "
+            "WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        )
+        assert cur.fetchone()[0] == 12
+
+    def test_schema_foreign_keys(self, catalog_db):
+        """Foreign key constraints exist on child tables."""
+        cur = catalog_db.conn.execute(
+            "PRAGMA foreign_key_list(transcripts)"
+        )
+        fks = cur.fetchall()
+        assert len(fks) >= 1
+        # Check the FK references media_files.id
+        fk = fks[0]
+        assert fk[2] == "media_files"  # table
+        assert fk[3] == "media_id"  # from
+        assert fk[4] == "id"  # to
