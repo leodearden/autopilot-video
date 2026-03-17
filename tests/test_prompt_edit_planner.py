@@ -1,10 +1,8 @@
 """Tests for autopilot/prompts/edit_planner.md prompt template."""
 
-import re
 from pathlib import Path
 
 from tests.conftest import extract_json_blocks
-
 
 EXPECTED_TOOL_NAMES = {
     "select_clip",

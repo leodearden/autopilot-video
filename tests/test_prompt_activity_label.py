@@ -1,6 +1,5 @@
 """Tests for autopilot/prompts/activity_label.md prompt template."""
 
-import re
 from pathlib import Path
 
 

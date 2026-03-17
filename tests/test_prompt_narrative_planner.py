@@ -1,6 +1,5 @@
 """Tests for autopilot/prompts/narrative_planner.md prompt template."""
 
-import re
 from pathlib import Path
 
 

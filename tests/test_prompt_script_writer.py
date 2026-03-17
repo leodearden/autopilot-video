@@ -1,6 +1,5 @@
 """Tests for autopilot/prompts/script_writer.md prompt template."""
 
-import re
 from pathlib import Path
 
 
