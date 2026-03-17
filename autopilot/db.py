@@ -233,6 +233,62 @@ class CatalogDB:
         row = cur.fetchone()
         return dict(row) if row else None
 
+    # -- transcripts CRUD -------------------------------------------------------
+
+    def upsert_transcript(
+        self, media_id: str, segments_json: str, language: str
+    ) -> None:
+        """Insert or replace a transcript for a media file."""
+        self.conn.execute(
+            "INSERT OR REPLACE INTO transcripts "
+            "(media_id, segments_json, language) VALUES (?, ?, ?)",
+            (media_id, segments_json, language),
+        )
+        self.conn.commit()
+
+    def get_transcript(self, media_id: str) -> dict[str, object] | None:
+        """Get a transcript by media_id, or None if not found."""
+        cur = self.conn.execute(
+            "SELECT * FROM transcripts WHERE media_id = ?", (media_id,)
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+    # -- shot_boundaries CRUD ---------------------------------------------------
+
+    def upsert_boundaries(
+        self, media_id: str, boundaries_json: str, method: str
+    ) -> None:
+        """Insert or replace shot boundaries for a media file and method."""
+        self.conn.execute(
+            "INSERT OR REPLACE INTO shot_boundaries "
+            "(media_id, boundaries_json, method) VALUES (?, ?, ?)",
+            (media_id, boundaries_json, method),
+        )
+        self.conn.commit()
+
+    def get_boundaries(
+        self, media_id: str, method: str | None = None
+    ) -> dict[str, object] | list[dict[str, object]]:
+        """Get shot boundaries for a media file.
+
+        If method is specified, returns a single dict or None.
+        If method is None, returns a list of all boundaries for that media.
+        """
+        if method is not None:
+            cur = self.conn.execute(
+                "SELECT * FROM shot_boundaries "
+                "WHERE media_id = ? AND method = ?",
+                (media_id, method),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None  # type: ignore[return-value]
+        cur = self.conn.execute(
+            "SELECT * FROM shot_boundaries WHERE media_id = ?",
+            (media_id,),
+        )
+        return [dict(row) for row in cur.fetchall()]
+
     def close(self) -> None:
         """Close the underlying database connection."""
         self.conn.close()
