@@ -610,3 +610,63 @@ def test_load_config_null_section(tmp_path: pathlib.Path, section: str) -> None:
     # Should succeed and the section gets defaults
     sub = getattr(cfg, section)
     assert sub is not None
+
+
+# ---------------------------------------------------------------------------
+# Step 27: _to_tuple error handling — malformed resolution values
+# ---------------------------------------------------------------------------
+
+
+def test_load_config_resolution_too_few_elements(tmp_path: pathlib.Path) -> None:
+    """ConfigError (not IndexError) for source_resolution with too few elements."""
+    from autopilot.config import ConfigError, load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        f"{_BASE_REQUIRED}"
+        "cameras:\n"
+        "  cam:\n"
+        "    source_resolution: [1920]\n"
+    )
+    with pytest.raises(ConfigError, match="resolution"):
+        load_config(config_file)
+
+
+def test_load_config_resolution_non_numeric(tmp_path: pathlib.Path) -> None:
+    """ConfigError (not ValueError) for source_resolution with non-numeric values."""
+    from autopilot.config import ConfigError, load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        f"{_BASE_REQUIRED}"
+        "cameras:\n"
+        "  cam:\n"
+        "    source_resolution: [abc, def]\n"
+    )
+    with pytest.raises(ConfigError, match="resolution"):
+        load_config(config_file)
+
+
+def test_load_config_output_resolution_too_few(tmp_path: pathlib.Path) -> None:
+    """ConfigError (not IndexError) for output resolution with too few elements."""
+    from autopilot.config import ConfigError, load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(f"{_BASE_REQUIRED}output:\n  resolution: [1920]\n")
+    with pytest.raises(ConfigError, match="resolution"):
+        load_config(config_file)
+
+
+def test_load_config_resolution_scalar(tmp_path: pathlib.Path) -> None:
+    """ConfigError (not TypeError) for source_resolution as scalar string."""
+    from autopilot.config import ConfigError, load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        f"{_BASE_REQUIRED}"
+        "cameras:\n"
+        "  cam:\n"
+        "    source_resolution: not-a-list\n"
+    )
+    with pytest.raises(ConfigError, match="resolution"):
+        load_config(config_file)
