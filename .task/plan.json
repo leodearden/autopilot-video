@@ -5,7 +5,7 @@
     "autopilot",
     "tests"
   ],
-  "analysis": "Task 4 requires two new files: autopilot/cli.py (Click-based CLI entry point) and autopilot/orchestrator.py (pipeline DAG runner). No existing cli.py or orchestrator.py exist in the project.\n\n**Orchestrator design:** PipelineOrchestrator class manages a DAG of 9 stages: INGEST -> ANALYZE -> CLASSIFY -> NARRATE -> SCRIPT -> EDL -> SOURCE_ASSETS -> RENDER -> UPLOAD. Each stage is a dataclass (StageDefinition) with name, callable function, dependency list, and estimated_time. The run() method performs topological sort and executes stages sequentially, tracking elapsed time and reporting progress. Stage functions are stubs that log 'Stage X not yet implemented'. Error handling catches per-stage exceptions and reports status (running/done/skipped/error). Dry-run mode logs what would run without executing.\n\n**CLI design:** Click group 'autopilot' with --config option (default: config.yaml). Subcommands: ingest, analyze, plan, edit, render, upload, run. Common options: --input-dir, --output-dir, --verbose, --dry-run. Each subcommand loads config via load_config(), opens CatalogDB, and delegates to the appropriate orchestrator stage(s). The 'run' subcommand invokes the full pipeline. Click's CliRunner is used for testing.\n\n**Dependencies:** Task depends on task 2 (config.py, already done) and task 3 (db.py, already done). Both are fully implemented and tested. We reuse load_config() and CatalogDB directly.\n\n**Test approach:** Click's CliRunner for CLI tests (invokes commands in-process, captures output). For orchestrator tests, we use unittest.mock to verify stage function calls and ordering. Tests use tmp_path for config files and in-memory DB. Follows existing test patterns: class-based grouping, docstrings, clear assertions.",
+  "analysis": "Task 4 requires two new files: autopilot/cli.py (Click-based CLI entry point) and autopilot/orchestrator.py (pipeline DAG runner). No existing cli.py or orchestrator.py exist in the project.\n\n**Orchestrator design:** PipelineOrchestrator class manages a DAG of 9 stages: INGEST -> ANALYZE -> CLASSIFY -> NARRATE -> SCRIPT -> EDL -> SOURCE_ASSETS -> RENDER -> UPLOAD. Each stage is a dataclass (StageDefinition) with name, callable function, dependency list, and estimated_time. The run() method performs topological sort and executes stages sequentially, tracking elapsed time and reporting progress. Stage functions are stubs that log 'Stage X not yet implemented'. Error handling catches per-stage exceptions and reports status (running/done/skipped/error). Dry-run mode logs what would run without executing.\n\n**CLI design:** Click group 'autopilot' with --config option (default: config.yaml). Subcommands: ingest, analyze, plan, edit, render, upload, run. Common options: --input-dir, --output-dir, --verbose, --dry-run. Each subcommand loads config via load_config(), opens CatalogDB, and delegates to the appropriate orchestrator stage(s). The 'run' subcommand invokes the full pipeline. Click's CliRunner is used for testing.\n\n**Dependencies:** Task depends on task 2 (config.py, already done) and task 3 (db.py, already done). Both are fully implemented and tested. We reuse load_config() and CatalogDB directly.\n\n**Test approach:** Click's CliRunner for CLI tests (invokes commands in-process, captures output). For orchestrator tests, we use unittest.mock to verify stage function calls and ordering. Tests use tmp_path for config files and in-memory DB. Follows existing test patterns: class-based grouping, docstrings, clear assertions.\n\n**Review fix (post-step-32):** Reviewer identified that _setup_context calls CatalogDB without ensuring config.output_dir exists. On first run with a fresh output directory, sqlite3.connect() raises OperationalError. Steps 33-34 add a test and fix for this robustness issue.",
   "prerequisites": [
     {
       "id": "pre-1",
@@ -239,6 +239,20 @@
       "description": "Final integration wiring and cleanup. Ensure all imports are correct, add __all__ exports to orchestrator.py and cli.py, verify pyproject.toml has click dependency (already present). Add [project.scripts] entry point 'autopilot = autopilot.cli:main' to pyproject.toml if not present. Make step-31 tests pass.",
       "status": "done",
       "commit": "8736e4e"
+    },
+    {
+      "id": "step-33",
+      "type": "test",
+      "description": "Write failing tests for output directory auto-creation in _setup_context. Add TestOutputDirCreation class to tests/test_cli.py: (1) test_setup_context_creates_output_dir_when_missing — create a valid config YAML where output_dir points to a non-existent directory inside tmp_path (e.g., tmp_path / 'nonexistent' / 'deep' / 'output'), invoke any subcommand (e.g., 'ingest') via CliRunner with that config, verify exit code 0 (no OperationalError crash) and verify the output directory was created on disk; (2) test_setup_context_creates_catalog_db_in_new_dir — same scenario, verify catalog.db file exists inside the newly created output directory after the command runs; (3) test_setup_context_existing_output_dir_unchanged — create a valid config where output_dir already exists, place a marker file in it, invoke subcommand, verify marker file still present (mkdir doesn't clobber existing contents).",
+      "status": "done",
+      "commit": "dc67ce3"
+    },
+    {
+      "id": "step-34",
+      "type": "impl",
+      "description": "Fix _setup_context in autopilot/cli.py to ensure the output directory exists before opening CatalogDB. Add `config.output_dir.mkdir(parents=True, exist_ok=True)` on the line immediately before `db_path = config.output_dir / 'catalog.db'` (at line 76). This prevents sqlite3.OperationalError when the parent directory doesn't exist on first run. The exist_ok=True flag makes it safe when the directory already exists. Make step-33 tests pass.",
+      "status": "done",
+      "commit": "1f5c0f5"
     }
   ],
   "design_decisions": [
@@ -273,6 +287,10 @@
     {
       "decision": "Error propagation in DAG: errored stage causes all dependents to be SKIPPED",
       "rationale": "If ANALYZE fails, it makes no sense to run CLASSIFY (which depends on ANALYZE's output). Cascading skip is the safe default. Users can re-run the pipeline after fixing the issue."
+    },
+    {
+      "decision": "Auto-create output_dir with mkdir(parents=True, exist_ok=True) in _setup_context rather than catching sqlite3.OperationalError",
+      "rationale": "Proactive directory creation is more robust than reactive error handling. The output directory is an expected artifact location — it should always exist before any writes. Using parents=True handles deeply nested paths on first run. Using exist_ok=True makes it idempotent. This follows the same pattern used in normalizer.py:49 for target directories. Catching OperationalError would be fragile since the same exception could mask other sqlite3 issues."
     }
   ],
   "reuse": [
@@ -310,6 +328,11 @@
       "what": "logging module pattern from scanner.py",
       "where": "autopilot/orchestrator.py",
       "how": "scanner.py uses logger = logging.getLogger(__name__) at module level. Follow the same pattern in orchestrator.py for stage stub logging and progress reporting."
+    },
+    {
+      "what": "mkdir(parents=True, exist_ok=True) pattern from normalizer.py",
+      "where": "autopilot/cli.py",
+      "how": "normalizer.py:49 uses target_dir.mkdir(parents=True, exist_ok=True) to ensure output directories exist before writing. Apply the same pattern in _setup_context before opening CatalogDB."
     }
   ]
 }
