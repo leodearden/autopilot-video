@@ -203,3 +203,51 @@ class TestRun:
             assert isinstance(result, StageResult), f"{name} result not a StageResult"
             assert result.status == StageStatus.DONE
             assert result.elapsed_seconds >= 0
+
+
+class TestProgressReporting:
+    """Tests for progress reporting during run()."""
+
+    def test_run_prints_stage_status(self, caplog: pytest.LogCaptureFixture) -> None:
+        """run() logs RUNNING and DONE for each stage."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            orch.run(config=MagicMock(), db=MagicMock())
+
+        log_text = caplog.text
+        for stage in orch.stages:
+            assert f"[RUNNING] {stage.name}" in log_text, (
+                f"Missing RUNNING log for {stage.name}"
+            )
+            assert f"[DONE] {stage.name}" in log_text, (
+                f"Missing DONE log for {stage.name}"
+            )
+
+    def test_run_prints_elapsed_time(self, caplog: pytest.LogCaptureFixture) -> None:
+        """run() logs elapsed time for each completed stage."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            orch.run(config=MagicMock(), db=MagicMock())
+
+        # Each DONE line should have a time like "(0.0s)"
+        done_lines = [r.message for r in caplog.records if "[DONE]" in r.message]
+        assert len(done_lines) == 9
+        for line in done_lines:
+            assert "s)" in line, f"Missing elapsed time in: {line}"
+
+    def test_run_prints_total_elapsed(self, caplog: pytest.LogCaptureFixture) -> None:
+        """run() logs total pipeline elapsed time at end."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            orch.run(config=MagicMock(), db=MagicMock())
+
+        assert any("Pipeline complete" in r.message for r in caplog.records)
