@@ -282,3 +282,49 @@ class TestStageSubcommands:
         """'upload' calls the UPLOAD stage function."""
         mock_orch = self._invoke_with_mock_orch(tmp_path, "upload")
         mock_orch._stage_map.__getitem__.assert_any_call("UPLOAD")
+
+
+class TestCLIErrors:
+    """Tests for CLI error handling."""
+
+    def test_missing_config_file(self, tmp_path: Path) -> None:
+        """Nonexistent --config file gives exit code != 0 with 'config' in error."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["--config", str(tmp_path / "nonexistent.yaml"), "ingest"],
+        )
+        assert result.exit_code != 0
+        assert "config" in result.output.lower() or "Config" in result.output
+
+    def test_invalid_config(self, tmp_path: Path) -> None:
+        """Invalid YAML config gives exit code != 0."""
+        bad_config = tmp_path / "bad.yaml"
+        bad_config.write_text(": : : invalid yaml [[[")
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["--config", str(bad_config), "ingest"],
+        )
+        assert result.exit_code != 0
+
+    def test_stage_error_prints_message(self, tmp_path: Path) -> None:
+        """Stage function raising is reported to the user."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+            mock_db_cls.return_value = MagicMock()
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch = MagicMock()
+                mock_orch_cls.return_value = mock_orch
+                # Make stage func raise
+                mock_orch._stage_map.__getitem__().func.side_effect = RuntimeError(
+                    "stage exploded"
+                )
+                result = runner.invoke(
+                    main,
+                    ["--config", str(config_file), "ingest"],
+                )
+                assert result.exit_code != 0
+                assert "stage exploded" in result.output
