@@ -301,3 +301,55 @@ class TestErrorHandling:
         results = orch.run(config=MagicMock(), db=MagicMock())
 
         assert results["INGEST"].error_message == "ingest boom"
+
+
+class TestDryRun:
+    """Tests for dry-run mode."""
+
+    def test_dry_run_does_not_call_stages(self) -> None:
+        """dry_run=True skips calling stage functions."""
+        orch = PipelineOrchestrator()
+        mocks: dict[str, MagicMock] = {}
+        for stage in orch.stages:
+            mock_fn = MagicMock()
+            mocks[stage.name] = mock_fn
+            stage.func = mock_fn
+
+        orch.run(config=MagicMock(), db=MagicMock(), dry_run=True)
+
+        for name, mock_fn in mocks.items():
+            mock_fn.assert_not_called()
+
+    def test_dry_run_prints_execution_plan(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """dry_run=True logs DRY-RUN prefix for each stage."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            orch.run(config=MagicMock(), db=MagicMock(), dry_run=True)
+
+        log_text = caplog.text
+        for stage in orch.stages:
+            assert f"[DRY-RUN] {stage.name}" in log_text, (
+                f"Missing DRY-RUN log for {stage.name}"
+            )
+
+    def test_dry_run_shows_estimated_time(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """dry_run=True includes estimated_seconds in output."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            orch.run(config=MagicMock(), db=MagicMock(), dry_run=True)
+
+        for stage in orch.stages:
+            expected = f"est. {stage.estimated_seconds}s"
+            assert any(expected in r.message for r in caplog.records), (
+                f"Missing estimated time for {stage.name}"
+            )
