@@ -1,0 +1,5 @@
+# Test fixture: minimal config with only required fields.
+# All section defaults should be applied when loaded.
+
+input_dir: /tmp/input
+output_dir: /tmp/output
