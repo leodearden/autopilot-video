@@ -248,3 +248,38 @@ def test_load_config_default_credentials_path_expanded(tmp_path: pathlib.Path) -
         f"default credentials_path not absolute: {cfg.youtube.credentials_path}"
     )
     assert "~" not in str(cfg.youtube.credentials_path)
+
+
+# ---------------------------------------------------------------------------
+# Step 9: Missing required fields
+# ---------------------------------------------------------------------------
+
+
+def test_load_config_missing_input_dir(tmp_path: pathlib.Path) -> None:
+    """ConfigError raised when input_dir is missing."""
+    from autopilot.config import ConfigError, load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("output_dir: /tmp/out\n")
+    with pytest.raises(ConfigError, match="input_dir"):
+        load_config(config_file)
+
+
+def test_load_config_missing_output_dir(tmp_path: pathlib.Path) -> None:
+    """ConfigError raised when output_dir is missing."""
+    from autopilot.config import ConfigError, load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("input_dir: /tmp/in\n")
+    with pytest.raises(ConfigError, match="output_dir"):
+        load_config(config_file)
+
+
+def test_load_config_empty_yaml(tmp_path: pathlib.Path) -> None:
+    """ConfigError raised when YAML document is empty (None from safe_load)."""
+    from autopilot.config import ConfigError, load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("")
+    with pytest.raises(ConfigError):
+        load_config(config_file)
