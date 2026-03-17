@@ -690,37 +690,48 @@ class TestIntegration:
     """Integration and edge-case tests for CatalogDB."""
 
     def test_transaction_commit(self):
-        """Context manager commits data that persists after exit."""
+        """__exit__ commits data written via raw SQL inside a 'with' block.
+
+        Uses raw conn.execute (not CRUD methods) so the ONLY commit path
+        is __exit__'s conn.commit().  This exercises the context manager's
+        commit logic directly.
+        """
         from autopilot.db import CatalogDB
 
         db = CatalogDB(":memory:")
         try:
             with db:
-                db.insert_media(id="m1", file_path="/a.mp4")
-            # Data should be committed and visible
-            result = db.get_media("m1")
-            assert result is not None
-            assert result["id"] == "m1"
+                db.conn.execute(
+                    "INSERT INTO media_files (id, file_path) VALUES ('m1', '/a.mp4')"
+                )
+            # After __exit__ commits, data should be visible
+            cur = db.conn.execute("SELECT * FROM media_files WHERE id = 'm1'")
+            row = cur.fetchone()
+            assert row is not None
+            assert row["id"] == "m1"
         finally:
             db.close()
 
     def test_transaction_rollback(self):
-        """Context manager rolls back on exception, data not persisted."""
+        """__exit__ rolls back public CRUD writes on exception.
+
+        Uses db.insert_media() (a public CRUD method) inside a 'with' block
+        followed by a deliberate exception.  Since CRUD methods no longer
+        auto-commit, __exit__'s rollback should discard the insert.
+        """
         from autopilot.db import CatalogDB
 
         db = CatalogDB(":memory:")
         try:
             try:
                 with db:
-                    db.conn.execute(
-                        "INSERT INTO media_files (id, file_path) VALUES ('m1', '/a.mp4')"
-                    )
+                    db.insert_media(id="m1", file_path="/a.mp4")
                     raise ValueError("intentional error")
             except ValueError:
                 pass
             # Data should NOT be persisted due to rollback
-            cur = db.conn.execute("SELECT * FROM media_files WHERE id = 'm1'")
-            assert cur.fetchone() is None
+            result = db.get_media("m1")
+            assert result is None, "rollback should have discarded insert_media"
         finally:
             db.close()
 
