@@ -114,3 +114,39 @@ def _make_mock_capture(
     cap.read.return_value = (True, frame)
     cap.set.return_value = True
     return cap
+
+
+class TestPublicAPI:
+    """Tests for module-level public API imports."""
+
+    def test_detect_objects_importable(self) -> None:
+        """detect_objects and DetectionError are importable from autopilot.analyze.objects."""
+        from autopilot.analyze.objects import DetectionError, detect_objects
+
+        assert detect_objects is not None
+        assert DetectionError is not None
+
+    def test_detection_error_is_exception(self) -> None:
+        """DetectionError is a subclass of Exception."""
+        from autopilot.analyze.objects import DetectionError
+
+        assert issubclass(DetectionError, Exception)
+        err = DetectionError("test")
+        assert str(err) == "test"
+
+    def test_detect_objects_signature(self) -> None:
+        """detect_objects accepts required positional and optional keyword args."""
+        from autopilot.analyze.objects import detect_objects
+        import inspect
+
+        sig = inspect.signature(detect_objects)
+        params = list(sig.parameters.keys())
+        # Positional: media_id, video_path, db, scheduler, config
+        assert "media_id" in params
+        assert "video_path" in params
+        assert "db" in params
+        assert "scheduler" in params
+        assert "config" in params
+        # Keyword-only: batch_size, sparse
+        assert sig.parameters["batch_size"].kind == inspect.Parameter.KEYWORD_ONLY
+        assert sig.parameters["sparse"].kind == inspect.Parameter.KEYWORD_ONLY
