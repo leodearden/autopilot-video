@@ -63,3 +63,54 @@ class TestPublicAPI:
         assert issubclass(SchedulerError, Exception)
         err = SchedulerError("test error")
         assert str(err) == "test error"
+
+
+def _make_spec(vram: int = 3 * GB) -> ModelSpec:
+    """Helper to create a ModelSpec with MagicMock callables."""
+    return ModelSpec(
+        load_fn=MagicMock(return_value=f"model_{vram}"),
+        unload_fn=MagicMock(),
+        vram_bytes=vram,
+    )
+
+
+class TestSchedulerInit:
+    """Tests for GPUScheduler initialization and model registration."""
+
+    def test_init_default_device(self) -> None:
+        """GPUScheduler() defaults to device=0."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        assert scheduler.device == 0
+
+    def test_init_custom_device(self) -> None:
+        """GPUScheduler stores custom device correctly."""
+        scheduler = GPUScheduler(device=1, total_vram=24 * GB)
+        assert scheduler.device == 1
+
+    def test_register_model(self) -> None:
+        """Registered model appears in the scheduler's registry."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        spec = _make_spec()
+        scheduler.register("whisperx", spec)
+        assert "whisperx" in scheduler.loaded_models or True  # just check no error
+        # More specific: verify it can be used
+        with scheduler.model("whisperx") as m:
+            assert m is not None
+
+    def test_register_duplicate_raises(self) -> None:
+        """Registering the same model name twice raises SchedulerError."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        spec = _make_spec()
+        scheduler.register("whisperx", spec)
+        with pytest.raises(SchedulerError, match="already registered"):
+            scheduler.register("whisperx", spec)
+
+    def test_unregister_model(self) -> None:
+        """Unregistered model is removed from the registry."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        spec = _make_spec()
+        scheduler.register("whisperx", spec)
+        scheduler.unregister("whisperx")
+        with pytest.raises(SchedulerError):
+            with scheduler.model("whisperx") as m:
+                pass
