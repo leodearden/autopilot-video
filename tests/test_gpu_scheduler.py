@@ -348,3 +348,53 @@ class TestForceUnload:
             pass
 
         assert spec.load_fn.call_count == 2
+
+
+class TestWarmup:
+    """Tests for warmup function support."""
+
+    def test_warmup_called_after_load(self) -> None:
+        """warmup_fn is called with the loaded model after load_fn."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        sentinel = object()
+        warmup = MagicMock()
+        spec = ModelSpec(
+            load_fn=MagicMock(return_value=sentinel),
+            unload_fn=MagicMock(),
+            vram_bytes=3 * GB,
+            warmup_fn=warmup,
+        )
+        scheduler.register("test", spec)
+        with scheduler.model("test"):
+            pass
+        warmup.assert_called_once_with(sentinel)
+
+    def test_warmup_not_called_on_cached_access(self) -> None:
+        """warmup_fn is NOT called when model is already loaded."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        warmup = MagicMock()
+        spec = ModelSpec(
+            load_fn=MagicMock(return_value="m"),
+            unload_fn=MagicMock(),
+            vram_bytes=3 * GB,
+            warmup_fn=warmup,
+        )
+        scheduler.register("test", spec)
+        with scheduler.model("test"):
+            pass
+        with scheduler.model("test"):
+            pass
+        warmup.assert_called_once()  # only on first load
+
+    def test_warmup_none_skipped(self) -> None:
+        """When warmup_fn is None, no warmup is attempted."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        spec = ModelSpec(
+            load_fn=MagicMock(return_value="m"),
+            unload_fn=MagicMock(),
+            vram_bytes=3 * GB,
+            warmup_fn=None,
+        )
+        scheduler.register("test", spec)
+        with scheduler.model("test") as m:
+            assert m == "m"  # loads without error
