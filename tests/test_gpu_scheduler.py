@@ -461,3 +461,52 @@ class TestThreadSafety:
 
         assert not errors
         assert scheduler.loaded_models == {"a", "b"}
+
+
+class TestProperties:
+    """Tests for device and VRAM introspection properties."""
+
+    def test_device_property(self) -> None:
+        """GPUScheduler.device returns the configured device index."""
+        scheduler = GPUScheduler(device=2, total_vram=24 * GB)
+        assert scheduler.device == 2
+
+    def test_loaded_models_returns_names(self) -> None:
+        """loaded_models returns set of currently loaded model names."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        spec_a = _make_spec(vram=3 * GB)
+        spec_b = _make_spec(vram=3 * GB)
+        scheduler.register("a", spec_a)
+        scheduler.register("b", spec_b)
+        with scheduler.model("a"):
+            pass
+        with scheduler.model("b"):
+            pass
+        assert scheduler.loaded_models == {"a", "b"}
+
+    def test_loaded_models_empty_initially(self) -> None:
+        """loaded_models is empty when no models are loaded."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        assert scheduler.loaded_models == set()
+
+    def test_vram_used_property(self) -> None:
+        """vram_used returns the sum of loaded models' vram_bytes."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        spec_a = _make_spec(vram=3 * GB)
+        spec_b = _make_spec(vram=8 * GB)
+        scheduler.register("a", spec_a)
+        scheduler.register("b", spec_b)
+        with scheduler.model("a"):
+            pass
+        with scheduler.model("b"):
+            pass
+        assert scheduler.vram_used == 11 * GB
+
+    def test_vram_free_property(self) -> None:
+        """vram_free returns total_vram minus vram_used."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        spec = _make_spec(vram=8 * GB)
+        scheduler.register("m", spec)
+        with scheduler.model("m"):
+            pass
+        assert scheduler.vram_free == 16 * GB
