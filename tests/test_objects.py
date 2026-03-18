@@ -716,3 +716,83 @@ class TestBatchProcessing:
         # 5 frames at 30fps sparse → only frame 0
         rows = catalog_db.get_detections_for_range("m1", 0, 5)
         assert len(rows) == 1
+
+
+class TestErrorHandling:
+    """Tests for error handling in detect_objects."""
+
+    def test_video_not_found_raises(self, catalog_db) -> None:
+        """Video file not found raises DetectionError."""
+        from pathlib import Path
+
+        from autopilot.analyze.objects import DetectionError, detect_objects
+        from autopilot.config import ModelConfig
+
+        scheduler = MagicMock()
+        config = ModelConfig()
+
+        with pytest.raises(DetectionError, match="not found"):
+            detect_objects("m1", Path("/nonexistent/video.mp4"), catalog_db, scheduler, config)
+
+    def test_video_not_opened_raises(self, catalog_db) -> None:
+        """VideoCapture.isOpened() returns False raises DetectionError."""
+        from pathlib import Path
+
+        from autopilot.analyze.objects import DetectionError, detect_objects
+        from autopilot.config import ModelConfig
+
+        scheduler = MagicMock()
+        config = ModelConfig()
+
+        mock_cap = MagicMock()
+        mock_cap.isOpened.return_value = False
+
+        mock_cv2 = _make_mock_cv2()
+        mock_cv2.VideoCapture.return_value = mock_cap
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            with patch.object(Path, "exists", return_value=True):
+                with pytest.raises(DetectionError, match="Failed to open"):
+                    detect_objects(
+                        "m1", Path("/fake/video.mp4"), catalog_db, scheduler, config,
+                    )
+
+    def test_frame_read_failure_skipped(self, catalog_db) -> None:
+        """Frame read failure is skipped gracefully, other frames still processed."""
+        from pathlib import Path
+
+        from autopilot.analyze.objects import detect_objects
+        from autopilot.config import ModelConfig
+
+        catalog_db.insert_media("m1", "/fake/video.mp4")
+
+        config = ModelConfig()
+        mock_model = _make_mock_yolo_model()
+        mock_model.track.side_effect = lambda *a, **kw: _make_yolo_result(
+            _make_boxes(xywh=[[100.0, 200.0, 50.0, 60.0]], conf=[0.9], cls=[0], track_id=[1])
+        )
+
+        scheduler = MagicMock()
+        scheduler.model.return_value.__enter__ = MagicMock(return_value=mock_model)
+        scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
+
+        # 2 frames at 30fps sparse = [0]
+        mock_cap = _make_mock_capture(total_frames=60, fps=30.0)
+        # First read succeeds (frame 0), second fails (frame 30)
+        mock_cap.read.side_effect = [
+            (True, np.zeros((1080, 1920, 3), dtype=np.uint8)),
+            (False, None),
+        ]
+
+        mock_cv2 = _make_mock_cv2()
+        mock_cv2.VideoCapture.return_value = mock_cap
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            with patch.object(Path, "exists", return_value=True):
+                detect_objects(
+                    "m1", Path("/fake/video.mp4"), catalog_db, scheduler, config,
+                    sparse=True,
+                )
+
+        # Frame 0 should be in DB (read succeeded)
+        assert catalog_db.get_detections_for_frame("m1", 0) is not None

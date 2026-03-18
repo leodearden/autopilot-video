@@ -177,13 +177,13 @@ def detect_objects(
         logger.info("Detections already exist for %s, skipping", media_id)
         return
 
+    # Validate video path before importing cv2
+    if not video_path.exists():
+        raise DetectionError(f"Video file not found: {video_path}")
+
     import cv2
 
     mode = "sparse" if sparse else "dense"
-
-    # Open video
-    if not video_path.exists():
-        raise DetectionError(f"Video file not found: {video_path}")
 
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
