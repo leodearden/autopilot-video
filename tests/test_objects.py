@@ -559,3 +559,93 @@ class TestSparseMode:
         assert mock_model.track.call_count > 0
         for call in mock_model.track.call_args_list:
             assert call.kwargs.get("persist") is True
+
+
+class TestDenseMode:
+    """Tests for detect_objects in dense mode with interpolation."""
+
+    def _run_dense(self, catalog_db, total_frames=12, fps=30.0, sample_every_n=3):
+        """Helper to run detect_objects in dense mode with moving tracks."""
+        from pathlib import Path
+
+        from autopilot.analyze.objects import detect_objects
+        from autopilot.config import ModelConfig
+
+        catalog_db.insert_media("m1", "/fake/video.mp4")
+
+        config = ModelConfig()
+        config.yolo_sample_every_n_frames = sample_every_n
+        mock_model = _make_mock_yolo_model()
+
+        # Track_id=1 moves rightward: x starts at 100, increases by 30 per sample
+        call_count = [0]
+
+        def make_moving_result(*args, **kwargs):
+            x = 100.0 + call_count[0] * 30.0
+            boxes = _make_boxes(
+                xywh=[[x, 200.0, 50.0, 60.0]],
+                conf=[0.9],
+                cls=[0],
+                track_id=[1],
+            )
+            call_count[0] += 1
+            return _make_yolo_result(boxes)
+
+        mock_model.track.side_effect = make_moving_result
+
+        scheduler = MagicMock()
+        scheduler.model.return_value.__enter__ = MagicMock(return_value=mock_model)
+        scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_cap = _make_mock_capture(
+            total_frames=total_frames, fps=fps, width=1920, height=1080
+        )
+
+        mock_cv2 = _make_mock_cv2()
+        mock_cv2.VideoCapture.return_value = mock_cap
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            with patch.object(Path, "exists", return_value=True):
+                detect_objects(
+                    "m1", Path("/fake/video.mp4"), catalog_db, scheduler, config,
+                    sparse=False,
+                )
+
+        return mock_model
+
+    def test_dense_all_frames_stored(self, catalog_db) -> None:
+        """Dense mode stores detections for all 12 frames."""
+        self._run_dense(catalog_db, total_frames=12, sample_every_n=3)
+        rows = catalog_db.get_detections_for_range("m1", 0, 11)
+        assert len(rows) == 12
+
+    def test_dense_sampled_frames_exact(self, catalog_db) -> None:
+        """Sampled frames (0,3,6,9) have exact YOLO results."""
+        self._run_dense(catalog_db, total_frames=12, sample_every_n=3)
+        # Frame 0: x=100
+        row0 = catalog_db.get_detections_for_frame("m1", 0)
+        dets0 = json.loads(row0["detections_json"])
+        assert dets0[0]["bbox_xywh"][0] == pytest.approx(100.0)
+        # Frame 3: x=130 (second track call)
+        row3 = catalog_db.get_detections_for_frame("m1", 3)
+        dets3 = json.loads(row3["detections_json"])
+        assert dets3[0]["bbox_xywh"][0] == pytest.approx(130.0)
+
+    def test_dense_interpolated_frame(self, catalog_db) -> None:
+        """Frame 1 is interpolated (1/3 between frame 0 and frame 3)."""
+        self._run_dense(catalog_db, total_frames=12, sample_every_n=3)
+        # Frame 0 x=100, Frame 3 x=130 → Frame 1 x ≈ 110
+        row1 = catalog_db.get_detections_for_frame("m1", 1)
+        dets1 = json.loads(row1["detections_json"])
+        assert dets1[0]["bbox_xywh"][0] == pytest.approx(110.0)
+
+    def test_dense_trailing_frame_holds_position(self, catalog_db) -> None:
+        """Frame 11 holds position from frame 9 (no frame 12 to interpolate toward)."""
+        self._run_dense(catalog_db, total_frames=12, sample_every_n=3)
+        # Frame 9: x=100 + 3*30 = 190 (4th track call, 0-indexed)
+        row9 = catalog_db.get_detections_for_frame("m1", 9)
+        dets9 = json.loads(row9["detections_json"])
+        row11 = catalog_db.get_detections_for_frame("m1", 11)
+        dets11 = json.loads(row11["detections_json"])
+        # Frame 11 should hold same x as frame 9
+        assert dets11[0]["bbox_xywh"][0] == pytest.approx(dets9[0]["bbox_xywh"][0])
