@@ -92,7 +92,7 @@ class TestSchedulerInit:
         scheduler = GPUScheduler(total_vram=24 * GB)
         spec = _make_spec()
         scheduler.register("whisperx", spec)
-        assert "whisperx" in scheduler.loaded_models or True  # just check no error
+        assert "whisperx" in scheduler._registry
         # More specific: verify it can be used
         with scheduler.model("whisperx") as m:
             assert m is not None
