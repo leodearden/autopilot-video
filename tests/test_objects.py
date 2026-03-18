@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, PropertyMock
+import sys
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import numpy as np
 import pytest
@@ -93,17 +94,21 @@ def _make_mock_capture(
         width: Frame width in pixels.
         height: Frame height in pixels.
     """
+    # cv2 CAP_PROP constants (raw integer values)
+    CAP_PROP_FPS = 5
+    CAP_PROP_FRAME_COUNT = 7
+    CAP_PROP_FRAME_WIDTH = 3
+    CAP_PROP_FRAME_HEIGHT = 4
+
     cap = MagicMock()
     cap.isOpened.return_value = True
 
     def get_prop(prop_id):
-        import cv2
-
         prop_map = {
-            cv2.CAP_PROP_FPS: fps,
-            cv2.CAP_PROP_FRAME_COUNT: total_frames,
-            cv2.CAP_PROP_FRAME_WIDTH: width,
-            cv2.CAP_PROP_FRAME_HEIGHT: height,
+            CAP_PROP_FPS: fps,
+            CAP_PROP_FRAME_COUNT: total_frames,
+            CAP_PROP_FRAME_WIDTH: width,
+            CAP_PROP_FRAME_HEIGHT: height,
         }
         return prop_map.get(prop_id, 0.0)
 
@@ -114,6 +119,17 @@ def _make_mock_capture(
     cap.read.return_value = (True, frame)
     cap.set.return_value = True
     return cap
+
+
+def _make_mock_cv2():
+    """Create a MagicMock cv2 module with correct CAP_PROP constants."""
+    mock_cv2 = MagicMock()
+    mock_cv2.CAP_PROP_FPS = 5
+    mock_cv2.CAP_PROP_FRAME_COUNT = 7
+    mock_cv2.CAP_PROP_FRAME_WIDTH = 3
+    mock_cv2.CAP_PROP_FRAME_HEIGHT = 4
+    mock_cv2.CAP_PROP_POS_FRAMES = 1
+    return mock_cv2
 
 
 class TestPublicAPI:
@@ -436,30 +452,24 @@ class TestIdempotency:
     def test_no_existing_detections_proceeds(self, catalog_db) -> None:
         """Without existing detections, scheduler.model() is called."""
         from pathlib import Path
-        from unittest.mock import MagicMock, patch
 
         from autopilot.analyze.objects import detect_objects
         from autopilot.config import ModelConfig
 
+        catalog_db.insert_media("m2", "/fake/video.mp4")
         scheduler = MagicMock()
         config = ModelConfig()
         mock_model = _make_mock_yolo_model()
-        # Setup scheduler.model context manager to return mock_model
         scheduler.model.return_value.__enter__ = MagicMock(return_value=mock_model)
         scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
 
-        # Mock cv2.VideoCapture with a minimal video
         mock_cap = _make_mock_capture(total_frames=3, fps=30.0)
         mock_model.track.return_value = _make_empty_result()
 
-        with patch("autopilot.analyze.objects.cv2") as mock_cv2:
-            mock_cv2.VideoCapture.return_value = mock_cap
-            mock_cv2.CAP_PROP_FPS = 5
-            mock_cv2.CAP_PROP_FRAME_COUNT = 7
-            mock_cv2.CAP_PROP_FRAME_WIDTH = 3
-            mock_cv2.CAP_PROP_FRAME_HEIGHT = 4
+        mock_cv2 = _make_mock_cv2()
+        mock_cv2.VideoCapture.return_value = mock_cap
 
-            # video_path must "exist" for the check
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
             with patch.object(Path, "exists", return_value=True):
                 detect_objects("m2", Path("/fake/video.mp4"), catalog_db, scheduler, config)
 
@@ -472,7 +482,6 @@ class TestSparseMode:
     def _run_sparse(self, catalog_db, total_frames=300, fps=30.0):
         """Helper to run detect_objects in sparse mode with mocked video."""
         from pathlib import Path
-        from unittest.mock import MagicMock, patch
 
         from autopilot.analyze.objects import detect_objects
         from autopilot.config import ModelConfig
@@ -503,13 +512,10 @@ class TestSparseMode:
             total_frames=total_frames, fps=fps, width=4096, height=4096
         )
 
-        with patch("autopilot.analyze.objects.cv2") as mock_cv2:
-            mock_cv2.VideoCapture.return_value = mock_cap
-            mock_cv2.CAP_PROP_FPS = 5
-            mock_cv2.CAP_PROP_FRAME_COUNT = 7
-            mock_cv2.CAP_PROP_FRAME_WIDTH = 3
-            mock_cv2.CAP_PROP_FRAME_HEIGHT = 4
+        mock_cv2 = _make_mock_cv2()
+        mock_cv2.VideoCapture.return_value = mock_cap
 
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
             with patch.object(Path, "exists", return_value=True):
                 detect_objects(
                     "m1", Path("/fake/video.mp4"), catalog_db, scheduler, config,

@@ -176,3 +176,127 @@ def detect_objects(
     if existing is not None:
         logger.info("Detections already exist for %s, skipping", media_id)
         return
+
+    import cv2
+
+    mode = "sparse" if sparse else "dense"
+
+    # Open video
+    if not video_path.exists():
+        raise DetectionError(f"Video file not found: {video_path}")
+
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise DetectionError(f"Failed to open video: {video_path}")
+
+    try:
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        logger.info(
+            "Starting %s object detection for %s (%d frames, %.1f fps)",
+            mode, media_id, total_frames, fps,
+        )
+
+        frame_indices = _compute_frame_indices(
+            total_frames, fps, config.yolo_sample_every_n_frames, sparse
+        )
+
+        if not frame_indices:
+            logger.info("No frames to process for %s", media_id)
+            return
+
+        # Load YOLO model via scheduler
+        with scheduler.model(config.yolo_variant) as yolo_model:
+            # Reset predictor to prevent track ID leakage from previous videos
+            yolo_model.predictor = None
+
+            # Run detection on sampled frames
+            sampled_detections: dict[int, list[dict]] = {}
+            frame_set = set(frame_indices)
+            rows: list[tuple[str, int, str]] = []
+
+            for batch_start in range(0, len(frame_indices), batch_size):
+                batch_frames_idx = frame_indices[batch_start:batch_start + batch_size]
+
+                for frame_idx in batch_frames_idx:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                    ret, frame = cap.read()
+                    if not ret:
+                        logger.warning(
+                            "Failed to read frame %d for %s, skipping",
+                            frame_idx, media_id,
+                        )
+                        continue
+
+                    # Run tracking per-frame (ByteTrack needs sequential state)
+                    results = yolo_model.track(
+                        frame, persist=True, imgsz=640, verbose=False,
+                    )
+
+                    # Extract detections from results
+                    result = results[0]
+                    boxes_obj = result.boxes
+                    xywh = boxes_obj.xywh.cpu().numpy()
+                    confs = boxes_obj.conf.cpu().numpy()
+                    cls_ids = boxes_obj.cls.cpu().numpy()
+                    track_ids = (
+                        boxes_obj.id.cpu().numpy() if boxes_obj.id is not None else None
+                    )
+
+                    dets = _format_detections(
+                        xywh, confs, cls_ids, track_ids, yolo_model.names,
+                    )
+                    sampled_detections[frame_idx] = dets
+                    rows.append((media_id, frame_idx, json.dumps(dets)))
+
+                # Batch-insert after each read-batch for bounded memory
+                if rows:
+                    with db:
+                        db.batch_insert_detections(rows)
+                    rows = []
+
+            # In dense mode, interpolate skipped frames
+            if not sparse and total_frames > 0:
+                interp_rows: list[tuple[str, int, str]] = []
+                sorted_sampled = sorted(sampled_detections.keys())
+
+                for frame_idx in range(total_frames):
+                    if frame_idx in frame_set:
+                        continue  # Already stored
+
+                    # Find nearest before and after sampled frames
+                    before_idx = None
+                    after_idx = None
+                    for si in sorted_sampled:
+                        if si <= frame_idx:
+                            before_idx = si
+                        if si > frame_idx and after_idx is None:
+                            after_idx = si
+
+                    if before_idx is not None and after_idx is not None:
+                        dets = _interpolate_detections(
+                            sampled_detections[before_idx],
+                            sampled_detections[after_idx],
+                            before_idx, after_idx, frame_idx,
+                        )
+                    elif before_idx is not None:
+                        # Trailing frames: hold last detection
+                        dets = [dict(d) for d in sampled_detections[before_idx]]
+                    elif after_idx is not None:
+                        dets = [dict(d) for d in sampled_detections[after_idx]]
+                    else:
+                        dets = []
+
+                    interp_rows.append((media_id, frame_idx, json.dumps(dets)))
+
+                if interp_rows:
+                    with db:
+                        db.batch_insert_detections(interp_rows)
+
+        logger.info(
+            "Completed %s detection for %s: %d sampled frames",
+            mode, media_id, len(sampled_detections),
+        )
+    finally:
+        cap.release()
