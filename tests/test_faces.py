@@ -12,7 +12,6 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-
 # -- Mock helpers --------------------------------------------------------------
 
 
@@ -796,3 +795,80 @@ class TestLabelFaces:
 
         unlabeled = get_unlabeled_clusters(catalog_db)
         assert len(unlabeled) == 0
+
+
+# -- Integration test ----------------------------------------------------------
+
+
+class TestIntegration:
+    """End-to-end test: detect_faces then cluster_faces."""
+
+    def test_detect_then_cluster_pipeline(self, catalog_db, tmp_path) -> None:
+        """Run detect_faces on mock video, then cluster_faces."""
+        from autopilot.analyze.faces import cluster_faces, detect_faces
+
+        vid = tmp_path / "vid.mp4"
+        vid.touch()
+        catalog_db.insert_media("vid1", str(vid))
+
+        mock_cv2 = _make_mock_cv2()
+        # 90 frames at 30fps = 3 frames sampled (0, 30, 60)
+        cap = _make_mock_capture(fps=30.0, total_frames=90)
+        mock_cv2.VideoCapture.return_value = cap
+
+        # Two distinct embedding groups for 2 faces per frame
+        rng = np.random.default_rng(42)
+
+        def make_faces(frame):
+            faces = []
+            for group_idx in range(2):
+                emb = rng.normal(0, 0.01, 512).astype(np.float32)
+                emb[group_idx] = 1.0
+                emb = emb / np.linalg.norm(emb)
+                faces.append(_make_mock_face(embedding=emb))
+            return faces
+
+        face_model = MagicMock()
+        face_model.get.side_effect = make_faces
+
+        scheduler = MagicMock()
+        scheduler.model.return_value.__enter__ = MagicMock(return_value=face_model)
+        scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
+
+        config = MagicMock()
+        config.face_model = "buffalo_l"
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            detect_faces("vid1", vid, catalog_db, scheduler, config)
+
+        # 3 frames x 2 faces = 6 face rows
+        faces = catalog_db.get_faces_for_media("vid1")
+        assert len(faces) == 6
+
+        # Now cluster
+        cluster_faces(catalog_db, eps=0.5, min_samples=2)
+
+        # 2 clusters expected (one per embedding group)
+        clusters = catalog_db.get_face_clusters()
+        assert len(clusters) == 2
+
+        # All faces should have cluster_id assigned
+        faces = catalog_db.get_faces_for_media("vid1")
+        assert all(f["cluster_id"] is not None for f in faces)
+
+        # Clusters have valid representative_embedding
+        for cluster in clusters:
+            emb_blob = cluster["representative_embedding"]
+            assert len(emb_blob) == 2048  # 512 x float32
+            emb = np.frombuffer(emb_blob, dtype=np.float32)
+            assert abs(np.linalg.norm(emb) - 1.0) < 1e-5
+
+        # sample_image_paths is valid JSON
+        for cluster in clusters:
+            paths = json.loads(cluster["sample_image_paths"])
+            assert isinstance(paths, list)
+            assert len(paths) > 0
+
+        # Labels are NULL
+        for cluster in clusters:
+            assert cluster["label"] is None

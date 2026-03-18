@@ -127,4 +127,84 @@ def cluster_faces(
         eps: DBSCAN epsilon parameter (cosine distance threshold).
         min_samples: DBSCAN minimum samples per cluster.
     """
-    raise NotImplementedError
+    from sklearn.cluster import DBSCAN
+
+    # Fetch all face embeddings
+    face_rows = db.get_all_face_embeddings()
+    if not face_rows:
+        logger.info("No face embeddings found, skipping clustering")
+        return
+
+    logger.info("Clustering %d face embeddings", len(face_rows))
+
+    # Unpack embeddings into matrix
+    embeddings = np.stack([
+        np.frombuffer(row["embedding"], dtype=np.float32)
+        for row in face_rows
+    ])
+
+    # Run DBSCAN with cosine distance
+    clustering = DBSCAN(eps=eps, min_samples=min_samples, metric="cosine").fit(
+        embeddings
+    )
+    labels = clustering.labels_
+
+    # Clear old clusters and reset face cluster_ids
+    with db:
+        db.clear_face_clusters()
+        db.reset_face_cluster_ids()
+
+    # Group faces by cluster label
+    cluster_map: dict[int, list[int]] = {}
+    noise_count = 0
+    for idx, label in enumerate(labels):
+        label = int(label)
+        if label == -1:
+            noise_count += 1
+            continue
+        cluster_map.setdefault(label, []).append(idx)
+
+    # Create face_clusters and update face rows
+    with db:
+        cluster_id_updates: list[tuple[int, str, int, int]] = []
+
+        for cluster_label, member_indices in sorted(cluster_map.items()):
+            # Compute centroid as L2-normalized mean
+            member_embeddings = embeddings[member_indices]
+            centroid = member_embeddings.mean(axis=0)
+            centroid = centroid / np.linalg.norm(centroid)
+            centroid_blob = centroid.astype(np.float32).tobytes()
+
+            # Collect up to 5 sample paths
+            sample_paths = []
+            for mi in member_indices[:5]:
+                row = face_rows[mi]
+                sample_paths.append(f"{row['media_id']}:{row['frame_number']}")
+            sample_paths_json = json.dumps(sample_paths)
+
+            db.insert_face_cluster(
+                cluster_id=cluster_label,
+                label=None,
+                representative_embedding=centroid_blob,
+                sample_image_paths=sample_paths_json,
+            )
+
+            # Prepare cluster_id updates for member faces
+            for mi in member_indices:
+                row = face_rows[mi]
+                cluster_id_updates.append((
+                    cluster_label,
+                    row["media_id"],
+                    row["frame_number"],
+                    row["face_index"],
+                ))
+
+        if cluster_id_updates:
+            db.batch_update_face_cluster_ids(cluster_id_updates)
+
+    n_clusters = len(cluster_map)
+    logger.info(
+        "Clustering complete: %d clusters, %d noise faces excluded",
+        n_clusters,
+        noise_count,
+    )
