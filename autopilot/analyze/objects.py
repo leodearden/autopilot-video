@@ -11,6 +11,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 if TYPE_CHECKING:
     from autopilot.analyze.gpu_scheduler import GPUScheduler
     from autopilot.config import ModelConfig
@@ -46,6 +48,41 @@ def _compute_frame_indices(
     else:
         interval = sample_every_n
     return list(range(0, total_frames, interval))
+
+
+def _format_detections(
+    boxes_xywh: np.ndarray,
+    confidences: np.ndarray,
+    class_indices: np.ndarray,
+    track_ids: np.ndarray | None,
+    class_names: dict[int, str],
+) -> list[dict]:
+    """Convert numpy detection arrays to JSON-serializable dicts.
+
+    Args:
+        boxes_xywh: (N, 4) array of [x_center, y_center, width, height].
+        confidences: (N,) array of confidence scores.
+        class_indices: (N,) array of class indices.
+        track_ids: (N,) array of track IDs, or None.
+        class_names: Mapping from class index to class name.
+
+    Returns:
+        List of dicts with keys: track_id, class, bbox_xywh, confidence.
+    """
+    if len(boxes_xywh) == 0:
+        return []
+    result = []
+    for i in range(len(boxes_xywh)):
+        tid = int(track_ids[i]) if track_ids is not None else None
+        cls_idx = int(class_indices[i])
+        det = {
+            "track_id": tid,
+            "class": class_names.get(cls_idx, str(cls_idx)),
+            "bbox_xywh": [float(v) for v in boxes_xywh[i]],
+            "confidence": float(confidences[i]),
+        }
+        result.append(det)
+    return result
 
 
 def detect_objects(
