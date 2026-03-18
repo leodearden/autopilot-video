@@ -117,3 +117,56 @@ class TestPublicAPI:
         assert "min_samples" in params
         assert sig.parameters["eps"].kind == inspect.Parameter.KEYWORD_ONLY
         assert sig.parameters["min_samples"].kind == inspect.Parameter.KEYWORD_ONLY
+
+
+# -- Idempotency tests --------------------------------------------------------
+
+
+class TestIdempotency:
+    """Tests for detect_faces idempotency check."""
+
+    def test_existing_faces_skips(self, catalog_db) -> None:
+        """When faces already exist for a media_id, detect_faces skips."""
+        from autopilot.analyze.faces import detect_faces
+
+        # Insert media and face rows
+        catalog_db.insert_media("vid1", "/tmp/vid1.mp4")
+        catalog_db.batch_insert_faces([
+            ("vid1", 0, 0, '[10,20,100,200]', b'\x00' * 2048, None),
+        ])
+
+        scheduler = MagicMock()
+        config = MagicMock()
+        config.face_model = "buffalo_l"
+
+        # Should return without touching scheduler
+        detect_faces("vid1", Path("/tmp/vid1.mp4"), catalog_db, scheduler, config)
+        scheduler.model.assert_not_called()
+
+    def test_no_existing_faces_proceeds(self, catalog_db, tmp_path) -> None:
+        """When no faces exist, detect_faces proceeds (calls scheduler)."""
+        from autopilot.analyze.faces import detect_faces
+
+        catalog_db.insert_media("vid2", "/tmp/vid2.mp4")
+
+        scheduler = MagicMock()
+        config = MagicMock()
+        config.face_model = "buffalo_l"
+
+        # Create a dummy video file so path exists check passes
+        vid = tmp_path / "vid2.mp4"
+        vid.touch()
+
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=30.0, total_frames=30)
+        mock_cv2.VideoCapture.return_value = cap
+
+        face_model = MagicMock()
+        face_model.get.return_value = []
+        scheduler.model.return_value.__enter__ = MagicMock(return_value=face_model)
+        scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            detect_faces("vid2", vid, catalog_db, scheduler, config)
+
+        scheduler.model.assert_called_once()
