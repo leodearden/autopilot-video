@@ -291,3 +291,60 @@ class TestLRUReaccess:
         with pytest.raises(SchedulerError, match="Cannot free"):
             with scheduler.model("huge"):
                 pass
+
+
+class TestForceUnload:
+    """Tests for force_unload_all()."""
+
+    def test_force_unload_all_unloads_everything(self) -> None:
+        """force_unload_all calls unload_fn for every loaded model."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        specs = {}
+        for name in ("a", "b", "c"):
+            specs[name] = _make_spec(vram=3 * GB)
+            scheduler.register(name, specs[name])
+            with scheduler.model(name):
+                pass
+
+        scheduler.force_unload_all()
+
+        for name in ("a", "b", "c"):
+            specs[name].unload_fn.assert_called_once()
+        assert scheduler.loaded_models == set()
+
+    def test_force_unload_all_when_empty(self) -> None:
+        """force_unload_all on an empty scheduler raises no error."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        scheduler.force_unload_all()  # no error
+
+    def test_force_unload_all_clears_lru(self) -> None:
+        """After force_unload_all, LRU tracking is reset."""
+        scheduler = GPUScheduler(total_vram=10 * GB)
+        spec_a = _make_spec(vram=3 * GB)
+        spec_b = _make_spec(vram=8 * GB)
+        scheduler.register("a", spec_a)
+        scheduler.register("b", spec_b)
+
+        with scheduler.model("a"):
+            pass
+        scheduler.force_unload_all()
+
+        # Now loading b should NOT evict anything (LRU is empty)
+        with scheduler.model("b"):
+            pass
+        spec_a.unload_fn.assert_called_once()  # only from force_unload
+        assert scheduler.loaded_models == {"b"}
+
+    def test_can_reload_after_force_unload(self) -> None:
+        """Models can be reloaded after force_unload_all."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        spec = _make_spec(vram=3 * GB)
+        scheduler.register("test", spec)
+
+        with scheduler.model("test"):
+            pass
+        scheduler.force_unload_all()
+        with scheduler.model("test"):
+            pass
+
+        assert spec.load_fn.call_count == 2
