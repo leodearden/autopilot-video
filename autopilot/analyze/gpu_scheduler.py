@@ -130,9 +130,9 @@ class GPUScheduler:
         with self._lock:
             if name not in self._registry:
                 raise SchedulerError(f"Model '{name}' not registered")
-            model_obj = self._loaded.get(name)
-            if model_obj is not None:
+            if name in self._loaded:
                 # Already loaded — update LRU
+                model_obj = self._loaded[name]
                 self._lru.remove(name)
                 self._lru.append(name)
             else:
