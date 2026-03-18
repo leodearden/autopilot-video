@@ -1,17 +1,17 @@
 {
-  "task_id": "4",
-  "title": "CLI entry point and pipeline orchestrator skeleton",
+  "task_id": "6",
+  "title": "GPU scheduler",
   "modules": [
-    "autopilot",
+    "autopilot/analyze",
     "tests"
   ],
-  "analysis": "Task 4 requires two new files: autopilot/cli.py (Click-based CLI entry point) and autopilot/orchestrator.py (pipeline DAG runner). No existing cli.py or orchestrator.py exist in the project.\n\n**Orchestrator design:** PipelineOrchestrator class manages a DAG of 9 stages: INGEST -> ANALYZE -> CLASSIFY -> NARRATE -> SCRIPT -> EDL -> SOURCE_ASSETS -> RENDER -> UPLOAD. Each stage is a dataclass (StageDefinition) with name, callable function, dependency list, and estimated_time. The run() method performs topological sort and executes stages sequentially, tracking elapsed time and reporting progress. Stage functions are stubs that log 'Stage X not yet implemented'. Error handling catches per-stage exceptions and reports status (running/done/skipped/error). Dry-run mode logs what would run without executing.\n\n**CLI design:** Click group 'autopilot' with --config option (default: config.yaml). Subcommands: ingest, analyze, plan, edit, render, upload, run. Common options: --input-dir, --output-dir, --verbose, --dry-run. Each subcommand loads config via load_config(), opens CatalogDB, and delegates to the appropriate orchestrator stage(s). The 'run' subcommand invokes the full pipeline. Click's CliRunner is used for testing.\n\n**Dependencies:** Task depends on task 2 (config.py, already done) and task 3 (db.py, already done). Both are fully implemented and tested. We reuse load_config() and CatalogDB directly.\n\n**Test approach:** Click's CliRunner for CLI tests (invokes commands in-process, captures output). For orchestrator tests, we use unittest.mock to verify stage function calls and ordering. Tests use tmp_path for config files and in-memory DB. Follows existing test patterns: class-based grouping, docstrings, clear assertions.\n\n**Review fix (post-step-32):** Reviewer identified that _setup_context calls CatalogDB without ensuring config.output_dir exists. On first run with a fresh output directory, sqlite3.connect() raises OperationalError. Steps 33-34 add a test and fix for this robustness issue.",
+  "analysis": "Task 6 requires creating autopilot/analyze/gpu_scheduler.py — a VRAM-aware GPU model scheduler with context-manager API. The analyze/ directory exists with an empty __init__.py. No GPU-related code exists yet in the project.\n\n**Architecture:** GPUScheduler class manages a registry of ModelSpec entries (load_fn, unload_fn, vram_bytes, warmup_fn) and tracks loaded models with LRU ordering. The context manager `scheduler.model('name')` loads the requested model (evicting LRU models if VRAM is insufficient) and returns the loaded model object. Models stay resident after context exit (LRU cache behavior) — only evicted when VRAM is needed for a new model. A force_unload_all() method clears everything.\n\n**Key design constraints:**\n- Must work WITHOUT a real GPU in tests — all torch.cuda calls must be injectable/mockable\n- Thread safety via threading.Lock (pipeline may run audio + video analysis concurrently)\n- Device selection from config's processing.gpu_device field\n- LRU eviction: when loading a model that won't fit, unload least-recently-used models until there's enough VRAM\n- VRAM tracking via torch.cuda.mem_get_info() in production, but mockable for tests\n\n**Test strategy:** All unit tests use mock VRAM tracking (no GPU required). We inject a vram_query callable into GPUScheduler so tests can control reported free/total VRAM. Model load/unload functions are simple callables that tests can spy on with MagicMock.\n\n**Dependencies:** Only depends on task 2 (config.py, done). Uses ProcessingConfig.gpu_device for device selection. No other autopilot modules needed.\n\n**Existing patterns followed:**\n- Dataclasses for data containers (ModelSpec follows CreatorConfig/StageDefinition pattern)\n- __all__ exports in module\n- logging module for structured output\n- Tests use pytest with descriptive docstrings, follow test_config.py/test_orchestrator.py style",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Create empty test files tests/test_orchestrator.py and tests/test_cli.py with module docstrings and standard imports (pytest, unittest.mock, Path). These serve as the test homes for the two new modules.",
+      "description": "Create empty test file tests/test_gpu_scheduler.py with module docstring, standard imports (pytest, unittest.mock, threading), and no test functions yet. This is the test home for the GPU scheduler.",
       "status": "done",
-      "commit": "d61f1a1",
+      "commit": "4073dfa",
       "tests": []
     }
   ],
@@ -19,320 +19,231 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing tests for StageDefinition dataclass and StageStatus enum in tests/test_orchestrator.py. TestStageDefinition class: (1) test_stage_definition_fields — instantiate StageDefinition with name='INGEST', func=lambda, dependencies=[], estimated_seconds=300, verify all attributes; (2) test_stage_definition_defaults — verify dependencies defaults to empty list and estimated_seconds defaults to 0; (3) test_stage_status_enum — verify StageStatus has PENDING, RUNNING, DONE, SKIPPED, ERROR values.",
+      "description": "Write failing tests for ModelSpec dataclass and public API imports. Tests: (1) test_model_spec_fields — instantiate ModelSpec with load_fn, unload_fn, vram_bytes, warmup_fn; verify all attributes stored correctly. (2) test_model_spec_warmup_fn_optional — instantiate ModelSpec without warmup_fn, verify it defaults to None. (3) test_public_api_importable — verify GPUScheduler, ModelSpec, SchedulerError are importable from autopilot.analyze.gpu_scheduler. (4) test_scheduler_error_is_exception — verify SchedulerError is an Exception subclass.",
       "status": "done",
-      "commit": "2147717"
+      "commit": "c5f456a"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Create autopilot/orchestrator.py with StageDefinition dataclass (name: str, func: Callable, dependencies: list[str], estimated_seconds: float) and StageStatus enum (PENDING, RUNNING, DONE, SKIPPED, ERROR). Make step-1 tests pass.",
+      "description": "Create autopilot/analyze/gpu_scheduler.py with ModelSpec dataclass (load_fn: Callable[[], Any], unload_fn: Callable[[Any], None], vram_bytes: int, warmup_fn: Callable[[Any], None] | None = None), SchedulerError exception class, and empty GPUScheduler class stub. Add __all__ exports. Make step-1 tests pass.",
       "status": "done",
-      "commit": "10ae03e"
+      "commit": "acd4e6e"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write failing tests for PipelineOrchestrator initialization. TestPipelineOrchestrator class: (1) test_has_all_nine_stages — instantiate PipelineOrchestrator, verify it has exactly 9 stages with names INGEST, ANALYZE, CLASSIFY, NARRATE, SCRIPT, EDL, SOURCE_ASSETS, RENDER, UPLOAD; (2) test_stage_dependencies — verify INGEST has no deps, ANALYZE depends on INGEST, CLASSIFY depends on ANALYZE, NARRATE depends on CLASSIFY, SCRIPT depends on NARRATE, EDL depends on SCRIPT, SOURCE_ASSETS depends on EDL, RENDER depends on EDL and SOURCE_ASSETS, UPLOAD depends on RENDER; (3) test_stages_have_callable_functions — verify each stage's func is callable; (4) test_stages_have_positive_estimated_seconds — verify each stage has estimated_seconds >= 0.",
+      "description": "Write failing tests for GPUScheduler initialization and model registration. Tests: (1) test_init_default_device — GPUScheduler() defaults to device=0 and total_vram provided at init. (2) test_init_custom_device — GPUScheduler(device=1, total_vram=24*1024**3) stores device correctly. (3) test_register_model — call scheduler.register('whisperx', spec), verify model is in scheduler's registry. (4) test_register_duplicate_raises — registering same name twice raises SchedulerError. (5) test_unregister_model — register then unregister, verify model removed from registry.",
       "status": "done",
-      "commit": "28c5506"
+      "commit": "5946c7d"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement PipelineOrchestrator.__init__ with 9 stage definitions. Each stage uses a stub function. Wire up the dependency DAG: INGEST(no deps) -> ANALYZE(INGEST) -> CLASSIFY(ANALYZE) -> NARRATE(CLASSIFY) -> SCRIPT(NARRATE) -> EDL(SCRIPT) -> SOURCE_ASSETS(EDL) -> RENDER(EDL, SOURCE_ASSETS) -> UPLOAD(RENDER). Set reasonable estimated_seconds per stage. Make step-3 tests pass.",
+      "description": "Implement GPUScheduler.__init__(device, total_vram, vram_query) with model registry dict, loaded models dict, LRU ordering list, and threading.Lock. Implement register(name, spec) and unregister(name) methods. The vram_query parameter is a callable returning (free, total) bytes — defaults to None (will use torch.cuda in production). total_vram is the VRAM budget for scheduling decisions. Make step-3 tests pass.",
       "status": "done",
-      "commit": "e3b2268"
+      "commit": "d24362e"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write failing tests for topological sort. TestTopologicalSort class: (1) test_execution_order_respects_dependencies — call orchestrator.execution_order(), verify stages appear in topologically valid order (each stage appears after all its dependencies); (2) test_execution_order_is_deterministic — call execution_order() multiple times, verify same result each time; (3) test_ingest_is_first — verify INGEST is always the first stage; (4) test_upload_is_last — verify UPLOAD is always the last stage.",
+      "description": "Write failing tests for basic model loading via context manager. Tests: (1) test_context_manager_loads_model — register a model with MagicMock load_fn, use `with scheduler.model('test') as m:`, verify load_fn called once and m is the return value. (2) test_context_manager_model_stays_loaded — after exiting context, model remains in loaded set (LRU cache). (3) test_context_manager_reuses_loaded_model — enter context twice for same model, load_fn called only once. (4) test_context_manager_unknown_model_raises — using scheduler.model('nonexistent') raises SchedulerError.",
       "status": "done",
-      "commit": "1ab96c6"
+      "commit": "de0fcd6"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Implement execution_order() method on PipelineOrchestrator. Uses Kahn's algorithm for topological sort on the stage DAG. Returns list[str] of stage names in execution order. Make step-5 tests pass.",
+      "description": "Implement GPUScheduler.model(name) as a context manager (using contextlib.contextmanager). On enter: check if model already loaded (return cached), otherwise call spec.load_fn(), add to loaded dict, update LRU order. On exit: model stays loaded (LRU cache). Track loaded models as dict[str, Any] mapping name -> loaded model object. Make step-5 tests pass.",
       "status": "done",
-      "commit": "3129c38"
+      "commit": "de0fcd6"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write failing tests for stage stub functions. TestStageStubs class: (1) test_stub_functions_log_not_implemented — for each stage, call its func with mock config and db args, capture log output, verify log message contains 'not yet implemented' and the stage name; (2) test_stub_functions_accept_config_and_db — verify each stage func accepts (config, db) keyword arguments without error.",
+      "description": "Write failing tests for LRU eviction when VRAM is insufficient. Use GPUScheduler with total_vram=10GB. Tests: (1) test_evicts_lru_when_vram_insufficient — register model_a (3GB) and model_b (8GB), load model_a, then load model_b (needs 8GB but only 7GB free), verify model_a's unload_fn called before model_b loads. (2) test_evicts_multiple_models_if_needed — register 3 small models (3GB each) and 1 large (9GB), load all 3 small, then load large, verify all 3 small unloaded. (3) test_no_eviction_when_vram_sufficient — register two small models (3GB each, total_vram=10GB), load both, verify neither unload_fn called. (4) test_eviction_order_is_lru — load A then B then C, request D that requires eviction, verify A (least recently used) is evicted first.",
       "status": "done",
-      "commit": "03f6550"
+      "commit": "ce4bbcd"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Implement stub stage functions: _stage_ingest, _stage_analyze, _stage_classify, _stage_narrate, _stage_script, _stage_edl, _stage_source_assets, _stage_render, _stage_upload. Each accepts (config: AutopilotConfig, db: CatalogDB) and logs 'Stage {NAME} not yet implemented' via the logging module. Wire these as the func references in PipelineOrchestrator.__init__. Make step-7 tests pass.",
+      "description": "Implement LRU eviction logic in the model() context manager. Before loading a new model: calculate currently used VRAM (sum of loaded models' vram_bytes), check if new model fits within total_vram. If not, unload models in LRU order (oldest first) until enough VRAM is free. Call spec.unload_fn(loaded_obj) for each evicted model. If even after unloading all models the new model doesn't fit, raise SchedulerError. Update LRU order on every model access (move to most-recently-used). Make step-7 tests pass.",
       "status": "done",
-      "commit": "e3b2268"
+      "commit": "80add36"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write failing tests for PipelineOrchestrator.run() basic execution. TestRun class: (1) test_run_calls_all_stages_in_order — replace all stage funcs with mocks, call run(config, db), verify all 9 mocks were called exactly once in topological order using mock.call_args_list; (2) test_run_passes_config_and_db — verify each mock received config and db as arguments; (3) test_run_returns_results_dict — verify run() returns a dict mapping stage names to StageResult (with status, elapsed_seconds).",
+      "description": "Write failing tests for LRU ordering updates on re-access. Tests: (1) test_lru_order_updated_on_reaccess — load A, B, C in order. Re-access A (now most recent). Request D that needs eviction. Verify B (now LRU) is evicted, not A. (2) test_model_too_large_for_total_vram_raises — register a model with vram_bytes > total_vram, attempting to load raises SchedulerError with descriptive message.",
       "status": "done",
-      "commit": "f435c47"
+      "commit": "0f7e6eb"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Implement PipelineOrchestrator.run(config, db) method. Iterates over execution_order(), calls each stage's func(config=config, db=db), measures elapsed time with time.monotonic(), collects results into a dict[str, StageResult]. Add StageResult dataclass (status: StageStatus, elapsed_seconds: float). Make step-9 tests pass.",
+      "description": "Ensure LRU order is updated on every context manager entry (not just first load). When model is already loaded and re-accessed, move it to most-recently-used position. Add check: if model's vram_bytes exceeds total_vram, raise SchedulerError immediately without attempting eviction. Make step-9 tests pass.",
       "status": "done",
-      "commit": "f5b05d4"
+      "commit": "0f7e6eb"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write failing tests for progress reporting. TestProgressReporting class: (1) test_run_prints_stage_status — replace stage funcs with mocks, call run(), capture stdout/stderr, verify each stage name and status ('running'/'done') appears in output; (2) test_run_prints_elapsed_time — verify elapsed time is printed for each completed stage; (3) test_run_prints_total_elapsed — verify total pipeline elapsed time is printed at end.",
+      "description": "Write failing tests for force_unload_all(). Tests: (1) test_force_unload_all_unloads_everything — load 3 models, call force_unload_all(), verify all 3 unload_fns called and loaded dict is empty. (2) test_force_unload_all_when_empty — call on empty scheduler, no error. (3) test_force_unload_all_clears_lru — after force_unload_all, LRU tracking is reset. (4) test_can_reload_after_force_unload — force_unload_all then load a model again, load_fn called again.",
       "status": "done",
-      "commit": "95cd4b0"
+      "commit": "dcaff0b"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Add progress reporting to PipelineOrchestrator.run(). Before each stage: print/log '[RUNNING] {stage_name}'. After each stage: print/log '[DONE] {stage_name} ({elapsed:.1f}s)'. At end: print/log 'Pipeline complete ({total:.1f}s)'. Use logging module for structured output. Make step-11 tests pass.",
+      "description": "Implement force_unload_all() method. Iterates all loaded models, calls unload_fn for each, clears loaded dict and LRU list. Acquires the lock for thread safety. Make step-11 tests pass.",
       "status": "done",
-      "commit": "f5b05d4"
+      "commit": "3309c06"
     },
     {
       "id": "step-13",
       "type": "test",
-      "description": "Write failing tests for error handling. TestErrorHandling class: (1) test_run_catches_stage_error — set one stage's func to raise RuntimeError, verify run() doesn't crash, returns ERROR status for that stage; (2) test_run_skips_dependents_on_error — set ANALYZE to raise, verify CLASSIFY and all downstream stages get SKIPPED status; (3) test_run_reports_error_message — verify error message is captured in the stage result or logged.",
+      "description": "Write failing tests for warmup function support. Tests: (1) test_warmup_called_after_load — register model with warmup_fn, load it, verify warmup_fn called with the loaded model object after load_fn. (2) test_warmup_not_called_on_cached_access — re-access already-loaded model, warmup_fn not called again. (3) test_warmup_none_skipped — register model without warmup_fn (None), load it, no error.",
       "status": "done",
-      "commit": "705e811"
+      "commit": "e7696f4"
     },
     {
       "id": "step-14",
       "type": "impl",
-      "description": "Add error handling to PipelineOrchestrator.run(). Wrap each stage call in try/except. On exception: set stage status to ERROR, log the error, mark all dependent stages as SKIPPED. Track which stages errored to propagate skips through the DAG. Add error_message field to StageResult. Make step-13 tests pass.",
+      "description": "Add warmup support to model loading path. After calling load_fn and storing the result, if spec.warmup_fn is not None, call warmup_fn(loaded_model). Only on first load, not on cached re-access. Make step-13 tests pass.",
       "status": "done",
-      "commit": "f5b05d4"
+      "commit": "b7cf85e"
     },
     {
       "id": "step-15",
       "type": "test",
-      "description": "Write failing tests for dry-run mode. TestDryRun class: (1) test_dry_run_does_not_call_stages — call run(config, db, dry_run=True) with mock stage funcs, verify none were called; (2) test_dry_run_prints_execution_plan — capture output, verify all stage names appear with '[DRY-RUN]' prefix; (3) test_dry_run_shows_estimated_time — verify estimated_seconds for each stage appears in dry-run output.",
+      "description": "Write failing tests for thread safety. Tests: (1) test_concurrent_model_access — spawn 10 threads that each do `with scheduler.model('model_a')` 5 times, verify load_fn called exactly once (not multiple concurrent loads). (2) test_concurrent_different_models — spawn 2 threads loading different models concurrently, verify both load correctly without data corruption (check loaded count equals 2). (3) test_force_unload_during_active_context — thread A holds model context, thread B calls force_unload_all(), verify force_unload_all blocks until context exits OR raises SchedulerError (design decision: block is preferred).",
       "status": "done",
-      "commit": "f0f3cfd"
+      "commit": "5fa8e76"
     },
     {
       "id": "step-16",
       "type": "impl",
-      "description": "Add dry_run parameter to PipelineOrchestrator.run(). When dry_run=True, iterate execution_order() and print '[DRY-RUN] {stage_name} (est. {estimated_seconds}s)' for each stage without calling func. Return results with SKIPPED status. Make step-15 tests pass.",
+      "description": "Ensure thread safety with threading.Lock in all public methods: model(), force_unload_all(), register(), unregister(). The lock is acquired at the start of model() context manager (for the load/eviction logic) and released before yielding the model to the caller — but a re-entrant check is needed so the context body doesn't deadlock. Use a RLock or separate the lock acquisition from the yield. Design: acquire lock for load/eviction, release before yield, re-acquire for cleanup if needed. Make step-15 tests pass.",
       "status": "done",
-      "commit": "f5b05d4"
+      "commit": "5fa8e76"
     },
     {
       "id": "step-17",
       "type": "test",
-      "description": "Write failing tests for wall-clock budget tracking. TestBudgetTracking class: (1) test_run_tracks_total_vs_budget — create orchestrator with budget_seconds=3600, after run(), verify result includes total_elapsed and budget_seconds; (2) test_run_warns_when_over_budget — mock a stage to sleep(0.01), set a very small budget, verify a warning is logged when cumulative time exceeds budget.",
+      "description": "Write failing tests for device selection and loaded_models property. Tests: (1) test_device_property — GPUScheduler(device=2).device returns 2. (2) test_loaded_models_returns_names — load 2 models, scheduler.loaded_models returns set of their names. (3) test_loaded_models_empty_initially — scheduler.loaded_models returns empty set. (4) test_vram_used_property — load 2 models (3GB + 8GB), scheduler.vram_used returns 11GB. (5) test_vram_free_property — total_vram=24GB, load 8GB model, scheduler.vram_free returns 16GB.",
       "status": "done",
-      "commit": "d7b0767"
+      "commit": "591e621"
     },
     {
       "id": "step-18",
       "type": "impl",
-      "description": "Add budget_seconds parameter to PipelineOrchestrator.__init__ (default from config.processing.max_wall_clock_hours * 3600). Track cumulative elapsed in run(). Log warning when cumulative time exceeds budget_seconds. Include budget_seconds and total_elapsed in return value. Make step-17 tests pass.",
+      "description": "Add read-only properties: device (int), loaded_models (set[str] — names of currently loaded models), vram_used (int — sum of loaded models' vram_bytes), vram_free (int — total_vram - vram_used). These provide introspection for pipeline stages and debugging. Make step-17 tests pass.",
       "status": "done",
-      "commit": "f5b05d4"
+      "commit": "591e621"
     },
     {
       "id": "step-19",
       "type": "test",
-      "description": "Write failing tests for CLI main group in tests/test_cli.py using Click's CliRunner. TestMainGroup class: (1) test_main_group_exists — import main from autopilot.cli, verify it's a Click Group; (2) test_main_help — invoke with --help, verify exit code 0 and output contains 'autopilot'; (3) test_main_has_config_option — verify --config option exists in main.params.",
+      "description": "Write failing tests for logging integration. Tests: (1) test_load_logs_model_name_and_vram — capture log output, load a model, verify log contains model name and VRAM amount. (2) test_eviction_logs_evicted_model — trigger eviction, verify log mentions which model was evicted and why. (3) test_force_unload_logs — call force_unload_all with loaded models, verify log mentions clearing all models.",
       "status": "done",
-      "commit": "3202ed4"
+      "commit": "bfd05cf"
     },
     {
       "id": "step-20",
       "type": "impl",
-      "description": "Create autopilot/cli.py with Click main group. Define @click.group() with name='autopilot' and --config option (type=click.Path(), default='config.yaml', help='Path to config YAML'). The group callback stores config path in click context (ctx.ensure_object(dict); ctx.obj['config_path'] = config). Make step-19 tests pass.",
+      "description": "Add structured logging throughout GPUScheduler using logging.getLogger(__name__). Log on: model load (INFO with name, vram_bytes), model eviction (INFO with evicted name, reason), warmup (DEBUG), force_unload_all (INFO with count of unloaded models), errors (ERROR). Follow the logging pattern from orchestrator.py. Make step-19 tests pass.",
       "status": "done",
-      "commit": "a40d478"
+      "commit": "80ea8df"
     },
     {
       "id": "step-21",
       "type": "test",
-      "description": "Write failing tests for CLI subcommands existence. TestSubcommands class: (1) test_all_subcommands_registered — verify main group has commands: ingest, analyze, plan, edit, render, upload, run; (2) test_each_subcommand_help — for each subcommand, invoke with --help, verify exit code 0; (3) test_subcommands_have_common_options — for each subcommand, verify --input-dir, --output-dir, --verbose, --dry-run options exist.",
+      "description": "Write failing integration-style tests simulating the real pipeline VRAM budget. Tests: (1) test_prd_vram_budget_sequential — create scheduler with total_vram=24GB, register all 7 PRD models with their real VRAM sizes (whisperx 3GB, transnet 1GB, yolo 8GB, insightface 2GB, siglip 3GB, panns 1GB, qwen 14GB). Load them sequentially in pipeline order, verify correct evictions happen (e.g., loading qwen must evict enough to fit 14GB). (2) test_prd_largest_model_fits — verify the largest single model (qwen 14GB) can be loaded alone. (3) test_prd_concurrent_small_models — load whisperx (3GB) + panns (1GB) simultaneously (both fit), verify no eviction.",
       "status": "done",
-      "commit": "5a54b1d"
+      "commit": "557199b"
     },
     {
       "id": "step-22",
       "type": "impl",
-      "description": "Add all 7 subcommands to the Click group: ingest, analyze, plan, edit, render, upload, run. Each subcommand is decorated with common options: --input-dir (type=click.Path(), default=None), --output-dir (type=click.Path(), default=None), --verbose (is_flag=True), --dry-run (is_flag=True). Subcommand callbacks are minimal stubs that pass ctx. Make step-21 tests pass.",
+      "description": "Review and refine implementation to ensure all integration tests pass. This step may require no code changes if prior steps were implemented correctly — it serves as a validation checkpoint. Fix any edge cases revealed by the integration tests. Make step-21 tests pass.",
       "status": "done",
-      "commit": "88081b8"
+      "commit": "557199b"
     },
     {
       "id": "step-23",
       "type": "test",
-      "description": "Write failing tests for CLI config loading and DB opening. TestCLIConfigIntegration class: (1) test_subcommand_loads_config — create a valid config yaml in tmp_path, invoke 'ingest' with --config pointing to it, mock the stage function, verify load_config was called with the right path; (2) test_subcommand_opens_catalog_db — mock CatalogDB, invoke 'ingest', verify CatalogDB was instantiated with the expected db path (output_dir/catalog.db); (3) test_verbose_sets_logging_level — invoke with --verbose, verify logging level is set to DEBUG; (4) test_input_dir_override — pass --input-dir to override config's input_dir, verify the overridden path is used.",
+      "description": "Write failing tests for error handling edge cases. Tests: (1) test_load_fn_exception_propagates — load_fn raises RuntimeError, verify SchedulerError raised and model NOT added to loaded set. (2) test_unload_fn_exception_logged_not_raised — unload_fn raises during eviction, verify error is logged but eviction continues (best-effort unload). (3) test_warmup_fn_exception_unloads_model — warmup_fn raises, verify model is unloaded (cleanup) and SchedulerError raised.",
       "status": "done",
-      "commit": "bfaaf2e"
+      "commit": "af07390"
     },
     {
       "id": "step-24",
       "type": "impl",
-      "description": "Implement config loading and DB opening in CLI subcommands. Create a shared helper _setup_context(ctx, config_path, input_dir, output_dir, verbose) that: (1) calls load_config(config_path), (2) overrides input_dir/output_dir if provided, (3) sets logging level to DEBUG if verbose, (4) opens CatalogDB(output_dir / 'catalog.db'), (5) stores config and db in ctx.obj. Each subcommand calls _setup_context at the start. Make step-23 tests pass.",
+      "description": "Add robust error handling: wrap load_fn calls in try/except, convert to SchedulerError, ensure partially-loaded models don't pollute state. Wrap unload_fn calls in try/except during eviction, log errors but continue evicting. If warmup_fn fails, call unload_fn to clean up, then raise SchedulerError. Make step-23 tests pass.",
       "status": "done",
-      "commit": "88081b8"
-    },
-    {
-      "id": "step-25",
-      "type": "test",
-      "description": "Write failing tests for the 'run' subcommand wiring to orchestrator. TestRunSubcommand class: (1) test_run_creates_orchestrator — mock PipelineOrchestrator, invoke 'run' with valid config, verify PipelineOrchestrator was instantiated; (2) test_run_calls_orchestrator_run — verify orchestrator.run() was called with config and db; (3) test_run_passes_dry_run — invoke with --dry-run flag, verify orchestrator.run() was called with dry_run=True; (4) test_run_exits_zero_on_success — verify exit code 0 on successful completion.",
-      "status": "done",
-      "commit": "0ff842b"
-    },
-    {
-      "id": "step-26",
-      "type": "impl",
-      "description": "Wire the 'run' subcommand to PipelineOrchestrator. In the run callback: call _setup_context, create PipelineOrchestrator(budget_seconds=config.processing.max_wall_clock_hours * 3600), call orchestrator.run(config=config, db=db, dry_run=dry_run), print summary. Make step-25 tests pass.",
-      "status": "done",
-      "commit": "88081b8"
-    },
-    {
-      "id": "step-27",
-      "type": "test",
-      "description": "Write failing tests for individual stage subcommands. TestStageSubcommands class: (1) test_ingest_delegates_to_stage — mock the ingest stage function, invoke 'ingest' with valid config, verify the ingest stage func was called; (2) test_analyze_delegates_to_stage — same for analyze; (3) test_plan_delegates — same for plan (maps to NARRATE+SCRIPT stages); (4) test_edit_delegates — same for edit (maps to EDL stage); (5) test_render_delegates — same for render; (6) test_upload_delegates — same for upload.",
-      "status": "done",
-      "commit": "18a2588"
-    },
-    {
-      "id": "step-28",
-      "type": "impl",
-      "description": "Wire each subcommand to its corresponding stage function(s). ingest -> _stage_ingest, analyze -> _stage_analyze + _stage_classify, plan -> _stage_narrate + _stage_script, edit -> _stage_edl + _stage_source_assets, render -> _stage_render, upload -> _stage_upload. Each subcommand calls _setup_context, then invokes the stage function(s) directly (not through orchestrator.run). Make step-27 tests pass.",
-      "status": "done",
-      "commit": "88081b8"
-    },
-    {
-      "id": "step-29",
-      "type": "test",
-      "description": "Write failing tests for CLI error handling. TestCLIErrors class: (1) test_missing_config_file — invoke with --config pointing to nonexistent file, verify exit code != 0 and error message contains 'config'; (2) test_invalid_config — invoke with --config pointing to invalid YAML, verify exit code != 0; (3) test_stage_error_prints_message — mock stage func to raise, invoke subcommand, verify error is reported to user.",
-      "status": "done",
-      "commit": "2b827b2"
-    },
-    {
-      "id": "step-30",
-      "type": "impl",
-      "description": "Add error handling to CLI. Wrap _setup_context in try/except for ConfigError, print user-friendly error message and sys.exit(1). Wrap stage calls in try/except, print error message with click.echo and set exit code. Make step-29 tests pass.",
-      "status": "done",
-      "commit": "88081b8"
-    },
-    {
-      "id": "step-31",
-      "type": "test",
-      "description": "Write integration test. TestCLIIntegration class: (1) test_run_end_to_end — create valid config in tmp_path, invoke 'run' subcommand, verify all 9 stages appear in output with 'not yet implemented' messages and exit code 0; (2) test_run_dry_run_end_to_end — invoke 'run --dry-run', verify all stages listed without execution.",
-      "status": "done",
-      "commit": "d042289"
-    },
-    {
-      "id": "step-32",
-      "type": "impl",
-      "description": "Final integration wiring and cleanup. Ensure all imports are correct, add __all__ exports to orchestrator.py and cli.py, verify pyproject.toml has click dependency (already present). Add [project.scripts] entry point 'autopilot = autopilot.cli:main' to pyproject.toml if not present. Make step-31 tests pass.",
-      "status": "done",
-      "commit": "8736e4e"
-    },
-    {
-      "id": "step-33",
-      "type": "test",
-      "description": "Write failing tests for output directory auto-creation in _setup_context. Add TestOutputDirCreation class to tests/test_cli.py: (1) test_setup_context_creates_output_dir_when_missing — create a valid config YAML where output_dir points to a non-existent directory inside tmp_path (e.g., tmp_path / 'nonexistent' / 'deep' / 'output'), invoke any subcommand (e.g., 'ingest') via CliRunner with that config, verify exit code 0 (no OperationalError crash) and verify the output directory was created on disk; (2) test_setup_context_creates_catalog_db_in_new_dir — same scenario, verify catalog.db file exists inside the newly created output directory after the command runs; (3) test_setup_context_existing_output_dir_unchanged — create a valid config where output_dir already exists, place a marker file in it, invoke subcommand, verify marker file still present (mkdir doesn't clobber existing contents).",
-      "status": "done",
-      "commit": "dc67ce3"
-    },
-    {
-      "id": "step-34",
-      "type": "impl",
-      "description": "Fix _setup_context in autopilot/cli.py to ensure the output directory exists before opening CatalogDB. Add `config.output_dir.mkdir(parents=True, exist_ok=True)` on the line immediately before `db_path = config.output_dir / 'catalog.db'` (at line 76). This prevents sqlite3.OperationalError when the parent directory doesn't exist on first run. The exist_ok=True flag makes it safe when the directory already exists. Make step-33 tests pass.",
-      "status": "done",
-      "commit": "1f5c0f5"
+      "commit": "f231c3c"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use dataclasses for StageDefinition and StageResult rather than plain dicts",
-      "rationale": "Follows the project's convention (AutopilotConfig, CameraConfig, MediaFile are all dataclasses). Provides type safety, IDE completion, and self-documenting field names."
+      "decision": "Use total_vram constructor parameter instead of querying torch.cuda at runtime for VRAM capacity",
+      "rationale": "Makes the scheduler fully testable without a GPU. In production, the caller passes the real VRAM from torch.cuda.mem_get_info(). In tests, pass any value. This also allows VRAM budget to be set below physical VRAM as a safety margin."
     },
     {
-      "decision": "Topological sort via Kahn's algorithm rather than DFS",
-      "rationale": "Kahn's algorithm is iterative, deterministic when using a sorted queue, and naturally detects cycles. DFS-based topo-sort can produce different orderings depending on iteration order."
+      "decision": "Track VRAM usage by summing registered vram_bytes of loaded models, not by querying actual GPU memory",
+      "rationale": "Actual GPU memory can fluctuate due to CUDA contexts, fragmentation, and other processes. Using declared vram_bytes from ModelSpec gives deterministic, predictable scheduling. The real torch.cuda.mem_get_info() could be used as a secondary check but is not the primary scheduling mechanism."
     },
     {
-      "decision": "Stage stubs accept (config, db) keyword arguments",
-      "rationale": "Establishes the contract that all stage functions share a uniform signature. Makes swapping stubs for real implementations a non-breaking change. Config and DB are the two shared resources across all pipeline stages."
+      "decision": "Models stay loaded after context manager exit (LRU cache) rather than eager unload",
+      "rationale": "Per task spec: 'Eager unloading: after context manager exits, model stays loaded (LRU cache) unless another model needs the VRAM.' This avoids expensive re-loads when the same model is used across multiple pipeline stages."
     },
     {
-      "decision": "Orchestrator is separate from CLI — run() method takes config and db as arguments",
-      "rationale": "Separation of concerns: orchestrator handles DAG execution and progress, CLI handles argument parsing and user interaction. Orchestrator is testable without Click, CLI delegates to orchestrator."
+      "decision": "Use threading.Lock (not asyncio) for thread safety",
+      "rationale": "Per task spec: 'Thread safety: use a threading.Lock since the pipeline may run audio analysis concurrently with video analysis.' The pipeline uses threads, not async/await."
     },
     {
-      "decision": "Individual subcommands call stage functions directly, not through orchestrator.run()",
-      "rationale": "The 'ingest' subcommand should only run ingest, not the full DAG. Using orchestrator.run() would require a subset-execution feature. Direct invocation is simpler and matches user intent. Only 'run' uses the full orchestrator."
+      "decision": "SchedulerError custom exception wraps all errors from load/unload/warmup functions",
+      "rationale": "Follows the project pattern where ConfigError wraps all config-related errors. Callers handle one exception type for all scheduler failures."
     },
     {
-      "decision": "CLI common options implemented as a shared decorator rather than repeated per-subcommand",
-      "rationale": "DRY principle — all 7 subcommands share --input-dir, --output-dir, --verbose, --dry-run. A decorator or Click callback avoids repeating option definitions 7 times."
+      "decision": "Unload errors during eviction are logged but don't stop the eviction process",
+      "rationale": "If unload_fn fails (e.g., CUDA error), we should still attempt to continue loading the requested model. A hard failure here would block the pipeline. The VRAM tracking removes the model from the loaded set regardless."
     },
     {
-      "decision": "Catalog DB path is output_dir / 'catalog.db'",
-      "rationale": "Keeps the catalog co-located with output artifacts. Follows the catalog-first architecture from the PRD where the catalog is the persistent ground truth alongside rendered outputs."
+      "decision": "Use contextlib.contextmanager decorator for the model() method",
+      "rationale": "Simpler than implementing __enter__/__exit__ on a separate class. Follows Python idiom for resource managers. The generator pattern makes the load-yield-keep flow natural."
     },
     {
-      "decision": "Error propagation in DAG: errored stage causes all dependents to be SKIPPED",
-      "rationale": "If ANALYZE fails, it makes no sense to run CLASSIFY (which depends on ANALYZE's output). Cascading skip is the safe default. Users can re-run the pipeline after fixing the issue."
-    },
-    {
-      "decision": "Auto-create output_dir with mkdir(parents=True, exist_ok=True) in _setup_context rather than catching sqlite3.OperationalError",
-      "rationale": "Proactive directory creation is more robust than reactive error handling. The output directory is an expected artifact location — it should always exist before any writes. Using parents=True handles deeply nested paths on first run. Using exist_ok=True makes it idempotent. This follows the same pattern used in normalizer.py:49 for target directories. Catching OperationalError would be fragile since the same exception could mask other sqlite3 issues."
+      "decision": "LRU tracking uses a simple list (append/remove/insert) rather than collections.OrderedDict",
+      "rationale": "The number of models is tiny (7 in the PRD). A list gives clear, debuggable LRU semantics with O(n) operations that are negligible at this scale. OrderedDict would be premature optimization."
     }
   ],
   "reuse": [
     {
-      "what": "load_config() from autopilot.config",
-      "where": "autopilot/cli.py",
-      "how": "CLI subcommands call load_config(config_path) to get AutopilotConfig. This handles YAML parsing, validation, path expansion, and defaults."
+      "what": "ProcessingConfig.gpu_device",
+      "where": "autopilot/config.py",
+      "how": "The caller reads config.processing.gpu_device and passes it as the device parameter to GPUScheduler(). The scheduler itself doesn't depend on config.py directly — it receives device as a plain int."
     },
     {
-      "what": "CatalogDB from autopilot.db",
-      "where": "autopilot/cli.py",
-      "how": "CLI opens CatalogDB(str(output_dir / 'catalog.db')) and passes it to stage functions. The DB is the shared state store across all stages."
+      "what": "Dataclass pattern for ModelSpec",
+      "where": "autopilot/config.py (CreatorConfig, etc.), autopilot/orchestrator.py (StageDefinition)",
+      "how": "Follow the same @dataclass pattern with typed fields, defaults, and __all__ exports."
     },
     {
-      "what": "catalog_db fixture from tests/conftest.py",
-      "where": "tests/test_orchestrator.py, tests/test_cli.py",
-      "how": "Reuse the existing in-memory CatalogDB fixture for tests that need a real database instance."
+      "what": "Logging pattern",
+      "where": "autopilot/orchestrator.py (logger = logging.getLogger(__name__))",
+      "how": "Use the same module-level logger pattern for structured log output."
     },
     {
-      "what": "tests/fixtures/minimal_config.yaml and valid_config.yaml",
-      "where": "tests/test_cli.py",
-      "how": "Reuse existing YAML fixtures for CLI integration tests that need valid config files."
+      "what": "Custom exception pattern",
+      "where": "autopilot/config.py (ConfigError)",
+      "how": "SchedulerError follows the same pattern: simple Exception subclass, used to wrap all internal errors."
     },
     {
-      "what": "ConfigError exception from autopilot.config",
-      "where": "autopilot/cli.py",
-      "how": "Catch ConfigError in CLI to provide user-friendly error messages instead of raw tracebacks."
-    },
-    {
-      "what": "Click CliRunner",
-      "where": "tests/test_cli.py",
-      "how": "Click's built-in test runner invokes CLI commands in-process, captures output and exit codes. Standard pattern for testing Click applications."
-    },
-    {
-      "what": "logging module pattern from scanner.py",
-      "where": "autopilot/orchestrator.py",
-      "how": "scanner.py uses logger = logging.getLogger(__name__) at module level. Follow the same pattern in orchestrator.py for stage stub logging and progress reporting."
-    },
-    {
-      "what": "mkdir(parents=True, exist_ok=True) pattern from normalizer.py",
-      "where": "autopilot/cli.py",
-      "how": "normalizer.py:49 uses target_dir.mkdir(parents=True, exist_ok=True) to ensure output directories exist before writing. Apply the same pattern in _setup_context before opening CatalogDB."
+      "what": "Test style and fixtures",
+      "where": "tests/conftest.py, tests/test_orchestrator.py",
+      "how": "Follow pytest style with descriptive docstrings, MagicMock for callables, class-based test grouping for related tests."
     }
   ]
 }
