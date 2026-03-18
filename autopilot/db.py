@@ -346,7 +346,10 @@ class CatalogDB:
     def batch_insert_faces(
         self, rows: list[tuple[str, int, int, str, bytes | None, int | None]]
     ) -> None:
-        """Batch insert face rows: (media_id, frame_number, face_index, bbox_json, embedding, cluster_id)."""
+        """Batch insert face rows.
+
+        Each row: (media_id, frame_number, face_index, bbox_json, embedding, cluster_id).
+        """
         if not rows:
             return
         self.conn.executemany(
