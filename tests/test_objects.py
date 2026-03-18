@@ -197,3 +197,82 @@ class TestComputeFrameIndices:
 
         result = _compute_frame_indices(total_frames=9, fps=30.0, sample_every_n=3, sparse=False)
         assert result == [0, 3, 6]
+
+
+class TestFormatDetections:
+    """Tests for _format_detections helper."""
+
+    def test_two_detections_formatted(self) -> None:
+        """Two detections with track IDs produce correct dict structure."""
+        from autopilot.analyze.objects import _format_detections
+
+        boxes = np.array([[100.0, 200.0, 50.0, 60.0], [300.0, 400.0, 70.0, 80.0]])
+        confs = np.array([0.9, 0.7])
+        cls_ids = np.array([0, 2])
+        track_ids = np.array([1, 2])
+        names = {0: "person", 1: "bicycle", 2: "car"}
+
+        result = _format_detections(boxes, confs, cls_ids, track_ids, names)
+        assert len(result) == 2
+        assert result[0]["track_id"] == 1
+        assert result[0]["class"] == "person"
+        assert result[0]["bbox_xywh"] == [100.0, 200.0, 50.0, 60.0]
+        assert result[0]["confidence"] == pytest.approx(0.9)
+        assert result[1]["track_id"] == 2
+        assert result[1]["class"] == "car"
+
+    def test_no_detections(self) -> None:
+        """Empty arrays produce empty list."""
+        from autopilot.analyze.objects import _format_detections
+
+        boxes = np.empty((0, 4), dtype=np.float32)
+        confs = np.empty((0,), dtype=np.float32)
+        cls_ids = np.empty((0,), dtype=np.float32)
+        names = {0: "person"}
+
+        result = _format_detections(boxes, confs, cls_ids, None, names)
+        assert result == []
+
+    def test_track_ids_none(self) -> None:
+        """When track_ids is None, each dict has track_id=None."""
+        from autopilot.analyze.objects import _format_detections
+
+        boxes = np.array([[100.0, 200.0, 50.0, 60.0]])
+        confs = np.array([0.85])
+        cls_ids = np.array([0])
+        names = {0: "person"}
+
+        result = _format_detections(boxes, confs, cls_ids, None, names)
+        assert len(result) == 1
+        assert result[0]["track_id"] is None
+
+    def test_json_serializable(self) -> None:
+        """Result is JSON-serializable (no numpy types leak)."""
+        from autopilot.analyze.objects import _format_detections
+
+        boxes = np.array([[100.0, 200.0, 50.0, 60.0]])
+        confs = np.array([0.85])
+        cls_ids = np.array([0])
+        track_ids = np.array([5])
+        names = {0: "person"}
+
+        result = _format_detections(boxes, confs, cls_ids, track_ids, names)
+        serialized = json.dumps(result)
+        assert isinstance(serialized, str)
+        parsed = json.loads(serialized)
+        assert parsed[0]["track_id"] == 5
+
+    def test_bbox_xywh_is_plain_list(self) -> None:
+        """bbox_xywh values are plain Python lists of 4 floats."""
+        from autopilot.analyze.objects import _format_detections
+
+        boxes = np.array([[100.5, 200.5, 50.5, 60.5]])
+        confs = np.array([0.9])
+        cls_ids = np.array([0])
+        names = {0: "person"}
+
+        result = _format_detections(boxes, confs, cls_ids, None, names)
+        bbox = result[0]["bbox_xywh"]
+        assert isinstance(bbox, list)
+        assert len(bbox) == 4
+        assert all(isinstance(v, float) for v in bbox)
