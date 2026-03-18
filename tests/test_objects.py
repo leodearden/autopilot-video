@@ -649,3 +649,70 @@ class TestDenseMode:
         dets11 = json.loads(row11["detections_json"])
         # Frame 11 should hold same x as frame 9
         assert dets11[0]["bbox_xywh"][0] == pytest.approx(dets9[0]["bbox_xywh"][0])
+
+
+class TestBatchProcessing:
+    """Tests for batch frame reading and DB insertion."""
+
+    def _run_with_batch(self, catalog_db, total_frames=50, sample_every_n=1,
+                        batch_size=16, sparse=True):
+        """Helper to run detect_objects with specific batch parameters."""
+        from pathlib import Path
+
+        from autopilot.analyze.objects import detect_objects
+        from autopilot.config import ModelConfig
+
+        catalog_db.insert_media("m1", "/fake/video.mp4")
+
+        config = ModelConfig()
+        config.yolo_sample_every_n_frames = sample_every_n
+        mock_model = _make_mock_yolo_model()
+        mock_model.track.side_effect = lambda *a, **kw: _make_yolo_result(
+            _make_boxes(xywh=[[100.0, 200.0, 50.0, 60.0]], conf=[0.9], cls=[0], track_id=[1])
+        )
+
+        scheduler = MagicMock()
+        scheduler.model.return_value.__enter__ = MagicMock(return_value=mock_model)
+        scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_cap = _make_mock_capture(total_frames=total_frames, fps=30.0)
+
+        mock_cv2 = _make_mock_cv2()
+        mock_cv2.VideoCapture.return_value = mock_cap
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            with patch.object(Path, "exists", return_value=True):
+                detect_objects(
+                    "m1", Path("/fake/video.mp4"), catalog_db, scheduler, config,
+                    batch_size=batch_size, sparse=sparse,
+                )
+
+        return mock_model
+
+    def test_track_called_per_frame(self, catalog_db) -> None:
+        """model.track() is called once per sampled frame (50 times for n=1 sparse 30fps)."""
+        # sparse mode at 30fps on 50 frames → frames at [0, 30]
+        mock_model = self._run_with_batch(
+            catalog_db, total_frames=50, sample_every_n=1, sparse=True,
+        )
+        # At 30fps sparse, interval = 30, so frames [0, 30] → 2 track calls
+        assert mock_model.track.call_count == 2
+
+    def test_db_inserts_correct_row_count(self, catalog_db) -> None:
+        """DB receives correct number of detection rows."""
+        # Sparse at 30fps on 90 frames → [0, 30, 60] → 3 rows
+        self._run_with_batch(
+            catalog_db, total_frames=90, sample_every_n=1, sparse=True,
+        )
+        rows = catalog_db.get_detections_for_range("m1", 0, 90)
+        assert len(rows) == 3
+
+    def test_large_batch_size_works(self, catalog_db) -> None:
+        """batch_size larger than frame count works correctly."""
+        self._run_with_batch(
+            catalog_db, total_frames=5, sample_every_n=1, sparse=True,
+            batch_size=100,
+        )
+        # 5 frames at 30fps sparse → only frame 0
+        rows = catalog_db.get_detections_for_range("m1", 0, 5)
+        assert len(rows) == 1
