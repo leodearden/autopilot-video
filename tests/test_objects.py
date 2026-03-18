@@ -410,3 +410,56 @@ class TestInterpolateEdgeCases:
         assert result[0]["bbox_xywh"] == [100.0, 100.0, 50.0, 50.0]
         # Verify it's a copy, not the same dict
         assert result[0] is not det_before[0]
+
+
+class TestIdempotency:
+    """Tests for detect_objects idempotency check."""
+
+    def test_existing_detections_skips(self, catalog_db) -> None:
+        """If detections exist for frame 0, detect_objects returns early."""
+        from pathlib import Path
+        from unittest.mock import MagicMock
+
+        from autopilot.analyze.objects import detect_objects
+        from autopilot.config import ModelConfig
+
+        # Pre-insert detection for frame 0
+        catalog_db.batch_insert_detections([("m1", 0, "[]")])
+
+        scheduler = MagicMock()
+        config = ModelConfig()
+        detect_objects("m1", Path("/fake/video.mp4"), catalog_db, scheduler, config)
+        # scheduler.model should not be called
+        scheduler.model.assert_not_called()
+
+    def test_no_existing_detections_proceeds(self, catalog_db) -> None:
+        """Without existing detections, scheduler.model() is called."""
+        from pathlib import Path
+        from unittest.mock import MagicMock, patch
+
+        from autopilot.analyze.objects import detect_objects
+        from autopilot.config import ModelConfig
+
+        scheduler = MagicMock()
+        config = ModelConfig()
+        mock_model = _make_mock_yolo_model()
+        # Setup scheduler.model context manager to return mock_model
+        scheduler.model.return_value.__enter__ = MagicMock(return_value=mock_model)
+        scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
+
+        # Mock cv2.VideoCapture with a minimal video
+        mock_cap = _make_mock_capture(total_frames=3, fps=30.0)
+        mock_model.track.return_value = _make_empty_result()
+
+        with patch("autopilot.analyze.objects.cv2") as mock_cv2:
+            mock_cv2.VideoCapture.return_value = mock_cap
+            mock_cv2.CAP_PROP_FPS = 5
+            mock_cv2.CAP_PROP_FRAME_COUNT = 7
+            mock_cv2.CAP_PROP_FRAME_WIDTH = 3
+            mock_cv2.CAP_PROP_FRAME_HEIGHT = 4
+
+            # video_path must "exist" for the check
+            with patch.object(Path, "exists", return_value=True):
+                detect_objects("m2", Path("/fake/video.mp4"), catalog_db, scheduler, config)
+
+        scheduler.model.assert_called_once()
