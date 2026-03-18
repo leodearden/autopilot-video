@@ -112,7 +112,7 @@ class TestSchedulerInit:
         scheduler.register("whisperx", spec)
         scheduler.unregister("whisperx")
         with pytest.raises(SchedulerError):
-            with scheduler.model("whisperx") as m:
+            with scheduler.model("whisperx"):
                 pass
 
 

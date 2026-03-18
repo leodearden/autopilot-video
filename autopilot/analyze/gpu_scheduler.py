@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import threading
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable
 
 __all__ = ["GPUScheduler", "ModelSpec", "SchedulerError"]
@@ -138,7 +138,12 @@ class GPUScheduler:
             else:
                 spec = self._registry[name]
                 self._evict_for(spec.vram_bytes)
-                model_obj = spec.load_fn()
+                try:
+                    model_obj = spec.load_fn()
+                except Exception as exc:
+                    raise SchedulerError(
+                        f"Failed to load model '{name}': {exc}"
+                    ) from exc
                 self._loaded[name] = model_obj
                 self._lru.append(name)
                 logger.info(
@@ -146,7 +151,22 @@ class GPUScheduler:
                 )
                 if spec.warmup_fn is not None:
                     logger.debug("Warming up model '%s'", name)
-                    spec.warmup_fn(model_obj)
+                    try:
+                        spec.warmup_fn(model_obj)
+                    except Exception as exc:
+                        # Clean up: unload the model since warmup failed
+                        del self._loaded[name]
+                        self._lru.remove(name)
+                        try:
+                            spec.unload_fn(model_obj)
+                        except Exception:
+                            logger.exception(
+                                "Error unloading '%s' after warmup failure",
+                                name,
+                            )
+                        raise SchedulerError(
+                            f"Warmup failed for model '{name}': {exc}"
+                        ) from exc
         yield model_obj
 
     def force_unload_all(self) -> None:
