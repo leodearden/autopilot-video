@@ -137,3 +137,17 @@ class GPUScheduler:
                 self._loaded[name] = model_obj
                 self._lru.append(name)
         yield model_obj
+
+    def force_unload_all(self) -> None:
+        """Unload every loaded model and reset LRU tracking."""
+        with self._lock:
+            for name in list(self._loaded):
+                spec = self._registry[name]
+                obj = self._loaded.pop(name)
+                try:
+                    spec.unload_fn(obj)
+                except Exception:
+                    logger.exception(
+                        "Error unloading '%s' during force_unload_all", name
+                    )
+            self._lru.clear()
