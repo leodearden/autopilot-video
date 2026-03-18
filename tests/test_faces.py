@@ -325,3 +325,181 @@ class TestDetectionLoop:
         faces = catalog_db.get_faces_for_media("vid1")
         assert len(faces) == 1
         assert faces[0]["face_index"] == 0
+
+
+# -- Data format tests ---------------------------------------------------------
+
+
+class TestDataFormat:
+    """Tests for stored face data format correctness."""
+
+    def _run_with_face(self, catalog_db, tmp_path, face):
+        """Helper to run detect_faces with a specific mock face."""
+        from autopilot.analyze.faces import detect_faces
+
+        vid = tmp_path / "vid.mp4"
+        vid.touch()
+        catalog_db.insert_media("vid1", str(vid))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=30.0, total_frames=30)
+        mock_cv2.VideoCapture.return_value = cap
+
+        face_model = MagicMock()
+        face_model.get.return_value = [face]
+
+        scheduler = MagicMock()
+        scheduler.model.return_value.__enter__ = MagicMock(return_value=face_model)
+        scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
+
+        config = MagicMock()
+        config.face_model = "buffalo_l"
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            detect_faces("vid1", vid, catalog_db, scheduler, config)
+
+        return catalog_db.get_faces_for_media("vid1")
+
+    def test_bbox_json_valid(self, catalog_db, tmp_path) -> None:
+        """Stored bbox_json is valid JSON list of 4 floats."""
+        face = _make_mock_face(bbox=[10.5, 20.5, 100.5, 200.5])
+        faces = self._run_with_face(catalog_db, tmp_path, face)
+        assert len(faces) == 1
+        bbox = json.loads(faces[0]["bbox_json"])
+        assert isinstance(bbox, list)
+        assert len(bbox) == 4
+        assert all(isinstance(v, float) for v in bbox)
+        assert bbox == [10.5, 20.5, 100.5, 200.5]
+
+    def test_embedding_size(self, catalog_db, tmp_path) -> None:
+        """Embedding BLOB is exactly 2048 bytes (512 × 4-byte float32)."""
+        face = _make_mock_face()
+        faces = self._run_with_face(catalog_db, tmp_path, face)
+        assert len(faces) == 1
+        assert len(faces[0]["embedding"]) == 2048
+
+    def test_embedding_roundtrip(self, catalog_db, tmp_path) -> None:
+        """Store then retrieve numpy array via tobytes/frombuffer matches original."""
+        original_emb = np.random.default_rng(99).random(512).astype(np.float32)
+        face = _make_mock_face(embedding=original_emb)
+        faces = self._run_with_face(catalog_db, tmp_path, face)
+        assert len(faces) == 1
+        recovered = np.frombuffer(faces[0]["embedding"], dtype=np.float32)
+        np.testing.assert_array_equal(recovered, original_emb)
+
+    def test_cluster_id_starts_null(self, catalog_db, tmp_path) -> None:
+        """Newly inserted faces have cluster_id=None."""
+        face = _make_mock_face()
+        faces = self._run_with_face(catalog_db, tmp_path, face)
+        assert len(faces) == 1
+        assert faces[0]["cluster_id"] is None
+
+
+# -- Edge case tests -----------------------------------------------------------
+
+
+class TestEdgeCases:
+    """Tests for detect_faces edge cases."""
+
+    def test_no_faces_detected_no_rows(self, catalog_db, tmp_path) -> None:
+        """When model returns empty list, no face rows stored."""
+        from autopilot.analyze.faces import detect_faces
+
+        vid = tmp_path / "vid.mp4"
+        vid.touch()
+        catalog_db.insert_media("vid1", str(vid))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=30.0, total_frames=30)
+        mock_cv2.VideoCapture.return_value = cap
+
+        face_model = MagicMock()
+        face_model.get.return_value = []
+
+        scheduler = MagicMock()
+        scheduler.model.return_value.__enter__ = MagicMock(return_value=face_model)
+        scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
+
+        config = MagicMock()
+        config.face_model = "buffalo_l"
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            detect_faces("vid1", vid, catalog_db, scheduler, config)
+
+        faces = catalog_db.get_faces_for_media("vid1")
+        assert len(faces) == 0
+
+    def test_empty_video_no_error(self, catalog_db, tmp_path) -> None:
+        """0 total frames returns early without error."""
+        from autopilot.analyze.faces import detect_faces
+
+        vid = tmp_path / "vid.mp4"
+        vid.touch()
+        catalog_db.insert_media("vid1", str(vid))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=30.0, total_frames=0)
+        mock_cv2.VideoCapture.return_value = cap
+
+        scheduler = MagicMock()
+        config = MagicMock()
+        config.face_model = "buffalo_l"
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            detect_faces("vid1", vid, catalog_db, scheduler, config)
+
+        # Should not call scheduler.model for empty video
+        scheduler.model.assert_not_called()
+
+
+# -- Logging tests -------------------------------------------------------------
+
+
+class TestLogging:
+    """Tests for detect_faces logging output."""
+
+    def test_log_contains_media_id(self, catalog_db, tmp_path, caplog) -> None:
+        """INFO log with media_id on start."""
+        from autopilot.analyze.faces import detect_faces
+
+        vid = tmp_path / "vid.mp4"
+        vid.touch()
+        catalog_db.insert_media("vid1", str(vid))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=30.0, total_frames=30)
+        mock_cv2.VideoCapture.return_value = cap
+
+        face_model = MagicMock()
+        face_model.get.return_value = [_make_mock_face()]
+
+        scheduler = MagicMock()
+        scheduler.model.return_value.__enter__ = MagicMock(return_value=face_model)
+        scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
+
+        config = MagicMock()
+        config.face_model = "buffalo_l"
+
+        with caplog.at_level(logging.INFO, logger="autopilot.analyze.faces"):
+            with patch.dict(sys.modules, {"cv2": mock_cv2}):
+                detect_faces("vid1", vid, catalog_db, scheduler, config)
+
+        assert any("vid1" in rec.message for rec in caplog.records)
+
+    def test_log_skipping_on_idempotent(self, catalog_db, caplog) -> None:
+        """INFO log with 'skipping' when faces already exist."""
+        from autopilot.analyze.faces import detect_faces
+
+        catalog_db.insert_media("vid1", "/tmp/vid1.mp4")
+        catalog_db.batch_insert_faces([
+            ("vid1", 0, 0, "[]", b"\x00" * 2048, None),
+        ])
+
+        scheduler = MagicMock()
+        config = MagicMock()
+        config.face_model = "buffalo_l"
+
+        with caplog.at_level(logging.INFO, logger="autopilot.analyze.faces"):
+            detect_faces("vid1", Path("/tmp/vid1.mp4"), catalog_db, scheduler, config)
+
+        assert any("skipping" in rec.message.lower() for rec in caplog.records)
