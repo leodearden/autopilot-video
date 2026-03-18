@@ -503,3 +503,296 @@ class TestLogging:
             detect_faces("vid1", Path("/tmp/vid1.mp4"), catalog_db, scheduler, config)
 
         assert any("skipping" in rec.message.lower() for rec in caplog.records)
+
+
+# -- Cluster faces tests -------------------------------------------------------
+
+
+class TestClusterFaces:
+    """Tests for cluster_faces DBSCAN clustering."""
+
+    def test_empty_db_no_error(self, catalog_db) -> None:
+        """cluster_faces with no face rows creates no clusters, no error."""
+        from autopilot.analyze.faces import cluster_faces
+
+        cluster_faces(catalog_db)
+        clusters = catalog_db.get_face_clusters()
+        assert len(clusters) == 0
+
+    def _insert_synthetic_faces(self, catalog_db, n_clusters=3, n_per_cluster=5):
+        """Insert synthetic face embeddings forming distinct clusters.
+
+        Creates n_clusters groups, each with n_per_cluster faces.
+        Embeddings are unit vectors with dominant weight on different dimensions.
+        """
+        catalog_db.insert_media("vid1", "/tmp/vid1.mp4")
+        rng = np.random.default_rng(42)
+        face_rows = []
+        frame_num = 0
+
+        for cluster_idx in range(n_clusters):
+            for face_idx in range(n_per_cluster):
+                # Create embedding with strong signal on one dimension
+                emb = rng.normal(0, 0.01, 512).astype(np.float32)
+                emb[cluster_idx] = 1.0  # Dominant feature
+                emb = emb / np.linalg.norm(emb)  # L2 normalize
+                face_rows.append((
+                    "vid1",
+                    frame_num,
+                    0,
+                    json.dumps([10.0, 20.0, 100.0, 200.0]),
+                    emb.tobytes(),
+                    None,
+                ))
+                frame_num += 1
+
+        catalog_db.batch_insert_faces(face_rows)
+        return face_rows
+
+    def test_clusters_three_groups(self, catalog_db) -> None:
+        """3 synthetic clusters of 5 faces each produce 3 face_clusters rows."""
+        from autopilot.analyze.faces import cluster_faces
+
+        self._insert_synthetic_faces(catalog_db, n_clusters=3, n_per_cluster=5)
+        cluster_faces(catalog_db, eps=0.5, min_samples=3)
+
+        clusters = catalog_db.get_face_clusters()
+        assert len(clusters) == 3
+
+        # Verify all faces have a cluster_id assigned
+        faces = catalog_db.get_faces_for_media("vid1")
+        assert all(f["cluster_id"] is not None for f in faces)
+
+        # Verify faces within same synthetic group share same cluster_id
+        for start in range(0, 15, 5):
+            group_ids = set()
+            for i in range(5):
+                face = faces[start + i]
+                group_ids.add(face["cluster_id"])
+            assert len(group_ids) == 1  # All same cluster
+
+    def test_centroid_is_normalized_mean(self, catalog_db) -> None:
+        """representative_embedding BLOB decodes to L2-normalized mean."""
+        from autopilot.analyze.faces import cluster_faces
+
+        self._insert_synthetic_faces(catalog_db, n_clusters=2, n_per_cluster=5)
+        cluster_faces(catalog_db, eps=0.5, min_samples=3)
+
+        clusters = catalog_db.get_face_clusters()
+        for cluster in clusters:
+            centroid = np.frombuffer(
+                cluster["representative_embedding"], dtype=np.float32
+            )
+            # Should be L2-normalized (norm ~= 1.0)
+            assert abs(np.linalg.norm(centroid) - 1.0) < 1e-5
+            assert len(centroid) == 512
+
+    def test_sample_paths_populated(self, catalog_db) -> None:
+        """sample_image_paths is JSON list of 'media_id:frame_number' strings."""
+        from autopilot.analyze.faces import cluster_faces
+
+        self._insert_synthetic_faces(catalog_db, n_clusters=2, n_per_cluster=5)
+        cluster_faces(catalog_db, eps=0.5, min_samples=3)
+
+        clusters = catalog_db.get_face_clusters()
+        for cluster in clusters:
+            paths = json.loads(cluster["sample_image_paths"])
+            assert isinstance(paths, list)
+            assert len(paths) <= 5
+            assert len(paths) > 0
+            for p in paths:
+                assert ":" in p  # format "media_id:frame_number"
+
+    def test_label_starts_null(self, catalog_db) -> None:
+        """face_clusters.label is NULL for all clusters."""
+        from autopilot.analyze.faces import cluster_faces
+
+        self._insert_synthetic_faces(catalog_db, n_clusters=2, n_per_cluster=5)
+        cluster_faces(catalog_db, eps=0.5, min_samples=3)
+
+        clusters = catalog_db.get_face_clusters()
+        for cluster in clusters:
+            assert cluster["label"] is None
+
+    def test_noise_excluded_from_clusters(self, catalog_db) -> None:
+        """Outlier faces have cluster_id=NULL, no face_cluster row for noise."""
+        from autopilot.analyze.faces import cluster_faces
+
+        # Insert 2 tight clusters of 5 each + 2 outliers
+        self._insert_synthetic_faces(catalog_db, n_clusters=2, n_per_cluster=5)
+
+        # Add outliers at random locations in embedding space
+        rng = np.random.default_rng(99)
+        for i in range(2):
+            emb = rng.normal(0, 1, 512).astype(np.float32)
+            emb = emb / np.linalg.norm(emb)
+            catalog_db.batch_insert_faces([
+                ("vid1", 100 + i, 0, "[]", emb.tobytes(), None),
+            ])
+
+        cluster_faces(catalog_db, eps=0.5, min_samples=3)
+
+        # Outlier faces should have cluster_id=NULL
+        faces = catalog_db.get_faces_for_media("vid1")
+        outlier_faces = [f for f in faces if f["frame_number"] >= 100]
+        assert all(f["cluster_id"] is None for f in outlier_faces)
+
+        # Only 2 clusters, not 3 or more
+        clusters = catalog_db.get_face_clusters()
+        assert len(clusters) == 2
+
+    def test_single_face_is_noise(self, catalog_db) -> None:
+        """One isolated face with min_samples=3 is labeled noise."""
+        from autopilot.analyze.faces import cluster_faces
+
+        catalog_db.insert_media("vid1", "/tmp/vid1.mp4")
+        rng = np.random.default_rng(42)
+        emb = rng.random(512).astype(np.float32)
+        emb = emb / np.linalg.norm(emb)
+        catalog_db.batch_insert_faces([
+            ("vid1", 0, 0, "[]", emb.tobytes(), None),
+        ])
+
+        cluster_faces(catalog_db, min_samples=3)
+
+        clusters = catalog_db.get_face_clusters()
+        assert len(clusters) == 0
+
+        faces = catalog_db.get_faces_for_media("vid1")
+        assert faces[0]["cluster_id"] is None
+
+    def test_reclustering_replaces_old(self, catalog_db) -> None:
+        """Running cluster_faces twice replaces old clusters, not doubles them."""
+        from autopilot.analyze.faces import cluster_faces
+
+        self._insert_synthetic_faces(catalog_db, n_clusters=2, n_per_cluster=5)
+        cluster_faces(catalog_db, eps=0.5, min_samples=3)
+        clusters1 = catalog_db.get_face_clusters()
+        assert len(clusters1) == 2
+
+        # Run again — should produce same result, not doubled
+        cluster_faces(catalog_db, eps=0.5, min_samples=3)
+        clusters2 = catalog_db.get_face_clusters()
+        assert len(clusters2) == 2
+
+        # All faces should still have cluster_id assigned
+        faces = catalog_db.get_faces_for_media("vid1")
+        assert all(f["cluster_id"] is not None for f in faces)
+
+
+# -- Cluster faces logging tests -----------------------------------------------
+
+
+class TestClusterFacesLogging:
+    """Tests for cluster_faces logging output."""
+
+    def test_log_cluster_count(self, catalog_db, caplog) -> None:
+        """INFO log contains number of clusters."""
+        from autopilot.analyze.faces import cluster_faces
+
+        # Insert 2 clusters of 5 faces
+        catalog_db.insert_media("vid1", "/tmp/vid1.mp4")
+        rng = np.random.default_rng(42)
+        rows = []
+        for c in range(2):
+            for i in range(5):
+                emb = rng.normal(0, 0.01, 512).astype(np.float32)
+                emb[c] = 1.0
+                emb = emb / np.linalg.norm(emb)
+                rows.append(("vid1", c * 5 + i, 0, "[]", emb.tobytes(), None))
+        catalog_db.batch_insert_faces(rows)
+
+        with caplog.at_level(logging.INFO, logger="autopilot.analyze.faces"):
+            cluster_faces(catalog_db, eps=0.5, min_samples=3)
+
+        assert any("2 cluster" in rec.message for rec in caplog.records)
+
+    def test_log_noise_count(self, catalog_db, caplog) -> None:
+        """INFO log contains noise face count."""
+        from autopilot.analyze.faces import cluster_faces
+
+        catalog_db.insert_media("vid1", "/tmp/vid1.mp4")
+        rng = np.random.default_rng(42)
+        rows = []
+        # One tight cluster of 5
+        for i in range(5):
+            emb = rng.normal(0, 0.01, 512).astype(np.float32)
+            emb[0] = 1.0
+            emb = emb / np.linalg.norm(emb)
+            rows.append(("vid1", i, 0, "[]", emb.tobytes(), None))
+        # One outlier
+        emb = rng.normal(0, 1, 512).astype(np.float32)
+        emb = emb / np.linalg.norm(emb)
+        rows.append(("vid1", 10, 0, "[]", emb.tobytes(), None))
+        catalog_db.batch_insert_faces(rows)
+
+        with caplog.at_level(logging.INFO, logger="autopilot.analyze.faces"):
+            cluster_faces(catalog_db, eps=0.5, min_samples=3)
+
+        assert any("noise" in rec.message.lower() for rec in caplog.records)
+
+    def test_log_empty_skip(self, catalog_db, caplog) -> None:
+        """Log mentions 'No face embeddings' when DB is empty."""
+        from autopilot.analyze.faces import cluster_faces
+
+        with caplog.at_level(logging.INFO, logger="autopilot.analyze.faces"):
+            cluster_faces(catalog_db)
+
+        assert any(
+            "no face embeddings" in rec.message.lower() for rec in caplog.records
+        )
+
+
+# -- Label faces tests ---------------------------------------------------------
+
+
+class TestLabelFaces:
+    """Tests for scripts/label_faces.py helper functions."""
+
+    def test_get_unlabeled_clusters(self, catalog_db) -> None:
+        """Returns only clusters with label IS NULL."""
+        from scripts.label_faces import get_unlabeled_clusters
+
+        catalog_db.insert_face_cluster(0, label=None)
+        catalog_db.insert_face_cluster(1, label="Alice")
+        catalog_db.insert_face_cluster(2, label=None)
+
+        unlabeled = get_unlabeled_clusters(catalog_db)
+        assert len(unlabeled) == 2
+        ids = {c["cluster_id"] for c in unlabeled}
+        assert ids == {0, 2}
+
+    def test_apply_label(self, catalog_db) -> None:
+        """Updates face_clusters.label in DB."""
+        from scripts.label_faces import apply_label
+
+        catalog_db.insert_face_cluster(0, label=None)
+        apply_label(catalog_db, 0, "Bob")
+
+        cluster = catalog_db.get_face_cluster_by_id(0)
+        assert cluster["label"] == "Bob"
+
+    def test_label_roundtrip(self, catalog_db) -> None:
+        """Label then retrieve verifies value."""
+        from scripts.label_faces import apply_label, get_unlabeled_clusters
+
+        catalog_db.insert_face_cluster(0, label=None)
+        apply_label(catalog_db, 0, "Charlie")
+
+        unlabeled = get_unlabeled_clusters(catalog_db)
+        assert len(unlabeled) == 0
+
+        cluster = catalog_db.get_face_cluster_by_id(0)
+        assert cluster["label"] == "Charlie"
+
+    def test_all_labeled_returns_empty(self, catalog_db) -> None:
+        """After labeling all, get_unlabeled returns empty list."""
+        from scripts.label_faces import apply_label, get_unlabeled_clusters
+
+        catalog_db.insert_face_cluster(0, label=None)
+        catalog_db.insert_face_cluster(1, label=None)
+        apply_label(catalog_db, 0, "A")
+        apply_label(catalog_db, 1, "B")
+
+        unlabeled = get_unlabeled_clusters(catalog_db)
+        assert len(unlabeled) == 0
