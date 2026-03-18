@@ -615,3 +615,62 @@ class TestIntegration:
         spec_p.unload_fn.assert_not_called()
         assert scheduler.loaded_models == {"whisperx", "panns"}
         assert scheduler.vram_used == 4 * GB
+
+
+class TestErrorHandling:
+    """Tests for error handling edge cases."""
+
+    def test_load_fn_exception_propagates(self) -> None:
+        """If load_fn raises, SchedulerError is raised and model is NOT loaded."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        spec = ModelSpec(
+            load_fn=MagicMock(side_effect=RuntimeError("CUDA OOM")),
+            unload_fn=MagicMock(),
+            vram_bytes=3 * GB,
+        )
+        scheduler.register("bad", spec)
+        with pytest.raises(SchedulerError, match="CUDA OOM"):
+            with scheduler.model("bad"):
+                pass
+        assert "bad" not in scheduler.loaded_models
+
+    def test_unload_fn_exception_logged_not_raised(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """If unload_fn raises during eviction, error is logged but eviction continues."""
+        scheduler = GPUScheduler(total_vram=10 * GB)
+        spec_a = ModelSpec(
+            load_fn=MagicMock(return_value="a"),
+            unload_fn=MagicMock(side_effect=RuntimeError("unload fail")),
+            vram_bytes=3 * GB,
+        )
+        spec_b = _make_spec(vram=8 * GB)
+        scheduler.register("a", spec_a)
+        scheduler.register("b", spec_b)
+
+        with scheduler.model("a"):
+            pass
+
+        with caplog.at_level("ERROR", logger="autopilot.analyze.gpu_scheduler"):
+            with scheduler.model("b"):
+                pass  # evicts a (unload fails), but b still loads
+
+        assert "b" in scheduler.loaded_models
+        assert "a" not in scheduler.loaded_models
+
+    def test_warmup_fn_exception_unloads_model(self) -> None:
+        """If warmup_fn raises, the model is unloaded and SchedulerError is raised."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        unload = MagicMock()
+        spec = ModelSpec(
+            load_fn=MagicMock(return_value="m"),
+            unload_fn=unload,
+            vram_bytes=3 * GB,
+            warmup_fn=MagicMock(side_effect=RuntimeError("warmup fail")),
+        )
+        scheduler.register("bad", spec)
+        with pytest.raises(SchedulerError, match="warmup fail"):
+            with scheduler.model("bad"):
+                pass
+        unload.assert_called_once_with("m")
+        assert "bad" not in scheduler.loaded_models
