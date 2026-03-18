@@ -25,6 +25,29 @@ class DetectionError(Exception):
     """Raised for all object detection and tracking failures."""
 
 
+def _compute_frame_indices(
+    total_frames: int, fps: float, sample_every_n: int, sparse: bool
+) -> list[int]:
+    """Compute which frame indices to run detection on.
+
+    Args:
+        total_frames: Total number of frames in the video.
+        fps: Video frames per second.
+        sample_every_n: Sample interval for dense mode.
+        sparse: If True, sample at ~1fps; if False, use sample_every_n.
+
+    Returns:
+        Sorted list of 0-based frame indices.
+    """
+    if total_frames <= 0:
+        return []
+    if sparse:
+        interval = max(1, int(fps))
+    else:
+        interval = sample_every_n
+    return list(range(0, total_frames, interval))
+
+
 def detect_objects(
     media_id: str,
     video_path: Path,
