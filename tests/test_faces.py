@@ -245,3 +245,83 @@ class TestErrorHandling:
         # 2 faces stored (frames 30 and 60 succeed, frame 0 fails)
         faces = catalog_db.get_faces_for_media("vid1")
         assert len(faces) == 2
+
+
+# -- Detection loop tests -----------------------------------------------------
+
+
+class TestDetectionLoop:
+    """Tests for the core face detection sampling loop."""
+
+    def _run_detect(
+        self, catalog_db, tmp_path, fps, total_frames, faces_per_frame
+    ):
+        """Helper to run detect_faces with mocked dependencies."""
+        from autopilot.analyze.faces import detect_faces
+
+        vid = tmp_path / "vid.mp4"
+        vid.touch()
+        catalog_db.insert_media("vid1", str(vid))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=fps, total_frames=total_frames)
+        mock_cv2.VideoCapture.return_value = cap
+
+        # Create distinct faces per call with distinct embeddings
+        call_count = [0]
+
+        def make_faces_for_frame(frame):
+            rng = np.random.default_rng(call_count[0])
+            call_count[0] += 1
+            return [
+                _make_mock_face(embedding=rng.random(512).astype(np.float32))
+                for _ in range(faces_per_frame)
+            ]
+
+        face_model = MagicMock()
+        face_model.get.side_effect = make_faces_for_frame
+
+        scheduler = MagicMock()
+        scheduler.model.return_value.__enter__ = MagicMock(return_value=face_model)
+        scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
+
+        config = MagicMock()
+        config.face_model = "buffalo_l"
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            detect_faces("vid1", vid, catalog_db, scheduler, config)
+
+        return face_model, cap
+
+    def test_samples_at_1fps(self, catalog_db, tmp_path) -> None:
+        """300 frames at 30fps: model.get() called 10 times."""
+        face_model, _ = self._run_detect(
+            catalog_db, tmp_path, fps=30.0, total_frames=300, faces_per_frame=1
+        )
+        assert face_model.get.call_count == 10
+
+    def test_stores_faces_with_embeddings(self, catalog_db, tmp_path) -> None:
+        """2 faces per frame on 10 sampled frames = 20 face rows."""
+        self._run_detect(
+            catalog_db, tmp_path, fps=30.0, total_frames=300, faces_per_frame=2
+        )
+        faces = catalog_db.get_faces_for_media("vid1")
+        assert len(faces) == 20
+
+        # Check frame numbers are 0, 30, 60, ..., 270
+        frame_numbers = sorted(set(f["frame_number"] for f in faces))
+        assert frame_numbers == list(range(0, 300, 30))
+
+        # Check face_index is 0 and 1 for each frame
+        for fn in frame_numbers:
+            frame_faces = [f for f in faces if f["frame_number"] == fn]
+            assert sorted(f["face_index"] for f in frame_faces) == [0, 1]
+
+    def test_single_face_per_frame(self, catalog_db, tmp_path) -> None:
+        """1 face detected stores 1 row with face_index=0."""
+        self._run_detect(
+            catalog_db, tmp_path, fps=30.0, total_frames=30, faces_per_frame=1
+        )
+        faces = catalog_db.get_faces_for_media("vid1")
+        assert len(faces) == 1
+        assert faces[0]["face_index"] == 0
