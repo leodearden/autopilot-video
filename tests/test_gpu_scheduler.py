@@ -249,3 +249,45 @@ class TestLRUEviction:
         spec_c.unload_fn.assert_not_called()
         assert "a" not in scheduler.loaded_models
         assert scheduler.loaded_models == {"b", "c", "d"}
+
+
+class TestLRUReaccess:
+    """Tests for LRU ordering updates on re-access."""
+
+    def test_lru_order_updated_on_reaccess(self) -> None:
+        """Re-accessing a model moves it to most-recently-used, changing eviction order."""
+        scheduler = GPUScheduler(total_vram=10 * GB)
+        spec_a = _make_spec(vram=3 * GB)
+        spec_b = _make_spec(vram=3 * GB)
+        spec_c = _make_spec(vram=3 * GB)
+        spec_d = _make_spec(vram=4 * GB)
+        scheduler.register("a", spec_a)
+        scheduler.register("b", spec_b)
+        scheduler.register("c", spec_c)
+        scheduler.register("d", spec_d)
+
+        # Load A, B, C (9GB, LRU order: A, B, C)
+        for name in ("a", "b", "c"):
+            with scheduler.model(name):
+                pass
+
+        # Re-access A → LRU order: B, C, A
+        with scheduler.model("a"):
+            pass
+
+        # Load D (needs 4GB, 1GB free) → should evict B (now LRU), not A
+        with scheduler.model("d"):
+            pass
+
+        spec_b.unload_fn.assert_called_once()
+        spec_a.unload_fn.assert_not_called()
+        assert scheduler.loaded_models == {"a", "c", "d"}
+
+    def test_model_too_large_for_total_vram_raises(self) -> None:
+        """A model larger than total_vram raises SchedulerError immediately."""
+        scheduler = GPUScheduler(total_vram=10 * GB)
+        spec = _make_spec(vram=12 * GB)
+        scheduler.register("huge", spec)
+        with pytest.raises(SchedulerError, match="Cannot free"):
+            with scheduler.model("huge"):
+                pass
