@@ -5,7 +5,7 @@
     "autopilot/analyze",
     "tests"
   ],
-  "analysis": "Task 6 requires creating autopilot/analyze/gpu_scheduler.py — a VRAM-aware GPU model scheduler with context-manager API. The analyze/ directory exists with an empty __init__.py. No GPU-related code exists yet in the project.\n\n**Architecture:** GPUScheduler class manages a registry of ModelSpec entries (load_fn, unload_fn, vram_bytes, warmup_fn) and tracks loaded models with LRU ordering. The context manager `scheduler.model('name')` loads the requested model (evicting LRU models if VRAM is insufficient) and returns the loaded model object. Models stay resident after context exit (LRU cache behavior) — only evicted when VRAM is needed for a new model. A force_unload_all() method clears everything.\n\n**Key design constraints:**\n- Must work WITHOUT a real GPU in tests — all torch.cuda calls must be injectable/mockable\n- Thread safety via threading.Lock (pipeline may run audio + video analysis concurrently)\n- Device selection from config's processing.gpu_device field\n- LRU eviction: when loading a model that won't fit, unload least-recently-used models until there's enough VRAM\n- VRAM tracking via torch.cuda.mem_get_info() in production, but mockable for tests\n\n**Test strategy:** All unit tests use mock VRAM tracking (no GPU required). We inject a vram_query callable into GPUScheduler so tests can control reported free/total VRAM. Model load/unload functions are simple callables that tests can spy on with MagicMock.\n\n**Dependencies:** Only depends on task 2 (config.py, done). Uses ProcessingConfig.gpu_device for device selection. No other autopilot modules needed.\n\n**Existing patterns followed:**\n- Dataclasses for data containers (ModelSpec follows CreatorConfig/StageDefinition pattern)\n- __all__ exports in module\n- logging module for structured output\n- Tests use pytest with descriptive docstrings, follow test_config.py/test_orchestrator.py style",
+  "analysis": "Task 6 requires creating autopilot/analyze/gpu_scheduler.py \u2014 a VRAM-aware GPU model scheduler with context-manager API. The analyze/ directory exists with an empty __init__.py. No GPU-related code exists yet in the project.\n\n**Architecture:** GPUScheduler class manages a registry of ModelSpec entries (load_fn, unload_fn, vram_bytes, warmup_fn) and tracks loaded models with LRU ordering. The context manager `scheduler.model('name')` loads the requested model (evicting LRU models if VRAM is insufficient) and returns the loaded model object. Models stay resident after context exit (LRU cache behavior) \u2014 only evicted when VRAM is needed for a new model. A force_unload_all() method clears everything.\n\n**Key design constraints:**\n- Must work WITHOUT a real GPU in tests \u2014 all torch.cuda calls must be injectable/mockable\n- Thread safety via threading.Lock (pipeline may run audio + video analysis concurrently)\n- Device selection from config's processing.gpu_device field\n- LRU eviction: when loading a model that won't fit, unload least-recently-used models until there's enough VRAM\n- VRAM tracking via torch.cuda.mem_get_info() in production, but mockable for tests\n\n**Test strategy:** All unit tests use mock VRAM tracking (no GPU required). We inject a vram_query callable into GPUScheduler so tests can control reported free/total VRAM. Model load/unload functions are simple callables that tests can spy on with MagicMock.\n\n**Dependencies:** Only depends on task 2 (config.py, done). Uses ProcessingConfig.gpu_device for device selection. No other autopilot modules needed.\n\n**Existing patterns followed:**\n- Dataclasses for data containers (ModelSpec follows CreatorConfig/StageDefinition pattern)\n- __all__ exports in module\n- logging module for structured output\n- Tests use pytest with descriptive docstrings, follow test_config.py/test_orchestrator.py style\n\n**Post-review fixes (steps 25-28):** Three blocking issues identified in code review: (1) vacuous assertion `assert ... or True` on line 95 of tests that can never fail, (2) untested failure mode where load_fn returns None causing the LRU cache to break, (3) incorrect sentinel check using `is not None` instead of `name in self._loaded` for the cached-model guard. Steps 25-26 add a test for None-returning load_fn and fix the sentinel check in the implementation (TDD order). Steps 27-28 fix the vacuous test assertion and run a full validation pass.",
   "prerequisites": [
     {
       "id": "pre-1",
@@ -19,7 +19,7 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing tests for ModelSpec dataclass and public API imports. Tests: (1) test_model_spec_fields — instantiate ModelSpec with load_fn, unload_fn, vram_bytes, warmup_fn; verify all attributes stored correctly. (2) test_model_spec_warmup_fn_optional — instantiate ModelSpec without warmup_fn, verify it defaults to None. (3) test_public_api_importable — verify GPUScheduler, ModelSpec, SchedulerError are importable from autopilot.analyze.gpu_scheduler. (4) test_scheduler_error_is_exception — verify SchedulerError is an Exception subclass.",
+      "description": "Write failing tests for ModelSpec dataclass and public API imports. Tests: (1) test_model_spec_fields \u2014 instantiate ModelSpec with load_fn, unload_fn, vram_bytes, warmup_fn; verify all attributes stored correctly. (2) test_model_spec_warmup_fn_optional \u2014 instantiate ModelSpec without warmup_fn, verify it defaults to None. (3) test_public_api_importable \u2014 verify GPUScheduler, ModelSpec, SchedulerError are importable from autopilot.analyze.gpu_scheduler. (4) test_scheduler_error_is_exception \u2014 verify SchedulerError is an Exception subclass.",
       "status": "done",
       "commit": "c5f456a"
     },
@@ -33,21 +33,21 @@
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write failing tests for GPUScheduler initialization and model registration. Tests: (1) test_init_default_device — GPUScheduler() defaults to device=0 and total_vram provided at init. (2) test_init_custom_device — GPUScheduler(device=1, total_vram=24*1024**3) stores device correctly. (3) test_register_model — call scheduler.register('whisperx', spec), verify model is in scheduler's registry. (4) test_register_duplicate_raises — registering same name twice raises SchedulerError. (5) test_unregister_model — register then unregister, verify model removed from registry.",
+      "description": "Write failing tests for GPUScheduler initialization and model registration. Tests: (1) test_init_default_device \u2014 GPUScheduler() defaults to device=0 and total_vram provided at init. (2) test_init_custom_device \u2014 GPUScheduler(device=1, total_vram=24*1024**3) stores device correctly. (3) test_register_model \u2014 call scheduler.register('whisperx', spec), verify model is in scheduler's registry. (4) test_register_duplicate_raises \u2014 registering same name twice raises SchedulerError. (5) test_unregister_model \u2014 register then unregister, verify model removed from registry.",
       "status": "done",
       "commit": "5946c7d"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement GPUScheduler.__init__(device, total_vram, vram_query) with model registry dict, loaded models dict, LRU ordering list, and threading.Lock. Implement register(name, spec) and unregister(name) methods. The vram_query parameter is a callable returning (free, total) bytes — defaults to None (will use torch.cuda in production). total_vram is the VRAM budget for scheduling decisions. Make step-3 tests pass.",
+      "description": "Implement GPUScheduler.__init__(device, total_vram, vram_query) with model registry dict, loaded models dict, LRU ordering list, and threading.Lock. Implement register(name, spec) and unregister(name) methods. The vram_query parameter is a callable returning (free, total) bytes \u2014 defaults to None (will use torch.cuda in production). total_vram is the VRAM budget for scheduling decisions. Make step-3 tests pass.",
       "status": "done",
       "commit": "d24362e"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write failing tests for basic model loading via context manager. Tests: (1) test_context_manager_loads_model — register a model with MagicMock load_fn, use `with scheduler.model('test') as m:`, verify load_fn called once and m is the return value. (2) test_context_manager_model_stays_loaded — after exiting context, model remains in loaded set (LRU cache). (3) test_context_manager_reuses_loaded_model — enter context twice for same model, load_fn called only once. (4) test_context_manager_unknown_model_raises — using scheduler.model('nonexistent') raises SchedulerError.",
+      "description": "Write failing tests for basic model loading via context manager. Tests: (1) test_context_manager_loads_model \u2014 register a model with MagicMock load_fn, use `with scheduler.model('test') as m:`, verify load_fn called once and m is the return value. (2) test_context_manager_model_stays_loaded \u2014 after exiting context, model remains in loaded set (LRU cache). (3) test_context_manager_reuses_loaded_model \u2014 enter context twice for same model, load_fn called only once. (4) test_context_manager_unknown_model_raises \u2014 using scheduler.model('nonexistent') raises SchedulerError.",
       "status": "done",
       "commit": "de0fcd6"
     },
@@ -61,7 +61,7 @@
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write failing tests for LRU eviction when VRAM is insufficient. Use GPUScheduler with total_vram=10GB. Tests: (1) test_evicts_lru_when_vram_insufficient — register model_a (3GB) and model_b (8GB), load model_a, then load model_b (needs 8GB but only 7GB free), verify model_a's unload_fn called before model_b loads. (2) test_evicts_multiple_models_if_needed — register 3 small models (3GB each) and 1 large (9GB), load all 3 small, then load large, verify all 3 small unloaded. (3) test_no_eviction_when_vram_sufficient — register two small models (3GB each, total_vram=10GB), load both, verify neither unload_fn called. (4) test_eviction_order_is_lru — load A then B then C, request D that requires eviction, verify A (least recently used) is evicted first.",
+      "description": "Write failing tests for LRU eviction when VRAM is insufficient. Use GPUScheduler with total_vram=10GB. Tests: (1) test_evicts_lru_when_vram_insufficient \u2014 register model_a (3GB) and model_b (8GB), load model_a, then load model_b (needs 8GB but only 7GB free), verify model_a's unload_fn called before model_b loads. (2) test_evicts_multiple_models_if_needed \u2014 register 3 small models (3GB each) and 1 large (9GB), load all 3 small, then load large, verify all 3 small unloaded. (3) test_no_eviction_when_vram_sufficient \u2014 register two small models (3GB each, total_vram=10GB), load both, verify neither unload_fn called. (4) test_eviction_order_is_lru \u2014 load A then B then C, request D that requires eviction, verify A (least recently used) is evicted first.",
       "status": "done",
       "commit": "ce4bbcd"
     },
@@ -75,7 +75,7 @@
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write failing tests for LRU ordering updates on re-access. Tests: (1) test_lru_order_updated_on_reaccess — load A, B, C in order. Re-access A (now most recent). Request D that needs eviction. Verify B (now LRU) is evicted, not A. (2) test_model_too_large_for_total_vram_raises — register a model with vram_bytes > total_vram, attempting to load raises SchedulerError with descriptive message.",
+      "description": "Write failing tests for LRU ordering updates on re-access. Tests: (1) test_lru_order_updated_on_reaccess \u2014 load A, B, C in order. Re-access A (now most recent). Request D that needs eviction. Verify B (now LRU) is evicted, not A. (2) test_model_too_large_for_total_vram_raises \u2014 register a model with vram_bytes > total_vram, attempting to load raises SchedulerError with descriptive message.",
       "status": "done",
       "commit": "0f7e6eb"
     },
@@ -89,7 +89,7 @@
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write failing tests for force_unload_all(). Tests: (1) test_force_unload_all_unloads_everything — load 3 models, call force_unload_all(), verify all 3 unload_fns called and loaded dict is empty. (2) test_force_unload_all_when_empty — call on empty scheduler, no error. (3) test_force_unload_all_clears_lru — after force_unload_all, LRU tracking is reset. (4) test_can_reload_after_force_unload — force_unload_all then load a model again, load_fn called again.",
+      "description": "Write failing tests for force_unload_all(). Tests: (1) test_force_unload_all_unloads_everything \u2014 load 3 models, call force_unload_all(), verify all 3 unload_fns called and loaded dict is empty. (2) test_force_unload_all_when_empty \u2014 call on empty scheduler, no error. (3) test_force_unload_all_clears_lru \u2014 after force_unload_all, LRU tracking is reset. (4) test_can_reload_after_force_unload \u2014 force_unload_all then load a model again, load_fn called again.",
       "status": "done",
       "commit": "dcaff0b"
     },
@@ -103,7 +103,7 @@
     {
       "id": "step-13",
       "type": "test",
-      "description": "Write failing tests for warmup function support. Tests: (1) test_warmup_called_after_load — register model with warmup_fn, load it, verify warmup_fn called with the loaded model object after load_fn. (2) test_warmup_not_called_on_cached_access — re-access already-loaded model, warmup_fn not called again. (3) test_warmup_none_skipped — register model without warmup_fn (None), load it, no error.",
+      "description": "Write failing tests for warmup function support. Tests: (1) test_warmup_called_after_load \u2014 register model with warmup_fn, load it, verify warmup_fn called with the loaded model object after load_fn. (2) test_warmup_not_called_on_cached_access \u2014 re-access already-loaded model, warmup_fn not called again. (3) test_warmup_none_skipped \u2014 register model without warmup_fn (None), load it, no error.",
       "status": "done",
       "commit": "e7696f4"
     },
@@ -117,35 +117,35 @@
     {
       "id": "step-15",
       "type": "test",
-      "description": "Write failing tests for thread safety. Tests: (1) test_concurrent_model_access — spawn 10 threads that each do `with scheduler.model('model_a')` 5 times, verify load_fn called exactly once (not multiple concurrent loads). (2) test_concurrent_different_models — spawn 2 threads loading different models concurrently, verify both load correctly without data corruption (check loaded count equals 2). (3) test_force_unload_during_active_context — thread A holds model context, thread B calls force_unload_all(), verify force_unload_all blocks until context exits OR raises SchedulerError (design decision: block is preferred).",
+      "description": "Write failing tests for thread safety. Tests: (1) test_concurrent_model_access \u2014 spawn 10 threads that each do `with scheduler.model('model_a')` 5 times, verify load_fn called exactly once (not multiple concurrent loads). (2) test_concurrent_different_models \u2014 spawn 2 threads loading different models concurrently, verify both load correctly without data corruption (check loaded count equals 2). (3) test_force_unload_during_active_context \u2014 thread A holds model context, thread B calls force_unload_all(), verify force_unload_all blocks until context exits OR raises SchedulerError (design decision: block is preferred).",
       "status": "done",
       "commit": "5fa8e76"
     },
     {
       "id": "step-16",
       "type": "impl",
-      "description": "Ensure thread safety with threading.Lock in all public methods: model(), force_unload_all(), register(), unregister(). The lock is acquired at the start of model() context manager (for the load/eviction logic) and released before yielding the model to the caller — but a re-entrant check is needed so the context body doesn't deadlock. Use a RLock or separate the lock acquisition from the yield. Design: acquire lock for load/eviction, release before yield, re-acquire for cleanup if needed. Make step-15 tests pass.",
+      "description": "Ensure thread safety with threading.Lock in all public methods: model(), force_unload_all(), register(), unregister(). The lock is acquired at the start of model() context manager (for the load/eviction logic) and released before yielding the model to the caller \u2014 but a re-entrant check is needed so the context body doesn't deadlock. Use a RLock or separate the lock acquisition from the yield. Design: acquire lock for load/eviction, release before yield, re-acquire for cleanup if needed. Make step-15 tests pass.",
       "status": "done",
       "commit": "5fa8e76"
     },
     {
       "id": "step-17",
       "type": "test",
-      "description": "Write failing tests for device selection and loaded_models property. Tests: (1) test_device_property — GPUScheduler(device=2).device returns 2. (2) test_loaded_models_returns_names — load 2 models, scheduler.loaded_models returns set of their names. (3) test_loaded_models_empty_initially — scheduler.loaded_models returns empty set. (4) test_vram_used_property — load 2 models (3GB + 8GB), scheduler.vram_used returns 11GB. (5) test_vram_free_property — total_vram=24GB, load 8GB model, scheduler.vram_free returns 16GB.",
+      "description": "Write failing tests for device selection and loaded_models property. Tests: (1) test_device_property \u2014 GPUScheduler(device=2).device returns 2. (2) test_loaded_models_returns_names \u2014 load 2 models, scheduler.loaded_models returns set of their names. (3) test_loaded_models_empty_initially \u2014 scheduler.loaded_models returns empty set. (4) test_vram_used_property \u2014 load 2 models (3GB + 8GB), scheduler.vram_used returns 11GB. (5) test_vram_free_property \u2014 total_vram=24GB, load 8GB model, scheduler.vram_free returns 16GB.",
       "status": "done",
       "commit": "591e621"
     },
     {
       "id": "step-18",
       "type": "impl",
-      "description": "Add read-only properties: device (int), loaded_models (set[str] — names of currently loaded models), vram_used (int — sum of loaded models' vram_bytes), vram_free (int — total_vram - vram_used). These provide introspection for pipeline stages and debugging. Make step-17 tests pass.",
+      "description": "Add read-only properties: device (int), loaded_models (set[str] \u2014 names of currently loaded models), vram_used (int \u2014 sum of loaded models' vram_bytes), vram_free (int \u2014 total_vram - vram_used). These provide introspection for pipeline stages and debugging. Make step-17 tests pass.",
       "status": "done",
       "commit": "591e621"
     },
     {
       "id": "step-19",
       "type": "test",
-      "description": "Write failing tests for logging integration. Tests: (1) test_load_logs_model_name_and_vram — capture log output, load a model, verify log contains model name and VRAM amount. (2) test_eviction_logs_evicted_model — trigger eviction, verify log mentions which model was evicted and why. (3) test_force_unload_logs — call force_unload_all with loaded models, verify log mentions clearing all models.",
+      "description": "Write failing tests for logging integration. Tests: (1) test_load_logs_model_name_and_vram \u2014 capture log output, load a model, verify log contains model name and VRAM amount. (2) test_eviction_logs_evicted_model \u2014 trigger eviction, verify log mentions which model was evicted and why. (3) test_force_unload_logs \u2014 call force_unload_all with loaded models, verify log mentions clearing all models.",
       "status": "done",
       "commit": "bfd05cf"
     },
@@ -159,21 +159,21 @@
     {
       "id": "step-21",
       "type": "test",
-      "description": "Write failing integration-style tests simulating the real pipeline VRAM budget. Tests: (1) test_prd_vram_budget_sequential — create scheduler with total_vram=24GB, register all 7 PRD models with their real VRAM sizes (whisperx 3GB, transnet 1GB, yolo 8GB, insightface 2GB, siglip 3GB, panns 1GB, qwen 14GB). Load them sequentially in pipeline order, verify correct evictions happen (e.g., loading qwen must evict enough to fit 14GB). (2) test_prd_largest_model_fits — verify the largest single model (qwen 14GB) can be loaded alone. (3) test_prd_concurrent_small_models — load whisperx (3GB) + panns (1GB) simultaneously (both fit), verify no eviction.",
+      "description": "Write failing integration-style tests simulating the real pipeline VRAM budget. Tests: (1) test_prd_vram_budget_sequential \u2014 create scheduler with total_vram=24GB, register all 7 PRD models with their real VRAM sizes (whisperx 3GB, transnet 1GB, yolo 8GB, insightface 2GB, siglip 3GB, panns 1GB, qwen 14GB). Load them sequentially in pipeline order, verify correct evictions happen (e.g., loading qwen must evict enough to fit 14GB). (2) test_prd_largest_model_fits \u2014 verify the largest single model (qwen 14GB) can be loaded alone. (3) test_prd_concurrent_small_models \u2014 load whisperx (3GB) + panns (1GB) simultaneously (both fit), verify no eviction.",
       "status": "done",
       "commit": "557199b"
     },
     {
       "id": "step-22",
       "type": "impl",
-      "description": "Review and refine implementation to ensure all integration tests pass. This step may require no code changes if prior steps were implemented correctly — it serves as a validation checkpoint. Fix any edge cases revealed by the integration tests. Make step-21 tests pass.",
+      "description": "Review and refine implementation to ensure all integration tests pass. This step may require no code changes if prior steps were implemented correctly \u2014 it serves as a validation checkpoint. Fix any edge cases revealed by the integration tests. Make step-21 tests pass.",
       "status": "done",
       "commit": "557199b"
     },
     {
       "id": "step-23",
       "type": "test",
-      "description": "Write failing tests for error handling edge cases. Tests: (1) test_load_fn_exception_propagates — load_fn raises RuntimeError, verify SchedulerError raised and model NOT added to loaded set. (2) test_unload_fn_exception_logged_not_raised — unload_fn raises during eviction, verify error is logged but eviction continues (best-effort unload). (3) test_warmup_fn_exception_unloads_model — warmup_fn raises, verify model is unloaded (cleanup) and SchedulerError raised.",
+      "description": "Write failing tests for error handling edge cases. Tests: (1) test_load_fn_exception_propagates \u2014 load_fn raises RuntimeError, verify SchedulerError raised and model NOT added to loaded set. (2) test_unload_fn_exception_logged_not_raised \u2014 unload_fn raises during eviction, verify error is logged but eviction continues (best-effort unload). (3) test_warmup_fn_exception_unloads_model \u2014 warmup_fn raises, verify model is unloaded (cleanup) and SchedulerError raised.",
       "status": "done",
       "commit": "af07390"
     },
@@ -183,6 +183,34 @@
       "description": "Add robust error handling: wrap load_fn calls in try/except, convert to SchedulerError, ensure partially-loaded models don't pollute state. Wrap unload_fn calls in try/except during eviction, log errors but continue evicting. If warmup_fn fails, call unload_fn to clean up, then raise SchedulerError. Make step-23 tests pass.",
       "status": "done",
       "commit": "f231c3c"
+    },
+    {
+      "id": "step-25",
+      "type": "test",
+      "description": "Write failing test for load_fn returning None (addresses review issues: incorrect_sentinel_check and untested_failure_mode). Add test to TestContextManager class: test_load_fn_returning_none_cached_correctly \u2014 create a ModelSpec with load_fn=MagicMock(return_value=None), unload_fn=MagicMock(), vram_bytes=3*GB. Register and load it via context manager, assert the yielded value is None. Assert the model name is in scheduler.loaded_models after first load. Load it a second time via context manager and assert load_fn was called exactly once (proving the None result was cached, not re-loaded). This test will FAIL against the current implementation because `model_obj = self._loaded.get(name)` returns None for a stored None value, causing `if model_obj is not None` to take the else branch and re-invoke load_fn on every access.",
+      "status": "done",
+      "commit": "446d399"
+    },
+    {
+      "id": "step-26",
+      "type": "impl",
+      "description": "Fix the incorrect sentinel check in GPUScheduler.model() method (gpu_scheduler.py lines 133-138). Replace:\n  `model_obj = self._loaded.get(name)`\n  `if model_obj is not None:`\nwith:\n  `if name in self._loaded:`\n  `    model_obj = self._loaded[name]`\nand keep the else branch for the fresh-load case. This correctly distinguishes 'not loaded' (key absent) from 'loaded with None value' (key present, value is None), preventing double-counting VRAM and redundant load_fn calls when load_fn returns None. Make step-25 test pass. Verify all existing tests still pass.",
+      "status": "done",
+      "commit": "e3c311b"
+    },
+    {
+      "id": "step-27",
+      "type": "test",
+      "description": "Fix the vacuous assertion in TestRegistration.test_register_model (test_gpu_scheduler.py line 95). The assertion `assert \"whisperx\" in scheduler.loaded_models or True` is permanently True due to `or True` and can never fail. Replace that line with `assert \"whisperx\" in scheduler._registry` which directly verifies that the register() call stored the model spec in the internal registry. Keep the subsequent context-manager assertion (`with scheduler.model('whisperx') as m: assert m is not None`) as a secondary check. The test should pass since the implementation already stores specs correctly in _registry.",
+      "status": "done",
+      "commit": "3daa110"
+    },
+    {
+      "id": "step-28",
+      "type": "impl",
+      "description": "Validation checkpoint: run the full test suite (`pytest tests/test_gpu_scheduler.py -v`) to confirm all tests pass after the fixes from steps 25-27. Verify: (1) test_load_fn_returning_none_cached_correctly passes with the sentinel fix from step-26, (2) test_register_model now has a meaningful non-vacuous assertion from step-27, (3) no regressions in any of the 30+ existing tests. No implementation code changes expected in this step \u2014 it is purely a validation pass.",
+      "status": "done",
+      "commit": "3daa110"
     }
   ],
   "design_decisions": [
@@ -217,13 +245,17 @@
     {
       "decision": "LRU tracking uses a simple list (append/remove/insert) rather than collections.OrderedDict",
       "rationale": "The number of models is tiny (7 in the PRD). A list gives clear, debuggable LRU semantics with O(n) operations that are negligible at this scale. OrderedDict would be premature optimization."
+    },
+    {
+      "decision": "Use `name in self._loaded` instead of `self._loaded.get(name) is not None` for cached-model check",
+      "rationale": "dict.get() returns None for both missing keys and keys mapped to None. If load_fn legitimately returns None, the truthiness check treats it as 'not loaded', causing redundant load_fn calls and double-counting VRAM. Using `in` correctly distinguishes 'not loaded' from 'loaded with None value'. This was identified as a bug in code review (incorrect_sentinel_check / untested_failure_mode)."
     }
   ],
   "reuse": [
     {
       "what": "ProcessingConfig.gpu_device",
       "where": "autopilot/config.py",
-      "how": "The caller reads config.processing.gpu_device and passes it as the device parameter to GPUScheduler(). The scheduler itself doesn't depend on config.py directly — it receives device as a plain int."
+      "how": "The caller reads config.processing.gpu_device and passes it as the device parameter to GPUScheduler(). The scheduler itself doesn't depend on config.py directly \u2014 it receives device as a plain int."
     },
     {
       "what": "Dataclass pattern for ModelSpec",
