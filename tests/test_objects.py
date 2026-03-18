@@ -869,3 +869,91 @@ class TestLogging:
         # Should log total_frames or frame count
         assert any("frames" in r.message.lower() or "frame" in r.message.lower()
                     for r in caplog.records)
+
+
+class TestIntegration:
+    """Integration tests for detect_objects end-to-end."""
+
+    def test_dense_two_objects_full_pipeline(self, catalog_db) -> None:
+        """Dense mode with 2 objects: 30 frames, 30fps, 4096x4096, n=3."""
+        from pathlib import Path
+
+        from autopilot.analyze.objects import detect_objects
+        from autopilot.config import ModelConfig
+
+        catalog_db.insert_media("m1", "/fake/video.mp4")
+
+        config = ModelConfig()
+        config.yolo_sample_every_n_frames = 3
+        mock_model = _make_mock_yolo_model()
+
+        # Person track_id=1 moves right, car track_id=2 moves down
+        call_idx = [0]
+
+        def make_two_objects(*args, **kwargs):
+            i = call_idx[0]
+            person_x = 100.0 + i * 20.0
+            car_y = 500.0 + i * 15.0
+            boxes = _make_boxes(
+                xywh=[
+                    [person_x, 200.0, 50.0, 60.0],
+                    [800.0, car_y, 100.0, 80.0],
+                ],
+                conf=[0.95, 0.85],
+                cls=[0, 2],
+                track_id=[1, 2],
+            )
+            call_idx[0] += 1
+            return _make_yolo_result(boxes)
+
+        mock_model.track.side_effect = make_two_objects
+
+        scheduler = MagicMock()
+        scheduler.model.return_value.__enter__ = MagicMock(return_value=mock_model)
+        scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_cap = _make_mock_capture(
+            total_frames=30, fps=30.0, width=4096, height=4096
+        )
+
+        mock_cv2 = _make_mock_cv2()
+        mock_cv2.VideoCapture.return_value = mock_cap
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            with patch.object(Path, "exists", return_value=True):
+                detect_objects(
+                    "m1", Path("/fake/video.mp4"), catalog_db, scheduler, config,
+                    sparse=False,
+                )
+
+        # (1) All 30 frames have detections
+        all_rows = catalog_db.get_detections_for_range("m1", 0, 29)
+        assert len(all_rows) == 30
+
+        # (2) Each row has valid JSON
+        for row in all_rows:
+            dets = json.loads(row["detections_json"])
+            assert isinstance(dets, list)
+
+        # (3) Track IDs consistent across interpolated frames
+        for frame_num in range(30):
+            row = catalog_db.get_detections_for_frame("m1", frame_num)
+            dets = json.loads(row["detections_json"])
+            assert len(dets) == 2
+            track_ids = {d["track_id"] for d in dets}
+            assert track_ids == {1, 2}
+
+        # (4) Bbox values are non-negative
+        for frame_num in range(30):
+            row = catalog_db.get_detections_for_frame("m1", frame_num)
+            dets = json.loads(row["detections_json"])
+            for det in dets:
+                for v in det["bbox_xywh"]:
+                    assert v >= 0
+
+        # (5) Class names correct
+        row0 = catalog_db.get_detections_for_frame("m1", 0)
+        dets0 = json.loads(row0["detections_json"])
+        by_track = {d["track_id"]: d for d in dets0}
+        assert by_track[1]["class"] == "person"
+        assert by_track[2]["class"] == "car"
