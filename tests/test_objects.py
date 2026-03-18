@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -152,8 +152,9 @@ class TestPublicAPI:
 
     def test_detect_objects_signature(self) -> None:
         """detect_objects accepts required positional and optional keyword args."""
-        from autopilot.analyze.objects import detect_objects
         import inspect
+
+        from autopilot.analyze.objects import detect_objects
 
         sig = inspect.signature(detect_objects)
         params = list(sig.parameters.keys())
@@ -803,8 +804,8 @@ class TestLogging:
 
     def _run_with_logging(self, catalog_db, caplog, sparse=False):
         """Helper to run detect_objects and capture log output."""
-        from pathlib import Path
         import logging
+        from pathlib import Path
 
         from autopilot.analyze.objects import detect_objects
         from autopilot.config import ModelConfig
@@ -851,9 +852,10 @@ class TestLogging:
         catalog_db.insert_media("m2", "/fake/video.mp4")
         catalog_db.batch_insert_detections([("m2", 0, "[]")])
 
+        from pathlib import Path
+
         from autopilot.analyze.objects import detect_objects
         from autopilot.config import ModelConfig
-        from pathlib import Path
 
         scheduler = MagicMock()
         config = ModelConfig()
