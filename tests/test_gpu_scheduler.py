@@ -550,3 +550,68 @@ class TestLogging:
         with caplog.at_level("INFO", logger="autopilot.analyze.gpu_scheduler"):
             scheduler.force_unload_all()
         assert any("2" in r.message for r in caplog.records)
+
+
+# PRD model sizes for integration tests
+PRD_MODELS = {
+    "whisperx": 3 * GB,
+    "transnet": 1 * GB,
+    "yolo": 8 * GB,
+    "insightface": 2 * GB,
+    "siglip": 3 * GB,
+    "panns": 1 * GB,
+    "qwen": 14 * GB,
+}
+
+
+class TestIntegration:
+    """Integration-style tests simulating real pipeline VRAM budget."""
+
+    def test_prd_vram_budget_sequential(self) -> None:
+        """Sequential loading in pipeline order with 24GB budget triggers correct evictions."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        specs: dict[str, ModelSpec] = {}
+        for name, vram in PRD_MODELS.items():
+            specs[name] = _make_spec(vram=vram)
+            scheduler.register(name, specs[name])
+
+        # Load models in pipeline order
+        pipeline_order = [
+            "whisperx", "transnet", "yolo", "insightface", "siglip", "panns", "qwen",
+        ]
+        for name in pipeline_order:
+            with scheduler.model(name):
+                pass
+
+        # After loading qwen (14GB), verify that enough models were evicted
+        # qwen is 14GB so at least some earlier models must be evicted
+        assert "qwen" in scheduler.loaded_models
+        # Total VRAM used must be <= 24GB
+        assert scheduler.vram_used <= 24 * GB
+
+    def test_prd_largest_model_fits(self) -> None:
+        """The largest PRD model (qwen 14GB) can be loaded alone."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        spec = _make_spec(vram=14 * GB)
+        scheduler.register("qwen", spec)
+        with scheduler.model("qwen") as m:
+            assert m is not None
+        spec.load_fn.assert_called_once()
+
+    def test_prd_concurrent_small_models(self) -> None:
+        """Two small models (whisperx 3GB + panns 1GB) fit without eviction."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        spec_w = _make_spec(vram=3 * GB)
+        spec_p = _make_spec(vram=1 * GB)
+        scheduler.register("whisperx", spec_w)
+        scheduler.register("panns", spec_p)
+
+        with scheduler.model("whisperx"):
+            pass
+        with scheduler.model("panns"):
+            pass
+
+        spec_w.unload_fn.assert_not_called()
+        spec_p.unload_fn.assert_not_called()
+        assert scheduler.loaded_models == {"whisperx", "panns"}
+        assert scheduler.vram_used == 4 * GB
