@@ -150,3 +150,50 @@ class TestPublicAPI:
         # Keyword-only: batch_size, sparse
         assert sig.parameters["batch_size"].kind == inspect.Parameter.KEYWORD_ONLY
         assert sig.parameters["sparse"].kind == inspect.Parameter.KEYWORD_ONLY
+
+
+class TestComputeFrameIndices:
+    """Tests for _compute_frame_indices helper."""
+
+    def test_sparse_mode_1fps(self) -> None:
+        """Sparse mode samples at 1fps: 300 frames at 30fps → [0,30,60,...,270]."""
+        from autopilot.analyze.objects import _compute_frame_indices
+
+        result = _compute_frame_indices(total_frames=300, fps=30.0, sample_every_n=3, sparse=True)
+        expected = list(range(0, 300, 30))
+        assert result == expected
+
+    def test_dense_every_3rd(self) -> None:
+        """Dense mode every 3rd frame: total=10, n=3 → [0,3,6,9]."""
+        from autopilot.analyze.objects import _compute_frame_indices
+
+        result = _compute_frame_indices(total_frames=10, fps=30.0, sample_every_n=3, sparse=False)
+        assert result == [0, 3, 6, 9]
+
+    def test_dense_every_frame(self) -> None:
+        """Dense mode every frame: total=5, n=1 → [0,1,2,3,4]."""
+        from autopilot.analyze.objects import _compute_frame_indices
+
+        result = _compute_frame_indices(total_frames=5, fps=30.0, sample_every_n=1, sparse=False)
+        assert result == [0, 1, 2, 3, 4]
+
+    def test_empty_video(self) -> None:
+        """Empty video: total=0 → []."""
+        from autopilot.analyze.objects import _compute_frame_indices
+
+        result = _compute_frame_indices(total_frames=0, fps=30.0, sample_every_n=3, sparse=False)
+        assert result == []
+
+    def test_sparse_short_video(self) -> None:
+        """Sparse short video: total=15, fps=30 → [0]."""
+        from autopilot.analyze.objects import _compute_frame_indices
+
+        result = _compute_frame_indices(total_frames=15, fps=30.0, sample_every_n=3, sparse=True)
+        assert result == [0]
+
+    def test_dense_exact_boundary(self) -> None:
+        """Dense exact boundary: total=9, n=3 → [0,3,6]."""
+        from autopilot.analyze.objects import _compute_frame_indices
+
+        result = _compute_frame_indices(total_frames=9, fps=30.0, sample_every_n=3, sparse=False)
+        assert result == [0, 3, 6]
