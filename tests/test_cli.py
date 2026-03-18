@@ -130,12 +130,15 @@ class TestCLIConfigIntegration:
         override_dir.mkdir()
         runner = CliRunner()
 
+        stage_func = MagicMock()
+
         with patch("autopilot.cli.CatalogDB") as mock_db_cls:
             mock_db_cls.return_value = MagicMock()
             with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
                 mock_orch = MagicMock()
                 mock_orch_cls.return_value = mock_orch
-                runner.invoke(
+                mock_orch._stage_map.__getitem__.return_value.func = stage_func
+                result = runner.invoke(
                     main,
                     [
                         "--config", str(config_file),
@@ -143,12 +146,11 @@ class TestCLIConfigIntegration:
                         "--input-dir", str(override_dir),
                     ],
                 )
+                assert result.exit_code == 0
                 # Verify the stage was called with a config that has overridden input_dir
-                stage_call = mock_orch._stage_map.__getitem__().func
-                if stage_call.call_args:
-                    called_config = stage_call.call_args[1].get("config")
-                    if called_config:
-                        assert called_config.input_dir == override_dir
+                stage_func.assert_called_once()
+                called_config = stage_func.call_args[1]["config"]
+                assert called_config.input_dir == override_dir
 
 
 class TestRunSubcommand:

@@ -90,14 +90,18 @@ def ingest(
     dry_run: bool,
 ) -> None:
     """Run the ingest stage."""
-    config, db = _setup_context(ctx, input_dir, output_dir, verbose)
+    db = None
     try:
+        config, db = _setup_context(ctx, input_dir, output_dir, verbose)
         orch = PipelineOrchestrator()
         orch._stage_map["INGEST"].func(config=config, db=db)
+    except click.ClickException:
+        raise
     except Exception as e:
         raise click.ClickException(str(e)) from e
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 
 @main.command()
@@ -111,15 +115,19 @@ def analyze(
     dry_run: bool,
 ) -> None:
     """Run the analyze and classify stages."""
-    config, db = _setup_context(ctx, input_dir, output_dir, verbose)
+    db = None
     try:
+        config, db = _setup_context(ctx, input_dir, output_dir, verbose)
         orch = PipelineOrchestrator()
         orch._stage_map["ANALYZE"].func(config=config, db=db)
         orch._stage_map["CLASSIFY"].func(config=config, db=db)
+    except click.ClickException:
+        raise
     except Exception as e:
         raise click.ClickException(str(e)) from e
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 
 @main.command()
@@ -133,15 +141,19 @@ def plan(
     dry_run: bool,
 ) -> None:
     """Run the narrate and script stages."""
-    config, db = _setup_context(ctx, input_dir, output_dir, verbose)
+    db = None
     try:
+        config, db = _setup_context(ctx, input_dir, output_dir, verbose)
         orch = PipelineOrchestrator()
         orch._stage_map["NARRATE"].func(config=config, db=db)
         orch._stage_map["SCRIPT"].func(config=config, db=db)
+    except click.ClickException:
+        raise
     except Exception as e:
         raise click.ClickException(str(e)) from e
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 
 @main.command()
@@ -155,15 +167,19 @@ def edit(
     dry_run: bool,
 ) -> None:
     """Run the EDL and source_assets stages."""
-    config, db = _setup_context(ctx, input_dir, output_dir, verbose)
+    db = None
     try:
+        config, db = _setup_context(ctx, input_dir, output_dir, verbose)
         orch = PipelineOrchestrator()
         orch._stage_map["EDL"].func(config=config, db=db)
         orch._stage_map["SOURCE_ASSETS"].func(config=config, db=db)
+    except click.ClickException:
+        raise
     except Exception as e:
         raise click.ClickException(str(e)) from e
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 
 @main.command()
@@ -177,14 +193,18 @@ def render(
     dry_run: bool,
 ) -> None:
     """Run the render stage."""
-    config, db = _setup_context(ctx, input_dir, output_dir, verbose)
+    db = None
     try:
+        config, db = _setup_context(ctx, input_dir, output_dir, verbose)
         orch = PipelineOrchestrator()
         orch._stage_map["RENDER"].func(config=config, db=db)
+    except click.ClickException:
+        raise
     except Exception as e:
         raise click.ClickException(str(e)) from e
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 
 @main.command()
@@ -198,14 +218,18 @@ def upload(
     dry_run: bool,
 ) -> None:
     """Run the upload stage."""
-    config, db = _setup_context(ctx, input_dir, output_dir, verbose)
+    db = None
     try:
+        config, db = _setup_context(ctx, input_dir, output_dir, verbose)
         orch = PipelineOrchestrator()
         orch._stage_map["UPLOAD"].func(config=config, db=db)
+    except click.ClickException:
+        raise
     except Exception as e:
         raise click.ClickException(str(e)) from e
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 
 @main.command()
@@ -219,13 +243,17 @@ def run(
     dry_run: bool,
 ) -> None:
     """Run the full pipeline (all stages)."""
-    config, db = _setup_context(ctx, input_dir, output_dir, verbose)
+    db = None
     try:
+        config, db = _setup_context(ctx, input_dir, output_dir, verbose)
         orch = PipelineOrchestrator(
             budget_seconds=config.processing.max_wall_clock_hours * 3600,
         )
         orch.run(config=config, db=db, dry_run=dry_run)
+    except click.ClickException:
+        raise
     except Exception as e:
         raise click.ClickException(str(e)) from e
     finally:
-        db.close()
+        if db is not None:
+            db.close()
