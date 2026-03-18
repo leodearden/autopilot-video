@@ -114,3 +114,48 @@ class TestSchedulerInit:
         with pytest.raises(SchedulerError):
             with scheduler.model("whisperx") as m:
                 pass
+
+
+class TestContextManager:
+    """Tests for model loading via the context manager."""
+
+    def test_context_manager_loads_model(self) -> None:
+        """Context manager calls load_fn and yields the loaded model."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        sentinel = object()
+        spec = ModelSpec(
+            load_fn=MagicMock(return_value=sentinel),
+            unload_fn=MagicMock(),
+            vram_bytes=3 * GB,
+        )
+        scheduler.register("test", spec)
+        with scheduler.model("test") as m:
+            assert m is sentinel
+        spec.load_fn.assert_called_once()
+
+    def test_context_manager_model_stays_loaded(self) -> None:
+        """After exiting the context, the model remains loaded (LRU cache)."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        spec = _make_spec()
+        scheduler.register("test", spec)
+        with scheduler.model("test"):
+            pass
+        assert "test" in scheduler.loaded_models
+
+    def test_context_manager_reuses_loaded_model(self) -> None:
+        """Re-entering context for a loaded model does not call load_fn again."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        spec = _make_spec()
+        scheduler.register("test", spec)
+        with scheduler.model("test"):
+            pass
+        with scheduler.model("test"):
+            pass
+        spec.load_fn.assert_called_once()
+
+    def test_context_manager_unknown_model_raises(self) -> None:
+        """Using scheduler.model() with an unregistered name raises SchedulerError."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        with pytest.raises(SchedulerError, match="not registered"):
+            with scheduler.model("nonexistent"):
+                pass
