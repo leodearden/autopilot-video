@@ -81,6 +81,7 @@ EXPECTED_TABLES = sorted(
         "transcripts",
         "shot_boundaries",
         "detections",
+        "faces",
         "face_clusters",
         "clip_embeddings",
         "audio_events",
@@ -113,8 +114,8 @@ EXPECTED_MEDIA_FILES_COLUMNS = [
 class TestSchema:
     """Tests for CatalogDB._create_schema()."""
 
-    def test_schema_creates_all_12_tables(self, catalog_db):
-        """_create_schema() creates all 12 expected tables."""
+    def test_schema_creates_all_13_tables(self, catalog_db):
+        """_create_schema() creates all 13 expected tables."""
         cur = catalog_db.conn.execute(
             "SELECT name FROM sqlite_master "
             "WHERE type='table' AND name NOT LIKE 'sqlite_%' "
@@ -136,7 +137,7 @@ class TestSchema:
         cur = catalog_db.conn.execute(
             "SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
         )
-        assert cur.fetchone()[0] == 12
+        assert cur.fetchone()[0] == 13
 
     def test_schema_foreign_keys(self, catalog_db):
         """Foreign key constraints exist on child tables."""

@@ -53,7 +53,7 @@ class CatalogDB:
             self.conn.rollback()
 
     def _create_schema(self) -> None:
-        """Create all 12 catalog tables if they don't already exist."""
+        """Create all 13 catalog tables if they don't already exist."""
         self.conn.executescript(
             """\
             CREATE TABLE IF NOT EXISTS media_files (
@@ -92,6 +92,16 @@ class CatalogDB:
                 frame_number INTEGER,
                 detections_json TEXT,
                 PRIMARY KEY (media_id, frame_number)
+            );
+
+            CREATE TABLE IF NOT EXISTS faces (
+                media_id TEXT REFERENCES media_files(id),
+                frame_number INTEGER,
+                face_index INTEGER,
+                bbox_json TEXT,
+                embedding BLOB,
+                cluster_id INTEGER,
+                PRIMARY KEY (media_id, frame_number, face_index)
             );
 
             CREATE TABLE IF NOT EXISTS face_clusters (
@@ -170,6 +180,8 @@ class CatalogDB:
                 ON media_files(status);
             CREATE INDEX IF NOT EXISTS idx_detections_media_frame
                 ON detections(media_id, frame_number);
+            CREATE INDEX IF NOT EXISTS idx_faces_media_frame
+                ON faces(media_id, frame_number);
             CREATE INDEX IF NOT EXISTS idx_audio_events_media_time
                 ON audio_events(media_id, timestamp_seconds);
             CREATE INDEX IF NOT EXISTS idx_narratives_status
