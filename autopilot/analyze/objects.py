@@ -137,6 +137,7 @@ def _interpolate_detections(
             cls_name = b["class"]
         else:
             # Track only in after — hold position
+            assert a is not None  # tid is in all_track_ids and b is None, so a must exist
             bbox = list(a["bbox_xywh"])
             conf = a["confidence"]
             cls_name = a["class"]
@@ -181,7 +182,7 @@ def detect_objects(
     if not video_path.exists():
         raise DetectionError(f"Video file not found: {video_path}")
 
-    import cv2
+    import cv2  # type: ignore[reportMissingImports]
 
     mode = "sparse" if sparse else "dense"
 
