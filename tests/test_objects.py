@@ -276,3 +276,78 @@ class TestFormatDetections:
         assert isinstance(bbox, list)
         assert len(bbox) == 4
         assert all(isinstance(v, float) for v in bbox)
+
+
+class TestInterpolateDetections:
+    """Tests for _interpolate_detections basic linear interpolation."""
+
+    def test_midpoint_interpolation(self) -> None:
+        """Midpoint interpolation between frame 0 and frame 6 at target 3."""
+        from autopilot.analyze.objects import _interpolate_detections
+
+        det_before = [
+            {"track_id": 1, "class": "person", "bbox_xywh": [100.0, 100.0, 50.0, 50.0],
+             "confidence": 0.9}
+        ]
+        det_after = [
+            {"track_id": 1, "class": "person", "bbox_xywh": [160.0, 100.0, 50.0, 50.0],
+             "confidence": 0.8}
+        ]
+        result = _interpolate_detections(det_before, det_after, 0, 6, 3)
+        assert len(result) == 1
+        assert result[0]["track_id"] == 1
+        assert result[0]["class"] == "person"
+        assert result[0]["bbox_xywh"] == pytest.approx([130.0, 100.0, 50.0, 50.0])
+        assert result[0]["confidence"] == pytest.approx(0.85)
+
+    def test_quarter_interpolation(self) -> None:
+        """Quarter interpolation between frame 0 and frame 4 at target 1."""
+        from autopilot.analyze.objects import _interpolate_detections
+
+        det_before = [
+            {"track_id": 1, "class": "person", "bbox_xywh": [100.0, 100.0, 50.0, 50.0],
+             "confidence": 0.9}
+        ]
+        det_after = [
+            {"track_id": 1, "class": "person", "bbox_xywh": [200.0, 100.0, 50.0, 50.0],
+             "confidence": 0.8}
+        ]
+        result = _interpolate_detections(det_before, det_after, 0, 4, 1)
+        assert result[0]["bbox_xywh"] == pytest.approx([125.0, 100.0, 50.0, 50.0])
+
+    def test_preserves_class_from_before(self) -> None:
+        """Class name is preserved from det_before."""
+        from autopilot.analyze.objects import _interpolate_detections
+
+        det_before = [
+            {"track_id": 1, "class": "person", "bbox_xywh": [100.0, 100.0, 50.0, 50.0],
+             "confidence": 0.9}
+        ]
+        det_after = [
+            {"track_id": 1, "class": "pedestrian", "bbox_xywh": [200.0, 100.0, 50.0, 50.0],
+             "confidence": 0.8}
+        ]
+        result = _interpolate_detections(det_before, det_after, 0, 6, 3)
+        assert result[0]["class"] == "person"
+
+    def test_multiple_tracks_interpolated(self) -> None:
+        """Multiple tracks are interpolated independently."""
+        from autopilot.analyze.objects import _interpolate_detections
+
+        det_before = [
+            {"track_id": 1, "class": "person", "bbox_xywh": [100.0, 100.0, 50.0, 50.0],
+             "confidence": 0.9},
+            {"track_id": 2, "class": "car", "bbox_xywh": [500.0, 300.0, 100.0, 80.0],
+             "confidence": 0.8},
+        ]
+        det_after = [
+            {"track_id": 1, "class": "person", "bbox_xywh": [200.0, 100.0, 50.0, 50.0],
+             "confidence": 0.9},
+            {"track_id": 2, "class": "car", "bbox_xywh": [600.0, 300.0, 100.0, 80.0],
+             "confidence": 0.8},
+        ]
+        result = _interpolate_detections(det_before, det_after, 0, 4, 2)
+        # Find track 1 and track 2 results
+        by_track = {d["track_id"]: d for d in result}
+        assert by_track[1]["bbox_xywh"] == pytest.approx([150.0, 100.0, 50.0, 50.0])
+        assert by_track[2]["bbox_xywh"] == pytest.approx([550.0, 300.0, 100.0, 80.0])
