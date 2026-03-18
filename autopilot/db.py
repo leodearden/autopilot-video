@@ -341,6 +341,67 @@ class CatalogDB:
         )
         return [dict(row) for row in cur.fetchall()]
 
+    # -- faces CRUD -------------------------------------------------------------
+
+    def batch_insert_faces(
+        self, rows: list[tuple[str, int, int, str, bytes | None, int | None]]
+    ) -> None:
+        """Batch insert face rows: (media_id, frame_number, face_index, bbox_json, embedding, cluster_id)."""
+        if not rows:
+            return
+        self.conn.executemany(
+            "INSERT INTO faces "
+            "(media_id, frame_number, face_index, bbox_json, embedding, cluster_id) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            rows,
+        )
+
+    def get_faces_for_frame(
+        self, media_id: str, frame_number: int
+    ) -> list[dict[str, object]]:
+        """Get all faces for a specific media_id and frame_number."""
+        cur = self.conn.execute(
+            "SELECT * FROM faces WHERE media_id = ? AND frame_number = ?",
+            (media_id, frame_number),
+        )
+        return [dict(row) for row in cur.fetchall()]
+
+    def get_faces_for_media(self, media_id: str) -> list[dict[str, object]]:
+        """Get all faces for a media_id."""
+        cur = self.conn.execute(
+            "SELECT * FROM faces WHERE media_id = ?",
+            (media_id,),
+        )
+        return [dict(row) for row in cur.fetchall()]
+
+    def get_all_face_embeddings(self) -> list[dict[str, object]]:
+        """Get all face rows with non-null embedding."""
+        cur = self.conn.execute(
+            "SELECT media_id, frame_number, face_index, embedding "
+            "FROM faces WHERE embedding IS NOT NULL"
+        )
+        return [dict(row) for row in cur.fetchall()]
+
+    def clear_face_clusters(self) -> None:
+        """Delete all rows from face_clusters table."""
+        self.conn.execute("DELETE FROM face_clusters")
+
+    def reset_face_cluster_ids(self) -> None:
+        """Set cluster_id to NULL for all faces."""
+        self.conn.execute("UPDATE faces SET cluster_id = NULL")
+
+    def batch_update_face_cluster_ids(
+        self, updates: list[tuple[int, str, int, int]]
+    ) -> None:
+        """Batch update cluster_id for faces: (cluster_id, media_id, frame_number, face_index)."""
+        if not updates:
+            return
+        self.conn.executemany(
+            "UPDATE faces SET cluster_id = ? "
+            "WHERE media_id = ? AND frame_number = ? AND face_index = ?",
+            updates,
+        )
+
     # -- face_clusters CRUD -----------------------------------------------------
 
     def insert_face_cluster(

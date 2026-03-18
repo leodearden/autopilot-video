@@ -899,3 +899,135 @@ class TestInitSafety:
         conn = captured["conn"]
         with pytest.raises(sqlite3.ProgrammingError):
             conn.execute("SELECT 1")
+
+
+# -- Faces CRUD ---------------------------------------------------------------
+
+
+class TestFacesCRUD:
+    """Tests for faces table CRUD operations."""
+
+    def _make_face_embedding(self, dim: int = 512) -> bytes:
+        """Create a dummy face embedding BLOB (float32)."""
+        import numpy as np
+
+        return np.random.default_rng(42).random(dim).astype(np.float32).tobytes()
+
+    def test_batch_insert_faces(self, catalog_db):
+        """Insert face rows and verify count."""
+        _insert_test_media(catalog_db)
+        emb = self._make_face_embedding()
+        rows = [
+            ("m1", 0, 0, '[10, 20, 100, 200]', emb, None),
+            ("m1", 0, 1, '[50, 60, 80, 90]', emb, None),
+            ("m1", 30, 0, '[15, 25, 100, 200]', emb, None),
+        ]
+        catalog_db.batch_insert_faces(rows)
+        cur = catalog_db.conn.execute("SELECT count(*) FROM faces WHERE media_id = 'm1'")
+        assert cur.fetchone()[0] == 3
+
+    def test_batch_insert_faces_empty(self, catalog_db):
+        """Batch insert with empty list does not error."""
+        catalog_db.batch_insert_faces([])
+
+    def test_get_faces_for_frame(self, catalog_db):
+        """Retrieve faces for a specific media_id + frame_number."""
+        _insert_test_media(catalog_db)
+        emb = self._make_face_embedding()
+        catalog_db.batch_insert_faces([
+            ("m1", 0, 0, '[10, 20, 100, 200]', emb, None),
+            ("m1", 0, 1, '[50, 60, 80, 90]', emb, None),
+            ("m1", 30, 0, '[15, 25, 100, 200]', emb, None),
+        ])
+        results = catalog_db.get_faces_for_frame("m1", 0)
+        assert len(results) == 2
+        assert all(r["frame_number"] == 0 for r in results)
+
+    def test_get_faces_for_frame_empty(self, catalog_db):
+        """get_faces_for_frame returns empty list for nonexistent frame."""
+        results = catalog_db.get_faces_for_frame("nonexistent", 0)
+        assert results == []
+
+    def test_get_faces_for_media(self, catalog_db):
+        """Retrieve all faces for a media_id."""
+        _insert_test_media(catalog_db)
+        emb = self._make_face_embedding()
+        catalog_db.batch_insert_faces([
+            ("m1", 0, 0, '[10, 20, 100, 200]', emb, None),
+            ("m1", 30, 0, '[15, 25, 100, 200]', emb, None),
+            ("m1", 60, 0, '[20, 30, 100, 200]', emb, None),
+        ])
+        results = catalog_db.get_faces_for_media("m1")
+        assert len(results) == 3
+
+    def test_get_all_face_embeddings(self, catalog_db):
+        """get_all_face_embeddings returns only rows with non-null embedding."""
+        _insert_test_media(catalog_db)
+        emb = self._make_face_embedding()
+        catalog_db.batch_insert_faces([
+            ("m1", 0, 0, '[10, 20, 100, 200]', emb, None),
+            ("m1", 0, 1, '[50, 60, 80, 90]', None, None),  # null embedding
+            ("m1", 30, 0, '[15, 25, 100, 200]', emb, None),
+        ])
+        results = catalog_db.get_all_face_embeddings()
+        assert len(results) == 2
+        assert all(r["embedding"] is not None for r in results)
+
+    def test_embedding_blob_roundtrip(self, catalog_db):
+        """Verify face embedding binary data survives round-trip."""
+        import numpy as np
+
+        _insert_test_media(catalog_db)
+        original = np.random.default_rng(99).random(512).astype(np.float32)
+        emb_bytes = original.tobytes()
+        catalog_db.batch_insert_faces([
+            ("m1", 0, 0, '[10, 20, 100, 200]', emb_bytes, None),
+        ])
+        results = catalog_db.get_all_face_embeddings()
+        assert len(results) == 1
+        recovered = np.frombuffer(results[0]["embedding"], dtype=np.float32)
+        np.testing.assert_array_equal(recovered, original)
+
+    def test_clear_face_clusters(self, catalog_db):
+        """clear_face_clusters removes all face_clusters rows."""
+        catalog_db.insert_face_cluster(cluster_id=1, label="Alice")
+        catalog_db.insert_face_cluster(cluster_id=2, label="Bob")
+        assert len(catalog_db.get_face_clusters()) == 2
+        catalog_db.clear_face_clusters()
+        assert len(catalog_db.get_face_clusters()) == 0
+
+    def test_reset_face_cluster_ids(self, catalog_db):
+        """reset_face_cluster_ids sets all faces.cluster_id to NULL."""
+        _insert_test_media(catalog_db)
+        emb = self._make_face_embedding()
+        catalog_db.batch_insert_faces([
+            ("m1", 0, 0, '[10, 20, 100, 200]', emb, 1),
+            ("m1", 0, 1, '[50, 60, 80, 90]', emb, 2),
+        ])
+        # Verify cluster_ids are set
+        faces = catalog_db.get_faces_for_media("m1")
+        assert all(f["cluster_id"] is not None for f in faces)
+        # Reset
+        catalog_db.reset_face_cluster_ids()
+        faces = catalog_db.get_faces_for_media("m1")
+        assert all(f["cluster_id"] is None for f in faces)
+
+    def test_batch_update_face_cluster_ids(self, catalog_db):
+        """batch_update_face_cluster_ids updates cluster_id for specified faces."""
+        _insert_test_media(catalog_db)
+        emb = self._make_face_embedding()
+        catalog_db.batch_insert_faces([
+            ("m1", 0, 0, '[10, 20, 100, 200]', emb, None),
+            ("m1", 0, 1, '[50, 60, 80, 90]', emb, None),
+            ("m1", 30, 0, '[15, 25, 100, 200]', emb, None),
+        ])
+        updates = [
+            (1, "m1", 0, 0),
+            (1, "m1", 0, 1),
+            (2, "m1", 30, 0),
+        ]
+        catalog_db.batch_update_face_cluster_ids(updates)
+        faces = catalog_db.get_faces_for_frame("m1", 0)
+        assert all(f["cluster_id"] == 1 for f in faces)
+        faces30 = catalog_db.get_faces_for_frame("m1", 30)
+        assert faces30[0]["cluster_id"] == 2
