@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
@@ -139,7 +139,7 @@ def cluster_faces(
 
     # Unpack embeddings into matrix
     embeddings = np.stack([
-        np.frombuffer(row["embedding"], dtype=np.float32)
+        np.frombuffer(cast(bytes, row["embedding"]), dtype=np.float32)
         for row in face_rows
     ])
 
@@ -194,9 +194,9 @@ def cluster_faces(
                 row = face_rows[mi]
                 cluster_id_updates.append((
                     cluster_label,
-                    row["media_id"],
-                    row["frame_number"],
-                    row["face_index"],
+                    cast(str, row["media_id"]),
+                    cast(int, row["frame_number"]),
+                    cast(int, row["face_index"]),
                 ))
 
         if cluster_id_updates:
