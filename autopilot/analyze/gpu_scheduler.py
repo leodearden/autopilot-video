@@ -136,6 +136,8 @@ class GPUScheduler:
                 model_obj = spec.load_fn()
                 self._loaded[name] = model_obj
                 self._lru.append(name)
+                if spec.warmup_fn is not None:
+                    spec.warmup_fn(model_obj)
         yield model_obj
 
     def force_unload_all(self) -> None:
