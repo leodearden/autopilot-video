@@ -159,3 +159,93 @@ class TestContextManager:
         with pytest.raises(SchedulerError, match="not registered"):
             with scheduler.model("nonexistent"):
                 pass
+
+
+class TestLRUEviction:
+    """Tests for LRU eviction when VRAM is insufficient."""
+
+    def test_evicts_lru_when_vram_insufficient(self) -> None:
+        """Loading a model that won't fit evicts the least-recently-used model."""
+        scheduler = GPUScheduler(total_vram=10 * GB)
+        spec_a = _make_spec(vram=3 * GB)
+        spec_b = _make_spec(vram=8 * GB)
+        scheduler.register("a", spec_a)
+        scheduler.register("b", spec_b)
+
+        with scheduler.model("a"):
+            pass  # a loaded (3GB used, 7GB free)
+
+        with scheduler.model("b"):
+            pass  # b needs 8GB, only 7GB free → evict a
+
+        spec_a.unload_fn.assert_called_once()
+        assert "a" not in scheduler.loaded_models
+        assert "b" in scheduler.loaded_models
+
+    def test_evicts_multiple_models_if_needed(self) -> None:
+        """Evicts multiple LRU models until enough VRAM is free."""
+        scheduler = GPUScheduler(total_vram=10 * GB)
+        specs = {}
+        for name in ("s1", "s2", "s3"):
+            specs[name] = _make_spec(vram=3 * GB)
+            scheduler.register(name, specs[name])
+        spec_large = _make_spec(vram=9 * GB)
+        scheduler.register("large", spec_large)
+
+        # Load all 3 small models (9GB used)
+        for name in ("s1", "s2", "s3"):
+            with scheduler.model(name):
+                pass
+
+        # Load large (needs 9GB, only 1GB free → must evict all 3 small)
+        with scheduler.model("large"):
+            pass
+
+        for name in ("s1", "s2", "s3"):
+            specs[name].unload_fn.assert_called_once()
+        assert scheduler.loaded_models == {"large"}
+
+    def test_no_eviction_when_vram_sufficient(self) -> None:
+        """No eviction when VRAM budget is sufficient for all models."""
+        scheduler = GPUScheduler(total_vram=10 * GB)
+        spec_a = _make_spec(vram=3 * GB)
+        spec_b = _make_spec(vram=3 * GB)
+        scheduler.register("a", spec_a)
+        scheduler.register("b", spec_b)
+
+        with scheduler.model("a"):
+            pass
+        with scheduler.model("b"):
+            pass
+
+        spec_a.unload_fn.assert_not_called()
+        spec_b.unload_fn.assert_not_called()
+        assert scheduler.loaded_models == {"a", "b"}
+
+    def test_eviction_order_is_lru(self) -> None:
+        """Eviction starts with the least-recently-used model."""
+        scheduler = GPUScheduler(total_vram=10 * GB)
+        spec_a = _make_spec(vram=3 * GB)
+        spec_b = _make_spec(vram=3 * GB)
+        spec_c = _make_spec(vram=3 * GB)
+        spec_d = _make_spec(vram=4 * GB)
+        scheduler.register("a", spec_a)
+        scheduler.register("b", spec_b)
+        scheduler.register("c", spec_c)
+        scheduler.register("d", spec_d)
+
+        # Load A, B, C in order (9GB used, LRU order: A, B, C)
+        for name in ("a", "b", "c"):
+            with scheduler.model(name):
+                pass
+
+        # Load D (needs 4GB, only 1GB free → evict A first, then B if needed)
+        # After evicting A: 6GB used, 4GB free → D fits, stop evicting
+        with scheduler.model("d"):
+            pass
+
+        spec_a.unload_fn.assert_called_once()
+        spec_b.unload_fn.assert_not_called()
+        spec_c.unload_fn.assert_not_called()
+        assert "a" not in scheduler.loaded_models
+        assert scheduler.loaded_models == {"b", "c", "d"}
