@@ -796,3 +796,76 @@ class TestErrorHandling:
 
         # Frame 0 should be in DB (read succeeded)
         assert catalog_db.get_detections_for_frame("m1", 0) is not None
+
+
+class TestLogging:
+    """Tests for structured logging in detect_objects."""
+
+    def _run_with_logging(self, catalog_db, caplog, sparse=False):
+        """Helper to run detect_objects and capture log output."""
+        from pathlib import Path
+        import logging
+
+        from autopilot.analyze.objects import detect_objects
+        from autopilot.config import ModelConfig
+
+        catalog_db.insert_media("m1", "/fake/video.mp4")
+
+        config = ModelConfig()
+        mock_model = _make_mock_yolo_model()
+        mock_model.track.side_effect = lambda *a, **kw: _make_yolo_result(
+            _make_boxes(xywh=[[100.0, 200.0, 50.0, 60.0]], conf=[0.9], cls=[0], track_id=[1])
+        )
+
+        scheduler = MagicMock()
+        scheduler.model.return_value.__enter__ = MagicMock(return_value=mock_model)
+        scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_cap = _make_mock_capture(total_frames=90, fps=30.0)
+
+        mock_cv2 = _make_mock_cv2()
+        mock_cv2.VideoCapture.return_value = mock_cap
+
+        with caplog.at_level(logging.INFO, logger="autopilot.analyze.objects"):
+            with patch.dict(sys.modules, {"cv2": mock_cv2}):
+                with patch.object(Path, "exists", return_value=True):
+                    detect_objects(
+                        "m1", Path("/fake/video.mp4"), catalog_db, scheduler, config,
+                        sparse=sparse,
+                    )
+
+    def test_log_contains_media_id_and_mode(self, catalog_db, caplog) -> None:
+        """Log contains media_id and mode on start."""
+        self._run_with_logging(catalog_db, caplog, sparse=True)
+        assert any("m1" in r.message and "sparse" in r.message for r in caplog.records)
+
+    def test_log_contains_completion(self, catalog_db, caplog) -> None:
+        """Log contains detection count on completion."""
+        self._run_with_logging(catalog_db, caplog, sparse=True)
+        assert any("Completed" in r.message or "sampled" in r.message for r in caplog.records)
+
+    def test_log_skipping_on_idempotent(self, catalog_db, caplog) -> None:
+        """Log mentions 'skipping' on idempotent skip."""
+        import logging
+
+        catalog_db.insert_media("m2", "/fake/video.mp4")
+        catalog_db.batch_insert_detections([("m2", 0, "[]")])
+
+        from autopilot.analyze.objects import detect_objects
+        from autopilot.config import ModelConfig
+        from pathlib import Path
+
+        scheduler = MagicMock()
+        config = ModelConfig()
+
+        with caplog.at_level(logging.INFO, logger="autopilot.analyze.objects"):
+            detect_objects("m2", Path("/fake/video.mp4"), catalog_db, scheduler, config)
+
+        assert any("skipping" in r.message.lower() for r in caplog.records)
+
+    def test_log_contains_frame_info(self, catalog_db, caplog) -> None:
+        """Log contains frame count information."""
+        self._run_with_logging(catalog_db, caplog, sparse=True)
+        # Should log total_frames or frame count
+        assert any("frames" in r.message.lower() or "frame" in r.message.lower()
+                    for r in caplog.records)
