@@ -153,6 +153,26 @@ class TestContextManager:
             pass
         spec.load_fn.assert_called_once()
 
+    def test_load_fn_returning_none_cached_correctly(self) -> None:
+        """A load_fn that returns None is cached correctly and not re-loaded."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        spec = ModelSpec(
+            load_fn=MagicMock(return_value=None),
+            unload_fn=MagicMock(),
+            vram_bytes=3 * GB,
+        )
+        scheduler.register("none_model", spec)
+
+        # First load: should call load_fn and yield None
+        with scheduler.model("none_model") as m:
+            assert m is None
+        assert "none_model" in scheduler.loaded_models
+
+        # Second load: should reuse cached None value, NOT call load_fn again
+        with scheduler.model("none_model") as m:
+            assert m is None
+        spec.load_fn.assert_called_once()
+
     def test_context_manager_unknown_model_raises(self) -> None:
         """Using scheduler.model() with an unregistered name raises SchedulerError."""
         scheduler = GPUScheduler(total_vram=24 * GB)
