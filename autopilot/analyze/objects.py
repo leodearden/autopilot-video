@@ -85,6 +85,70 @@ def _format_detections(
     return result
 
 
+def _interpolate_detections(
+    det_before: list[dict],
+    det_after: list[dict],
+    frame_before: int,
+    frame_after: int,
+    target_frame: int,
+) -> list[dict]:
+    """Linearly interpolate detections between two keyframes.
+
+    Matches tracks by track_id between before and after frames.
+    Lerps bbox components and averages confidence. Keeps class from det_before.
+
+    Args:
+        det_before: Detections at the earlier keyframe.
+        det_after: Detections at the later keyframe.
+        frame_before: Frame index of det_before.
+        frame_after: Frame index of det_after.
+        target_frame: Frame index to interpolate for.
+
+    Returns:
+        List of interpolated detection dicts.
+    """
+    if frame_before == frame_after:
+        return [dict(d) for d in det_before]
+
+    t = (target_frame - frame_before) / (frame_after - frame_before)
+
+    before_by_id = {d["track_id"]: d for d in det_before}
+    after_by_id = {d["track_id"]: d for d in det_after}
+
+    all_track_ids = set(before_by_id) | set(after_by_id)
+    result = []
+    for tid in sorted(all_track_ids, key=lambda x: (x is None, x)):
+        b = before_by_id.get(tid)
+        a = after_by_id.get(tid)
+
+        if b is not None and a is not None:
+            # Lerp bbox and average confidence
+            bbox = [
+                b["bbox_xywh"][j] + t * (a["bbox_xywh"][j] - b["bbox_xywh"][j])
+                for j in range(4)
+            ]
+            conf = b["confidence"] + t * (a["confidence"] - b["confidence"])
+            cls_name = b["class"]
+        elif b is not None:
+            # Track only in before — hold position
+            bbox = list(b["bbox_xywh"])
+            conf = b["confidence"]
+            cls_name = b["class"]
+        else:
+            # Track only in after — hold position
+            bbox = list(a["bbox_xywh"])
+            conf = a["confidence"]
+            cls_name = a["class"]
+
+        result.append({
+            "track_id": tid,
+            "class": cls_name,
+            "bbox_xywh": bbox,
+            "confidence": conf,
+        })
+    return result
+
+
 def detect_objects(
     media_id: str,
     video_path: Path,
