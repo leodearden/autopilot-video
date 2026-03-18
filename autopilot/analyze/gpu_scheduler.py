@@ -54,6 +54,7 @@ class GPUScheduler:
         self._registry: dict[str, ModelSpec] = {}
         self._loaded: dict[str, Any] = {}
         self._lru: list[str] = []  # oldest first
+        self._in_use: dict[str, int] = {}  # reference counts for yielded models
         self._lock = threading.Lock()
 
     @property
@@ -104,14 +105,22 @@ class GPUScheduler:
         """Evict LRU models until *needed* bytes are free.
 
         Must be called while holding ``self._lock``.
+        Models with a non-zero reference count (currently yielded to a caller)
+        are skipped and never evicted.
         """
         while self.vram_free < needed:
-            if not self._lru:
+            # Find the first evictable (not in-use) model in LRU order
+            victim = None
+            for candidate in self._lru:
+                if self._in_use.get(candidate, 0) == 0:
+                    victim = candidate
+                    break
+            if victim is None:
                 raise SchedulerError(
                     f"Cannot free {needed} bytes: only "
                     f"{self.vram_free} available after evicting all models"
                 )
-            victim = self._lru.pop(0)
+            self._lru.remove(victim)
             spec = self._registry[victim]
             obj = self._loaded.pop(victim)
             logger.info(
@@ -126,7 +135,13 @@ class GPUScheduler:
 
     @contextmanager
     def model(self, name: str):  # type: ignore[override]
-        """Context manager that ensures *name* is loaded and yields the model."""
+        """Context manager that ensures *name* is loaded and yields the model.
+
+        The model's reference count is incremented before yielding and
+        decremented in the ``finally`` block, both under the lock.  This
+        prevents ``_evict_for`` from evicting a model that is currently
+        in use by another thread.
+        """
         with self._lock:
             if name not in self._registry:
                 raise SchedulerError(f"Model '{name}' not registered")
@@ -167,20 +182,49 @@ class GPUScheduler:
                         raise SchedulerError(
                             f"Warmup failed for model '{name}': {exc}"
                         ) from exc
-        yield model_obj
+            # Increment reference count while still holding the lock
+            self._in_use[name] = self._in_use.get(name, 0) + 1
+        try:
+            yield model_obj
+        finally:
+            with self._lock:
+                self._in_use[name] -= 1
+                if self._in_use[name] == 0:
+                    del self._in_use[name]
 
     def force_unload_all(self) -> None:
-        """Unload every loaded model and reset LRU tracking."""
+        """Unload every loaded model and reset LRU tracking.
+
+        Models that are currently in use (yielded to a caller) are skipped
+        with a warning to avoid corrupting active inference.
+        """
         with self._lock:
-            count = len(self._loaded)
+            skipped = 0
+            unloaded = 0
             for name in list(self._loaded):
+                if self._in_use.get(name, 0) > 0:
+                    logger.warning(
+                        "Skipping in-use model '%s' during force_unload_all "
+                        "(ref_count=%d)",
+                        name,
+                        self._in_use[name],
+                    )
+                    skipped += 1
+                    continue
                 spec = self._registry[name]
                 obj = self._loaded.pop(name)
+                self._lru.remove(name)
                 try:
                     spec.unload_fn(obj)
                 except Exception:
                     logger.exception(
                         "Error unloading '%s' during force_unload_all", name
                     )
-            self._lru.clear()
-            logger.info("Force-unloaded %d model(s)", count)
+                unloaded += 1
+            if skipped == 0:
+                self._lru.clear()
+            logger.info(
+                "Force-unloaded %d model(s), skipped %d in-use",
+                unloaded,
+                skipped,
+            )

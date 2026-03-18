@@ -482,6 +482,111 @@ class TestThreadSafety:
         assert not errors
         assert scheduler.loaded_models == {"a", "b"}
 
+    def test_concurrent_access_does_not_evict_in_use_model(self) -> None:
+        """An in-use model cannot be evicted by another thread needing VRAM.
+
+        Thread 1 holds model 'a' via context manager.  Thread 2 tries to
+        load model 'big' which requires eviction.  'a' must NOT be evicted
+        while Thread 1 still holds it; instead the eviction should raise
+        SchedulerError because no evictable models are available.
+        """
+        scheduler = GPUScheduler(total_vram=10 * GB)
+        spec_a = _make_spec(vram=6 * GB)
+        spec_big = _make_spec(vram=8 * GB)
+        scheduler.register("a", spec_a)
+        scheduler.register("big", spec_big)
+
+        barrier = threading.Barrier(2, timeout=5)
+        errors: list[Exception] = []
+        eviction_error: list[bool] = []
+
+        def hold_model_a() -> None:
+            try:
+                with scheduler.model("a"):
+                    barrier.wait()  # signal that 'a' is held
+                    barrier.wait()  # wait for thread 2 to finish
+            except Exception as e:
+                errors.append(e)
+
+        def load_big() -> None:
+            try:
+                barrier.wait()  # wait for 'a' to be held
+                try:
+                    with scheduler.model("big"):
+                        pass
+                except SchedulerError:
+                    eviction_error.append(True)
+                finally:
+                    barrier.wait()  # let thread 1 release 'a'
+            except Exception as e:
+                errors.append(e)
+
+        t1 = threading.Thread(target=hold_model_a)
+        t2 = threading.Thread(target=load_big)
+        t1.start()
+        t2.start()
+        t1.join(timeout=10)
+        t2.join(timeout=10)
+
+        assert not errors, f"Unexpected errors: {errors}"
+        # 'a' must still be loaded (was never evicted while in use)
+        assert "a" in scheduler.loaded_models
+        # The eviction must have been blocked — big couldn't be loaded
+        assert eviction_error, "Expected SchedulerError when evicting in-use model"
+        spec_a.unload_fn.assert_not_called()
+
+    def test_reference_counting_increments_and_decrements(self) -> None:
+        """_in_use tracks reference counts correctly across enter/exit."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        spec = _make_spec(vram=3 * GB)
+        scheduler.register("test", spec)
+
+        # Before entering: no reference
+        assert scheduler._in_use.get("test", 0) == 0
+
+        # Use a manual generator to control context manager steps
+        ctx = scheduler.model("test")
+        model_obj = ctx.__enter__()
+        assert model_obj is not None
+
+        # While inside: reference count should be 1
+        assert scheduler._in_use.get("test", 0) == 1
+
+        # Nest a second context for the same model
+        ctx2 = scheduler.model("test")
+        ctx2.__enter__()
+
+        # While both are active: reference count should be 2
+        assert scheduler._in_use.get("test", 0) == 2
+
+        # Exit inner context: count drops to 1
+        ctx2.__exit__(None, None, None)
+        assert scheduler._in_use.get("test", 0) == 1
+
+        # Exit outer context: count drops to 0 (key deleted)
+        ctx.__exit__(None, None, None)
+        assert scheduler._in_use.get("test", 0) == 0
+
+    def test_force_unload_skips_in_use_model(self) -> None:
+        """force_unload_all skips models currently yielded to callers."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        spec_a = _make_spec(vram=3 * GB)
+        spec_b = _make_spec(vram=3 * GB)
+        scheduler.register("a", spec_a)
+        scheduler.register("b", spec_b)
+
+        with scheduler.model("a"):
+            pass  # load a, then release
+
+        # Hold b while calling force_unload_all
+        with scheduler.model("b"):
+            scheduler.force_unload_all()
+            # b should be skipped (in-use), a should be unloaded
+            assert "b" in scheduler.loaded_models
+            assert "a" not in scheduler.loaded_models
+            spec_a.unload_fn.assert_called_once()
+            spec_b.unload_fn.assert_not_called()
+
 
 class TestProperties:
     """Tests for device and VRAM introspection properties."""
