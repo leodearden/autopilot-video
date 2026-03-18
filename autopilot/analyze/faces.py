@@ -63,6 +63,13 @@ def detect_faces(
         fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
+        logger.info(
+            "Starting face detection for %s (%d frames, %.1f fps)",
+            media_id,
+            total_frames,
+            fps,
+        )
+
         if total_frames <= 0:
             return
 
@@ -96,6 +103,13 @@ def detect_faces(
             if rows:
                 with db:
                     db.batch_insert_faces(rows)
+
+        logger.info(
+            "Completed face detection for %s: %d faces across %d frames",
+            media_id,
+            len(rows),
+            len(frame_indices),
+        )
     finally:
         cap.release()
 
