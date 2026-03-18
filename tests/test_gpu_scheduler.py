@@ -398,3 +398,66 @@ class TestWarmup:
         scheduler.register("test", spec)
         with scheduler.model("test") as m:
             assert m == "m"  # loads without error
+
+
+class TestThreadSafety:
+    """Tests for thread safety under concurrent access."""
+
+    def test_concurrent_model_access(self) -> None:
+        """Multiple threads accessing the same model only call load_fn once."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        sentinel = object()
+        spec = ModelSpec(
+            load_fn=MagicMock(return_value=sentinel),
+            unload_fn=MagicMock(),
+            vram_bytes=3 * GB,
+        )
+        scheduler.register("model_a", spec)
+
+        results: list[object] = []
+        errors: list[Exception] = []
+
+        def access_model() -> None:
+            try:
+                for _ in range(5):
+                    with scheduler.model("model_a") as m:
+                        results.append(m)
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=access_model) for _ in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+        assert all(r is sentinel for r in results)
+        spec.load_fn.assert_called_once()
+
+    def test_concurrent_different_models(self) -> None:
+        """Two threads loading different models both succeed."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        spec_a = _make_spec(vram=3 * GB)
+        spec_b = _make_spec(vram=3 * GB)
+        scheduler.register("a", spec_a)
+        scheduler.register("b", spec_b)
+
+        errors: list[Exception] = []
+
+        def load_model(name: str) -> None:
+            try:
+                with scheduler.model(name):
+                    pass
+            except Exception as e:
+                errors.append(e)
+
+        t1 = threading.Thread(target=load_model, args=("a",))
+        t2 = threading.Thread(target=load_model, args=("b",))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert not errors
+        assert scheduler.loaded_models == {"a", "b"}
