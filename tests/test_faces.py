@@ -170,3 +170,78 @@ class TestIdempotency:
             detect_faces("vid2", vid, catalog_db, scheduler, config)
 
         scheduler.model.assert_called_once()
+
+
+# -- Error handling tests ------------------------------------------------------
+
+
+class TestErrorHandling:
+    """Tests for detect_faces error handling."""
+
+    def test_video_not_found_raises(self, catalog_db) -> None:
+        """Nonexistent video path raises FaceDetectionError matching 'not found'."""
+        from autopilot.analyze.faces import FaceDetectionError, detect_faces
+
+        catalog_db.insert_media("vid1", "/nonexistent.mp4")
+        scheduler = MagicMock()
+        config = MagicMock()
+        config.face_model = "buffalo_l"
+
+        with pytest.raises(FaceDetectionError, match="not found"):
+            detect_faces(
+                "vid1", Path("/nonexistent.mp4"), catalog_db, scheduler, config
+            )
+
+    def test_video_not_opened_raises(self, catalog_db, tmp_path) -> None:
+        """cap.isOpened() returns False raises FaceDetectionError."""
+        from autopilot.analyze.faces import FaceDetectionError, detect_faces
+
+        vid = tmp_path / "bad.mp4"
+        vid.touch()
+        catalog_db.insert_media("vid1", str(vid))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = MagicMock()
+        cap.isOpened.return_value = False
+        mock_cv2.VideoCapture.return_value = cap
+
+        scheduler = MagicMock()
+        config = MagicMock()
+        config.face_model = "buffalo_l"
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            with pytest.raises(FaceDetectionError, match="Failed to open"):
+                detect_faces("vid1", vid, catalog_db, scheduler, config)
+
+    def test_frame_read_failure_skipped(self, catalog_db, tmp_path) -> None:
+        """Frame read failure skips that frame, other frames still processed."""
+        from autopilot.analyze.faces import detect_faces
+
+        vid = tmp_path / "vid.mp4"
+        vid.touch()
+        catalog_db.insert_media("vid1", str(vid))
+
+        mock_cv2 = _make_mock_cv2()
+        # 90 frames at 30fps = 3 frames sampled (0, 30, 60)
+        cap = _make_mock_capture(fps=30.0, total_frames=90)
+        # First read fails, second and third succeed
+        frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        cap.read.side_effect = [(False, None), (True, frame), (True, frame)]
+        mock_cv2.VideoCapture.return_value = cap
+
+        face_model = MagicMock()
+        face_model.get.return_value = [_make_mock_face()]
+
+        scheduler = MagicMock()
+        scheduler.model.return_value.__enter__ = MagicMock(return_value=face_model)
+        scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
+
+        config = MagicMock()
+        config.face_model = "buffalo_l"
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            detect_faces("vid1", vid, catalog_db, scheduler, config)
+
+        # 2 faces stored (frames 30 and 60 succeed, frame 0 fails)
+        faces = catalog_db.get_faces_for_media("vid1")
+        assert len(faces) == 2
