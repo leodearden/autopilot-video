@@ -114,6 +114,11 @@ class GPUScheduler:
             victim = self._lru.pop(0)
             spec = self._registry[victim]
             obj = self._loaded.pop(victim)
+            logger.info(
+                "Evicting model '%s' (%d bytes) to free VRAM",
+                victim,
+                spec.vram_bytes,
+            )
             try:
                 spec.unload_fn(obj)
             except Exception:
@@ -136,13 +141,18 @@ class GPUScheduler:
                 model_obj = spec.load_fn()
                 self._loaded[name] = model_obj
                 self._lru.append(name)
+                logger.info(
+                    "Loaded model '%s' (%d bytes VRAM)", name, spec.vram_bytes
+                )
                 if spec.warmup_fn is not None:
+                    logger.debug("Warming up model '%s'", name)
                     spec.warmup_fn(model_obj)
         yield model_obj
 
     def force_unload_all(self) -> None:
         """Unload every loaded model and reset LRU tracking."""
         with self._lock:
+            count = len(self._loaded)
             for name in list(self._loaded):
                 spec = self._registry[name]
                 obj = self._loaded.pop(name)
@@ -153,3 +163,4 @@ class GPUScheduler:
                         "Error unloading '%s' during force_unload_all", name
                     )
             self._lru.clear()
+            logger.info("Force-unloaded %d model(s)", count)
