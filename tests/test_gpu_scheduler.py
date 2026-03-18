@@ -510,3 +510,43 @@ class TestProperties:
         with scheduler.model("m"):
             pass
         assert scheduler.vram_free == 16 * GB
+
+
+class TestLogging:
+    """Tests for structured logging integration."""
+
+    def test_load_logs_model_name_and_vram(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Loading a model logs its name and VRAM usage."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        spec = _make_spec(vram=3 * GB)
+        scheduler.register("whisperx", spec)
+        with caplog.at_level("INFO", logger="autopilot.analyze.gpu_scheduler"):
+            with scheduler.model("whisperx"):
+                pass
+        assert any("whisperx" in r.message for r in caplog.records)
+        assert any("3" in r.message for r in caplog.records)
+
+    def test_eviction_logs_evicted_model(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Evicting a model logs which model was evicted."""
+        scheduler = GPUScheduler(total_vram=10 * GB)
+        spec_a = _make_spec(vram=3 * GB)
+        spec_b = _make_spec(vram=8 * GB)
+        scheduler.register("a", spec_a)
+        scheduler.register("b", spec_b)
+        with scheduler.model("a"):
+            pass
+        with caplog.at_level("INFO", logger="autopilot.analyze.gpu_scheduler"):
+            with scheduler.model("b"):
+                pass
+        assert any("a" in r.message and "evict" in r.message.lower() for r in caplog.records)
+
+    def test_force_unload_logs(self, caplog: pytest.LogCaptureFixture) -> None:
+        """force_unload_all logs the number of unloaded models."""
+        scheduler = GPUScheduler(total_vram=24 * GB)
+        for name in ("a", "b"):
+            scheduler.register(name, _make_spec(vram=3 * GB))
+            with scheduler.model(name):
+                pass
+        with caplog.at_level("INFO", logger="autopilot.analyze.gpu_scheduler"):
+            scheduler.force_unload_all()
+        assert any("2" in r.message for r in caplog.records)
