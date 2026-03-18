@@ -7,6 +7,7 @@ for dense output, and transactional DB storage.
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -170,4 +171,8 @@ def detect_objects(
         batch_size: Number of frames to read from disk per batch.
         sparse: If True, detect at 1fps; if False, detect every N frames and interpolate.
     """
-    pass
+    # Idempotency: skip if detections already exist for this media
+    existing = db.get_detections_for_frame(media_id, 0)
+    if existing is not None:
+        logger.info("Detections already exist for %s, skipping", media_id)
+        return

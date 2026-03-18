@@ -423,7 +423,8 @@ class TestIdempotency:
         from autopilot.analyze.objects import detect_objects
         from autopilot.config import ModelConfig
 
-        # Pre-insert detection for frame 0
+        # Insert media_files row for FK constraint, then detection for frame 0
+        catalog_db.insert_media("m1", "/fake/video.mp4")
         catalog_db.batch_insert_detections([("m1", 0, "[]")])
 
         scheduler = MagicMock()
