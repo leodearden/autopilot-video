@@ -464,3 +464,92 @@ class TestIdempotency:
                 detect_objects("m2", Path("/fake/video.mp4"), catalog_db, scheduler, config)
 
         scheduler.model.assert_called_once()
+
+
+class TestSparseMode:
+    """Tests for detect_objects in sparse mode (1fps)."""
+
+    def _run_sparse(self, catalog_db, total_frames=300, fps=30.0):
+        """Helper to run detect_objects in sparse mode with mocked video."""
+        from pathlib import Path
+        from unittest.mock import MagicMock, patch
+
+        from autopilot.analyze.objects import detect_objects
+        from autopilot.config import ModelConfig
+
+        # Insert media row for FK
+        catalog_db.insert_media("m1", "/fake/video.mp4")
+
+        config = ModelConfig()
+        mock_model = _make_mock_yolo_model()
+
+        # Each track call returns one person detection
+        def make_person_result(*args, **kwargs):
+            boxes = _make_boxes(
+                xywh=[[100.0, 200.0, 50.0, 60.0]],
+                conf=[0.9],
+                cls=[0],
+                track_id=[1],
+            )
+            return _make_yolo_result(boxes)
+
+        mock_model.track.side_effect = make_person_result
+
+        scheduler = MagicMock()
+        scheduler.model.return_value.__enter__ = MagicMock(return_value=mock_model)
+        scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_cap = _make_mock_capture(
+            total_frames=total_frames, fps=fps, width=4096, height=4096
+        )
+
+        with patch("autopilot.analyze.objects.cv2") as mock_cv2:
+            mock_cv2.VideoCapture.return_value = mock_cap
+            mock_cv2.CAP_PROP_FPS = 5
+            mock_cv2.CAP_PROP_FRAME_COUNT = 7
+            mock_cv2.CAP_PROP_FRAME_WIDTH = 3
+            mock_cv2.CAP_PROP_FRAME_HEIGHT = 4
+
+            with patch.object(Path, "exists", return_value=True):
+                detect_objects(
+                    "m1", Path("/fake/video.mp4"), catalog_db, scheduler, config,
+                    sparse=True,
+                )
+
+        return mock_model, scheduler
+
+    def test_sparse_stores_correct_frame_count(self, catalog_db) -> None:
+        """Sparse mode at 30fps on 300 frames stores 10 rows (1fps × 10s)."""
+        self._run_sparse(catalog_db, total_frames=300, fps=30.0)
+        # Check how many detection rows in DB
+        rows = catalog_db.get_detections_for_range("m1", 0, 300)
+        assert len(rows) == 10  # frames 0,30,60,...,270
+
+    def test_sparse_valid_json_schema(self, catalog_db) -> None:
+        """Each detection row has valid JSON with expected schema."""
+        self._run_sparse(catalog_db)
+        row = catalog_db.get_detections_for_frame("m1", 0)
+        assert row is not None
+        dets = json.loads(row["detections_json"])
+        assert isinstance(dets, list)
+        assert len(dets) >= 1
+        det = dets[0]
+        assert "track_id" in det
+        assert "class" in det
+        assert "bbox_xywh" in det
+        assert "confidence" in det
+
+    def test_sparse_no_intermediate_frames(self, catalog_db) -> None:
+        """Sparse mode does not store intermediate/interpolated frames."""
+        self._run_sparse(catalog_db, total_frames=300, fps=30.0)
+        # Frame 1 should NOT have detections (only multiples of 30)
+        assert catalog_db.get_detections_for_frame("m1", 1) is None
+        assert catalog_db.get_detections_for_frame("m1", 15) is None
+
+    def test_sparse_model_track_persist(self, catalog_db) -> None:
+        """model.track() is called with persist=True."""
+        mock_model, _ = self._run_sparse(catalog_db)
+        # Check that track was called and persist=True is in kwargs
+        assert mock_model.track.call_count > 0
+        for call in mock_model.track.call_args_list:
+            assert call.kwargs.get("persist") is True
