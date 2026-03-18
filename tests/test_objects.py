@@ -351,3 +351,62 @@ class TestInterpolateDetections:
         by_track = {d["track_id"]: d for d in result}
         assert by_track[1]["bbox_xywh"] == pytest.approx([150.0, 100.0, 50.0, 50.0])
         assert by_track[2]["bbox_xywh"] == pytest.approx([550.0, 300.0, 100.0, 80.0])
+
+
+class TestInterpolateEdgeCases:
+    """Tests for _interpolate_detections edge cases."""
+
+    def test_track_only_in_before_holds_position(self) -> None:
+        """Track only in det_before holds its position (copy bbox)."""
+        from autopilot.analyze.objects import _interpolate_detections
+
+        det_before = [
+            {"track_id": 1, "class": "person", "bbox_xywh": [100.0, 100.0, 50.0, 50.0],
+             "confidence": 0.9}
+        ]
+        det_after = []  # Track 1 disappeared
+        result = _interpolate_detections(det_before, det_after, 0, 6, 3)
+        assert len(result) == 1
+        assert result[0]["bbox_xywh"] == [100.0, 100.0, 50.0, 50.0]
+        assert result[0]["confidence"] == 0.9
+
+    def test_track_only_in_after_holds_position(self) -> None:
+        """Track only in det_after holds its position."""
+        from autopilot.analyze.objects import _interpolate_detections
+
+        det_before = []
+        det_after = [
+            {"track_id": 2, "class": "car", "bbox_xywh": [300.0, 200.0, 80.0, 60.0],
+             "confidence": 0.7}
+        ]
+        result = _interpolate_detections(det_before, det_after, 0, 6, 3)
+        assert len(result) == 1
+        assert result[0]["bbox_xywh"] == [300.0, 200.0, 80.0, 60.0]
+
+    def test_empty_before_returns_after_positions(self) -> None:
+        """Empty det_before returns det_after positions."""
+        from autopilot.analyze.objects import _interpolate_detections
+
+        result = _interpolate_detections([], [], 0, 6, 3)
+        assert result == []
+
+    def test_both_empty(self) -> None:
+        """Both det_before and det_after empty returns empty list."""
+        from autopilot.analyze.objects import _interpolate_detections
+
+        result = _interpolate_detections([], [], 0, 6, 3)
+        assert result == []
+
+    def test_same_frame_returns_before_copy(self) -> None:
+        """frame_before == frame_after returns det_before copy."""
+        from autopilot.analyze.objects import _interpolate_detections
+
+        det_before = [
+            {"track_id": 1, "class": "person", "bbox_xywh": [100.0, 100.0, 50.0, 50.0],
+             "confidence": 0.9}
+        ]
+        result = _interpolate_detections(det_before, det_before, 5, 5, 5)
+        assert len(result) == 1
+        assert result[0]["bbox_xywh"] == [100.0, 100.0, 50.0, 50.0]
+        # Verify it's a copy, not the same dict
+        assert result[0] is not det_before[0]
