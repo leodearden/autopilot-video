@@ -88,6 +88,37 @@ class GPUScheduler:
                 self._lru.remove(name)
             del self._registry[name]
 
+    @property
+    def vram_used(self) -> int:
+        """Total VRAM bytes consumed by loaded models."""
+        return sum(
+            self._registry[n].vram_bytes for n in self._loaded
+        )
+
+    @property
+    def vram_free(self) -> int:
+        """VRAM bytes still available within the budget."""
+        return self._total_vram - self.vram_used
+
+    def _evict_for(self, needed: int) -> None:
+        """Evict LRU models until *needed* bytes are free.
+
+        Must be called while holding ``self._lock``.
+        """
+        while self.vram_free < needed:
+            if not self._lru:
+                raise SchedulerError(
+                    f"Cannot free {needed} bytes: only "
+                    f"{self.vram_free} available after evicting all models"
+                )
+            victim = self._lru.pop(0)
+            spec = self._registry[victim]
+            obj = self._loaded.pop(victim)
+            try:
+                spec.unload_fn(obj)
+            except Exception:
+                logger.exception("Error unloading '%s' during eviction", victim)
+
     @contextmanager
     def model(self, name: str):  # type: ignore[override]
         """Context manager that ensures *name* is loaded and yields the model."""
@@ -100,7 +131,9 @@ class GPUScheduler:
                 self._lru.remove(name)
                 self._lru.append(name)
             else:
-                model_obj = self._registry[name].load_fn()
+                spec = self._registry[name]
+                self._evict_for(spec.vram_bytes)
+                model_obj = spec.load_fn()
                 self._loaded[name] = model_obj
                 self._lru.append(name)
         yield model_obj
