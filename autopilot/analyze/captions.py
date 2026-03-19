@@ -105,6 +105,12 @@ def caption_clip(
     Returns:
         Generated caption string.
     """
+    # Idempotency: return existing caption if available
+    existing = db.get_caption(media_id, start_time, end_time)
+    if existing is not None:
+        logger.info("Caption already exists for %s [%.1f-%.1f], skipping", media_id, start_time, end_time)
+        return str(existing["caption"])
+
     # Get media metadata for fps
     media = db.get_media(media_id)
     fps = float(media["fps"]) if media and media.get("fps") else 30.0
