@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import inspect
 import json
+import math
 
 import pytest
 
@@ -85,3 +87,185 @@ class TestDBHelpers:
         """clear_activity_clusters() succeeds when no clusters exist."""
         catalog_db.clear_activity_clusters()  # Should not raise
         assert len(catalog_db.get_activity_clusters()) == 0
+
+
+# -- Step 1: Public API and helpers -------------------------------------------
+
+
+class TestPublicAPI:
+    """Verify public API surface and type signatures."""
+
+    def test_exports_importable(self):
+        """ClusterError, cluster_activities, ActivityCluster are importable."""
+        from autopilot.organize.cluster import (
+            ActivityCluster,
+            ClusterError,
+            cluster_activities,
+        )
+
+        assert ClusterError is not None
+        assert cluster_activities is not None
+        assert ActivityCluster is not None
+
+    def test_cluster_error_is_exception(self):
+        """ClusterError is a subclass of Exception with message."""
+        from autopilot.organize.cluster import ClusterError
+
+        assert issubclass(ClusterError, Exception)
+        err = ClusterError("test message")
+        assert str(err) == "test message"
+
+    def test_activity_cluster_fields(self):
+        """ActivityCluster has expected fields."""
+        from autopilot.organize.cluster import ActivityCluster
+
+        ac = ActivityCluster(
+            cluster_id="c1",
+            clip_ids=["vid1", "vid2"],
+            time_start="2025-01-01T10:00:00",
+            time_end="2025-01-01T11:00:00",
+            gps_center_lat=18.7,
+            gps_center_lon=98.9,
+        )
+        assert ac.cluster_id == "c1"
+        assert ac.clip_ids == ["vid1", "vid2"]
+        assert ac.time_start == "2025-01-01T10:00:00"
+        assert ac.time_end == "2025-01-01T11:00:00"
+        assert ac.gps_center_lat == 18.7
+        assert ac.gps_center_lon == 98.9
+
+    def test_activity_cluster_optional_gps(self):
+        """ActivityCluster accepts None for GPS fields."""
+        from autopilot.organize.cluster import ActivityCluster
+
+        ac = ActivityCluster(
+            cluster_id="c1",
+            clip_ids=["vid1"],
+            time_start="2025-01-01T10:00:00",
+            time_end="2025-01-01T10:30:00",
+        )
+        assert ac.gps_center_lat is None
+        assert ac.gps_center_lon is None
+
+    def test_cluster_activities_signature(self):
+        """cluster_activities has db parameter and returns list."""
+        from autopilot.organize.cluster import cluster_activities
+
+        sig = inspect.signature(cluster_activities)
+        params = list(sig.parameters.keys())
+        assert "db" in params
+
+
+class TestHaversine:
+    """Tests for _haversine() distance helper."""
+
+    def test_known_distance(self):
+        """New York to London is approximately 5570 km."""
+        from autopilot.organize.cluster import _haversine
+
+        # NYC: 40.7128, -74.0060
+        # London: 51.5074, -0.1278
+        d = _haversine(40.7128, -74.0060, 51.5074, -0.1278)
+        assert abs(d - 5_570_000) < 50_000  # within 50km
+
+    def test_zero_distance(self):
+        """Same point -> 0 meters."""
+        from autopilot.organize.cluster import _haversine
+
+        d = _haversine(18.7883, 98.9853, 18.7883, 98.9853)
+        assert d == 0.0
+
+    def test_antipodal(self):
+        """Opposite sides of Earth -> ~20015 km (half circumference)."""
+        from autopilot.organize.cluster import _haversine
+
+        d = _haversine(0.0, 0.0, 0.0, 180.0)
+        assert abs(d - 20_015_000) < 100_000  # within 100km
+
+    def test_short_distance(self):
+        """Two points ~100m apart in same city."""
+        from autopilot.organize.cluster import _haversine
+
+        # Two points ~100m apart in Chiang Mai
+        d = _haversine(18.7880, 98.9850, 18.7889, 98.9850)
+        assert 50 < d < 200  # roughly 100m
+
+    def test_symmetric(self):
+        """d(a, b) == d(b, a)."""
+        from autopilot.organize.cluster import _haversine
+
+        d1 = _haversine(40.0, -74.0, 51.5, -0.1)
+        d2 = _haversine(51.5, -0.1, 40.0, -74.0)
+        assert d1 == pytest.approx(d2)
+
+
+class TestTemporalSpatialClustering:
+    """Tests for _temporal_spatial_cluster() private helper."""
+
+    def test_clips_within_threshold_cluster_together(self):
+        """Clips within 30min and 500m should be in the same cluster."""
+        from autopilot.organize.cluster import _temporal_spatial_cluster
+
+        clips = [
+            {"id": "v1", "created_at": "2025-01-01T10:00:00", "gps_lat": 18.788, "gps_lon": 98.985},
+            {"id": "v2", "created_at": "2025-01-01T10:10:00", "gps_lat": 18.788, "gps_lon": 98.985},
+            {"id": "v3", "created_at": "2025-01-01T10:20:00", "gps_lat": 18.789, "gps_lon": 98.985},
+        ]
+        clusters = _temporal_spatial_cluster(clips)
+        assert len(clusters) == 1
+        assert set(clusters[0]) == {"v1", "v2", "v3"}
+
+    def test_clips_far_apart_separate(self):
+        """Clips > 30min apart should be in different clusters."""
+        from autopilot.organize.cluster import _temporal_spatial_cluster
+
+        clips = [
+            {"id": "v1", "created_at": "2025-01-01T10:00:00", "gps_lat": 18.788, "gps_lon": 98.985},
+            {"id": "v2", "created_at": "2025-01-01T12:00:00", "gps_lat": 18.788, "gps_lon": 98.985},
+        ]
+        clusters = _temporal_spatial_cluster(clips)
+        assert len(clusters) == 2
+
+    def test_spatial_separation(self):
+        """Clips at same time but far apart spatially should separate."""
+        from autopilot.organize.cluster import _temporal_spatial_cluster
+
+        clips = [
+            {"id": "v1", "created_at": "2025-01-01T10:00:00", "gps_lat": 18.788, "gps_lon": 98.985},
+            {"id": "v2", "created_at": "2025-01-01T10:05:00", "gps_lat": 19.500, "gps_lon": 99.500},
+        ]
+        clusters = _temporal_spatial_cluster(clips)
+        assert len(clusters) == 2
+
+    def test_missing_gps_falls_back_to_temporal(self):
+        """Clips with None GPS cluster by time only."""
+        from autopilot.organize.cluster import _temporal_spatial_cluster
+
+        clips = [
+            {"id": "v1", "created_at": "2025-01-01T10:00:00", "gps_lat": None, "gps_lon": None},
+            {"id": "v2", "created_at": "2025-01-01T10:10:00", "gps_lat": None, "gps_lon": None},
+            {"id": "v3", "created_at": "2025-01-01T14:00:00", "gps_lat": None, "gps_lon": None},
+        ]
+        clusters = _temporal_spatial_cluster(clips)
+        assert len(clusters) == 2
+        # First two should cluster together
+        cluster_with_v1 = [c for c in clusters if "v1" in c][0]
+        assert "v2" in cluster_with_v1
+
+    def test_single_clip(self):
+        """Single clip -> single cluster."""
+        from autopilot.organize.cluster import _temporal_spatial_cluster
+
+        clips = [
+            {"id": "v1", "created_at": "2025-01-01T10:00:00", "gps_lat": 18.788, "gps_lon": 98.985},
+        ]
+        clusters = _temporal_spatial_cluster(clips)
+        assert len(clusters) == 1
+        assert clusters[0] == ["v1"]
+
+    def test_empty_clips(self):
+        """Empty input -> empty output."""
+        from autopilot.organize.cluster import _temporal_spatial_cluster
+
+        clusters = _temporal_spatial_cluster([])
+        assert clusters == []
