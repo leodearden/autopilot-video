@@ -94,3 +94,31 @@ class TestIdempotency:
         # but the point is it gets past the idempotency check
         with pytest.raises(Exception):
             detect_shots("vid2", video_file, catalog_db, scheduler)
+
+
+class TestInputValidation:
+    """Tests for video path validation."""
+
+    def test_nonexistent_path_raises(self, catalog_db, tmp_path) -> None:
+        """Nonexistent video_path raises ShotDetectionError matching 'not found'."""
+        from autopilot.analyze.scenes import ShotDetectionError, detect_shots
+
+        bad_path = tmp_path / "does_not_exist.mp4"
+        catalog_db.insert_media("vid3", str(bad_path))
+        scheduler = MagicMock()
+
+        with pytest.raises(ShotDetectionError, match="not found"):
+            detect_shots("vid3", bad_path, catalog_db, scheduler)
+
+    def test_validation_before_heavy_imports(self, catalog_db, tmp_path) -> None:
+        """Validation happens before heavy imports — scheduler not called on bad path."""
+        from autopilot.analyze.scenes import ShotDetectionError, detect_shots
+
+        bad_path = tmp_path / "nope.mp4"
+        catalog_db.insert_media("vid4", str(bad_path))
+        scheduler = MagicMock()
+
+        with pytest.raises(ShotDetectionError):
+            detect_shots("vid4", bad_path, catalog_db, scheduler)
+
+        scheduler.model.assert_not_called()
