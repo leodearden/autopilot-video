@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -244,6 +245,105 @@ def _load_and_fill_prompt(config: AutopilotConfig) -> str:
         .replace("{narration_style}", creator.narration_style)
         .replace("{music_preference}", creator.music_preference)
     )
+
+
+def _call_llm(
+    storyboard: str,
+    config: AutopilotConfig,
+) -> str:
+    """Call Claude Opus for narrative proposals.
+
+    Args:
+        storyboard: Structured text storyboard.
+        config: Full autopilot config with LLM and creator settings.
+
+    Returns:
+        Raw response text from the LLM.
+
+    Raises:
+        NarrativeError: If the API call fails or response is empty.
+    """
+    import anthropic  # type: ignore[reportMissingImports]
+
+    try:
+        system_prompt = _load_and_fill_prompt(config)
+    except NarrativeError:
+        raise
+    except OSError as e:
+        raise NarrativeError(f"Failed to load prompt: {e}") from e
+
+    try:
+        client = anthropic.Anthropic()
+        response = client.messages.create(
+            model=config.llm.planning_model,
+            max_tokens=4096,
+            system=system_prompt,
+            messages=[{"role": "user", "content": storyboard}],
+        )
+    except Exception as e:
+        raise NarrativeError(f"LLM API call failed: {e}") from e
+
+    if not response.content:
+        raise NarrativeError("Empty response from LLM")
+
+    return response.content[0].text
+
+
+_REQUIRED_NARRATIVE_FIELDS = {"title", "activity_cluster_ids", "proposed_duration_seconds"}
+
+
+def _parse_narratives(text: str) -> list[Narrative]:
+    """Parse LLM response text into Narrative objects.
+
+    Args:
+        text: Raw LLM response text (possibly wrapped in code blocks).
+
+    Returns:
+        List of Narrative objects.
+
+    Raises:
+        NarrativeError: If JSON parsing fails or required fields are missing.
+    """
+    # Extract JSON from code block if present
+    try:
+        if "```json" in text:
+            json_str = text.split("```json")[1].split("```")[0].strip()
+        elif "```" in text:
+            json_str = text.split("```")[1].split("```")[0].strip()
+        else:
+            json_str = text.strip()
+        data = json.loads(json_str)
+    except (json.JSONDecodeError, IndexError) as e:
+        raise NarrativeError(f"Failed to parse LLM response as JSON: {e}") from e
+
+    if not isinstance(data, list):
+        raise NarrativeError(f"Expected JSON array, got {type(data).__name__}")
+
+    narratives: list[Narrative] = []
+    for entry in data:
+        if not isinstance(entry, dict):
+            raise NarrativeError(f"Expected JSON object in array, got {type(entry).__name__}")
+        missing = _REQUIRED_NARRATIVE_FIELDS - set(entry.keys())
+        if missing:
+            raise NarrativeError(
+                f"Narrative entry missing required fields: {sorted(missing)}"
+            )
+        arc = entry.get("arc", {})
+        if not isinstance(arc, dict):
+            arc = {}
+        narratives.append(Narrative(
+            narrative_id=str(uuid.uuid4()),
+            title=str(entry["title"]),
+            description=str(entry.get("reasoning", "")),
+            proposed_duration_seconds=float(entry["proposed_duration_seconds"]),
+            activity_cluster_ids=list(entry["activity_cluster_ids"]),
+            arc=arc,
+            emotional_journey=str(entry.get("emotional_journey", "")),
+            reasoning=str(entry.get("reasoning", "")),
+            status="proposed",
+        ))
+
+    return narratives
 
 
 def build_master_storyboard(db: CatalogDB) -> str:
