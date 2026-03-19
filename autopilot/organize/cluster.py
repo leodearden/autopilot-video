@@ -276,9 +276,15 @@ def cluster_activities(db: CatalogDB) -> list[ActivityCluster]:
     # Build lookup for quick access
     clip_lookup = {str(m["id"]): m for m in clips}
 
+    # Phase 2: Semantic refinement
+    refined_clusters: list[list[str]] = []
+    for cluster_ids in raw_clusters:
+        sub_clusters = _semantic_refine(cluster_ids, clip_lookup, db)
+        refined_clusters.extend(sub_clusters)
+
     # Create ActivityCluster objects
     results: list[ActivityCluster] = []
-    for clip_ids in raw_clusters:
+    for clip_ids in refined_clusters:
         cluster_clips = [clip_lookup[cid] for cid in clip_ids]
 
         # Compute time range
