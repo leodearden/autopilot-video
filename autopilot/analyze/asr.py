@@ -151,3 +151,16 @@ def transcribe_media(
             "No HuggingFace token provided, skipping diarization for %s",
             media_id,
         )
+
+    # Stage 4: Normalize and store transcript
+    segments = _normalize_segments(result.get("segments", []))
+    segments_json = json.dumps(segments)
+    with db:
+        db.upsert_transcript(media_id, segments_json, language)
+
+    logger.info(
+        "Completed transcription for %s: %d segments, language=%s",
+        media_id,
+        len(segments),
+        language,
+    )
