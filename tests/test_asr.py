@@ -179,5 +179,5 @@ class TestPublicAPI:
         assert hf_token_param.kind == inspect.Parameter.KEYWORD_ONLY
         assert hf_token_param.default is None
 
-        # Return annotation
-        assert sig.return_annotation is None
+        # Return annotation (string 'None' due to __future__ annotations)
+        assert sig.return_annotation in (None, "None")
