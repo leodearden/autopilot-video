@@ -300,3 +300,46 @@ class TestExtractTopK:
         probs = np.random.default_rng(3).random(527).astype(np.float32)
         result = _extract_top_k(probs, labels, k=600)
         assert len(result) == 527
+
+
+class TestIdempotency:
+    """Tests for audio event idempotency check."""
+
+    def test_skip_when_events_exist(self, catalog_db):
+        """Skip classification when audio events already exist."""
+        from autopilot.analyze.audio_events import classify_audio_events
+
+        catalog_db.insert_media("vid1", "/tmp/vid1.wav")
+        with catalog_db:
+            catalog_db.batch_insert_audio_events([
+                ("vid1", 0.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
+            ])
+
+        scheduler = MagicMock()
+        classify_audio_events(
+            "vid1", Path("/tmp/vid1.wav"), catalog_db, scheduler,
+        )
+
+        # Scheduler should NOT be called for model loading
+        scheduler.model.assert_not_called()
+
+    def test_processes_when_no_events(self, catalog_db):
+        """Proceed with classification when no events exist."""
+        from autopilot.analyze.audio_events import classify_audio_events
+
+        mock_panns, mock_config, mock_librosa, scheduler = (
+            _make_full_pipeline_mocks(catalog_db, "vid1", 3.0)
+        )
+
+        with patch.dict(sys.modules, {
+            "panns_inference": mock_panns,
+            "panns_inference.config": mock_config,
+            "librosa": mock_librosa,
+        }):
+            with patch.object(Path, "exists", return_value=True):
+                classify_audio_events(
+                    "vid1", Path("/tmp/vid1.wav"), catalog_db, scheduler,
+                )
+
+        # Scheduler SHOULD be called for model loading
+        scheduler.model.assert_called_once_with("panns_cnn14")
