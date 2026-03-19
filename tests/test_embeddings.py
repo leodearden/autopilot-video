@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import struct
 import sys
 from unittest.mock import MagicMock, patch
@@ -99,3 +100,51 @@ class TestPublicAPI:
             "search_by_image",
         }
         assert set(embeddings.__all__) == expected
+
+
+class TestSignatures:
+    """Tests for function signatures and parameter contracts."""
+
+    def test_compute_embeddings_signature(self) -> None:
+        """compute_embeddings has correct positional and keyword-only params."""
+        from autopilot.analyze.embeddings import compute_embeddings
+
+        sig = inspect.signature(compute_embeddings)
+        params = list(sig.parameters.keys())
+        # Positional params
+        assert params[:5] == ["media_id", "video_path", "db", "scheduler", "config"]
+        # batch_size is keyword-only with int default
+        bs = sig.parameters["batch_size"]
+        assert bs.kind == inspect.Parameter.KEYWORD_ONLY
+        assert bs.default == 16
+        assert isinstance(bs.default, int)
+
+    def test_build_search_index_signature(self) -> None:
+        """build_search_index has params (db, output_path)."""
+        from autopilot.analyze.embeddings import build_search_index
+
+        sig = inspect.signature(build_search_index)
+        params = list(sig.parameters.keys())
+        assert params == ["db", "output_path"]
+
+    def test_search_by_text_signature(self) -> None:
+        """search_by_text has params (query, index_path, model) and keyword-only top_k=10."""
+        from autopilot.analyze.embeddings import search_by_text
+
+        sig = inspect.signature(search_by_text)
+        params = list(sig.parameters.keys())
+        assert params[:3] == ["query", "index_path", "model"]
+        tk = sig.parameters["top_k"]
+        assert tk.kind == inspect.Parameter.KEYWORD_ONLY
+        assert tk.default == 10
+
+    def test_search_by_image_signature(self) -> None:
+        """search_by_image has params (image, index_path, model) and keyword-only top_k=10."""
+        from autopilot.analyze.embeddings import search_by_image
+
+        sig = inspect.signature(search_by_image)
+        params = list(sig.parameters.keys())
+        assert params[:3] == ["image", "index_path", "model"]
+        tk = sig.parameters["top_k"]
+        assert tk.kind == inspect.Parameter.KEYWORD_ONLY
+        assert tk.default == 10
