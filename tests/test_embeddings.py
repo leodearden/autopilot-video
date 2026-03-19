@@ -427,3 +427,68 @@ class TestErrorHandling:
 
         rows = catalog_db.get_embeddings_for_media("m1")
         assert len(rows) == 1
+
+
+def _run_compute(catalog_db, media_id="m1", total_frames=300, fps=30.0):
+    """Helper to run compute_embeddings with full mocking."""
+    from pathlib import Path
+
+    from autopilot.analyze.embeddings import compute_embeddings
+    from autopilot.config import ModelConfig
+
+    catalog_db.insert_media(media_id, f"/{media_id}.mp4")
+    mock_model, mock_processor = _make_mock_siglip()
+    scheduler = _make_scheduler_mock((mock_model, mock_processor))
+    config = ModelConfig()
+
+    mock_cap = _make_mock_capture(total_frames=total_frames, fps=fps)
+    mock_cv2 = _make_mock_cv2()
+    mock_cv2.VideoCapture.return_value = mock_cap
+    mock_pil = _make_mock_pil()
+
+    with patch.dict(sys.modules, {
+        "cv2": mock_cv2,
+        "PIL": mock_pil, "PIL.Image": mock_pil.Image,
+    }):
+        with patch.object(Path, "exists", return_value=True):
+            compute_embeddings(
+                media_id, Path(f"/{media_id}.mp4"), catalog_db, scheduler, config
+            )
+
+    return scheduler, mock_model, mock_processor, config
+
+
+class TestEmbeddingComputation:
+    """Tests for compute_embeddings core loop."""
+
+    def test_correct_embedding_count(self, catalog_db) -> None:
+        """300 frames at 30fps stores 5 embeddings."""
+        _run_compute(catalog_db, total_frames=300, fps=30.0)
+        rows = catalog_db.get_embeddings_for_media("m1")
+        assert len(rows) == 5
+
+    def test_embedding_size_768d(self, catalog_db) -> None:
+        """Stored BLOB is 3072 bytes (768 * 4 bytes float32)."""
+        _run_compute(catalog_db)
+        rows = catalog_db.get_embeddings_for_media("m1")
+        assert len(rows) > 0
+        assert len(rows[0]["embedding"]) == 768 * 4
+
+    def test_embedding_roundtrip(self, catalog_db) -> None:
+        """np.frombuffer(blob, float32) recovers 768-d vector."""
+        _run_compute(catalog_db)
+        rows = catalog_db.get_embeddings_for_media("m1")
+        vec = np.frombuffer(rows[0]["embedding"], dtype=np.float32)
+        assert vec.shape == (768,)
+
+    def test_model_loaded_via_scheduler(self, catalog_db) -> None:
+        """scheduler.model called with config.clip_model."""
+        scheduler, _, _, config = _run_compute(catalog_db)
+        scheduler.model.assert_called_once_with(config.clip_model)
+
+    def test_correct_frame_numbers(self, catalog_db) -> None:
+        """DB rows at frames [0, 60, 120, 180, 240] for 300f@30fps."""
+        _run_compute(catalog_db, total_frames=300, fps=30.0)
+        rows = catalog_db.get_embeddings_for_media("m1")
+        frame_numbers = [r["frame_number"] for r in rows]
+        assert frame_numbers == [0, 60, 120, 180, 240]
