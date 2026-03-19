@@ -33,6 +33,25 @@ class EmbeddingError(Exception):
     """Raised for all frame embedding and search index failures."""
 
 
+def _compute_sample_indices(
+    total_frames: int, fps: float, sample_fps: float = 0.5
+) -> list[int]:
+    """Compute which frame indices to sample for embedding extraction.
+
+    Args:
+        total_frames: Total number of frames in the video.
+        fps: Video frames per second.
+        sample_fps: Target sampling rate in frames per second.
+
+    Returns:
+        Sorted list of 0-based frame indices.
+    """
+    if total_frames <= 0:
+        return []
+    interval = max(1, int(fps / sample_fps))
+    return list(range(0, total_frames, interval))
+
+
 def compute_embeddings(
     media_id: str,
     video_path: Path,
