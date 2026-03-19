@@ -640,6 +640,34 @@ class TestPySceneDetectPipeline:
         boundaries = json.loads(row["boundaries_json"])
         assert isinstance(boundaries, list)
 
+    def test_run_pyscenedetect_returns_boundaries(self, catalog_db, tmp_path) -> None:
+        """_run_pyscenedetect returns list[dict] (the boundaries list)."""
+        from autopilot.analyze.scenes import _run_pyscenedetect
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("vid-psd-ret", str(video_file))
+
+        mock_sd, mock_detectors = _make_mock_scenedetect()
+
+        with patch.dict(
+            sys.modules,
+            {
+                "scenedetect": mock_sd,
+                "scenedetect.detectors": mock_detectors,
+            },
+        ):
+            result = _run_pyscenedetect("vid-psd-ret", video_file, catalog_db)
+
+        # Should return a list of 2 dicts (default mock has 2 scenes)
+        assert isinstance(result, list)
+        assert len(result) == 2
+        for b in result:
+            assert isinstance(b, dict)
+            assert "start_frame" in b
+            assert "end_frame" in b
+            assert "transition_type" in b
+
     def test_stored_boundaries_are_valid_json(self, catalog_db, tmp_path) -> None:
         """Stored boundaries_json is valid JSON."""
         from autopilot.analyze.scenes import _run_pyscenedetect
@@ -796,6 +824,62 @@ class TestFallbackBehavior:
                 detect_shots("vid-fb4", video_file, catalog_db, scheduler)
 
         assert exc_info.value.__cause__ is fallback_err
+
+    def test_pyscenedetect_fallback_success_not_masked_by_logging_failure(
+        self, catalog_db, tmp_path
+    ) -> None:
+        """Successful PySceneDetect detection must not be masked by a post-detection logging failure.
+
+        Proves the false-negative bug is fixed: if _run_pyscenedetect succeeds (writes
+        boundaries to DB) but a subsequent DB read-back for logging fails, detect_shots
+        should NOT raise ShotDetectionError — the detection succeeded.
+        """
+        from autopilot.analyze.scenes import detect_shots
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("vid-fb-fn", str(video_file))
+
+        # TransNetV2 fails (cap won't open)
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture()
+        mock_cv2.VideoCapture.return_value = cap
+        cap.isOpened.return_value = False
+
+        scheduler = MagicMock()
+        mock_sd, mock_detectors = _make_mock_scenedetect()
+
+        # After _run_pyscenedetect completes, monkey-patch get_boundaries to fail
+        # so any DB read-back for logging would blow up
+        original_get = catalog_db.get_boundaries
+
+        call_count = {"n": 0}
+
+        def poisoned_get(media_id, method=None):
+            call_count["n"] += 1
+            # First call is the idempotency check — allow it
+            if call_count["n"] <= 1:
+                return original_get(media_id, method=method)
+            # Any subsequent call (e.g. read-back for count logging) should fail
+            raise RuntimeError("DB read error")
+
+        catalog_db.get_boundaries = poisoned_get
+
+        with patch.dict(
+            sys.modules,
+            {
+                "cv2": mock_cv2,
+                "scenedetect": mock_sd,
+                "scenedetect.detectors": mock_detectors,
+            },
+        ):
+            # Should NOT raise — detection succeeded even if logging read-back fails
+            detect_shots("vid-fb-fn", video_file, catalog_db, scheduler)
+
+        # Verify boundaries ARE in the DB
+        catalog_db.get_boundaries = original_get
+        row = catalog_db.get_boundaries("vid-fb-fn", method="pyscenedetect")
+        assert row is not None
 
     def test_no_partial_results_on_double_failure(self, catalog_db, tmp_path) -> None:
         """No partial results stored in DB on double failure."""
