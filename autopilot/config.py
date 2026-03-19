@@ -70,6 +70,7 @@ class ModelConfig:
     yolo_sample_every_n_frames: int = 3
     clip_model: str = "google/siglip2-so400m-patch14"
     face_model: str = "buffalo_l"
+    caption_model: str = "Qwen/Qwen2.5-VL-7B-Instruct"
     tts_engine: str = "kokoro"
     music_engine: str = "musicgen"
 
@@ -238,6 +239,8 @@ def _build_models(data: dict[str, Any]) -> ModelConfig:
         result.yolo_sample_every_n_frames = _coerce_int(
             "yolo_sample_every_n_frames", data["yolo_sample_every_n_frames"]
         )
+    if "caption_model" in data:
+        result.caption_model = str(data["caption_model"])
     if "clip_model" in data:
         result.clip_model = str(data["clip_model"])
     if "face_model" in data:
