@@ -81,4 +81,8 @@ def transcribe_media(
         batch_size: Number of audio segments per inference batch.
         hf_token: HuggingFace token for pyannote diarization.
     """
-    pass
+    # Idempotency: skip if transcript already exists for this media
+    existing = db.get_transcript(media_id)
+    if existing is not None:
+        logger.info("Transcript already exists for %s, skipping", media_id)
+        return
