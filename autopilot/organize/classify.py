@@ -214,24 +214,28 @@ def label_activities(db: CatalogDB, config: LLMConfig) -> None:
         cluster_id = str(cluster["cluster_id"])
         logger.info("Labeling cluster %s", cluster_id)
 
-        summary = _assemble_cluster_summary(cluster, db)
-        result = _call_llm(summary, config)
+        try:
+            summary = _assemble_cluster_summary(cluster, db)
+            result = _call_llm(summary, config)
 
-        # Log split recommendation if present
-        if result.get("split_recommended"):
-            split_reason = result.get("split_reason", "no reason given")
-            logger.warning(
-                "Split recommended for cluster %s: %s",
+            # Log split recommendation if present
+            if result.get("split_recommended"):
+                split_reason = result.get("split_reason", "no reason given")
+                logger.warning(
+                    "Split recommended for cluster %s: %s",
+                    cluster_id,
+                    split_reason,
+                )
+
+            # Update DB
+            db.update_activity_cluster(
                 cluster_id,
-                split_reason,
+                label=str(result["label"]),
+                description=str(result["description"]),
             )
-
-        # Update DB
-        db.update_activity_cluster(
-            cluster_id,
-            label=str(result["label"]),
-            description=str(result["description"]),
-        )
-        labeled += 1
+            labeled += 1
+        except (ClassifyError, Exception) as exc:
+            logger.error("Failed to label cluster %s: %s", cluster_id, exc)
+            continue
 
     logger.info("Labeled %d clusters (%d skipped)", labeled, skipped)
