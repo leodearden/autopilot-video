@@ -56,3 +56,41 @@ class TestPublicAPI:
         assert TRANSNETV2_INPUT_WIDTH == 48
         assert TRANSNETV2_INPUT_HEIGHT == 27
         assert PYSCENEDETECT_THRESHOLD == 27.0
+
+
+class TestIdempotency:
+    """Tests for idempotency guard — skip when boundaries already exist."""
+
+    def test_skips_when_boundaries_exist(self, catalog_db, tmp_path) -> None:
+        """When boundaries already exist for media_id, detect_shots returns early."""
+        from autopilot.analyze.scenes import detect_shots
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+
+        # Insert media + existing boundaries
+        catalog_db.insert_media("vid1", str(video_file))
+        catalog_db.upsert_boundaries("vid1", "[]", "transnetv2")
+
+        scheduler = MagicMock()
+
+        # Should return without calling scheduler
+        detect_shots("vid1", video_file, catalog_db, scheduler)
+
+        scheduler.model.assert_not_called()
+
+    def test_proceeds_when_no_boundaries(self, catalog_db, tmp_path) -> None:
+        """When no boundaries exist, detect_shots proceeds past the guard."""
+        from autopilot.analyze.scenes import detect_shots
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+
+        catalog_db.insert_media("vid2", str(video_file))
+
+        scheduler = MagicMock()
+
+        # Should NOT return early — will raise because no real model/video
+        # but the point is it gets past the idempotency check
+        with pytest.raises(Exception):
+            detect_shots("vid2", video_file, catalog_db, scheduler)
