@@ -732,3 +732,108 @@ class TestLogging:
             r.message for r in caplog.records if r.levelno == logging.INFO
         ]
         assert any("skipping" in m.lower() for m in info_messages)
+
+
+class TestIntegration:
+    """End-to-end integration tests."""
+
+    def _run_pipeline(
+        self, catalog_db, duration_seconds, *, top_k=5,
+    ):
+        """Run full pipeline and return stored events."""
+        from autopilot.analyze.audio_events import classify_audio_events
+
+        mock_panns, mock_config, mock_librosa, scheduler = (
+            _make_full_pipeline_mocks(catalog_db, "vid1", duration_seconds)
+        )
+
+        with patch.dict(sys.modules, {
+            "panns_inference": mock_panns,
+            "panns_inference.config": mock_config,
+            "librosa": mock_librosa,
+        }):
+            with patch.object(Path, "exists", return_value=True):
+                classify_audio_events(
+                    "vid1",
+                    Path("/tmp/vid1.wav"),
+                    catalog_db,
+                    scheduler,
+                    top_k=top_k,
+                )
+
+        return scheduler
+
+    def test_full_pipeline(self, catalog_db):
+        """5s audio -> 5 rows, 5 events each, timestamps 0.0-4.0, sorted desc."""
+        self._run_pipeline(catalog_db, 5.0)
+
+        events = catalog_db.get_audio_events_for_range("vid1", 0.0, 10.0)
+        assert len(events) == 5
+
+        timestamps = sorted(float(ev["timestamp_seconds"]) for ev in events)
+        assert timestamps == [0.0, 1.0, 2.0, 3.0, 4.0]
+
+        for ev in events:
+            parsed = json.loads(str(ev["events_json"]))
+            assert len(parsed) == 5
+            for item in parsed:
+                assert isinstance(item["class"], str)
+                assert isinstance(item["probability"], float)
+            # Verify sorted descending
+            probs = [item["probability"] for item in parsed]
+            assert probs == sorted(probs, reverse=True)
+
+    def test_idempotent_second_call(self, catalog_db):
+        """Call twice, scheduler.model called only once."""
+        from autopilot.analyze.audio_events import classify_audio_events
+
+        mock_panns, mock_config, mock_librosa, scheduler = (
+            _make_full_pipeline_mocks(catalog_db, "vid1", 3.0)
+        )
+
+        with patch.dict(sys.modules, {
+            "panns_inference": mock_panns,
+            "panns_inference.config": mock_config,
+            "librosa": mock_librosa,
+        }):
+            with patch.object(Path, "exists", return_value=True):
+                classify_audio_events(
+                    "vid1",
+                    Path("/tmp/vid1.wav"),
+                    catalog_db,
+                    scheduler,
+                )
+                classify_audio_events(
+                    "vid1",
+                    Path("/tmp/vid1.wav"),
+                    catalog_db,
+                    scheduler,
+                )
+
+        scheduler.model.assert_called_once()
+
+    def test_short_audio(self, catalog_db):
+        """0.5s -> 1 row at t=0.0 with zero-padded window."""
+        self._run_pipeline(catalog_db, 0.5)
+
+        events = catalog_db.get_audio_events_for_range("vid1", 0.0, 10.0)
+        assert len(events) == 1
+        assert float(events[0]["timestamp_seconds"]) == 0.0
+
+    def test_custom_top_k_integration(self, catalog_db):
+        """top_k=3 -> 3 events per window."""
+        self._run_pipeline(catalog_db, 2.0, top_k=3)
+
+        events = catalog_db.get_audio_events_for_range("vid1", 0.0, 10.0)
+        assert len(events) == 2
+        for ev in events:
+            parsed = json.loads(str(ev["events_json"]))
+            assert len(parsed) == 3
+
+    def test_media_status_updated(self, catalog_db):
+        """Status='analyzing' after run."""
+        self._run_pipeline(catalog_db, 2.0)
+
+        media = catalog_db.get_media("vid1")
+        assert media is not None
+        assert media["status"] == "analyzing"
