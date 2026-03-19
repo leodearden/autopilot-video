@@ -7,7 +7,9 @@ planning with format_for_review() for human checkpoint display.
 
 from __future__ import annotations
 
+import json
 import logging
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -43,6 +45,173 @@ class Narrative:
     emotional_journey: str = ""
     reasoning: str = ""
     status: str = "proposed"
+
+
+def _build_cluster_summary(
+    cluster: dict[str, object],
+    db: CatalogDB,
+) -> dict[str, str]:
+    """Build an enriched summary dict for an activity cluster.
+
+    Queries the DB for all signals associated with the cluster's clips:
+    media duration, transcripts, YOLO detections, audio events, and faces.
+
+    Args:
+        cluster: Activity cluster row dict from the DB.
+        db: Catalog database instance.
+
+    Returns:
+        Dict with keys: label, description, duration, key_moments,
+        people_present, emotional_tone, visual_quality_notes.
+    """
+    try:
+        clip_ids = json.loads(str(cluster["clip_ids_json"]))
+    except json.JSONDecodeError as e:
+        raise NarrativeError(f"Corrupt clip_ids_json in cluster: {e}") from e
+
+    summary: dict[str, str] = {
+        "label": str(cluster.get("label") or "Unlabeled"),
+        "description": str(cluster.get("description") or ""),
+    }
+
+    # --- Duration from media files ---
+    total_duration = 0.0
+    for cid in clip_ids:
+        media = db.get_media(cid)
+        if media and media.get("duration_seconds"):
+            try:
+                total_duration += float(media["duration_seconds"])  # type: ignore[arg-type]
+            except (ValueError, TypeError):
+                pass
+    if total_duration > 0:
+        minutes = total_duration / 60
+        summary["duration"] = f"{total_duration:.0f}s ({minutes:.1f} min)"
+    else:
+        summary["duration"] = "unknown"
+
+    # --- Key moments: transcript highlights + detection density peaks ---
+    transcript_texts: list[str] = []
+    for cid in clip_ids:
+        tr = db.get_transcript(cid)
+        if tr and tr.get("segments_json"):
+            try:
+                segments = json.loads(str(tr["segments_json"]))
+            except json.JSONDecodeError:
+                logger.warning("Corrupt segments_json for media %s, skipping", cid)
+                continue
+            for seg in segments:
+                if isinstance(seg, dict) and "text" in seg:
+                    transcript_texts.append(str(seg["text"]))
+
+    # Detection class counts (for event density peaks)
+    detection_counter: Counter[str] = Counter()
+    for cid in clip_ids:
+        dets = db.get_detections_for_media(cid)
+        for det_row in dets:
+            try:
+                det_list = json.loads(str(det_row["detections_json"]))
+            except json.JSONDecodeError:
+                logger.warning("Corrupt detections_json for media %s, skipping", cid)
+                continue
+            for det in det_list:
+                if isinstance(det, dict) and "class" in det:
+                    detection_counter[str(det["class"])] += 1
+
+    key_moments_parts: list[str] = []
+    if transcript_texts:
+        # Include first few transcript lines as highlights
+        highlights = transcript_texts[:5]
+        key_moments_parts.append("Transcript: " + " | ".join(highlights))
+    top_detections = detection_counter.most_common(5)
+    if top_detections:
+        det_str = ", ".join(f"{cls} ({count})" for cls, count in top_detections)
+        key_moments_parts.append(f"Detected objects: {det_str}")
+    summary["key_moments"] = "; ".join(key_moments_parts) if key_moments_parts else ""
+
+    # --- People present: face cluster labels ---
+    face_cluster_ids: set[int] = set()
+    for cid in clip_ids:
+        faces = db.get_faces_for_media(cid)
+        for face in faces:
+            cid_val = face.get("cluster_id")
+            if cid_val is not None:
+                try:
+                    face_cluster_ids.add(int(cid_val))  # type: ignore[arg-type]
+                except (ValueError, TypeError):
+                    pass
+
+    people_labels: list[str] = []
+    if face_cluster_ids:
+        all_face_clusters = db.get_face_clusters()
+        fc_map = {int(fc["cluster_id"]): fc.get("label") for fc in all_face_clusters}  # type: ignore[arg-type]
+        for fcid in sorted(face_cluster_ids):
+            label = fc_map.get(fcid)
+            if label:
+                people_labels.append(str(label))
+            else:
+                people_labels.append(f"Face #{fcid}")
+    summary["people_present"] = ", ".join(people_labels) if people_labels else ""
+
+    # --- Emotional tone from audio events + transcript ---
+    audio_counter: Counter[str] = Counter()
+    for cid in clip_ids:
+        events = db.get_audio_events_for_media(cid)
+        for ev_row in events:
+            try:
+                ev_list = json.loads(str(ev_row["events_json"]))
+            except json.JSONDecodeError:
+                logger.warning("Corrupt events_json for media %s, skipping", cid)
+                continue
+            for ev in ev_list:
+                if isinstance(ev, dict) and "class" in ev:
+                    audio_counter[str(ev["class"])] += 1
+
+    tone_parts: list[str] = []
+    top_audio = audio_counter.most_common(5)
+    if top_audio:
+        tone_parts.append(
+            "Audio: " + ", ".join(f"{cls} ({count})" for cls, count in top_audio)
+        )
+    if transcript_texts:
+        tone_parts.append(f"Speech detected ({len(transcript_texts)} segments)")
+    summary["emotional_tone"] = "; ".join(tone_parts) if tone_parts else ""
+
+    # --- Visual quality notes from detection confidence ---
+    confidences: list[float] = []
+    for cid in clip_ids:
+        dets = db.get_detections_for_media(cid)
+        for det_row in dets:
+            try:
+                det_list = json.loads(str(det_row["detections_json"]))
+            except json.JSONDecodeError:
+                continue
+            for det in det_list:
+                if isinstance(det, dict) and "confidence" in det:
+                    try:
+                        confidences.append(float(det["confidence"]))
+                    except (ValueError, TypeError):
+                        pass
+
+    if confidences:
+        avg_conf = sum(confidences) / len(confidences)
+        min_conf = min(confidences)
+        quality_notes: list[str] = [f"Avg detection confidence: {avg_conf:.2f}"]
+        if min_conf < 0.5:
+            quality_notes.append(
+                f"Some low-confidence frames (min: {min_conf:.2f}) - "
+                "possible motion blur or poor framing"
+            )
+        if avg_conf >= 0.8:
+            quality_notes.append("Overall good visual quality")
+        elif avg_conf >= 0.6:
+            quality_notes.append("Moderate visual quality")
+        else:
+            quality_notes.append("Low visual quality - many unclear frames")
+        summary["visual_quality_notes"] = "; ".join(quality_notes)
+    else:
+        summary["visual_quality_notes"] = ""
+
+    return summary
 
 
 def build_master_storyboard(db: CatalogDB) -> str:
