@@ -917,3 +917,135 @@ class TestLogging:
             "vid-log4" in r.message and r.levelno == logging.WARNING
             for r in caplog.records
         )
+
+
+class TestIntegration:
+    """End-to-end integration tests."""
+
+    def test_transnetv2_e2e(self, catalog_db, tmp_path) -> None:
+        """Full TransNetV2 path: mocked video -> boundaries in DB."""
+        from autopilot.analyze.scenes import detect_shots
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("int-1", str(video_file))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=30.0, total_frames=300)
+        mock_cv2.VideoCapture.return_value = cap
+        resized = np.zeros((27, 48, 3), dtype=np.uint8)
+        mock_cv2.resize.return_value = resized
+
+        scenes = np.array([[0, 99], [100, 199], [200, 299]])
+        model = _make_mock_transnetv2_model(scenes=scenes)
+        scheduler = _make_mock_scheduler(model)
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            detect_shots("int-1", video_file, catalog_db, scheduler)
+
+        row = catalog_db.get_boundaries("int-1", method="transnetv2")
+        assert row is not None
+        boundaries = json.loads(row["boundaries_json"])
+        assert len(boundaries) == 3
+        assert boundaries[0]["start_frame"] == 0
+        assert boundaries[0]["end_frame"] == 99
+        assert boundaries[0]["transition_type"] == "cut"
+        assert boundaries[2]["start_frame"] == 200
+        assert boundaries[2]["end_frame"] == 299
+
+    def test_idempotent_second_call(self, catalog_db, tmp_path) -> None:
+        """Second call to same media_id is idempotent (scheduler not called again)."""
+        from autopilot.analyze.scenes import detect_shots
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("int-2", str(video_file))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=30.0, total_frames=300)
+        mock_cv2.VideoCapture.return_value = cap
+        resized = np.zeros((27, 48, 3), dtype=np.uint8)
+        mock_cv2.resize.return_value = resized
+
+        model = _make_mock_transnetv2_model()
+        scheduler = _make_mock_scheduler(model)
+
+        # First call
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            detect_shots("int-2", video_file, catalog_db, scheduler)
+
+        # Reset mock to track second call
+        scheduler.model.reset_mock()
+
+        # Second call should be idempotent
+        detect_shots("int-2", video_file, catalog_db, scheduler)
+        scheduler.model.assert_not_called()
+
+    def test_fallback_stores_pyscenedetect(self, catalog_db, tmp_path) -> None:
+        """Fallback path stores boundaries with method='pyscenedetect'."""
+        from autopilot.analyze.scenes import detect_shots
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("int-3", str(video_file))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture()
+        mock_cv2.VideoCapture.return_value = cap
+        cap.isOpened.return_value = False
+
+        scheduler = MagicMock()
+        mock_sd, mock_detectors = _make_mock_scenedetect()
+
+        with patch.dict(sys.modules, {
+            "cv2": mock_cv2,
+            "scenedetect": mock_sd,
+            "scenedetect.detectors": mock_detectors,
+        }):
+            detect_shots("int-3", video_file, catalog_db, scheduler)
+
+        row = catalog_db.get_boundaries("int-3", method="pyscenedetect")
+        assert row is not None
+        boundaries = json.loads(row["boundaries_json"])
+        assert isinstance(boundaries, list)
+        assert len(boundaries) > 0
+
+    def test_both_methods_coexist_in_db(self, catalog_db, tmp_path) -> None:
+        """Both methods' results can coexist in DB for same media_id."""
+        from autopilot.analyze.scenes import _run_pyscenedetect, detect_shots
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("int-4", str(video_file))
+
+        # First: run TransNetV2
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=30.0, total_frames=300)
+        mock_cv2.VideoCapture.return_value = cap
+        resized = np.zeros((27, 48, 3), dtype=np.uint8)
+        mock_cv2.resize.return_value = resized
+
+        model = _make_mock_transnetv2_model()
+        scheduler = _make_mock_scheduler(model)
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            detect_shots("int-4", video_file, catalog_db, scheduler)
+
+        # Verify transnetv2 result exists
+        t2v_row = catalog_db.get_boundaries("int-4", method="transnetv2")
+        assert t2v_row is not None
+
+        # Now directly run PySceneDetect (bypassing idempotency)
+        mock_sd, mock_detectors = _make_mock_scenedetect()
+        with patch.dict(sys.modules, {
+            "scenedetect": mock_sd,
+            "scenedetect.detectors": mock_detectors,
+        }):
+            _run_pyscenedetect("int-4", video_file, catalog_db)
+
+        # Both should exist
+        all_boundaries = catalog_db.get_boundaries("int-4")
+        assert len(all_boundaries) == 2
+
+        methods = {row["method"] for row in all_boundaries}
+        assert methods == {"transnetv2", "pyscenedetect"}
