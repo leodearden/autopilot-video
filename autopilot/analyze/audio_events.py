@@ -9,9 +9,9 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-import numpy as np
+import numpy as np  # pyright: ignore[reportMissingImports]
 
 if TYPE_CHECKING:
     from autopilot.analyze.gpu_scheduler import GPUScheduler
@@ -57,7 +57,7 @@ def _extract_top_k(
     probabilities: np.ndarray,
     labels: list[str],
     k: int = 5,
-) -> list[dict[str, object]]:
+) -> list[dict[str, Any]]:
     """Extract top-k class predictions from a probability vector.
 
     Args:
