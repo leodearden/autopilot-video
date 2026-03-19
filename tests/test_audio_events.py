@@ -546,3 +546,108 @@ class TestDBStorage:
             parsed = json.loads(str(ev["events_json"]))
             for item in parsed:
                 assert type(item["probability"]) is float
+
+
+class TestErrorHandling:
+    """Tests for error handling in classification pipeline."""
+
+    def test_runtime_error_wrapped(self, catalog_db):
+        """RuntimeError in librosa.load -> AudioEventError."""
+        from autopilot.analyze.audio_events import (
+            AudioEventError,
+            classify_audio_events,
+        )
+
+        catalog_db.insert_media("vid1", "/tmp/vid1.wav")
+
+        mock_librosa = MagicMock()
+        mock_librosa.load.side_effect = RuntimeError("decode failed")
+
+        with patch.dict(sys.modules, {"librosa": mock_librosa}):
+            with patch.object(Path, "exists", return_value=True):
+                with pytest.raises(AudioEventError, match="decode failed"):
+                    classify_audio_events(
+                        "vid1",
+                        Path("/tmp/vid1.wav"),
+                        catalog_db,
+                        MagicMock(),
+                    )
+
+    def test_audio_event_error_passthrough(self, catalog_db):
+        """AudioEventError raised inside pipeline propagates unchanged."""
+        from autopilot.analyze.audio_events import (
+            AudioEventError,
+            classify_audio_events,
+        )
+
+        catalog_db.insert_media("vid1", "/tmp/vid1.wav")
+
+        mock_librosa = MagicMock()
+        mock_librosa.load.side_effect = AudioEventError("custom error")
+
+        with patch.dict(sys.modules, {"librosa": mock_librosa}):
+            with patch.object(Path, "exists", return_value=True):
+                with pytest.raises(AudioEventError, match="^custom error$"):
+                    classify_audio_events(
+                        "vid1",
+                        Path("/tmp/vid1.wav"),
+                        catalog_db,
+                        MagicMock(),
+                    )
+
+    def test_error_contains_media_id(self, catalog_db):
+        """Wrapped error message includes media_id string."""
+        from autopilot.analyze.audio_events import (
+            AudioEventError,
+            classify_audio_events,
+        )
+
+        catalog_db.insert_media("vid1", "/tmp/vid1.wav")
+
+        mock_librosa = MagicMock()
+        mock_librosa.load.side_effect = RuntimeError("oops")
+
+        with patch.dict(sys.modules, {"librosa": mock_librosa}):
+            with patch.object(Path, "exists", return_value=True):
+                with pytest.raises(AudioEventError, match="vid1"):
+                    classify_audio_events(
+                        "vid1",
+                        Path("/tmp/vid1.wav"),
+                        catalog_db,
+                        MagicMock(),
+                    )
+
+    def test_no_partial_writes(self, catalog_db):
+        """model.inference raises mid-way -> 0 audio_events rows in DB."""
+        from autopilot.analyze.audio_events import (
+            AudioEventError,
+            classify_audio_events,
+        )
+
+        mock_panns, mock_config, mock_librosa, scheduler = (
+            _make_full_pipeline_mocks(catalog_db, "vid1", 3.0)
+        )
+        # Make inference fail on the 2nd call
+        mock_model = mock_panns.AudioTagging.return_value
+        mock_model.inference.side_effect = [
+            mock_model.inference.return_value,
+            RuntimeError("CUDA OOM"),
+        ]
+
+        with patch.dict(sys.modules, {
+            "panns_inference": mock_panns,
+            "panns_inference.config": mock_config,
+            "librosa": mock_librosa,
+        }):
+            with patch.object(Path, "exists", return_value=True):
+                with pytest.raises(AudioEventError):
+                    classify_audio_events(
+                        "vid1",
+                        Path("/tmp/vid1.wav"),
+                        catalog_db,
+                        scheduler,
+                    )
+
+        # No partial data should be stored
+        events = catalog_db.get_audio_events_for_range("vid1", 0.0, 100.0)
+        assert len(events) == 0
