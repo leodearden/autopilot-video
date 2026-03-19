@@ -212,6 +212,30 @@ class TestErrorHandling:
             with pytest.raises(FaceDetectionError, match="Failed to open"):
                 detect_faces("vid1", vid, catalog_db, scheduler, config)
 
+    def test_video_not_opened_releases_capture(self, catalog_db, tmp_path) -> None:
+        """When cap.isOpened() returns False, cap.release() is still called."""
+        from autopilot.analyze.faces import FaceDetectionError, detect_faces
+
+        vid = tmp_path / "bad.mp4"
+        vid.touch()
+        catalog_db.insert_media("vid1", str(vid))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = MagicMock()
+        cap.isOpened.return_value = False
+        mock_cv2.VideoCapture.return_value = cap
+
+        scheduler = MagicMock()
+        config = MagicMock()
+        config.face_model = "buffalo_l"
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            with pytest.raises(FaceDetectionError, match="Failed to open"):
+                detect_faces("vid1", vid, catalog_db, scheduler, config)
+
+        # cap.release() must be called even for failed-open captures
+        cap.release.assert_called_once()
+
     def test_frame_read_failure_skipped(self, catalog_db, tmp_path) -> None:
         """Frame read failure skips that frame, other frames still processed."""
         from autopilot.analyze.faces import detect_faces
