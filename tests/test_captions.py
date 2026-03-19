@@ -647,3 +647,48 @@ class TestBatchCaption:
         )
         # With sample_rate=0.5, expect roughly 5 (allow tolerance)
         assert 2 <= captioned_count <= 8
+
+
+# ---------------------------------------------------------------------------
+# TestBackendSelection — vLLM / transformers backend selection
+# ---------------------------------------------------------------------------
+
+
+class TestBackendSelection:
+    """Tests for model backend selection and registration."""
+
+    def test_model_registration_vram(self):
+        """ModelSpec registered with ~14GB vram_bytes for FP16."""
+        from autopilot.analyze.captions import _make_caption_model_spec
+
+        config = _make_mock_config()
+        spec = _make_caption_model_spec(config)
+        # 14 GB = 14 * 1024^3
+        assert spec.vram_bytes == 14 * 1024**3
+
+    def test_register_caption_model(self):
+        """register_caption_model registers spec with scheduler."""
+        from autopilot.analyze.captions import register_caption_model
+
+        scheduler = MagicMock()
+        config = _make_mock_config()
+
+        register_caption_model(scheduler, config)
+
+        scheduler.register.assert_called_once()
+        call_args = scheduler.register.call_args
+        assert call_args[0][0] == "Qwen/Qwen2.5-VL-7B-Instruct"
+
+    def test_transformers_fallback(self):
+        """When vllm import fails, transformers inference path is taken."""
+        from autopilot.analyze.captions import _make_caption_model_spec
+
+        config = _make_mock_config()
+
+        # Ensure vllm is not available
+        with patch.dict(sys.modules, {"vllm": None}):
+            spec = _make_caption_model_spec(config)
+
+        # spec should be created successfully (transformers fallback)
+        assert spec is not None
+        assert callable(spec.load_fn)
