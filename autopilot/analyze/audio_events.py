@@ -114,6 +114,10 @@ def classify_audio_events(
         audio, sr = librosa.load(str(audio_path), sr=32000, mono=True)
         windows = _window_audio(audio, 32000)
 
+        if not windows:
+            logger.info("No audio data for %s, skipping classification", media_id)
+            return
+
         import panns_inference  # type: ignore[import-untyped]
 
         labels = panns_inference.config.labels
