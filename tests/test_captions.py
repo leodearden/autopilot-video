@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -115,10 +115,10 @@ class TestExtractClipFrames:
         mock_cv2.VideoCapture.return_value = cap
 
         with patch.dict(sys.modules, {"cv2": mock_cv2}):
-            from autopilot.analyze import captions
-
             # Force reimport to pick up mocked cv2
             import importlib
+
+            from autopilot.analyze import captions
 
             importlib.reload(captions)
             frames = captions._extract_clip_frames(
@@ -135,9 +135,9 @@ class TestExtractClipFrames:
         mock_cv2.VideoCapture.return_value = cap
 
         with patch.dict(sys.modules, {"cv2": mock_cv2}):
-            from autopilot.analyze import captions
-
             import importlib
+
+            from autopilot.analyze import captions
 
             importlib.reload(captions)
             captions._extract_clip_frames(
@@ -172,9 +172,9 @@ class TestExtractClipFrames:
         ]
 
         with patch.dict(sys.modules, {"cv2": mock_cv2}):
-            from autopilot.analyze import captions
-
             import importlib
+
+            from autopilot.analyze import captions
 
             importlib.reload(captions)
             frames = captions._extract_clip_frames(
@@ -190,9 +190,9 @@ class TestExtractClipFrames:
         mock_cv2.VideoCapture.return_value = cap
 
         with patch.dict(sys.modules, {"cv2": mock_cv2}):
-            from autopilot.analyze import captions
-
             import importlib
+
+            from autopilot.analyze import captions
 
             importlib.reload(captions)
             frames = captions._extract_clip_frames(
@@ -214,9 +214,9 @@ class TestExtractClipFrames:
         cap.read.return_value = (True, bgr_frame)
 
         with patch.dict(sys.modules, {"cv2": mock_cv2}):
-            from autopilot.analyze import captions
-
             import importlib
+
+            from autopilot.analyze import captions
 
             importlib.reload(captions)
             frames = captions._extract_clip_frames(
@@ -757,7 +757,10 @@ class TestLogging:
             )
 
         # Should log completion
-        assert any("m1" in msg and ("complete" in msg.lower() or "caption" in msg.lower()) for msg in caplog.messages)
+        assert any(
+            "m1" in msg and ("complete" in msg.lower() or "caption" in msg.lower())
+            for msg in caplog.messages
+        )
 
     def test_log_skipping_on_idempotent(self, catalog_db, caplog):
         """INFO log with 'already exists' when caption exists."""

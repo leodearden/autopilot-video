@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from autopilot.config import ModelConfig
     from autopilot.db import CatalogDB
 
-__all__ = ["CaptionError", "caption_clip", "batch_caption"]
+__all__ = ["CaptionError", "caption_clip", "batch_caption", "register_caption_model"]
 
 logger = logging.getLogger(__name__)
 
