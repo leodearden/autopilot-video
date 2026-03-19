@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # -- Step 7: Public API and summary assembly tests ----------------------------
 
 
@@ -230,7 +229,7 @@ class TestLLMLabeling:
         mock_anthropic = MagicMock()
         mock_anthropic.Anthropic.return_value = mock_client
         with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
-            result = _call_llm(summary, config)
+            _call_llm(summary, config)
 
         mock_client.messages.create.assert_called_once()
         call_kwargs = mock_client.messages.create.call_args[1]
@@ -287,7 +286,10 @@ class TestLLMLabeling:
 
         mock_response = MagicMock()
         mock_content = MagicMock()
-        mock_content.text = '```json\n{"label": "Beach day", "description": "Fun at the beach.", "split_recommended": false, "split_reason": null}\n```'
+        mock_content.text = (
+            '```json\n{"label": "Beach day", "description": "Fun at the beach.",'
+            ' "split_recommended": false, "split_reason": null}\n```'
+        )
         mock_response.content = [mock_content]
 
         mock_client = MagicMock()
@@ -475,6 +477,7 @@ class TestLabelActivities:
     def test_split_recommended_logs_warning(self, catalog_db, caplog):
         """split_recommended=true triggers WARNING log with cluster_id and split_reason."""
         import logging
+
         from autopilot.config import LLMConfig
         from autopilot.organize.classify import label_activities
 

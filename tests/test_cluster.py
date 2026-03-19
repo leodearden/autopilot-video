@@ -7,7 +7,6 @@ import json
 
 import pytest
 
-
 # -- DB helper tests (prerequisite) -------------------------------------------
 
 
