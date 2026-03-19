@@ -1,0 +1,74 @@
+# Fused Memory MCP Server Configuration for autopilot-video project
+# Port 8001 — xxx1 range to avoid collisions with reify (xxx0) and dark-factory (xxx2)
+
+server:
+  transport: "http"
+  host: "0.0.0.0"
+  port: 8001
+
+llm:
+  provider: "openai"
+  model: "gpt-4o-mini"
+  max_tokens: 4096
+
+  providers:
+    openai:
+      api_key: ${OPENAI_API_KEY}
+      api_url: ${OPENAI_API_URL:https://api.openai.com/v1}
+
+    anthropic:
+      api_key: ${ANTHROPIC_API_KEY}
+      api_url: ${ANTHROPIC_API_URL:https://api.anthropic.com}
+
+embedder:
+  provider: "openai"
+  model: "text-embedding-3-small"
+  dimensions: 1536
+
+  providers:
+    openai:
+      api_key: ${OPENAI_API_KEY}
+      api_url: ${OPENAI_API_URL:https://api.openai.com/v1}
+
+graphiti:
+  provider: "falkordb"
+  falkordb:
+    uri: ${FALKORDB_URI:redis://localhost:6379}
+    password: ${FALKORDB_PASSWORD:}
+    database: ${FALKORDB_DATABASE:autopilot_video_db}
+
+mem0:
+  qdrant_url: ${QDRANT_URL:http://localhost:6333}
+  collection_prefix: "autopilot_video"
+
+routing:
+  confidence_threshold: 0.7
+  use_heuristics: true
+  llm_fallback: true
+
+queue:
+  semaphore_limit: ${SEMAPHORE_LIMIT:3}
+  workers_per_group: ${QUEUE_WORKERS_PER_GROUP:1}
+  graphiti_max_coroutines: ${GRAPHITI_MAX_COROUTINES:5}
+  max_attempts: ${QUEUE_MAX_ATTEMPTS:5}
+  retry_base_seconds: ${QUEUE_RETRY_BASE:5}
+  write_timeout_seconds: ${QUEUE_WRITE_TIMEOUT:120}
+  data_dir: "${PROJECT_ROOT:./data}/.orchestrator/queue"
+
+taskmaster:
+  transport: "stdio"
+  command: "node"
+  args: ["${TASKMASTER_DIR:./taskmaster-ai}/dist/mcp-server.js"]
+  project_root: "${PROJECT_ROOT:.}"
+  tool_mode: "standard"
+
+reconciliation:
+  enabled: true
+  data_dir: "${PROJECT_ROOT:./data}/.orchestrator/reconciliation"
+  buffer_size_threshold: 10
+  max_staleness_seconds: 1800
+  agent_llm_provider: "anthropic"
+  agent_llm_model: "claude-sonnet-4-20250514"
+  agent_max_steps: 50
+  judge_enabled: true
+  explore_codebase_root: "${PROJECT_ROOT:.}"

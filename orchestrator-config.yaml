@@ -44,9 +44,9 @@ type_check_command: "pyright"
 
 # Fused memory HTTP server
 fused_memory:
-  url: "http://localhost:8000"
+  url: "http://localhost:8001"
   project_id: "autopilot_video"
-  config_path: "fused-memory/config/config.yaml"
+  config_path: "fused-memory-config.yaml"
   server_command:
     - "uv"
     - "run"
@@ -58,21 +58,22 @@ fused_memory:
     - "--transport"
     - "http"
 
-# Sandbox
+# Sandbox (disabled: bwrap uid map not permitted on this kernel)
 sandbox:
-  enabled: true
+  enabled: false
 
 # Escalation
 escalation:
   queue_dir: "data/escalations"
-  port: 8100
+  port: 8101
+  host: "127.0.0.1"
 
 # Git
 git:
   main_branch: "main"
   branch_prefix: "task/"
   remote: "origin"
-  worktree_dir: "../worktrees"
+  worktree_dir: ".worktrees"
 
 # Project root
 project_root: "/home/leo/src/autopilot-video"
