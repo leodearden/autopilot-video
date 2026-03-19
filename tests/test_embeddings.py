@@ -50,3 +50,52 @@ class TestDBHelpers:
         assert len(result) == 4
         media_ids = {r["media_id"] for r in result}
         assert media_ids == {"vid1", "vid2", "vid3"}
+
+
+class TestPublicAPI:
+    """Tests for module-level public API imports."""
+
+    def test_embedding_error_importable(self) -> None:
+        """EmbeddingError is importable and is an Exception subclass with message."""
+        from autopilot.analyze.embeddings import EmbeddingError
+
+        assert issubclass(EmbeddingError, Exception)
+        err = EmbeddingError("test message")
+        assert str(err) == "test message"
+
+    def test_compute_embeddings_importable(self) -> None:
+        """compute_embeddings is importable from autopilot.analyze.embeddings."""
+        from autopilot.analyze.embeddings import compute_embeddings
+
+        assert callable(compute_embeddings)
+
+    def test_build_search_index_importable(self) -> None:
+        """build_search_index is importable from autopilot.analyze.embeddings."""
+        from autopilot.analyze.embeddings import build_search_index
+
+        assert callable(build_search_index)
+
+    def test_search_by_text_importable(self) -> None:
+        """search_by_text is importable from autopilot.analyze.embeddings."""
+        from autopilot.analyze.embeddings import search_by_text
+
+        assert callable(search_by_text)
+
+    def test_search_by_image_importable(self) -> None:
+        """search_by_image is importable from autopilot.analyze.embeddings."""
+        from autopilot.analyze.embeddings import search_by_image
+
+        assert callable(search_by_image)
+
+    def test_all_exports(self) -> None:
+        """__all__ contains exactly the expected public API."""
+        from autopilot.analyze import embeddings
+
+        expected = {
+            "EmbeddingError",
+            "compute_embeddings",
+            "build_search_index",
+            "search_by_text",
+            "search_by_image",
+        }
+        assert set(embeddings.__all__) == expected
