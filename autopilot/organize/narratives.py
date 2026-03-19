@@ -414,7 +414,29 @@ def propose_narratives(
     Raises:
         NarrativeError: If LLM call fails or response is malformed.
     """
-    raise NotImplementedError
+    try:
+        response_text = _call_llm(storyboard, config)
+    except NarrativeError:
+        raise
+    except Exception as e:
+        raise NarrativeError(f"Narrative proposal failed: {e}") from e
+
+    narratives = _parse_narratives(response_text)
+
+    # Store each narrative in the DB
+    for narrative in narratives:
+        db.insert_narrative(
+            narrative.narrative_id,
+            title=narrative.title,
+            description=narrative.description,
+            proposed_duration_seconds=narrative.proposed_duration_seconds,
+            activity_cluster_ids_json=json.dumps(narrative.activity_cluster_ids),
+            arc_notes=json.dumps(narrative.arc),
+            status=narrative.status,
+        )
+
+    logger.info("Proposed %d narratives", len(narratives))
+    return narratives
 
 
 def format_for_review(narratives: list[Narrative]) -> str:

@@ -651,7 +651,7 @@ class TestParseNarratives:
 def _setup_mock_narrative_anthropic(narratives_data=None):
     """Create a mock anthropic module and client for narrative tests."""
     mock_response = _make_narrative_llm_response(
-        json.dumps(narratives_data) if narratives_data else None
+        json.dumps(narratives_data) if narratives_data is not None else None
     )
     mock_client = MagicMock()
     mock_client.messages.create.return_value = mock_response
