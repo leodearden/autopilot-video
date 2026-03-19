@@ -690,8 +690,8 @@ class TestClusterFaces:
         Uses a non-autocommit DB so that CatalogDB.__exit__ rollback actually
         reverses the clear_face_clusters + reset_face_cluster_ids mutations.
         """
-        from autopilot.db import CatalogDB
         from autopilot.analyze.faces import cluster_faces
+        from autopilot.db import CatalogDB
 
         # Create non-autocommit DB for proper transaction semantics
         db = CatalogDB(":memory:")
