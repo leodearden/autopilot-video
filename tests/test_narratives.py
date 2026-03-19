@@ -220,7 +220,8 @@ class TestBuildClusterSummary:
         cluster = _seed_cluster_with_full_data(catalog_db)
         summary = _build_cluster_summary(cluster, catalog_db)
 
-        assert "temple" in summary["key_moments"].lower() or "monk" in summary["key_moments"].lower()
+        key_moments = summary["key_moments"].lower()
+        assert "temple" in key_moments or "monk" in key_moments
 
     def test_people_present_includes_face_labels(self, catalog_db):
         """People present includes face cluster labels."""
@@ -601,7 +602,15 @@ class TestParseNarratives:
         """Parses JSON wrapped in ```json code block."""
         from autopilot.organize.narratives import _parse_narratives
 
-        text = '```json\n[{"title": "Beach Day", "activity_cluster_ids": ["c1"], "proposed_duration_seconds": 300, "arc": {"beginning": "A", "middle": "B", "end": "C"}, "emotional_journey": "Joy", "target_audience": "All", "reasoning": "Fun."}]\n```'
+        text = (
+            '```json\n[{"title": "Beach Day",'
+            ' "activity_cluster_ids": ["c1"],'
+            ' "proposed_duration_seconds": 300,'
+            ' "arc": {"beginning": "A", "middle": "B", "end": "C"},'
+            ' "emotional_journey": "Joy",'
+            ' "target_audience": "All",'
+            ' "reasoning": "Fun."}]\n```'
+        )
 
         narratives = _parse_narratives(text)
         assert len(narratives) == 1
@@ -612,8 +621,18 @@ class TestParseNarratives:
         from autopilot.organize.narratives import _parse_narratives
 
         text = json.dumps([
-            {"title": "A", "activity_cluster_ids": ["c1"], "proposed_duration_seconds": 300, "arc": {}, "emotional_journey": "", "target_audience": "", "reasoning": ""},
-            {"title": "B", "activity_cluster_ids": ["c2"], "proposed_duration_seconds": 600, "arc": {}, "emotional_journey": "", "target_audience": "", "reasoning": ""},
+            {
+                "title": "A", "activity_cluster_ids": ["c1"],
+                "proposed_duration_seconds": 300, "arc": {},
+                "emotional_journey": "", "target_audience": "",
+                "reasoning": "",
+            },
+            {
+                "title": "B", "activity_cluster_ids": ["c2"],
+                "proposed_duration_seconds": 600, "arc": {},
+                "emotional_journey": "", "target_audience": "",
+                "reasoning": "",
+            },
         ])
 
         narratives = _parse_narratives(text)
