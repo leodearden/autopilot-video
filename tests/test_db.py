@@ -1032,3 +1032,61 @@ class TestFacesCRUD:
         assert all(f["cluster_id"] == 1 for f in faces)
         faces30 = catalog_db.get_faces_for_frame("m1", 30)
         assert faces30[0]["cluster_id"] == 2
+
+
+# -- Captions CRUD -----------------------------------------------------------
+
+
+class TestCaptionsCRUD:
+    """Tests for captions table CRUD operations."""
+
+    def test_upsert_and_get_caption(self, catalog_db):
+        """Insert caption, retrieve by PK, verify all fields."""
+        _insert_test_media(catalog_db)
+        catalog_db.upsert_caption(
+            "m1", 0.0, 10.0, "A person walking on a beach", "qwen-vl-7b"
+        )
+        result = catalog_db.get_caption("m1", 0.0, 10.0)
+        assert result is not None
+        assert result["media_id"] == "m1"
+        assert result["start_time"] == 0.0
+        assert result["end_time"] == 10.0
+        assert result["caption"] == "A person walking on a beach"
+        assert result["model_name"] == "qwen-vl-7b"
+
+    def test_upsert_overwrites(self, catalog_db):
+        """Upsert same PK twice, verify latest caption wins."""
+        _insert_test_media(catalog_db)
+        catalog_db.upsert_caption("m1", 0.0, 10.0, "Old caption", "model-a")
+        catalog_db.upsert_caption("m1", 0.0, 10.0, "New caption", "model-b")
+        result = catalog_db.get_caption("m1", 0.0, 10.0)
+        assert result is not None
+        assert result["caption"] == "New caption"
+        assert result["model_name"] == "model-b"
+
+    def test_get_caption_not_found(self, catalog_db):
+        """get_caption returns None for missing caption."""
+        assert catalog_db.get_caption("nonexistent", 0.0, 10.0) is None
+
+    def test_get_captions_for_media(self, catalog_db):
+        """Insert 3 captions for same media_id, verify all returned ordered by start_time."""
+        _insert_test_media(catalog_db)
+        catalog_db.upsert_caption("m1", 20.0, 30.0, "Third clip", "model-a")
+        catalog_db.upsert_caption("m1", 0.0, 10.0, "First clip", "model-a")
+        catalog_db.upsert_caption("m1", 10.0, 20.0, "Second clip", "model-a")
+        results = catalog_db.get_captions_for_media("m1")
+        assert len(results) == 3
+        assert results[0]["start_time"] == 0.0
+        assert results[1]["start_time"] == 10.0
+        assert results[2]["start_time"] == 20.0
+
+    def test_get_captions_for_media_empty(self, catalog_db):
+        """Returns empty list for media with no captions."""
+        assert catalog_db.get_captions_for_media("nonexistent") == []
+
+    def test_caption_fk_enforcement(self, catalog_db):
+        """Inserting caption with nonexistent media_id raises IntegrityError."""
+        with pytest.raises(sqlite3.IntegrityError):
+            catalog_db.upsert_caption(
+                "nonexistent_media", 0.0, 10.0, "caption", "model"
+            )
