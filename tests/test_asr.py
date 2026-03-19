@@ -887,3 +887,133 @@ class TestErrorHandling:
 
         # No transcript should be stored
         assert catalog_db.get_transcript("vid1") is None
+
+
+class TestLogging:
+    """Tests for structured logging output."""
+
+    def test_start_log(self, catalog_db, caplog):
+        """INFO record contains media_id on start."""
+        from autopilot.analyze.asr import transcribe_media
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db,
+            "vid1",
+            [{"start": 0.0, "end": 1.0, "text": "Hello"}],
+        )
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                with caplog.at_level(logging.INFO):
+                    transcribe_media(
+                        "vid1",
+                        Path("/tmp/audio.wav"),
+                        catalog_db,
+                        scheduler,
+                        MagicMock(whisper_size="large-v3"),
+                    )
+
+        info_messages = [r.message for r in caplog.records
+                         if r.levelno == logging.INFO]
+        assert any("vid1" in m for m in info_messages)
+
+    def test_completion_log(self, catalog_db, caplog):
+        """INFO on success with segment count."""
+        from autopilot.analyze.asr import transcribe_media
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db,
+            "vid1",
+            [
+                {"start": 0.0, "end": 1.0, "text": "Hello"},
+                {"start": 1.0, "end": 2.0, "text": "World"},
+            ],
+        )
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                with caplog.at_level(logging.INFO):
+                    transcribe_media(
+                        "vid1",
+                        Path("/tmp/audio.wav"),
+                        catalog_db,
+                        scheduler,
+                        MagicMock(whisper_size="large-v3"),
+                    )
+
+        info_messages = [r.message for r in caplog.records
+                         if r.levelno == logging.INFO]
+        assert any("2 segments" in m for m in info_messages)
+
+    def test_skip_log(self, catalog_db, caplog):
+        """INFO mentions 'skipping' for idempotent call."""
+        from autopilot.analyze.asr import transcribe_media
+
+        catalog_db.insert_media("vid1", "/tmp/audio.wav")
+        catalog_db.upsert_transcript("vid1", '[]', "en")
+
+        with caplog.at_level(logging.INFO):
+            transcribe_media(
+                "vid1",
+                Path("/tmp/audio.wav"),
+                catalog_db,
+                MagicMock(),
+                MagicMock(whisper_size="large-v3"),
+            )
+
+        info_messages = [r.message for r in caplog.records
+                         if r.levelno == logging.INFO]
+        assert any("skipping" in m.lower() for m in info_messages)
+
+    def test_diarization_skip_log(self, catalog_db, caplog, monkeypatch):
+        """Log mentions diarization when skipped (no token)."""
+        from autopilot.analyze.asr import transcribe_media
+
+        monkeypatch.delenv("HF_TOKEN", raising=False)
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db,
+            "vid1",
+            [{"start": 0.0, "end": 1.0, "text": "Hello"}],
+        )
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                with caplog.at_level(logging.INFO):
+                    transcribe_media(
+                        "vid1",
+                        Path("/tmp/audio.wav"),
+                        catalog_db,
+                        scheduler,
+                        MagicMock(whisper_size="large-v3"),
+                    )
+
+        info_messages = [r.message for r in caplog.records
+                         if r.levelno == logging.INFO]
+        assert any("diariz" in m.lower() for m in info_messages)
+
+    def test_alignment_failure_log(self, catalog_db, caplog):
+        """WARNING logged when alignment fails."""
+        from autopilot.analyze.asr import transcribe_media
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db,
+            "vid1",
+            [{"start": 0.0, "end": 1.0, "text": "Hello"}],
+        )
+        mock_wx.align.side_effect = RuntimeError("align failed")
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                with caplog.at_level(logging.WARNING):
+                    transcribe_media(
+                        "vid1",
+                        Path("/tmp/audio.wav"),
+                        catalog_db,
+                        scheduler,
+                        MagicMock(whisper_size="large-v3"),
+                    )
+
+        warn_messages = [r.message for r in caplog.records
+                         if r.levelno >= logging.WARNING]
+        assert any("align" in m.lower() for m in warn_messages)
