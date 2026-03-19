@@ -308,3 +308,52 @@ class TestNormalizeSegments:
         # Should not raise
         serialized = json.dumps(result)
         assert isinstance(serialized, str)
+
+
+class TestIdempotency:
+    """Tests for transcript idempotency check."""
+
+    def test_skips_when_transcript_exists(self, catalog_db):
+        """Skip transcription when transcript already exists."""
+        from autopilot.analyze.asr import transcribe_media
+
+        catalog_db.insert_media("vid1", "/tmp/audio.wav")
+        catalog_db.upsert_transcript("vid1", '{"segments": []}', "en")
+
+        scheduler = MagicMock()
+        config = MagicMock()
+        config.whisper_size = "large-v3"
+
+        transcribe_media(
+            "vid1",
+            Path("/tmp/audio.wav"),
+            catalog_db,
+            scheduler,
+            config,
+        )
+
+        # Scheduler should NOT be called for model loading
+        scheduler.model.assert_not_called()
+
+    def test_proceeds_when_no_transcript(self, catalog_db):
+        """Proceed with transcription when no transcript exists."""
+        from autopilot.analyze.asr import transcribe_media
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db,
+            "vid1",
+            [{"start": 0.0, "end": 1.0, "text": "Hello"}],
+        )
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                transcribe_media(
+                    "vid1",
+                    Path("/tmp/audio.wav"),
+                    catalog_db,
+                    scheduler,
+                    MagicMock(whisper_size="large-v3"),
+                )
+
+        # Scheduler SHOULD be called for model loading
+        scheduler.model.assert_called_once()
