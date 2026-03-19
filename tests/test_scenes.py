@@ -412,3 +412,147 @@ class TestPySceneDetectBoundaryConversion:
 
         # end.get_frames() returns 150, but the end frame of this scene is 149
         assert result[0]["end_frame"] == 149
+
+
+def _make_mock_transnetv2_model(scenes: np.ndarray | None = None) -> MagicMock:
+    """Create a MagicMock TransNetV2 model.
+
+    Args:
+        scenes: Optional scenes array to return from predictions_to_scenes.
+            Defaults to [[0, 99], [100, 299]].
+    """
+    model = MagicMock()
+    predictions = np.random.rand(300, 1)
+    model.predict_frames.return_value = (predictions, None)
+    if scenes is None:
+        scenes = np.array([[0, 99], [100, 299]])
+    model.predictions_to_scenes.return_value = scenes
+    return model
+
+
+def _make_mock_scheduler(model: MagicMock) -> MagicMock:
+    """Create a MagicMock scheduler with context manager protocol."""
+    scheduler = MagicMock()
+    scheduler.model.return_value.__enter__ = MagicMock(return_value=model)
+    scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
+    return scheduler
+
+
+class TestTransNetV2Pipeline:
+    """Tests for the TransNetV2 detection path in detect_shots."""
+
+    def _setup(self, catalog_db, tmp_path):
+        """Common setup: create video file, insert media, mock cv2 + model."""
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("vid-t2v", str(video_file))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=30.0, total_frames=300)
+        mock_cv2.VideoCapture.return_value = cap
+        resized = np.zeros((27, 48, 3), dtype=np.uint8)
+        mock_cv2.resize.return_value = resized
+
+        return video_file, mock_cv2
+
+    def test_scheduler_model_called(self, catalog_db, tmp_path) -> None:
+        """scheduler.model('transnetv2') is called as context manager."""
+        from autopilot.analyze.scenes import detect_shots
+
+        video_file, mock_cv2 = self._setup(catalog_db, tmp_path)
+        model = _make_mock_transnetv2_model()
+        scheduler = _make_mock_scheduler(model)
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            detect_shots("vid-t2v", video_file, catalog_db, scheduler)
+
+        scheduler.model.assert_called_once_with("transnetv2")
+
+    def test_model_receives_frames(self, catalog_db, tmp_path) -> None:
+        """Model receives downsampled frames array."""
+        from autopilot.analyze.scenes import detect_shots
+
+        video_file, mock_cv2 = self._setup(catalog_db, tmp_path)
+        model = _make_mock_transnetv2_model()
+        scheduler = _make_mock_scheduler(model)
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            detect_shots("vid-t2v", video_file, catalog_db, scheduler)
+
+        model.predict_frames.assert_called_once()
+        frames_arg = model.predict_frames.call_args[0][0]
+        assert isinstance(frames_arg, np.ndarray)
+        assert frames_arg.shape[1:] == (27, 48, 3)
+
+    def test_predictions_to_scenes_called(self, catalog_db, tmp_path) -> None:
+        """model.predict_frames then model.predictions_to_scenes are called."""
+        from autopilot.analyze.scenes import detect_shots
+
+        video_file, mock_cv2 = self._setup(catalog_db, tmp_path)
+        model = _make_mock_transnetv2_model()
+        scheduler = _make_mock_scheduler(model)
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            detect_shots("vid-t2v", video_file, catalog_db, scheduler)
+
+        model.predict_frames.assert_called_once()
+        model.predictions_to_scenes.assert_called_once()
+
+    def test_boundaries_stored_in_db(self, catalog_db, tmp_path) -> None:
+        """Boundaries stored via db.upsert_boundaries with method='transnetv2'."""
+        from autopilot.analyze.scenes import detect_shots
+
+        video_file, mock_cv2 = self._setup(catalog_db, tmp_path)
+        model = _make_mock_transnetv2_model()
+        scheduler = _make_mock_scheduler(model)
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            detect_shots("vid-t2v", video_file, catalog_db, scheduler)
+
+        row = catalog_db.get_boundaries("vid-t2v", method="transnetv2")
+        assert row is not None
+        boundaries = json.loads(row["boundaries_json"])
+        assert isinstance(boundaries, list)
+        assert len(boundaries) == 2
+
+    def test_stored_boundaries_json_structure(self, catalog_db, tmp_path) -> None:
+        """Stored boundaries_json is valid JSON list of dicts with correct keys."""
+        from autopilot.analyze.scenes import detect_shots
+
+        video_file, mock_cv2 = self._setup(catalog_db, tmp_path)
+        model = _make_mock_transnetv2_model()
+        scheduler = _make_mock_scheduler(model)
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            detect_shots("vid-t2v", video_file, catalog_db, scheduler)
+
+        row = catalog_db.get_boundaries("vid-t2v", method="transnetv2")
+        boundaries = json.loads(row["boundaries_json"])
+        for b in boundaries:
+            assert "start_frame" in b
+            assert "end_frame" in b
+            assert "transition_type" in b
+            assert b["transition_type"] == "cut"
+
+    def test_zero_frame_video(self, catalog_db, tmp_path) -> None:
+        """Handles zero-frame video gracefully (stores empty list)."""
+        from autopilot.analyze.scenes import detect_shots
+
+        video_file = tmp_path / "empty.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("vid-empty", str(video_file))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=30.0, total_frames=0)
+        mock_cv2.VideoCapture.return_value = cap
+
+        model = _make_mock_transnetv2_model(scenes=np.empty((0, 2), dtype=np.int64))
+        scheduler = _make_mock_scheduler(model)
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            detect_shots("vid-empty", video_file, catalog_db, scheduler)
+
+        row = catalog_db.get_boundaries("vid-empty", method="transnetv2")
+        assert row is not None
+        boundaries = json.loads(row["boundaries_json"])
+        assert boundaries == []
