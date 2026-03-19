@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -122,3 +123,175 @@ class TestInputValidation:
             detect_shots("vid4", bad_path, catalog_db, scheduler)
 
         scheduler.model.assert_not_called()
+
+
+def _make_mock_cv2():
+    """Create a MagicMock cv2 module with correct CAP_PROP constants."""
+    mock_cv2 = MagicMock()
+    mock_cv2.CAP_PROP_FPS = 5
+    mock_cv2.CAP_PROP_FRAME_COUNT = 7
+    mock_cv2.CAP_PROP_FRAME_WIDTH = 3
+    mock_cv2.CAP_PROP_FRAME_HEIGHT = 4
+    mock_cv2.INTER_AREA = 3
+    return mock_cv2
+
+
+def _make_mock_capture(
+    fps: float = 30.0,
+    total_frames: int = 300,
+    width: int = 1920,
+    height: int = 1080,
+) -> MagicMock:
+    """Create a MagicMock mimicking cv2.VideoCapture for scenes tests."""
+    CAP_PROP_FPS = 5
+    CAP_PROP_FRAME_COUNT = 7
+    CAP_PROP_FRAME_WIDTH = 3
+    CAP_PROP_FRAME_HEIGHT = 4
+
+    cap = MagicMock()
+    cap.isOpened.return_value = True
+
+    def get_prop(prop_id):
+        prop_map = {
+            CAP_PROP_FPS: fps,
+            CAP_PROP_FRAME_COUNT: total_frames,
+            CAP_PROP_FRAME_WIDTH: width,
+            CAP_PROP_FRAME_HEIGHT: height,
+        }
+        return prop_map.get(prop_id, 0.0)
+
+    cap.get.side_effect = get_prop
+
+    # Default: read() returns frames of original resolution
+    frame = np.zeros((height, width, 3), dtype=np.uint8)
+    cap.read.return_value = (True, frame)
+    return cap
+
+
+class TestFrameReading:
+    """Tests for _read_and_downsample_frames helper."""
+
+    def test_returns_correct_shape(self) -> None:
+        """Returns numpy array of shape (N, 27, 48, 3) for N-frame video."""
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=30.0, total_frames=10, width=1920, height=1080)
+        mock_cv2.VideoCapture.return_value = cap
+
+        # Make cv2.resize return a 48x27 frame
+        resized = np.zeros((27, 48, 3), dtype=np.uint8)
+        mock_cv2.resize.return_value = resized
+
+        from autopilot.analyze.scenes import _read_and_downsample_frames
+
+        frames, fps, total = _read_and_downsample_frames(
+            Path("/fake/video.mp4"), mock_cv2
+        )
+
+        assert frames.shape == (10, 27, 48, 3)
+        assert fps == 30.0
+        assert total == 10
+
+    def test_returns_fps_and_total_frames(self) -> None:
+        """Returns correct fps float and total_frames int."""
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=24.0, total_frames=150)
+        mock_cv2.VideoCapture.return_value = cap
+
+        resized = np.zeros((27, 48, 3), dtype=np.uint8)
+        mock_cv2.resize.return_value = resized
+
+        from autopilot.analyze.scenes import _read_and_downsample_frames
+
+        frames, fps, total = _read_and_downsample_frames(
+            Path("/fake/video.mp4"), mock_cv2
+        )
+
+        assert isinstance(fps, float)
+        assert fps == 24.0
+        assert isinstance(total, int)
+        assert total == 150
+
+    def test_skips_bad_frames(self) -> None:
+        """Skips bad frames (cap.read returns False) without crashing."""
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=30.0, total_frames=5)
+        mock_cv2.VideoCapture.return_value = cap
+
+        good_frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        # Frames: good, bad, good, bad, good -> 3 good frames
+        cap.read.side_effect = [
+            (True, good_frame),
+            (False, None),
+            (True, good_frame),
+            (False, None),
+            (True, good_frame),
+        ]
+
+        resized = np.zeros((27, 48, 3), dtype=np.uint8)
+        mock_cv2.resize.return_value = resized
+
+        from autopilot.analyze.scenes import _read_and_downsample_frames
+
+        frames, fps, total = _read_and_downsample_frames(
+            Path("/fake/video.mp4"), mock_cv2
+        )
+
+        assert frames.shape[0] == 3  # Only good frames
+        assert total == 5  # Total is from metadata
+
+    def test_downsamples_to_transnet_resolution(self) -> None:
+        """Correctly downsamples from arbitrary resolution to 48x27 via cv2.resize."""
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=30.0, total_frames=1, width=3840, height=2160)
+        mock_cv2.VideoCapture.return_value = cap
+
+        resized = np.zeros((27, 48, 3), dtype=np.uint8)
+        mock_cv2.resize.return_value = resized
+
+        from autopilot.analyze.scenes import _read_and_downsample_frames
+
+        frames, _, _ = _read_and_downsample_frames(
+            Path("/fake/video.mp4"), mock_cv2
+        )
+
+        # cv2.resize should have been called with (48, 27) and INTER_AREA
+        mock_cv2.resize.assert_called_once()
+        call_args = mock_cv2.resize.call_args
+        assert call_args[0][1] == (48, 27)  # (width, height) tuple
+
+    def test_raises_when_video_cannot_open(self) -> None:
+        """Raises ShotDetectionError when video cannot be opened."""
+        from autopilot.analyze.scenes import (
+            ShotDetectionError,
+            _read_and_downsample_frames,
+        )
+
+        mock_cv2 = _make_mock_cv2()
+        cap = MagicMock()
+        cap.isOpened.return_value = False
+        mock_cv2.VideoCapture.return_value = cap
+
+        with pytest.raises(ShotDetectionError, match="Failed to open"):
+            _read_and_downsample_frames(Path("/fake/video.mp4"), mock_cv2)
+
+    def test_cap_release_called_on_error(self) -> None:
+        """cap.release() called even on error (finally block)."""
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=30.0, total_frames=2)
+        mock_cv2.VideoCapture.return_value = cap
+
+        # Make read raise an error on second call
+        good_frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        cap.read.side_effect = [
+            (True, good_frame),
+            RuntimeError("read error"),
+        ]
+        resized = np.zeros((27, 48, 3), dtype=np.uint8)
+        mock_cv2.resize.return_value = resized
+
+        from autopilot.analyze.scenes import _read_and_downsample_frames
+
+        with pytest.raises(RuntimeError, match="read error"):
+            _read_and_downsample_frames(Path("/fake/video.mp4"), mock_cv2)
+
+        cap.release.assert_called_once()
