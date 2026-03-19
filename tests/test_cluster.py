@@ -390,3 +390,131 @@ class TestSemanticRefinement:
         result = _semantic_refine(clip_ids, clips_data, catalog_db)
         assert len(result) == 1
         assert result[0] == ["v1"]
+
+
+# -- Step 5: cluster_activities end-to-end tests ------------------------------
+
+
+class TestClusterActivities:
+    """Tests for cluster_activities() end-to-end."""
+
+    def test_basic_clustering(self, catalog_db):
+        """Nearby clips grouped, distant clips separated."""
+        from autopilot.organize.cluster import cluster_activities
+
+        # Two close clips and one far away
+        catalog_db.insert_media(
+            "v1", "/tmp/v1.mp4",
+            created_at="2025-01-01T10:00:00", gps_lat=18.788, gps_lon=98.985,
+        )
+        catalog_db.insert_media(
+            "v2", "/tmp/v2.mp4",
+            created_at="2025-01-01T10:10:00", gps_lat=18.788, gps_lon=98.985,
+        )
+        catalog_db.insert_media(
+            "v3", "/tmp/v3.mp4",
+            created_at="2025-01-01T14:00:00", gps_lat=19.500, gps_lon=99.500,
+        )
+
+        result = cluster_activities(catalog_db)
+        assert len(result) == 2
+
+        # Find which cluster has v1
+        c1 = [c for c in result if "v1" in c.clip_ids][0]
+        assert "v2" in c1.clip_ids
+        assert "v3" not in c1.clip_ids
+
+    def test_stores_in_db(self, catalog_db):
+        """Clusters stored in activity_clusters table."""
+        from autopilot.organize.cluster import cluster_activities
+
+        catalog_db.insert_media(
+            "v1", "/tmp/v1.mp4",
+            created_at="2025-01-01T10:00:00", gps_lat=18.788, gps_lon=98.985,
+        )
+        catalog_db.insert_media(
+            "v2", "/tmp/v2.mp4",
+            created_at="2025-01-01T10:10:00", gps_lat=18.788, gps_lon=98.985,
+        )
+
+        result = cluster_activities(catalog_db)
+        assert len(result) == 1
+
+        db_clusters = catalog_db.get_activity_clusters()
+        assert len(db_clusters) == 1
+        assert db_clusters[0]["cluster_id"] == result[0].cluster_id
+        assert json.loads(str(db_clusters[0]["clip_ids_json"])) == result[0].clip_ids
+
+    def test_correct_time_range(self, catalog_db):
+        """time_start and time_end reflect clip range."""
+        from autopilot.organize.cluster import cluster_activities
+
+        catalog_db.insert_media(
+            "v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00",
+        )
+        catalog_db.insert_media(
+            "v2", "/tmp/v2.mp4", created_at="2025-01-01T10:20:00",
+        )
+
+        result = cluster_activities(catalog_db)
+        assert len(result) == 1
+        assert "10:00:00" in result[0].time_start
+        assert "10:20:00" in result[0].time_end
+
+    def test_gps_center(self, catalog_db):
+        """GPS center is mean of clip coordinates."""
+        from autopilot.organize.cluster import cluster_activities
+
+        catalog_db.insert_media(
+            "v1", "/tmp/v1.mp4",
+            created_at="2025-01-01T10:00:00", gps_lat=18.0, gps_lon=98.0,
+        )
+        catalog_db.insert_media(
+            "v2", "/tmp/v2.mp4",
+            created_at="2025-01-01T10:10:00", gps_lat=18.002, gps_lon=98.002,
+        )
+
+        result = cluster_activities(catalog_db)
+        assert len(result) == 1
+        assert result[0].gps_center_lat == pytest.approx(18.001, abs=0.001)
+        assert result[0].gps_center_lon == pytest.approx(98.001, abs=0.001)
+
+    def test_idempotency(self, catalog_db):
+        """Second call clears and re-creates clusters."""
+        from autopilot.organize.cluster import cluster_activities
+
+        catalog_db.insert_media(
+            "v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00",
+        )
+
+        result1 = cluster_activities(catalog_db)
+        result2 = cluster_activities(catalog_db)
+
+        # Should have exactly 1 cluster after second call
+        db_clusters = catalog_db.get_activity_clusters()
+        assert len(db_clusters) == 1
+        # cluster_id should change (new UUID)
+        assert result1[0].cluster_id != result2[0].cluster_id
+
+    def test_empty_db_returns_empty(self, catalog_db):
+        """No media files -> empty list."""
+        from autopilot.organize.cluster import cluster_activities
+
+        result = cluster_activities(catalog_db)
+        assert result == []
+
+    def test_missing_gps_graceful(self, catalog_db):
+        """All clips with None GPS still cluster by time."""
+        from autopilot.organize.cluster import cluster_activities
+
+        catalog_db.insert_media(
+            "v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00",
+        )
+        catalog_db.insert_media(
+            "v2", "/tmp/v2.mp4", created_at="2025-01-01T10:10:00",
+        )
+
+        result = cluster_activities(catalog_db)
+        assert len(result) == 1
+        assert result[0].gps_center_lat is None
+        assert result[0].gps_center_lon is None
