@@ -258,6 +258,11 @@ class CatalogDB:
             (status, media_id),
         )
 
+    def list_all_media(self) -> list[dict[str, object]]:
+        """List all media files."""
+        cur = self.conn.execute("SELECT * FROM media_files")
+        return [dict(row) for row in cur.fetchall()]
+
     def list_by_status(self, status: str) -> list[dict[str, object]]:
         """List all media files with a given status."""
         cur = self.conn.execute("SELECT * FROM media_files WHERE status = ?", (status,))
@@ -501,6 +506,22 @@ class CatalogDB:
         )
         return [dict(row) for row in cur.fetchall()]
 
+    def get_audio_events_for_media(self, media_id: str) -> list[dict[str, object]]:
+        """Get all audio events for a media file."""
+        cur = self.conn.execute(
+            "SELECT * FROM audio_events WHERE media_id = ?",
+            (media_id,),
+        )
+        return [dict(row) for row in cur.fetchall()]
+
+    def get_detections_for_media(self, media_id: str) -> list[dict[str, object]]:
+        """Get all detections for a media file."""
+        cur = self.conn.execute(
+            "SELECT * FROM detections WHERE media_id = ?",
+            (media_id,),
+        )
+        return [dict(row) for row in cur.fetchall()]
+
     # -- activity_clusters CRUD -------------------------------------------------
 
     def insert_activity_cluster(
@@ -539,6 +560,10 @@ class CatalogDB:
         """List all activity clusters."""
         cur = self.conn.execute("SELECT * FROM activity_clusters")
         return [dict(row) for row in cur.fetchall()]
+
+    def clear_activity_clusters(self) -> None:
+        """Delete all rows from activity_clusters table."""
+        self.conn.execute("DELETE FROM activity_clusters")
 
     def update_activity_cluster(self, cluster_id: str, **kwargs: object) -> None:
         """Update fields of an activity cluster by keyword arguments."""

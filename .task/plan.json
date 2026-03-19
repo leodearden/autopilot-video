@@ -1,0 +1,164 @@
+{
+  "task_id": "14",
+  "title": "Activity clustering and labeling",
+  "files": [
+    "autopilot/organize/cluster.py",
+    "autopilot/organize/classify.py",
+    "autopilot/organize/__init__.py",
+    "autopilot/db.py",
+    "tests/test_cluster.py",
+    "tests/test_classify.py"
+  ],
+  "modules": [
+    "autopilot/organize",
+    "autopilot",
+    "tests"
+  ],
+  "analysis": "Review identified 4 blocking issues. (1) O(n^2) pure-Python nested loop for distance matrix in _temporal_spatial_cluster (cluster.py:124-153) — needs vectorization with NumPy broadcasting for ~100-1000x speedup. (2) db.clear_activity_clusters() called before clustering succeeds (cluster.py:276) — mid-run failure permanently deletes clusters with nothing written back; needs transactional wrapping. (3) response.content[0].text outside try/except (classify.py:147) — empty content list from Anthropic API causes IndexError instead of ClassifyError. (4) _load_prompt() before try block (classify.py:130) — missing prompt file causes FileNotFoundError instead of ClassifyError. Steps 15-22 (from prior review round) already address issues 2-4 plus corrupt JSON handling. Adding steps 23-24 for the vectorization issue.",
+  "prerequisites": [
+    {"id": "pre-1", "status": "done", "commit": "1673866"}
+  ],
+  "steps": [
+    {"id": "step-1", "type": "test", "status": "done", "commit": "1c2128c"},
+    {"id": "step-2", "type": "impl", "status": "done", "commit": "69c2d66"},
+    {"id": "step-3", "type": "test", "status": "done", "commit": "d946157"},
+    {"id": "step-4", "type": "impl", "status": "done", "commit": "d9edf3e"},
+    {"id": "step-5", "type": "test", "status": "done", "commit": "0f67234"},
+    {"id": "step-6", "type": "impl", "status": "done", "commit": "5c42245"},
+    {"id": "step-7", "type": "test", "status": "done", "commit": "a6a1d13"},
+    {"id": "step-8", "type": "impl", "status": "done", "commit": "e1e5250"},
+    {"id": "step-9", "type": "test", "status": "done", "commit": "6d0dae6"},
+    {"id": "step-10", "type": "impl", "status": "done", "commit": "6d0dae6"},
+    {"id": "step-11", "type": "test", "status": "done", "commit": "a1d5def"},
+    {"id": "step-12", "type": "impl", "status": "done", "commit": "a1d5def"},
+    {"id": "step-13", "type": "test", "status": "done", "commit": "a668f06"},
+    {"id": "step-14", "type": "impl", "status": "done", "commit": "99a2935"},
+    {
+      "id": "step-15",
+      "type": "test",
+      "description": "Write failing test: _call_llm raises ClassifyError when response.content is empty list (mocks API returning response with content=[]). Covers reviewer_robustness/unhandled_exception_breaks_api_contract at classify.py:147.",
+      "status": "done",
+      "commit": "203d0b0"
+    },
+    {
+      "id": "step-16",
+      "type": "impl",
+      "description": "Fix _call_llm: move response.content[0].text access inside try/except block or add explicit guard 'if not response.content: raise ClassifyError(\"Empty response from LLM\")'. Ensures all failures raise ClassifyError per docstring contract.",
+      "status": "done",
+      "commit": "917c67d"
+    },
+    {
+      "id": "step-17",
+      "type": "test",
+      "description": "Write failing test: _call_llm raises ClassifyError when _load_prompt() fails (mock prompt file missing, expect ClassifyError not FileNotFoundError). Covers reviewer_robustness/unhandled_exception_breaks_api_contract at classify.py:130.",
+      "status": "done",
+      "commit": "d982b8f"
+    },
+    {
+      "id": "step-18",
+      "type": "impl",
+      "description": "Fix _call_llm: wrap _load_prompt() call in try/except OSError that re-raises as ClassifyError. Move it inside the existing try/except or add a dedicated catch.",
+      "status": "done",
+      "commit": "9c7b06a"
+    },
+    {
+      "id": "step-19",
+      "type": "test",
+      "description": "Write failing test: _assemble_cluster_summary handles corrupt/invalid JSON in detections_json, events_json, clip_ids_json, and segments_json DB fields gracefully (logs warning, skips bad rows instead of crashing). Covers reviewer_robustness/unhandled_exception_at_boundary at classify.py:72-83.",
+      "status": "done",
+      "commit": "c5bfca5"
+    },
+    {
+      "id": "step-20",
+      "type": "impl",
+      "description": "Fix _assemble_cluster_summary: wrap each json.loads() call in try/except json.JSONDecodeError, log a warning, and skip the offending row. For clip_ids_json parse at line 44, raise ClassifyError since the cluster is unusable without clip IDs.",
+      "status": "done",
+      "commit": "d58ce46"
+    },
+    {
+      "id": "step-21",
+      "type": "test",
+      "description": "Write failing test: cluster_activities preserves existing activity_clusters table when computation fails mid-run (e.g. _temporal_spatial_cluster raises). Pre-populate clusters, trigger failure, verify table is not left empty. Covers reviewer_robustness/data_loss_on_failure at cluster.py:276.",
+      "status": "done",
+      "commit": "7c3bb58"
+    },
+    {
+      "id": "step-22",
+      "type": "impl",
+      "description": "Fix cluster_activities: move db.clear_activity_clusters() after all computation is complete. Use compute-then-write pattern: build all ActivityCluster objects and their DB params into a list first, then clear+insert inside a single 'with db.conn:' transaction so a failure during inserts rolls back the DELETE, preventing data loss.",
+      "status": "done",
+      "commit": "4f4e395"
+    },
+    {
+      "id": "step-23",
+      "type": "test",
+      "description": "Write test verifying vectorized distance matrix correctness. Add TestVectorizedDistanceMatrix class to test_cluster.py with: (1) test_vectorized_matches_scalar — create 20+ clips with mixed GPS/no-GPS, run _temporal_spatial_cluster, assert same clustering as a reference scalar computation; (2) test_moderate_scale — create 200 clips, assert _temporal_spatial_cluster completes without error and produces valid clusters; (3) test_no_python_nested_loop — inspect source of _temporal_spatial_cluster to verify it does not contain 'for i in range' nested with 'for j in range' pattern (ensures vectorization is used). Covers reviewer_performance/algorithmic_complexity at cluster.py:124-153.",
+      "status": "done",
+      "commit": "8026203"
+    },
+    {
+      "id": "step-24",
+      "type": "impl",
+      "description": "Vectorize _temporal_spatial_cluster distance matrix. Replace the O(n^2) pure-Python nested loop (lines 124-153) with NumPy broadcasting: (1) convert timestamps list to np.array, compute temporal diffs via np.abs(np.subtract.outer(ts_arr, ts_arr)) / temporal_threshold_s; (2) extract lat/lon into np.arrays, compute vectorized haversine using np.radians + broadcasting for dlat/dlon/a/c formula, divide by spatial_threshold_m; (3) create boolean mask for pairs where both clips have valid GPS — for pairs missing GPS, use temporal-only distance; (4) combined = np.maximum(t_norm_matrix, s_norm_matrix) where GPS valid, else t_norm_matrix; (5) pass to DBSCAN as before. Remove the scalar _haversine calls from this path (keep _haversine for other uses). All existing tests must still pass.",
+      "status": "done",
+      "commit": "8952eab"
+    }
+  ],
+  "design_decisions": [
+    {
+      "decision": "Guard empty response.content with explicit check before indexing",
+      "rationale": "An explicit 'if not response.content' guard is clearer than relying on IndexError being caught in a broad except. It provides a specific error message about what went wrong."
+    },
+    {
+      "decision": "Wrap _load_prompt in its own try/except rather than moving it inside the API call try block",
+      "rationale": "Keeps error messages specific — 'Failed to load prompt: ...' vs generic 'LLM API call failed' — aiding debugging while still honoring the ClassifyError contract."
+    },
+    {
+      "decision": "Skip corrupt JSON rows in _assemble_cluster_summary rather than raising",
+      "rationale": "A single corrupt row in detections or events should not prevent labeling of an entire cluster. Logging a warning preserves observability. However, corrupt clip_ids_json makes the cluster unusable, so that should raise ClassifyError."
+    },
+    {
+      "decision": "Compute-then-write pattern for cluster_activities atomicity",
+      "rationale": "Computing all clusters into a list first, then clearing and inserting inside a single transaction, ensures that any failure during computation leaves existing data intact. The 'with db.conn:' context manager provides atomic commit/rollback for the clear+insert sequence."
+    },
+    {
+      "decision": "Vectorize distance matrix with NumPy broadcasting instead of scipy",
+      "rationale": "NumPy is already a dependency (used in _semantic_refine and by sklearn). The haversine formula vectorizes cleanly with np.radians/sin/cos broadcasting over lat/lon arrays. No need for scipy. For n=1000 clips this replaces 500k Python-level haversine+trig calls with a handful of array operations, yielding ~100-1000x speedup."
+    },
+    {
+      "decision": "Keep scalar _haversine function alongside vectorized path",
+      "rationale": "The scalar _haversine is a clean, tested utility. It may be useful elsewhere (e.g., single-pair distance checks). The vectorized path in _temporal_spatial_cluster replaces the nested loop but _haversine remains available."
+    },
+    {
+      "decision": "Use source inspection test to enforce vectorization",
+      "rationale": "A test that inspects the source code for nested 'for i/j in range' loops acts as a guardrail against regression to O(n^2) Python loops. While unconventional, it's appropriate here because the performance requirement is a hard constraint and timing-based tests are flaky."
+    }
+  ],
+  "reuse": [
+    {
+      "what": "CatalogDB context manager (with db:) for transactional control",
+      "where": "autopilot/db.py __enter__/__exit__",
+      "how": "Use 'with db.conn:' in cluster_activities to wrap clear+insert in an atomic transaction"
+    },
+    {
+      "what": "Existing _make_llm_response test helper",
+      "where": "tests/test_classify.py",
+      "how": "Reuse for creating mock responses, extend with empty-content variant"
+    },
+    {
+      "what": "catalog_db fixture with autocommit",
+      "where": "tests/conftest.py",
+      "how": "All new tests use the shared in-memory DB fixture. Note: autocommit mode means transaction tests need careful handling — may need to temporarily restore isolation_level for step-21."
+    },
+    {
+      "what": "ClassifyError exception class",
+      "where": "autopilot/organize/classify.py",
+      "how": "All new error paths raise ClassifyError to honor the documented contract"
+    },
+    {
+      "what": "NumPy lazy import pattern",
+      "where": "autopilot/organize/cluster.py:108",
+      "how": "The vectorized haversine uses the same 'import numpy as np' already present at the top of _temporal_spatial_cluster"
+    }
+  ]
+}
