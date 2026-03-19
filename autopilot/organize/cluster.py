@@ -13,7 +13,7 @@ import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from autopilot.db import CatalogDB
@@ -87,7 +87,7 @@ def _parse_iso(ts: str) -> datetime:
 
 
 def _temporal_spatial_cluster(
-    clips: list[dict[str, object]],
+    clips: list[dict[str, Any]],
     *,
     temporal_threshold_s: float = _TEMPORAL_THRESHOLD_S,
     spatial_threshold_m: float = _SPATIAL_THRESHOLD_M,
@@ -160,16 +160,17 @@ def _temporal_spatial_cluster(
     cluster_map: dict[int, list[str]] = {}
     for idx, label in enumerate(labels):
         clip_id = str(clips[idx]["id"])
-        if label not in cluster_map:
-            cluster_map[label] = []
-        cluster_map[label].append(clip_id)
+        lbl = int(label)
+        if lbl not in cluster_map:
+            cluster_map[lbl] = []
+        cluster_map[lbl].append(clip_id)
 
     return list(cluster_map.values())
 
 
 def _semantic_refine(
     clip_ids: list[str],
-    clips_data: Mapping[str, Mapping[str, object]],
+    clips_data: Mapping[str, Mapping[str, Any]],
     db: CatalogDB,
     *,
     cosine_threshold: float = 0.5,
@@ -201,13 +202,16 @@ def _semantic_refine(
     )
 
     # Load mean embedding per clip
-    clip_embeddings: list[tuple[str, object]] = []
+    clip_embeddings: list[tuple[str, Any]] = []
     for cid in sorted_ids:
         rows = db.get_embeddings_for_media(cid)
         if not rows:
             clip_embeddings.append((cid, None))
             continue
-        embs = [np.frombuffer(row["embedding"], dtype=np.float32) for row in rows]
+        embs = [
+            np.frombuffer(cast(bytes, row["embedding"]), dtype=np.float32)
+            for row in rows
+        ]
         mean_emb = np.mean(embs, axis=0)
         clip_embeddings.append((cid, mean_emb))
 
@@ -275,7 +279,7 @@ def cluster_activities(db: CatalogDB) -> list[ActivityCluster]:
     raw_clusters = _temporal_spatial_cluster(clips)
 
     # Build lookup for quick access
-    clip_lookup = {str(m["id"]): m for m in clips}
+    clip_lookup: dict[str, dict[str, Any]] = {str(m["id"]): m for m in clips}
 
     # Phase 2: Semantic refinement
     refined_clusters: list[list[str]] = []
