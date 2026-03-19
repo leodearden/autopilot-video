@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -191,3 +192,171 @@ class TestSummaryAssembly:
         summary = _assemble_cluster_summary(cluster, catalog_db)
         assert isinstance(summary, dict)
         assert "time_range" in summary
+
+
+# -- Step 9: LLM labeling tests -----------------------------------------------
+
+
+def _make_llm_response(label="Morning hike", description="A scenic hike.",
+                       split_recommended=False, split_reason=None):
+    """Create a mock Anthropic API response."""
+    result_json = json.dumps({
+        "label": label,
+        "description": description,
+        "split_recommended": split_recommended,
+        "split_reason": split_reason,
+    })
+    mock_response = MagicMock()
+    mock_content = MagicMock()
+    mock_content.text = result_json
+    mock_response.content = [mock_content]
+    return mock_response
+
+
+class TestLLMLabeling:
+    """Tests for _call_llm() helper."""
+
+    def test_calls_anthropic_api(self):
+        """_call_llm calls Anthropic API with correct model."""
+        from autopilot.organize.classify import _call_llm
+        from autopilot.config import LLMConfig
+
+        config = LLMConfig()
+        summary = {"time_range": "2025-01-01T10:00:00 to 2025-01-01T11:00:00"}
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = _make_llm_response()
+
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            result = _call_llm(summary, config)
+
+        mock_client.messages.create.assert_called_once()
+        call_kwargs = mock_client.messages.create.call_args[1]
+        assert call_kwargs["model"] == config.utility_model
+
+    def test_prompt_includes_activity_label_content(self):
+        """System prompt contains activity_label.md content."""
+        from autopilot.organize.classify import _call_llm
+        from autopilot.config import LLMConfig
+
+        config = LLMConfig()
+        summary = {"time_range": "test"}
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = _make_llm_response()
+
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            _call_llm(summary, config)
+
+        call_kwargs = mock_client.messages.create.call_args[1]
+        assert "Activity Classification Specialist" in call_kwargs["system"]
+
+    def test_parses_json_response(self):
+        """Correctly parses JSON from response text."""
+        from autopilot.organize.classify import _call_llm
+        from autopilot.config import LLMConfig
+
+        config = LLMConfig()
+        summary = {"time_range": "test"}
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = _make_llm_response(
+            label="Sunset kayaking",
+            description="A beautiful evening on the river.",
+        )
+
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            result = _call_llm(summary, config)
+
+        assert result["label"] == "Sunset kayaking"
+        assert result["description"] == "A beautiful evening on the river."
+
+    def test_parses_json_in_code_block(self):
+        """Parses JSON wrapped in ```json code block."""
+        from autopilot.organize.classify import _call_llm
+        from autopilot.config import LLMConfig
+
+        config = LLMConfig()
+        summary = {"time_range": "test"}
+
+        mock_response = MagicMock()
+        mock_content = MagicMock()
+        mock_content.text = '```json\n{"label": "Beach day", "description": "Fun at the beach.", "split_recommended": false, "split_reason": null}\n```'
+        mock_response.content = [mock_content]
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_response
+
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            result = _call_llm(summary, config)
+
+        assert result["label"] == "Beach day"
+
+    def test_api_error_raises_classify_error(self):
+        """API errors wrapped in ClassifyError."""
+        from autopilot.organize.classify import ClassifyError, _call_llm
+        from autopilot.config import LLMConfig
+
+        config = LLMConfig()
+        summary = {"time_range": "test"}
+
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = RuntimeError("API timeout")
+
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            with pytest.raises(ClassifyError, match="API.*failed"):
+                _call_llm(summary, config)
+
+    def test_malformed_json_raises_classify_error(self):
+        """Malformed JSON response raises ClassifyError."""
+        from autopilot.organize.classify import ClassifyError, _call_llm
+        from autopilot.config import LLMConfig
+
+        config = LLMConfig()
+        summary = {"time_range": "test"}
+
+        mock_response = MagicMock()
+        mock_content = MagicMock()
+        mock_content.text = "This is not valid JSON at all"
+        mock_response.content = [mock_content]
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_response
+
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            with pytest.raises(ClassifyError, match="parse"):
+                _call_llm(summary, config)
+
+    def test_missing_fields_raises_classify_error(self):
+        """Response missing label/description raises ClassifyError."""
+        from autopilot.organize.classify import ClassifyError, _call_llm
+        from autopilot.config import LLMConfig
+
+        config = LLMConfig()
+        summary = {"time_range": "test"}
+
+        mock_response = MagicMock()
+        mock_content = MagicMock()
+        mock_content.text = json.dumps({"only_label": "test"})
+        mock_response.content = [mock_content]
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_response
+
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            with pytest.raises(ClassifyError, match="missing required"):
+                _call_llm(summary, config)
