@@ -33,6 +33,26 @@ class ShotDetectionError(Exception):
     """Raised for all shot boundary detection failures."""
 
 
+def _pyscenedetect_to_boundaries(scenes: list) -> list[dict]:
+    """Convert PySceneDetect scene list to boundary dicts.
+
+    Args:
+        scenes: List of (start_timecode, end_timecode) tuples from
+            scenedetect.detect().
+
+    Returns:
+        List of dicts with start_frame, end_frame, transition_type keys.
+    """
+    result = []
+    for start_tc, end_tc in scenes:
+        result.append({
+            "start_frame": start_tc.get_frames(),
+            "end_frame": end_tc.get_frames() - 1,
+            "transition_type": "cut",
+        })
+    return result
+
+
 def _transnetv2_to_boundaries(scenes: np.ndarray) -> list[dict]:
     """Convert TransNetV2 scene pairs to boundary dicts.
 
