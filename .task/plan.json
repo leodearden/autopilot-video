@@ -11,7 +11,7 @@
     "tests",
     "scripts"
   ],
-  "analysis": "Task 10 implements face detection (InsightFace SCRFD + ArcFace 512-d embeddings) and DBSCAN clustering in autopilot/analyze/faces.py, plus an interactive labeling script in scripts/label_faces.py. Dependencies: DB schema (faces + face_clusters tables) and all CRUD methods already exist in autopilot/db.py (task 3). GPUScheduler and ModelConfig (with face_model='buffalo_l') already implemented (task 6). The pattern closely mirrors autopilot/analyze/objects.py: lazy cv2 import, idempotency check, 1fps sampling via max(1, int(fps)), GPU model via scheduler context manager, transactional batch inserts, custom exception class. detect_faces iterates sampled frames, runs face_model.get(frame), extracts bbox and normed_embedding per face, stores as (media_id, frame_idx, face_index, bbox_json, embedding_blob, None). cluster_faces loads all embeddings, runs sklearn DBSCAN with cosine metric, computes L2-normalized centroids, populates face_clusters table with up to 5 sample paths per cluster, and batch-updates face cluster_ids. Labels start NULL. scripts/label_faces.py provides get_unlabeled_clusters() and apply_label() helpers plus an interactive CLI main(). Tests follow existing conventions: mock cv2.VideoCapture, mock InsightFace model, use catalog_db fixture with in-memory SQLite autocommit. All 36 tests pass.",
+  "analysis": "Task 10 implements face detection (InsightFace SCRFD + ArcFace 512-d embeddings) and DBSCAN clustering in autopilot/analyze/faces.py, plus an interactive labeling script in scripts/label_faces.py. Dependencies: DB schema (faces + face_clusters tables) and all CRUD methods already exist in autopilot/db.py (task 3). GPUScheduler and ModelConfig (with face_model='buffalo_l') already implemented (task 6). The pattern closely mirrors autopilot/analyze/objects.py: lazy cv2 import, idempotency check, 1fps sampling via max(1, int(fps)), GPU model via scheduler context manager, transactional batch inserts, custom exception class. detect_faces iterates sampled frames, runs face_model.get(frame), extracts bbox and normed_embedding per face, stores as (media_id, frame_idx, face_index, bbox_json, embedding_blob, None). cluster_faces loads all embeddings, runs sklearn DBSCAN with cosine metric, computes L2-normalized centroids, populates face_clusters table with up to 5 sample paths per cluster, and batch-updates face cluster_ids. Labels start NULL. scripts/label_faces.py provides get_unlabeled_clusters() and apply_label() helpers plus an interactive CLI main(). Tests follow existing conventions: mock cv2.VideoCapture, mock InsightFace model, use catalog_db fixture with in-memory SQLite autocommit. All 36 tests pass.\n\nREVIEW FIXES (post step-34): Two blocking issues identified by reviewers require remediation: (1) resource_leak — cv2.VideoCapture.release() is not called when isOpened() returns False because the raise at line 60 happens before the try/finally block at line 62; (2) transactional_integrity — cluster_faces() splits its destructive clear-then-rebuild across two separate `with db:` transactions (lines 153-155 and 168-203), so a crash between them leaves the database in an inconsistent state with all cluster data wiped and no new clusters written. Fix for (1): restructure so try/finally wraps the isOpened() check — cap is constructed, then immediately enters try/finally with cap.release() in finally, and the isOpened() check moves inside try. Fix for (2): build all cluster data (cluster_map, centroids, sample_paths, cluster_id_updates) in memory first, then perform all DB mutations (clear + reset + inserts + updates) in a single atomic `with db:` block. CatalogDB.__exit__ rolls back on exception (line 53 of db.py), guaranteeing atomicity.",
   "prerequisites": [
     {
       "id": "pre-1",
@@ -273,6 +273,34 @@
       "description": "Run full integration test to verify detect_faces -> cluster_faces pipeline end-to-end. Fix any remaining issues. Final verification: all 36 tests pass, ruff lint clean.",
       "status": "done",
       "commit": "3b3fda4"
+    },
+    {
+      "id": "step-35",
+      "type": "test",
+      "description": "Write TestErrorHandling.test_video_not_opened_releases_capture: verify that when cap.isOpened() returns False, cap.release() is still called before FaceDetectionError is raised. Create mock cv2 with VideoCapture returning a mock cap where isOpened() returns False. Call detect_faces, expect FaceDetectionError. Assert cap.release.called is True. This tests the resource leak fix where the current code raises at line 60 before entering the try/finally at line 62, so cap.release() is never called for failed-open captures.",
+      "status": "done",
+      "commit": "b9a35e1"
+    },
+    {
+      "id": "step-36",
+      "type": "impl",
+      "description": "Fix resource leak in detect_faces: restructure lines 58-62 so that try/finally wraps the isOpened() check. Change from `cap = cv2.VideoCapture(...); if not cap.isOpened(): raise ...; try: ... finally: cap.release()` to `cap = cv2.VideoCapture(...); try: if not cap.isOpened(): raise FaceDetectionError(...); ... finally: cap.release()`. This ensures cap.release() is called in all code paths including the failed-open case.",
+      "status": "done",
+      "commit": "0d1947d"
+    },
+    {
+      "id": "step-37",
+      "type": "test",
+      "description": "Write TestClusterFaces.test_atomic_rebuild_on_failure: first cluster_faces successfully on 2 synthetic clusters (5 faces each), verify 2 clusters exist and all 10 faces have cluster_ids. Then monkey-patch db.insert_face_cluster to raise RuntimeError on second call. Call cluster_faces again — it should raise RuntimeError. Verify the database still has the original 2 face_clusters rows and all 10 faces still have their original non-None cluster_ids (the failed rebuild rolled back the destructive clear, preserving pre-existing state). This tests the transactional integrity fix for the split-transaction atomicity issue.",
+      "status": "done",
+      "commit": "64b65d9"
+    },
+    {
+      "id": "step-38",
+      "type": "impl",
+      "description": "Fix transactional integrity in cluster_faces: merge the two separate `with db:` blocks into a single atomic transaction. Restructure so all pure in-memory computation happens first (cluster_map building from DBSCAN labels, centroid calculation, sample_paths construction, cluster_id_updates accumulation), then perform all DB mutations atomically in one `with db:` block: db.clear_face_clusters(); db.reset_face_cluster_ids(); for each cluster: db.insert_face_cluster(...); db.batch_update_face_cluster_ids(cluster_id_updates). If any mutation fails, CatalogDB.__exit__ rolls back the entire operation, preserving the pre-existing state.",
+      "status": "done",
+      "commit": "df195e3"
     }
   ],
   "design_decisions": [
@@ -307,6 +335,14 @@
     {
       "decision": "Sample paths stored as 'media_id:frame_number' strings (up to 5 per cluster)",
       "rationale": "Lightweight reference format that can be resolved to actual image crops on demand. 5 samples provide enough visual diversity for human cluster identification during labeling."
+    },
+    {
+      "decision": "VideoCapture try/finally must wrap the isOpened() check (review fix)",
+      "rationale": "cv2.VideoCapture may hold OS-level file descriptors or partial handles even when it fails to open. The try/finally with cap.release() must begin immediately after construction, before the isOpened() check, to guarantee release in all code paths including the failed-open error path."
+    },
+    {
+      "decision": "All cluster_faces DB mutations in a single atomic transaction (review fix)",
+      "rationale": "The original code split clear_face_clusters/reset_face_cluster_ids into one transaction and insert_face_cluster/batch_update_face_cluster_ids into a second. A crash between them leaves the DB in an unrecoverable state (all clusters wiped, all cluster_ids NULL). By computing all cluster data in-memory first, then performing all DB writes in one `with db:` block, CatalogDB's __exit__ rollback guarantees atomicity: either the full rebuild completes or the original state is preserved."
     }
   ],
   "reuse": [
@@ -344,6 +380,12 @@
       "what": "sklearn DBSCAN (already a project dependency)",
       "where": "scikit-learn in pyproject.toml",
       "how": "Lazy import inside cluster_faces: `from sklearn.cluster import DBSCAN`. Use DBSCAN(eps=eps, min_samples=min_samples, metric='cosine').fit(embeddings)."
+    },
+    {
+      "what": "CatalogDB __exit__ rollback semantics",
+      "where": "autopilot/db.py lines 44-53",
+      "how": "CatalogDB.__exit__ calls conn.rollback() on exception, conn.commit() on success. This is the atomicity primitive that makes the single-transaction fix work: if any insert_face_cluster or batch_update call fails within the `with db:` block, the entire clear+reset+inserts+updates is rolled back."
     }
-  ]
+  ],
+  "_schema_version": 1
 }
