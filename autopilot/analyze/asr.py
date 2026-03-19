@@ -27,6 +27,39 @@ class TranscriptionError(Exception):
     """Raised for all transcription pipeline failures."""
 
 
+def _normalize_segments(segments: list[dict]) -> list[dict]:
+    """Normalize WhisperX segments to PRD schema.
+
+    Strips internal WhisperX fields and ensures each segment has only:
+    start, end, text, speaker, words (with word, start, end, score).
+    Coerces numpy scalars to plain Python floats for JSON serialization.
+
+    Args:
+        segments: Raw WhisperX segment dicts.
+
+    Returns:
+        List of normalized segment dicts matching PRD schema.
+    """
+    result = []
+    for seg in segments:
+        words = []
+        for w in seg.get("words", []):
+            words.append({
+                "word": str(w.get("word", "")),
+                "start": float(w["start"]) if w.get("start") is not None else None,
+                "end": float(w["end"]) if w.get("end") is not None else None,
+                "score": float(w.get("score", 0.0)),
+            })
+        result.append({
+            "start": float(seg.get("start", 0.0)),
+            "end": float(seg.get("end", 0.0)),
+            "text": str(seg.get("text", "")),
+            "speaker": seg.get("speaker"),
+            "words": words,
+        })
+    return result
+
+
 def transcribe_media(
     media_id: str,
     audio_path: Path,
