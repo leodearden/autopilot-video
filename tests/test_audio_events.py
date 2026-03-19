@@ -343,3 +343,47 @@ class TestIdempotency:
 
         # Scheduler SHOULD be called for model loading
         scheduler.model.assert_called_once_with("panns_cnn14")
+
+
+class TestInputValidation:
+    """Tests for audio path validation."""
+
+    def test_file_not_found_raises(self, catalog_db):
+        """AudioEventError raised for non-existent audio file."""
+        from autopilot.analyze.audio_events import (
+            AudioEventError,
+            classify_audio_events,
+        )
+
+        catalog_db.insert_media("vid1", "/nonexistent/audio.wav")
+        scheduler = MagicMock()
+
+        with pytest.raises(AudioEventError, match="not found"):
+            classify_audio_events(
+                "vid1",
+                Path("/nonexistent/audio.wav"),
+                catalog_db,
+                scheduler,
+            )
+
+    def test_raises_before_lazy_imports(self, catalog_db):
+        """Path validation happens before scheduler is touched."""
+        from autopilot.analyze.audio_events import (
+            AudioEventError,
+            classify_audio_events,
+        )
+
+        catalog_db.insert_media("vid1", "/nonexistent/audio.wav")
+        scheduler = MagicMock()
+
+        with patch.object(Path, "exists", return_value=False):
+            with pytest.raises(AudioEventError):
+                classify_audio_events(
+                    "vid1",
+                    Path("/tmp/audio.wav"),
+                    catalog_db,
+                    scheduler,
+                )
+
+        # Scheduler should NOT be called (failed before imports)
+        scheduler.model.assert_not_called()
