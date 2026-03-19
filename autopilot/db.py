@@ -473,6 +473,11 @@ class CatalogDB:
         )
         return [dict(row) for row in cur.fetchall()]
 
+    def get_all_clip_embeddings(self) -> list[dict[str, object]]:
+        """Get all clip embeddings across all media files."""
+        cur = self.conn.execute("SELECT * FROM clip_embeddings")
+        return [dict(row) for row in cur.fetchall()]
+
     # -- audio_events CRUD ------------------------------------------------------
 
     def batch_insert_audio_events(self, rows: list[tuple[str, float, str]]) -> None:
