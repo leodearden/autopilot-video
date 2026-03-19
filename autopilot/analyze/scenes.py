@@ -125,6 +125,27 @@ def _read_and_downsample_frames(
         cap.release()
 
 
+def _run_pyscenedetect(media_id: str, video_path: Path, db: CatalogDB) -> None:
+    """Run PySceneDetect adaptive detection and store boundaries.
+
+    Args:
+        media_id: Unique identifier for the media file.
+        video_path: Path to the video file.
+        db: Catalog database for storing boundaries.
+    """
+    import scenedetect  # type: ignore[import-untyped]
+    from scenedetect.detectors import AdaptiveDetector  # type: ignore[import-untyped]
+
+    scenes = scenedetect.detect(
+        str(video_path),
+        AdaptiveDetector(adaptive_threshold=PYSCENEDETECT_THRESHOLD),
+    )
+    boundaries = _pyscenedetect_to_boundaries(scenes)
+
+    with db:
+        db.upsert_boundaries(media_id, json.dumps(boundaries), "pyscenedetect")
+
+
 def detect_shots(
     media_id: str,
     video_path: Path,
