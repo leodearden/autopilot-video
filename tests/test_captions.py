@@ -519,3 +519,131 @@ class TestErrorHandling:
                 "m1", Path("/test/video.mp4"), -5.0, 10.0,
                 db=catalog_db, scheduler=scheduler, config=config,
             )
+
+
+# ---------------------------------------------------------------------------
+# TestBatchCaption — batch_caption() sampling and iteration
+# ---------------------------------------------------------------------------
+
+
+class TestBatchCaption:
+    """Tests for batch_caption() sampling and iteration."""
+
+    def test_specific_media_ids(self, catalog_db):
+        """sample_rate=1.0 captions all provided media_ids."""
+        from autopilot.analyze.captions import batch_caption
+
+        # Insert 3 media files
+        for i in range(3):
+            catalog_db.insert_media(
+                id=f"m{i}", file_path=f"/test/video{i}.mp4",
+                fps=30.0, duration_seconds=60.0,
+            )
+
+        model, processor = _make_mock_model_and_processor()
+        scheduler = _make_mock_scheduler(model_obj={"model": model, "processor": processor})
+        config = _make_mock_config()
+
+        with (
+            patch("autopilot.analyze.captions._extract_clip_frames") as mock_extract,
+            patch.object(Path, "exists", return_value=True),
+        ):
+            from PIL import Image as PILImage
+
+            mock_extract.return_value = [PILImage.new("RGB", (100, 100))]
+            batch_caption(
+                ["m0", "m1", "m2"],
+                db=catalog_db, scheduler=scheduler, config=config,
+                sample_rate=1.0,
+            )
+
+        # All 3 should be captioned
+        for i in range(3):
+            captions = catalog_db.get_captions_for_media(f"m{i}")
+            assert len(captions) >= 1
+
+    def test_skips_already_captioned(self, catalog_db):
+        """media_ids that already have captions in DB are skipped."""
+        from autopilot.analyze.captions import batch_caption
+
+        catalog_db.insert_media(
+            id="m0", file_path="/test/video0.mp4", fps=30.0, duration_seconds=60.0
+        )
+        catalog_db.insert_media(
+            id="m1", file_path="/test/video1.mp4", fps=30.0, duration_seconds=60.0
+        )
+        # Pre-populate caption for m0
+        catalog_db.upsert_caption("m0", 0.0, 60.0, "Existing caption", "old-model")
+
+        model, processor = _make_mock_model_and_processor()
+        scheduler = _make_mock_scheduler(model_obj={"model": model, "processor": processor})
+        config = _make_mock_config()
+
+        with (
+            patch("autopilot.analyze.captions._extract_clip_frames") as mock_extract,
+            patch.object(Path, "exists", return_value=True),
+        ):
+            from PIL import Image as PILImage
+
+            mock_extract.return_value = [PILImage.new("RGB", (100, 100))]
+            batch_caption(
+                ["m0", "m1"],
+                db=catalog_db, scheduler=scheduler, config=config,
+                sample_rate=1.0,
+            )
+
+        # m0 should still have original caption (idempotency)
+        cap0 = catalog_db.get_caption("m0", 0.0, 60.0)
+        assert cap0 is not None
+        assert cap0["caption"] == "Existing caption"
+
+    def test_empty_media_ids_noop(self, catalog_db):
+        """Empty list returns immediately without error."""
+        from autopilot.analyze.captions import batch_caption
+
+        scheduler = _make_mock_scheduler()
+        config = _make_mock_config()
+
+        # Should not raise
+        batch_caption(
+            [], db=catalog_db, scheduler=scheduler, config=config, sample_rate=1.0
+        )
+
+    def test_samples_subset(self, catalog_db):
+        """With sample_rate=0.5, approximately half of clips are captioned."""
+        import random
+
+        from autopilot.analyze.captions import batch_caption
+
+        # Insert 10 media files
+        for i in range(10):
+            catalog_db.insert_media(
+                id=f"m{i}", file_path=f"/test/video{i}.mp4",
+                fps=30.0, duration_seconds=60.0,
+            )
+
+        model, processor = _make_mock_model_and_processor()
+        scheduler = _make_mock_scheduler(model_obj={"model": model, "processor": processor})
+        config = _make_mock_config()
+
+        random.seed(42)  # Deterministic for test
+
+        with (
+            patch("autopilot.analyze.captions._extract_clip_frames") as mock_extract,
+            patch.object(Path, "exists", return_value=True),
+        ):
+            from PIL import Image as PILImage
+
+            mock_extract.return_value = [PILImage.new("RGB", (100, 100))]
+            batch_caption(
+                [f"m{i}" for i in range(10)],
+                db=catalog_db, scheduler=scheduler, config=config,
+                sample_rate=0.5,
+            )
+
+        # Count captioned media
+        captioned_count = sum(
+            1 for i in range(10) if catalog_db.get_captions_for_media(f"m{i}")
+        )
+        # With sample_rate=0.5, expect roughly 5 (allow tolerance)
+        assert 2 <= captioned_count <= 8
