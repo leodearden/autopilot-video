@@ -807,3 +807,84 @@ class TestDBStorage:
         assert transcript is not None
         stored = json.loads(str(transcript["segments_json"]))
         assert stored == []
+
+
+class TestErrorHandling:
+    """Tests for error handling in core pipeline."""
+
+    def test_transcription_failure_raises(self, catalog_db):
+        """RuntimeError in model.transcribe raises TranscriptionError."""
+        from autopilot.analyze.asr import TranscriptionError, transcribe_media
+
+        catalog_db.insert_media("vid1", "/tmp/audio.wav")
+
+        mock_wx = _make_mock_whisperx()
+        mock_model = MagicMock()
+        mock_model.transcribe.side_effect = RuntimeError("CUDA OOM")
+
+        scheduler = MagicMock()
+        scheduler.device = 0
+        scheduler.model.return_value.__enter__ = MagicMock(
+            return_value=mock_model
+        )
+        scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                with pytest.raises(TranscriptionError, match="vid1"):
+                    transcribe_media(
+                        "vid1",
+                        Path("/tmp/audio.wav"),
+                        catalog_db,
+                        scheduler,
+                        MagicMock(whisper_size="large-v3"),
+                    )
+
+    def test_audio_load_failure_raises(self, catalog_db):
+        """FileNotFoundError in load_audio raises TranscriptionError."""
+        from autopilot.analyze.asr import TranscriptionError, transcribe_media
+
+        catalog_db.insert_media("vid1", "/tmp/audio.wav")
+
+        mock_wx = _make_mock_whisperx()
+        mock_wx.load_audio.side_effect = FileNotFoundError("no such file")
+
+        scheduler = MagicMock()
+        scheduler.device = 0
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                with pytest.raises(TranscriptionError):
+                    transcribe_media(
+                        "vid1",
+                        Path("/tmp/audio.wav"),
+                        catalog_db,
+                        scheduler,
+                        MagicMock(whisper_size="large-v3"),
+                    )
+
+    def test_failure_does_not_store_transcript(self, catalog_db):
+        """No partial transcript stored after TranscriptionError."""
+        from autopilot.analyze.asr import TranscriptionError, transcribe_media
+
+        catalog_db.insert_media("vid1", "/tmp/audio.wav")
+
+        mock_wx = _make_mock_whisperx()
+        mock_wx.load_audio.side_effect = RuntimeError("load failed")
+
+        scheduler = MagicMock()
+        scheduler.device = 0
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                with pytest.raises(TranscriptionError):
+                    transcribe_media(
+                        "vid1",
+                        Path("/tmp/audio.wav"),
+                        catalog_db,
+                        scheduler,
+                        MagicMock(whisper_size="large-v3"),
+                    )
+
+        # No transcript should be stored
+        assert catalog_db.get_transcript("vid1") is None
