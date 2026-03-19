@@ -360,3 +360,114 @@ class TestLLMLabeling:
         with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
             with pytest.raises(ClassifyError, match="missing required"):
                 _call_llm(summary, config)
+
+
+# -- Step 11: label_activities end-to-end tests --------------------------------
+
+
+def _setup_mock_anthropic(label="Morning hike", description="A scenic morning hike."):
+    """Create a mock anthropic module and client for label_activities tests."""
+    mock_response = _make_llm_response(label=label, description=description)
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = mock_response
+    mock_anthropic = MagicMock()
+    mock_anthropic.Anthropic.return_value = mock_client
+    return mock_anthropic, mock_client
+
+
+class TestLabelActivities:
+    """Tests for label_activities() end-to-end."""
+
+    def test_labels_clusters(self, catalog_db):
+        """Labels unlabeled clusters in the DB."""
+        from autopilot.organize.classify import label_activities
+        from autopilot.config import LLMConfig
+
+        config = LLMConfig()
+
+        # Create a cluster in the DB
+        catalog_db.insert_media("v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00")
+        catalog_db.insert_activity_cluster(
+            "c1",
+            time_start="2025-01-01T10:00:00",
+            time_end="2025-01-01T10:30:00",
+            clip_ids_json=json.dumps(["v1"]),
+        )
+
+        mock_anthropic, mock_client = _setup_mock_anthropic()
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            label_activities(catalog_db, config)
+
+        # Check DB was updated
+        clusters = catalog_db.get_activity_clusters()
+        assert len(clusters) == 1
+        assert clusters[0]["label"] == "Morning hike"
+        assert clusters[0]["description"] == "A scenic morning hike."
+
+    def test_skips_already_labeled(self, catalog_db):
+        """Skips clusters that already have labels."""
+        from autopilot.organize.classify import label_activities
+        from autopilot.config import LLMConfig
+
+        config = LLMConfig()
+
+        catalog_db.insert_media("v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00")
+        catalog_db.insert_activity_cluster(
+            "c1",
+            label="Existing label",
+            description="Existing description",
+            time_start="2025-01-01T10:00:00",
+            time_end="2025-01-01T10:30:00",
+            clip_ids_json=json.dumps(["v1"]),
+        )
+
+        mock_anthropic, mock_client = _setup_mock_anthropic()
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            label_activities(catalog_db, config)
+
+        # LLM should NOT have been called
+        mock_client.messages.create.assert_not_called()
+
+        # Label should remain unchanged
+        clusters = catalog_db.get_activity_clusters()
+        assert clusters[0]["label"] == "Existing label"
+
+    def test_handles_empty_clusters(self, catalog_db):
+        """No clusters in DB -> no errors."""
+        from autopilot.organize.classify import label_activities
+        from autopilot.config import LLMConfig
+
+        config = LLMConfig()
+        # No clusters to label
+        label_activities(catalog_db, config)  # Should not raise
+
+    def test_labels_multiple_clusters(self, catalog_db):
+        """Labels multiple clusters, calling LLM for each."""
+        from autopilot.organize.classify import label_activities
+        from autopilot.config import LLMConfig
+
+        config = LLMConfig()
+
+        catalog_db.insert_media("v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00")
+        catalog_db.insert_media("v2", "/tmp/v2.mp4", created_at="2025-01-01T14:00:00")
+        catalog_db.insert_activity_cluster(
+            "c1",
+            time_start="2025-01-01T10:00:00",
+            time_end="2025-01-01T10:30:00",
+            clip_ids_json=json.dumps(["v1"]),
+        )
+        catalog_db.insert_activity_cluster(
+            "c2",
+            time_start="2025-01-01T14:00:00",
+            time_end="2025-01-01T14:30:00",
+            clip_ids_json=json.dumps(["v2"]),
+        )
+
+        mock_anthropic, mock_client = _setup_mock_anthropic()
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            label_activities(catalog_db, config)
+
+        # Both should be labeled
+        clusters = catalog_db.get_activity_clusters()
+        assert all(c["label"] == "Morning hike" for c in clusters)
+        assert mock_client.messages.create.call_count == 2
