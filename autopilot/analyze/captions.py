@@ -254,8 +254,9 @@ def caption_clip(
         else:
             caption = _run_transformers_inference(model_bundle, frames)
 
-    # Store in database
-    db.upsert_caption(media_id, start_time, end_time, caption, config.caption_model)
+    # Store in database (with db: ensures commit on success / rollback on failure)
+    with db:
+        db.upsert_caption(media_id, start_time, end_time, caption, config.caption_model)
 
     logger.info(
         "Caption complete for %s [%.1f-%.1f]: %d chars",
