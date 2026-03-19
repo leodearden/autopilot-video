@@ -183,9 +183,7 @@ class TestFrameReading:
 
         from autopilot.analyze.scenes import _read_and_downsample_frames
 
-        frames, fps, total = _read_and_downsample_frames(
-            Path("/fake/video.mp4"), mock_cv2
-        )
+        frames, fps, total = _read_and_downsample_frames(Path("/fake/video.mp4"), mock_cv2)
 
         assert frames.shape == (10, 27, 48, 3)
         assert fps == 30.0
@@ -202,9 +200,7 @@ class TestFrameReading:
 
         from autopilot.analyze.scenes import _read_and_downsample_frames
 
-        frames, fps, total = _read_and_downsample_frames(
-            Path("/fake/video.mp4"), mock_cv2
-        )
+        frames, fps, total = _read_and_downsample_frames(Path("/fake/video.mp4"), mock_cv2)
 
         assert isinstance(fps, float)
         assert fps == 24.0
@@ -232,9 +228,7 @@ class TestFrameReading:
 
         from autopilot.analyze.scenes import _read_and_downsample_frames
 
-        frames, fps, total = _read_and_downsample_frames(
-            Path("/fake/video.mp4"), mock_cv2
-        )
+        frames, fps, total = _read_and_downsample_frames(Path("/fake/video.mp4"), mock_cv2)
 
         assert frames.shape[0] == 3  # Only good frames
         assert total == 5  # Total is from metadata
@@ -250,9 +244,7 @@ class TestFrameReading:
 
         from autopilot.analyze.scenes import _read_and_downsample_frames
 
-        frames, _, _ = _read_and_downsample_frames(
-            Path("/fake/video.mp4"), mock_cv2
-        )
+        frames, _, _ = _read_and_downsample_frames(Path("/fake/video.mp4"), mock_cv2)
 
         # cv2.resize should have been called with (48, 27) and INTER_AREA
         mock_cv2.resize.assert_called_once()
@@ -590,10 +582,13 @@ class TestPySceneDetectPipeline:
 
         mock_sd, mock_detectors = _make_mock_scenedetect()
 
-        with patch.dict(sys.modules, {
-            "scenedetect": mock_sd,
-            "scenedetect.detectors": mock_detectors,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "scenedetect": mock_sd,
+                "scenedetect.detectors": mock_detectors,
+            },
+        ):
             _run_pyscenedetect("vid-psd", video_file, catalog_db)
 
         mock_sd.detect.assert_called_once()
@@ -610,15 +605,16 @@ class TestPySceneDetectPipeline:
 
         mock_sd, mock_detectors = _make_mock_scenedetect()
 
-        with patch.dict(sys.modules, {
-            "scenedetect": mock_sd,
-            "scenedetect.detectors": mock_detectors,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "scenedetect": mock_sd,
+                "scenedetect.detectors": mock_detectors,
+            },
+        ):
             _run_pyscenedetect("vid-psd2", video_file, catalog_db)
 
-        mock_detectors.AdaptiveDetector.assert_called_once_with(
-            adaptive_threshold=27.0
-        )
+        mock_detectors.AdaptiveDetector.assert_called_once_with(adaptive_threshold=27.0)
 
     def test_boundaries_stored_with_pyscenedetect_method(self, catalog_db, tmp_path) -> None:
         """Stores results via db.upsert_boundaries with method='pyscenedetect'."""
@@ -630,10 +626,13 @@ class TestPySceneDetectPipeline:
 
         mock_sd, mock_detectors = _make_mock_scenedetect()
 
-        with patch.dict(sys.modules, {
-            "scenedetect": mock_sd,
-            "scenedetect.detectors": mock_detectors,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "scenedetect": mock_sd,
+                "scenedetect.detectors": mock_detectors,
+            },
+        ):
             _run_pyscenedetect("vid-psd3", video_file, catalog_db)
 
         row = catalog_db.get_boundaries("vid-psd3", method="pyscenedetect")
@@ -651,10 +650,13 @@ class TestPySceneDetectPipeline:
 
         mock_sd, mock_detectors = _make_mock_scenedetect()
 
-        with patch.dict(sys.modules, {
-            "scenedetect": mock_sd,
-            "scenedetect.detectors": mock_detectors,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "scenedetect": mock_sd,
+                "scenedetect.detectors": mock_detectors,
+            },
+        ):
             _run_pyscenedetect("vid-psd4", video_file, catalog_db)
 
         row = catalog_db.get_boundaries("vid-psd4", method="pyscenedetect")
@@ -688,11 +690,14 @@ class TestFallbackBehavior:
 
         mock_sd, mock_detectors = _make_mock_scenedetect()
 
-        with patch.dict(sys.modules, {
-            "cv2": mock_cv2,
-            "scenedetect": mock_sd,
-            "scenedetect.detectors": mock_detectors,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "cv2": mock_cv2,
+                "scenedetect": mock_sd,
+                "scenedetect.detectors": mock_detectors,
+            },
+        ):
             detect_shots("vid-fb1", video_file, catalog_db, scheduler)
 
         # scenedetect.detect should not have been called
@@ -715,11 +720,14 @@ class TestFallbackBehavior:
         scheduler = MagicMock()
         mock_sd, mock_detectors = _make_mock_scenedetect()
 
-        with patch.dict(sys.modules, {
-            "cv2": mock_cv2,
-            "scenedetect": mock_sd,
-            "scenedetect.detectors": mock_detectors,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "cv2": mock_cv2,
+                "scenedetect": mock_sd,
+                "scenedetect.detectors": mock_detectors,
+            },
+        ):
             detect_shots("vid-fb2", video_file, catalog_db, scheduler)
 
         # Fallback should have stored with pyscenedetect method
@@ -746,11 +754,14 @@ class TestFallbackBehavior:
         mock_sd.detect.side_effect = RuntimeError("scenedetect failed")
         mock_detectors = MagicMock()
 
-        with patch.dict(sys.modules, {
-            "cv2": mock_cv2,
-            "scenedetect": mock_sd,
-            "scenedetect.detectors": mock_detectors,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "cv2": mock_cv2,
+                "scenedetect": mock_sd,
+                "scenedetect.detectors": mock_detectors,
+            },
+        ):
             with pytest.raises(ShotDetectionError):
                 detect_shots("vid-fb3", video_file, catalog_db, scheduler)
 
@@ -773,11 +784,14 @@ class TestFallbackBehavior:
         mock_sd.detect.side_effect = fallback_err
         mock_detectors = MagicMock()
 
-        with patch.dict(sys.modules, {
-            "cv2": mock_cv2,
-            "scenedetect": mock_sd,
-            "scenedetect.detectors": mock_detectors,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "cv2": mock_cv2,
+                "scenedetect": mock_sd,
+                "scenedetect.detectors": mock_detectors,
+            },
+        ):
             with pytest.raises(ShotDetectionError) as exc_info:
                 detect_shots("vid-fb4", video_file, catalog_db, scheduler)
 
@@ -801,11 +815,14 @@ class TestFallbackBehavior:
         mock_sd.detect.side_effect = RuntimeError("fail")
         mock_detectors = MagicMock()
 
-        with patch.dict(sys.modules, {
-            "cv2": mock_cv2,
-            "scenedetect": mock_sd,
-            "scenedetect.detectors": mock_detectors,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "cv2": mock_cv2,
+                "scenedetect": mock_sd,
+                "scenedetect.detectors": mock_detectors,
+            },
+        ):
             with pytest.raises(ShotDetectionError):
                 detect_shots("vid-fb5", video_file, catalog_db, scheduler)
 
@@ -906,17 +923,17 @@ class TestLogging:
         mock_sd, mock_detectors = _make_mock_scenedetect()
 
         with caplog.at_level(logging.WARNING, logger="autopilot.analyze.scenes"):
-            with patch.dict(sys.modules, {
-                "cv2": mock_cv2,
-                "scenedetect": mock_sd,
-                "scenedetect.detectors": mock_detectors,
-            }):
+            with patch.dict(
+                sys.modules,
+                {
+                    "cv2": mock_cv2,
+                    "scenedetect": mock_sd,
+                    "scenedetect.detectors": mock_detectors,
+                },
+            ):
                 detect_shots("vid-log4", video_file, catalog_db, scheduler)
 
-        assert any(
-            "vid-log4" in r.message and r.levelno == logging.WARNING
-            for r in caplog.records
-        )
+        assert any("vid-log4" in r.message and r.levelno == logging.WARNING for r in caplog.records)
 
 
 class TestIntegration:
@@ -997,11 +1014,14 @@ class TestIntegration:
         scheduler = MagicMock()
         mock_sd, mock_detectors = _make_mock_scenedetect()
 
-        with patch.dict(sys.modules, {
-            "cv2": mock_cv2,
-            "scenedetect": mock_sd,
-            "scenedetect.detectors": mock_detectors,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "cv2": mock_cv2,
+                "scenedetect": mock_sd,
+                "scenedetect.detectors": mock_detectors,
+            },
+        ):
             detect_shots("int-3", video_file, catalog_db, scheduler)
 
         row = catalog_db.get_boundaries("int-3", method="pyscenedetect")
@@ -1037,10 +1057,13 @@ class TestIntegration:
 
         # Now directly run PySceneDetect (bypassing idempotency)
         mock_sd, mock_detectors = _make_mock_scenedetect()
-        with patch.dict(sys.modules, {
-            "scenedetect": mock_sd,
-            "scenedetect.detectors": mock_detectors,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "scenedetect": mock_sd,
+                "scenedetect.detectors": mock_detectors,
+            },
+        ):
             _run_pyscenedetect("int-4", video_file, catalog_db)
 
         # Both should exist

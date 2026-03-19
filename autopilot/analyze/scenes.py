@@ -46,11 +46,13 @@ def _pyscenedetect_to_boundaries(scenes: list) -> list[dict]:
     """
     result = []
     for start_tc, end_tc in scenes:
-        result.append({
-            "start_frame": start_tc.get_frames(),
-            "end_frame": end_tc.get_frames() - 1,
-            "transition_type": "cut",
-        })
+        result.append(
+            {
+                "start_frame": start_tc.get_frames(),
+                "end_frame": end_tc.get_frames() - 1,
+                "transition_type": "cut",
+            }
+        )
     return result
 
 
@@ -68,11 +70,13 @@ def _transnetv2_to_boundaries(scenes: np.ndarray) -> list[dict]:
         return []
     result = []
     for row in scenes:
-        result.append({
-            "start_frame": int(row[0]),
-            "end_frame": int(row[1]),
-            "transition_type": "cut",
-        })
+        result.append(
+            {
+                "start_frame": int(row[0]),
+                "end_frame": int(row[1]),
+                "transition_type": "cut",
+            }
+        )
     return result
 
 
@@ -195,7 +199,9 @@ def detect_shots(
 
         logger.info(
             "Completed shot detection for %s: %d boundaries via %s",
-            media_id, len(boundaries), "transnetv2",
+            media_id,
+            len(boundaries),
+            "transnetv2",
         )
         return
     except Exception:
@@ -213,9 +219,9 @@ def detect_shots(
         count = len(json.loads(row["boundaries_json"])) if row else 0
         logger.info(
             "Completed shot detection for %s: %d boundaries via %s",
-            media_id, count, "pyscenedetect",
+            media_id,
+            count,
+            "pyscenedetect",
         )
     except Exception as exc:
-        raise ShotDetectionError(
-            f"Shot detection failed for {media_id}: {exc}"
-        ) from exc
+        raise ShotDetectionError(f"Shot detection failed for {media_id}: {exc}") from exc
