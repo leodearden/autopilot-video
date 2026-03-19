@@ -151,3 +151,68 @@ class TestPublicAPI:
 
         # Return annotation (string 'None' due to __future__ annotations)
         assert sig.return_annotation in (None, "None")
+
+
+class TestWindowAudio:
+    """Tests for _window_audio() private helper."""
+
+    def test_exact_multiple(self):
+        """3s at 32kHz -> 3 windows of 32000 samples each."""
+        from autopilot.analyze.audio_events import _window_audio
+
+        audio = np.zeros(3 * 32000, dtype=np.float32)
+        windows = _window_audio(audio, 32000)
+        assert len(windows) == 3
+        for w in windows:
+            assert w.shape == (32000,)
+
+    def test_short_audio_padded(self):
+        """0.5s -> 1 window zero-padded to 32000."""
+        from autopilot.analyze.audio_events import _window_audio
+
+        audio = np.ones(16000, dtype=np.float32)
+        windows = _window_audio(audio, 32000)
+        assert len(windows) == 1
+        assert windows[0].shape == (32000,)
+        # First half is ones, second half is zeros (padding)
+        assert np.all(windows[0][:16000] == 1.0)
+        assert np.all(windows[0][16000:] == 0.0)
+
+    def test_remainder_padded(self):
+        """2.5s -> 3 windows, last zero-padded."""
+        from autopilot.analyze.audio_events import _window_audio
+
+        audio = np.ones(int(2.5 * 32000), dtype=np.float32)
+        windows = _window_audio(audio, 32000)
+        assert len(windows) == 3
+        # First two windows are full
+        assert np.all(windows[0] == 1.0)
+        assert np.all(windows[1] == 1.0)
+        # Third window: first half ones, second half zeros
+        assert np.all(windows[2][:16000] == 1.0)
+        assert np.all(windows[2][16000:] == 0.0)
+
+    def test_empty_audio(self):
+        """0 samples -> empty list."""
+        from autopilot.analyze.audio_events import _window_audio
+
+        audio = np.array([], dtype=np.float32)
+        windows = _window_audio(audio, 32000)
+        assert windows == []
+
+    def test_exactly_one_second(self):
+        """32000 samples -> 1 window."""
+        from autopilot.analyze.audio_events import _window_audio
+
+        audio = np.ones(32000, dtype=np.float32)
+        windows = _window_audio(audio, 32000)
+        assert len(windows) == 1
+        assert np.all(windows[0] == 1.0)
+
+    def test_output_dtype_preserved(self):
+        """float32 in -> float32 out."""
+        from autopilot.analyze.audio_events import _window_audio
+
+        audio = np.zeros(32000, dtype=np.float32)
+        windows = _window_audio(audio, 32000)
+        assert windows[0].dtype == np.float32
