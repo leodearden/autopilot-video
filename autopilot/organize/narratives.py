@@ -11,6 +11,7 @@ import json
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -26,6 +27,8 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "narrative_planner.md"
 
 
 class NarrativeError(Exception):
@@ -212,6 +215,35 @@ def _build_cluster_summary(
         summary["visual_quality_notes"] = ""
 
     return summary
+
+
+def _load_and_fill_prompt(config: AutopilotConfig) -> str:
+    """Load narrative_planner.md and fill creator profile placeholders.
+
+    Args:
+        config: Full autopilot config with creator profile.
+
+    Returns:
+        Prompt text with all placeholders filled.
+
+    Raises:
+        NarrativeError: If the prompt file cannot be loaded.
+    """
+    try:
+        template = _PROMPT_PATH.read_text()
+    except OSError as e:
+        raise NarrativeError(f"Failed to load prompt: {e}") from e
+
+    creator = config.creator
+    return (
+        template
+        .replace("{creator_name}", creator.name)
+        .replace("{channel_style}", creator.channel_style)
+        .replace("{target_audience}", creator.target_audience)
+        .replace("{default_video_duration}", creator.default_video_duration_minutes)
+        .replace("{narration_style}", creator.narration_style)
+        .replace("{music_preference}", creator.music_preference)
+    )
 
 
 def build_master_storyboard(db: CatalogDB) -> str:
