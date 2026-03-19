@@ -56,10 +56,9 @@ def detect_faces(
     import cv2  # type: ignore[reportMissingImports]
 
     cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
-        raise FaceDetectionError(f"Failed to open video: {video_path}")
-
     try:
+        if not cap.isOpened():
+            raise FaceDetectionError(f"Failed to open video: {video_path}")
         fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
