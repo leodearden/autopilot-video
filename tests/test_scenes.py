@@ -664,3 +664,150 @@ class TestPySceneDetectPipeline:
             assert "start_frame" in b
             assert "end_frame" in b
             assert "transition_type" in b
+
+
+class TestFallbackBehavior:
+    """Tests for TransNetV2 -> PySceneDetect fallback logic."""
+
+    def test_transnetv2_success_skips_pyscenedetect(self, catalog_db, tmp_path) -> None:
+        """When TransNetV2 succeeds, PySceneDetect is NOT called."""
+        from autopilot.analyze.scenes import detect_shots
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("vid-fb1", str(video_file))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=30.0, total_frames=300)
+        mock_cv2.VideoCapture.return_value = cap
+        resized = np.zeros((27, 48, 3), dtype=np.uint8)
+        mock_cv2.resize.return_value = resized
+
+        model = _make_mock_transnetv2_model()
+        scheduler = _make_mock_scheduler(model)
+
+        mock_sd, mock_detectors = _make_mock_scenedetect()
+
+        with patch.dict(sys.modules, {
+            "cv2": mock_cv2,
+            "scenedetect": mock_sd,
+            "scenedetect.detectors": mock_detectors,
+        }):
+            detect_shots("vid-fb1", video_file, catalog_db, scheduler)
+
+        # scenedetect.detect should not have been called
+        mock_sd.detect.assert_not_called()
+
+    def test_transnetv2_failure_runs_fallback(self, catalog_db, tmp_path) -> None:
+        """When TransNetV2 raises exception, PySceneDetect fallback runs."""
+        from autopilot.analyze.scenes import detect_shots
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("vid-fb2", str(video_file))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=30.0, total_frames=300)
+        mock_cv2.VideoCapture.return_value = cap
+        # Make frame reading fail
+        cap.isOpened.return_value = False
+
+        scheduler = MagicMock()
+        mock_sd, mock_detectors = _make_mock_scenedetect()
+
+        with patch.dict(sys.modules, {
+            "cv2": mock_cv2,
+            "scenedetect": mock_sd,
+            "scenedetect.detectors": mock_detectors,
+        }):
+            detect_shots("vid-fb2", video_file, catalog_db, scheduler)
+
+        # Fallback should have stored with pyscenedetect method
+        row = catalog_db.get_boundaries("vid-fb2", method="pyscenedetect")
+        assert row is not None
+
+    def test_double_failure_raises(self, catalog_db, tmp_path) -> None:
+        """When both methods fail, ShotDetectionError is raised."""
+        from autopilot.analyze.scenes import ShotDetectionError, detect_shots
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("vid-fb3", str(video_file))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=30.0, total_frames=300)
+        mock_cv2.VideoCapture.return_value = cap
+        cap.isOpened.return_value = False
+
+        scheduler = MagicMock()
+
+        # Make scenedetect fail too
+        mock_sd = MagicMock()
+        mock_sd.detect.side_effect = RuntimeError("scenedetect failed")
+        mock_detectors = MagicMock()
+
+        with patch.dict(sys.modules, {
+            "cv2": mock_cv2,
+            "scenedetect": mock_sd,
+            "scenedetect.detectors": mock_detectors,
+        }):
+            with pytest.raises(ShotDetectionError):
+                detect_shots("vid-fb3", video_file, catalog_db, scheduler)
+
+    def test_double_failure_wraps_cause(self, catalog_db, tmp_path) -> None:
+        """Double failure wraps fallback exception via __cause__."""
+        from autopilot.analyze.scenes import ShotDetectionError, detect_shots
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("vid-fb4", str(video_file))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture()
+        mock_cv2.VideoCapture.return_value = cap
+        cap.isOpened.return_value = False
+
+        scheduler = MagicMock()
+        mock_sd = MagicMock()
+        fallback_err = RuntimeError("pyscene broke")
+        mock_sd.detect.side_effect = fallback_err
+        mock_detectors = MagicMock()
+
+        with patch.dict(sys.modules, {
+            "cv2": mock_cv2,
+            "scenedetect": mock_sd,
+            "scenedetect.detectors": mock_detectors,
+        }):
+            with pytest.raises(ShotDetectionError) as exc_info:
+                detect_shots("vid-fb4", video_file, catalog_db, scheduler)
+
+        assert exc_info.value.__cause__ is fallback_err
+
+    def test_no_partial_results_on_double_failure(self, catalog_db, tmp_path) -> None:
+        """No partial results stored in DB on double failure."""
+        from autopilot.analyze.scenes import ShotDetectionError, detect_shots
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("vid-fb5", str(video_file))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture()
+        mock_cv2.VideoCapture.return_value = cap
+        cap.isOpened.return_value = False
+
+        scheduler = MagicMock()
+        mock_sd = MagicMock()
+        mock_sd.detect.side_effect = RuntimeError("fail")
+        mock_detectors = MagicMock()
+
+        with patch.dict(sys.modules, {
+            "cv2": mock_cv2,
+            "scenedetect": mock_sd,
+            "scenedetect.detectors": mock_detectors,
+        }):
+            with pytest.raises(ShotDetectionError):
+                detect_shots("vid-fb5", video_file, catalog_db, scheduler)
+
+        # No boundaries should exist
+        assert catalog_db.get_boundaries("vid-fb5") == []
