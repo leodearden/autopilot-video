@@ -1242,3 +1242,67 @@ class TestExceptionHandling:
             spec.load_fn()
 
         assert any("vLLM unavailable" in msg or "vllm" in msg.lower() for msg in caplog.messages)
+
+
+# ---------------------------------------------------------------------------
+# TestCommitRegression — DB commit verification with non-autocommit DB
+# ---------------------------------------------------------------------------
+
+
+class TestCommitRegression:
+    """Tests for proper DB commit behavior in caption_clip/batch_caption."""
+
+    def test_caption_clip_commits_to_db(self, tmp_path):
+        """Caption must be committed and visible from a second DB connection.
+
+        Uses a file-based CatalogDB with default isolation_level (NOT autocommit)
+        to verify that caption_clip properly commits via 'with db:'.
+        """
+        from PIL import Image as PILImage
+
+        from autopilot.analyze.captions import caption_clip
+        from autopilot.db import CatalogDB
+
+        db_path = tmp_path / "test.db"
+        db = CatalogDB(str(db_path))
+
+        # Insert media via context manager (committed)
+        with db:
+            db.insert_media(
+                id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
+            )
+
+        model, processor = _make_mock_model_and_processor()
+        input_ids = np.zeros((1, 5), dtype=np.int64)
+        processor.return_value = {"input_ids": input_ids}
+        full_output = np.arange(10, dtype=np.int64).reshape(1, -1)
+        model.generate.return_value = full_output
+        processor.batch_decode.return_value = ["A beautiful sunset"]
+
+        scheduler = _make_mock_scheduler(
+            model_obj={"backend": "transformers", "model": model, "processor": processor}
+        )
+        config = _make_mock_config()
+
+        dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(4)]
+
+        with (
+            patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames),
+            patch.object(Path, "exists", return_value=True),
+        ):
+            caption_clip(
+                "m1", Path("/test/video.mp4"), 0.0, 60.0,
+                db=db, scheduler=scheduler, config=config,
+            )
+
+        # Open a SECOND independent connection to verify commit to disk
+        db2 = CatalogDB(str(db_path))
+        stored = db2.get_caption("m1", 0.0, 60.0)
+        db2.close()
+        db.close()
+
+        assert stored is not None, (
+            "Caption not visible from second connection — "
+            "upsert_caption must be wrapped in 'with db:' for commit"
+        )
+        assert stored["caption"] == "A beautiful sunset"
