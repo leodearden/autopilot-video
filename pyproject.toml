@@ -10,6 +10,8 @@ requires-python = ">=3.11"
 dependencies = [
     # Core
     "click",
+    "numpy",
+    "Pillow",
     "pyyaml",
     "requests",
     # ML — speech & audio
@@ -62,3 +64,4 @@ select = ["E", "F", "I", "W"]
 [tool.pyright]
 pythonVersion = "3.11"
 typeCheckingMode = "basic"
+reportMissingImports = false

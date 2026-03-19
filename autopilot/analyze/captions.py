@@ -182,7 +182,8 @@ def caption_clip(
 
     # Get media metadata for fps
     media = db.get_media(media_id)
-    fps = float(media["fps"]) if media and media.get("fps") else 30.0
+    fps_val = media["fps"] if media and media.get("fps") else 30.0
+    fps = float(fps_val)  # type: ignore[arg-type]
 
     # Extract frames from clip segment
     frames = _extract_clip_frames(video_path, start_time, end_time, fps)
@@ -247,7 +248,8 @@ def batch_caption(
             logger.warning("Media %s not found in DB, skipping", mid)
             continue
         file_path = Path(str(media["file_path"]))
-        duration = float(media.get("duration_seconds") or 0.0)
+        dur_val = media.get("duration_seconds") or 0.0
+        duration = float(dur_val)  # type: ignore[arg-type]
         if duration <= 0:
             logger.warning("Media %s has no duration, skipping", mid)
             continue
