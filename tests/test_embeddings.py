@@ -148,3 +148,42 @@ class TestSignatures:
         tk = sig.parameters["top_k"]
         assert tk.kind == inspect.Parameter.KEYWORD_ONLY
         assert tk.default == 10
+
+
+class TestComputeSampleIndices:
+    """Tests for _compute_sample_indices helper."""
+
+    def test_half_fps_30fps(self) -> None:
+        """300 frames at 30fps sampled at 0.5fps -> [0, 60, 120, 180, 240]."""
+        from autopilot.analyze.embeddings import _compute_sample_indices
+
+        result = _compute_sample_indices(300, 30.0)
+        assert result == [0, 60, 120, 180, 240]
+
+    def test_half_fps_24fps(self) -> None:
+        """240 frames at 24fps sampled at 0.5fps -> [0, 48, 96, 144, 192]."""
+        from autopilot.analyze.embeddings import _compute_sample_indices
+
+        result = _compute_sample_indices(240, 24.0)
+        assert result == [0, 48, 96, 144, 192]
+
+    def test_empty_video(self) -> None:
+        """0 frames -> []."""
+        from autopilot.analyze.embeddings import _compute_sample_indices
+
+        result = _compute_sample_indices(0, 30.0)
+        assert result == []
+
+    def test_short_video(self) -> None:
+        """30 frames at 30fps -> [0] (only one sample in 1 second of video)."""
+        from autopilot.analyze.embeddings import _compute_sample_indices
+
+        result = _compute_sample_indices(30, 30.0)
+        assert result == [0]
+
+    def test_low_fps(self) -> None:
+        """10 frames at 1fps -> [0, 2, 4, 6, 8]."""
+        from autopilot.analyze.embeddings import _compute_sample_indices
+
+        result = _compute_sample_indices(10, 1.0)
+        assert result == [0, 2, 4, 6, 8]
