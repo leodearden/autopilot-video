@@ -1,32 +1,37 @@
 {
   "task_id": "10",
   "title": "Face detection and clustering",
-  "modules": [
+  "files": [
     "autopilot/analyze/faces.py",
     "tests/test_faces.py",
     "scripts/label_faces.py"
   ],
-  "analysis": "Task 10 implements face detection (InsightFace SCRFD + ArcFace 512-d embeddings) and DBSCAN clustering in autopilot/analyze/faces.py, plus an interactive labeling script in scripts/label_faces.py. The DB schema (faces + face_clusters tables) and all CRUD methods already exist in autopilot/db.py. The GPUScheduler and ModelConfig (with face_model='buffalo_l') are already implemented. The pattern closely mirrors autopilot/analyze/objects.py: lazy cv2 import, idempotency check, 1fps sampling via max(1, int(fps)), GPU model via scheduler context manager, transactional batch inserts, custom exception class. detect_faces iterates sampled frames, runs face_model.get(frame), extracts bbox and normed_embedding per face, stores as (media_id, frame_idx, face_index, bbox_json, embedding_blob, None). cluster_faces loads all embeddings, runs sklearn DBSCAN with cosine metric, computes L2-normalized centroids, populates face_clusters table with up to 5 sample paths per cluster, and batch-updates face cluster_ids. labels start NULL. scripts/label_faces.py provides get_unlabeled_clusters() and apply_label() helpers plus an interactive CLI main(). Tests follow existing conventions: mock cv2.VideoCapture, mock InsightFace model, use catalog_db fixture with in-memory SQLite autocommit.",
+  "modules": [
+    "autopilot/analyze",
+    "tests",
+    "scripts"
+  ],
+  "analysis": "Task 10 implements face detection (InsightFace SCRFD + ArcFace 512-d embeddings) and DBSCAN clustering in autopilot/analyze/faces.py, plus an interactive labeling script in scripts/label_faces.py. Dependencies: DB schema (faces + face_clusters tables) and all CRUD methods already exist in autopilot/db.py (task 3). GPUScheduler and ModelConfig (with face_model='buffalo_l') already implemented (task 6). The pattern closely mirrors autopilot/analyze/objects.py: lazy cv2 import, idempotency check, 1fps sampling via max(1, int(fps)), GPU model via scheduler context manager, transactional batch inserts, custom exception class. detect_faces iterates sampled frames, runs face_model.get(frame), extracts bbox and normed_embedding per face, stores as (media_id, frame_idx, face_index, bbox_json, embedding_blob, None). cluster_faces loads all embeddings, runs sklearn DBSCAN with cosine metric, computes L2-normalized centroids, populates face_clusters table with up to 5 sample paths per cluster, and batch-updates face cluster_ids. Labels start NULL. scripts/label_faces.py provides get_unlabeled_clusters() and apply_label() helpers plus an interactive CLI main(). Tests follow existing conventions: mock cv2.VideoCapture, mock InsightFace model, use catalog_db fixture with in-memory SQLite autocommit. All 36 tests pass.",
   "prerequisites": [
     {
       "id": "pre-1",
       "description": "Verify DB schema has faces and face_clusters tables with correct columns and CRUD methods (batch_insert_faces, get_faces_for_media, get_all_face_embeddings, clear_face_clusters, reset_face_cluster_ids, batch_update_face_cluster_ids, insert_face_cluster, update_face_label, get_face_clusters, get_face_cluster_by_id). All confirmed present in db.py.",
       "status": "done",
-      "commit": "62810a6",
+      "commit": "3b3fda4",
       "tests": []
     },
     {
       "id": "pre-2",
       "description": "Verify ModelConfig has face_model field (default 'buffalo_l') and GPUScheduler context manager interface exists. Both confirmed in config.py and gpu_scheduler.py.",
       "status": "done",
-      "commit": "62810a6",
+      "commit": "3b3fda4",
       "tests": []
     },
     {
       "id": "pre-3",
       "description": "Create test mock helpers in tests/test_faces.py: _make_mock_capture (cv2.VideoCapture mock with configurable fps/frames), _make_mock_cv2 (module mock with CAP_PROP constants), _make_mock_face (InsightFace Face mock with bbox, det_score, normed_embedding).",
       "status": "done",
-      "commit": "62810a6",
+      "commit": "3b3fda4",
       "tests": []
     }
   ],
@@ -36,271 +41,243 @@
       "type": "test",
       "description": "Write TestPublicAPI: test FaceDetectionError is importable and is subclass of Exception, test detect_faces is importable with correct params (media_id, video_path, db, scheduler, config), test cluster_faces is importable with (db, *, eps, min_samples) signature.",
       "status": "done",
-      "commit": "62810a6"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-2",
       "type": "impl",
       "description": "Create autopilot/analyze/faces.py with module docstring, imports, __all__, FaceDetectionError class, and stub detect_faces(media_id, video_path, db, scheduler, config) -> None and cluster_faces(db, *, eps=0.5, min_samples=3) -> None functions.",
       "status": "done",
-      "commit": "474b3ec"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-3",
       "type": "test",
       "description": "Write TestIdempotency: test that detect_faces returns early without calling scheduler.model when faces already exist for media_id; test that detect_faces proceeds (calls scheduler) when no faces exist.",
       "status": "done",
-      "commit": "00e3654"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-4",
       "type": "impl",
       "description": "Implement idempotency guard in detect_faces: check db.get_faces_for_media(media_id), return early with logger.info if non-empty.",
       "status": "done",
-      "commit": "0ae070d"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write TestErrorHandling: test nonexistent video path raises FaceDetectionError matching 'not found'; test cap.isOpened() returning False raises FaceDetectionError matching 'Failed to open'.",
+      "description": "Write TestErrorHandling: test nonexistent video path raises FaceDetectionError matching 'not found'; test cap.isOpened() returning False raises FaceDetectionError matching 'Failed to open'; test frame read failure skips that frame but processes others.",
       "status": "done",
-      "commit": "5b5ac47"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Implement path validation (raise FaceDetectionError if not exists), lazy cv2 import, VideoCapture open with isOpened check, try/finally with cap.release().",
+      "description": "Implement path validation (raise FaceDetectionError if not exists), lazy cv2 import, VideoCapture open with isOpened check, try/finally with cap.release(), frame read failure handled with logger.warning and continue.",
       "status": "done",
-      "commit": "5b5ac47"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write TestDetectionLoop.test_samples_at_1fps: 300 frames at 30fps should call face_model.get() exactly 10 times (frames 0,30,60,...,270).",
+      "description": "Write TestDetectionLoop: test_samples_at_1fps (300 frames at 30fps = 10 model.get calls), test_stores_faces_with_embeddings (2 faces/frame x 10 frames = 20 DB rows with correct frame_numbers and face_indices), test_single_face_per_frame (1 face stores 1 row with face_index=0).",
       "status": "done",
-      "commit": "8729b3e"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Implement 1fps sampling: read fps and total_frames from cap, compute interval=max(1,int(fps)), iterate frame_indices=range(0,total_frames,interval), load face model via scheduler.model(config.face_model), call face_model.get(frame) per sampled frame.",
+      "description": "Implement 1fps sampling loop: compute interval=max(1,int(fps)), frame_indices=range(0,total_frames,interval), load InsightFace model via scheduler.model(config.face_model), call face_model.get(frame) per sampled frame, skip faces with normed_embedding=None.",
       "status": "done",
-      "commit": "8729b3e"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write TestDetectionLoop.test_stores_faces_with_embeddings: 2 faces per frame across 10 sampled frames = 20 rows in DB with correct frame_numbers (0,30,...,270) and face_index (0,1) per frame.",
+      "description": "Write TestDataFormat: test bbox_json is valid JSON list of 4 floats matching input; test embedding BLOB is exactly 2048 bytes (512x float32); test embedding roundtrip via tobytes/frombuffer matches original; test cluster_id starts as None.",
       "status": "done",
-      "commit": "99bde5a"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Implement face data extraction and storage: for each detected face with non-null normed_embedding, serialize bbox as JSON, embedding as float32 bytes, accumulate rows as (media_id, frame_idx, i, bbox_json, emb_bytes, None), batch_insert_faces within db context manager.",
+      "description": "Implement face data serialization and storage: bbox_json=json.dumps(face.bbox.tolist()), emb_bytes=face.normed_embedding.astype(np.float32).tobytes(), accumulate rows, batch_insert_faces within db context manager. Early return if total_frames<=0.",
       "status": "done",
-      "commit": "20301ed"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write TestDataFormat: test bbox_json is valid JSON list of 4 floats matching input; test embedding BLOB is exactly 2048 bytes (512x4); test embedding roundtrip via tobytes/frombuffer matches original; test cluster_id starts as None.",
+      "description": "Write TestEdgeCases: test no faces detected stores 0 rows; test empty video (0 total_frames) returns without error and doesn't call scheduler.",
       "status": "done",
-      "commit": "99bde5a"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Verify data format correctness (already implemented in step-10). This step confirms tests pass with bbox_json=json.dumps(face.bbox.tolist()), emb_bytes=face.normed_embedding.astype(np.float32).tobytes(), cluster_id=None.",
+      "description": "Verify edge case handling: early return if total_frames<=0 before scheduler.model(), only call batch_insert_faces if rows is non-empty. Tests should pass with existing implementation.",
       "status": "done",
-      "commit": "20301ed"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-13",
       "type": "test",
-      "description": "Write TestEdgeCases: test no faces detected stores 0 rows; test empty video (0 total_frames) returns without error and doesn't call scheduler; test frame read failure skips that frame but processes others.",
+      "description": "Write TestLogging: test INFO log contains media_id on detection start; test INFO log contains 'skipping' when idempotency triggers.",
       "status": "done",
-      "commit": "99bde5a"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-14",
       "type": "impl",
-      "description": "Implement edge case handling: early return if total_frames<=0 (before scheduler.model), skip faces with normed_embedding=None, skip frames where cap.read() returns False with logger.warning, only call batch_insert_faces if rows non-empty.",
+      "description": "Add structured logging to detect_faces: logger.info on start (media_id, total_frames, fps), logger.info on completion (face count, frame count), logger.info on idempotent skip, logger.warning on frame read failure.",
       "status": "done",
-      "commit": "20301ed"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-15",
       "type": "test",
-      "description": "Write TestLogging: test INFO log contains media_id on detection start; test INFO log contains 'skipping' when idempotency triggers.",
+      "description": "Write TestClusterFaces.test_empty_db_no_error: cluster_faces with no face rows creates no clusters and raises no error.",
       "status": "done",
-      "commit": "69a6a54"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-16",
       "type": "impl",
-      "description": "Add structured logging: logger.info on start with media_id/frames/fps, logger.info on completion with face count and frame count, logger.info on idempotent skip, logger.warning on frame read failure.",
+      "description": "Implement cluster_faces skeleton: lazy import sklearn.cluster.DBSCAN, fetch face_rows via db.get_all_face_embeddings(), return early with logger.info if empty.",
       "status": "done",
-      "commit": "e1df36c"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-17",
       "type": "test",
-      "description": "Write TestClusterFaces.test_empty_db_no_error: cluster_faces with no face rows creates no clusters and raises no error.",
+      "description": "Write TestClusterFaces.test_clusters_three_groups: insert 3 synthetic clusters of 5 faces each (unit vectors with dominant weight on different dimensions), verify 3 face_clusters rows, all faces have cluster_id assigned, faces within same synthetic group share same cluster_id.",
       "status": "done",
-      "commit": "69a6a54"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-18",
       "type": "impl",
-      "description": "Implement cluster_faces skeleton: fetch face_rows via db.get_all_face_embeddings(), return early with logger.info if empty.",
+      "description": "Implement DBSCAN clustering core: unpack embeddings into numpy matrix via np.frombuffer, run DBSCAN(eps, min_samples, metric='cosine').fit(embeddings), group faces by label (skip -1 noise), compute L2-normalized centroids, call insert_face_cluster and batch_update_face_cluster_ids.",
       "status": "done",
-      "commit": "e1df36c"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-19",
       "type": "test",
-      "description": "Write TestClusterFaces.test_clusters_three_groups: insert 3 synthetic clusters of 5 faces each (unit vectors with dominant weight on different dimensions), verify cluster_faces produces 3 face_clusters rows, all faces have cluster_id assigned, faces within same synthetic group share same cluster_id.",
+      "description": "Write TestClusterFaces.test_centroid_is_normalized_mean: verify representative_embedding BLOB decodes to 512 float32 values with L2 norm approximately 1.0.",
       "status": "done",
-      "commit": "69a6a54"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-20",
       "type": "impl",
-      "description": "Implement DBSCAN clustering: unpack embeddings into numpy matrix via np.frombuffer, run DBSCAN(eps, min_samples, metric='cosine').fit(embeddings), group faces by label (excluding -1 noise), batch_update_face_cluster_ids.",
+      "description": "Verify centroid computation: mean of member embeddings normalized via centroid/np.linalg.norm(centroid), stored as float32 bytes. Tests should pass with step-18 implementation.",
       "status": "done",
-      "commit": "e1df36c"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-21",
       "type": "test",
-      "description": "Write TestClusterFaces.test_centroid_is_normalized_mean: verify representative_embedding BLOB decodes to 512 float32 values with L2 norm approximately 1.0.",
+      "description": "Write TestClusterFaces.test_sample_paths_populated: verify sample_image_paths is JSON list of <=5 'media_id:frame_number' strings per cluster.",
       "status": "done",
-      "commit": "69a6a54"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-22",
       "type": "impl",
-      "description": "Implement centroid computation: for each cluster, compute mean of member embeddings, L2-normalize via centroid/np.linalg.norm(centroid), store as float32 bytes via insert_face_cluster.",
+      "description": "Implement sample paths: collect up to 5 member indices per cluster, format as 'media_id:frame_number' strings, store as JSON via insert_face_cluster.",
       "status": "done",
-      "commit": "e1df36c"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-23",
       "type": "test",
-      "description": "Write TestClusterFaces.test_sample_paths_populated: verify sample_image_paths is JSON list of <=5 'media_id:frame_number' strings per cluster.",
+      "description": "Write TestClusterFaces.test_label_starts_null: all face_clusters rows have label=None after clustering.",
       "status": "done",
-      "commit": "69a6a54"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-24",
       "type": "impl",
-      "description": "Implement sample paths: collect up to 5 member indices per cluster, format as 'media_id:frame_number' strings, store as JSON via insert_face_cluster.",
+      "description": "Verify label=None is passed to insert_face_cluster. Tests should pass with existing implementation.",
       "status": "done",
-      "commit": "e1df36c"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-25",
       "type": "test",
-      "description": "Write TestClusterFaces.test_label_starts_null: all face_clusters rows have label=None after clustering.",
+      "description": "Write TestClusterFaces.test_noise_excluded_from_clusters: insert 2 tight clusters + 2 random outliers, verify outlier faces have cluster_id=None and only 2 cluster rows created.",
       "status": "done",
-      "commit": "69a6a54"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-26",
       "type": "impl",
-      "description": "Verify label=None is passed to insert_face_cluster (already done in step-22/24). Tests should pass.",
+      "description": "Verify noise handling: DBSCAN labels noise as -1, skip label==-1 in cluster_map loop with noise_count increment. Noise faces keep cluster_id=None since only cluster members get batch_update_face_cluster_ids.",
       "status": "done",
-      "commit": "e1df36c"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-27",
       "type": "test",
-      "description": "Write TestClusterFaces.test_noise_excluded_from_clusters: insert 2 tight clusters + 2 random outliers, verify outlier faces have cluster_id=None and only 2 cluster rows created.",
+      "description": "Write TestClusterFaces.test_single_face_is_noise (1 face with min_samples=3 = 0 clusters, cluster_id=None) and test_reclustering_replaces_old (run twice, same cluster count, all faces still assigned).",
       "status": "done",
-      "commit": "69a6a54"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-28",
       "type": "impl",
-      "description": "Verify noise handling: DBSCAN labels noise as -1, the cluster_map loop already skips label==-1 with noise_count increment. Noise faces keep cluster_id=None since only cluster members get updated.",
+      "description": "Implement re-clustering cleanup: before creating new clusters, call db.clear_face_clusters() and db.reset_face_cluster_ids() within a db context manager to ensure idempotent re-runs.",
       "status": "done",
-      "commit": "e1df36c"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-29",
       "type": "test",
-      "description": "Write TestClusterFaces.test_single_face_is_noise: one isolated face with min_samples=3 produces 0 clusters and keeps cluster_id=None.",
+      "description": "Write TestClusterFacesLogging: test INFO log contains cluster count; test INFO log contains noise count; test log mentions 'No face embeddings' when DB is empty.",
       "status": "done",
-      "commit": "69a6a54"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-30",
       "type": "impl",
-      "description": "No additional impl needed — single face is noise by DBSCAN design. Test validates existing behavior.",
+      "description": "Add cluster_faces logging: logger.info on start with embedding count, logger.info on completion with cluster count and noise count, logger.info on empty skip.",
       "status": "done",
-      "commit": "e1df36c"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-31",
       "type": "test",
-      "description": "Write TestClusterFaces.test_reclustering_replaces_old: run cluster_faces twice, verify same number of clusters (not doubled), all faces still have cluster_id assigned.",
+      "description": "Write TestLabelFaces: test get_unlabeled_clusters returns only clusters with label IS NULL; test apply_label updates face_clusters.label in DB; test label roundtrip verifies value; test all_labeled_returns_empty after labeling all clusters.",
       "status": "done",
-      "commit": "69a6a54"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-32",
       "type": "impl",
-      "description": "Implement re-clustering cleanup: before creating new clusters, call db.clear_face_clusters() and db.reset_face_cluster_ids() within a db context manager.",
+      "description": "Create scripts/label_faces.py with get_unlabeled_clusters(db) filtering clusters where label is None, apply_label(db, cluster_id, label) calling db.update_face_label within context manager, and main(db_path) interactive CLI loop with argparse.",
       "status": "done",
-      "commit": "e1df36c"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-33",
       "type": "test",
-      "description": "Write TestClusterFacesLogging: test INFO log contains cluster count; test INFO log contains noise count; test log mentions 'No face embeddings' when DB is empty.",
+      "description": "Write TestIntegration.test_detect_then_cluster_pipeline: mock detect_faces on a 90-frame video with 2 distinct embedding groups per frame (3 sampled frames x 2 faces = 6 rows), then cluster_faces with min_samples=2 produces 2 clusters, all faces assigned, centroids normalized, sample_paths valid JSON, labels null.",
       "status": "done",
-      "commit": "69a6a54"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-34",
       "type": "impl",
-      "description": "Add cluster_faces logging: logger.info on start with embedding count, logger.info on completion with cluster count and noise count, logger.info on empty skip.",
+      "description": "Run full integration test to verify detect_faces -> cluster_faces pipeline end-to-end. Fix any remaining issues. Final verification: all 36 tests pass, ruff lint clean.",
       "status": "done",
-      "commit": "e1df36c"
-    },
-    {
-      "id": "step-35",
-      "type": "test",
-      "description": "Write TestLabelFaces: test get_unlabeled_clusters returns only clusters with label IS NULL; test apply_label updates face_clusters.label in DB; test label roundtrip (label then retrieve verifies value); test all_labeled_returns_empty after labeling all clusters.",
-      "status": "done",
-      "commit": "69a6a54"
-    },
-    {
-      "id": "step-36",
-      "type": "impl",
-      "description": "Create scripts/label_faces.py with get_unlabeled_clusters(db) filtering clusters where label is None, apply_label(db, cluster_id, label) calling db.update_face_label within context manager, and main(db_path) interactive CLI loop with argparse.",
-      "status": "done",
-      "commit": "e1df36c"
-    },
-    {
-      "id": "step-37",
-      "type": "test",
-      "description": "Write TestIntegration.test_detect_then_cluster_pipeline: mock detect_faces on a 90-frame video with 2 distinct embedding groups per frame (3 sampled frames x 2 faces = 6 rows), then cluster_faces with min_samples=2 produces 2 clusters, all faces assigned, centroids normalized, sample_paths valid, labels null.",
-      "status": "done",
-      "commit": "69a6a54"
-    },
-    {
-      "id": "step-38",
-      "type": "impl",
-      "description": "Run full integration test to verify detect_faces -> cluster_faces pipeline end-to-end. Fix any remaining issues. Final cleanup and verification all tests pass.",
-      "status": "done",
-      "commit": "8621c58"
+      "commit": "3b3fda4"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use InsightFace buffalo_l model pack via GPUScheduler context manager, same as YOLO pattern in objects.py",
+      "decision": "Use InsightFace buffalo_l model pack via GPUScheduler context manager, same pattern as YOLO in objects.py",
       "rationale": "Consistent GPU model management across all analysis modules. The scheduler handles VRAM-aware loading/eviction with LRU, preventing OOM. buffalo_l includes both SCRFD (detection) and ArcFace (recognition/embedding) in a single model pack."
     },
     {
@@ -334,19 +311,19 @@
   ],
   "reuse": [
     {
-      "what": "CatalogDB face CRUD methods",
+      "what": "CatalogDB face CRUD methods (10 methods)",
       "where": "autopilot/db.py lines 346-444",
-      "how": "All 10 face/face_cluster methods already exist: batch_insert_faces, get_faces_for_frame, get_faces_for_media, get_all_face_embeddings, clear_face_clusters, reset_face_cluster_ids, batch_update_face_cluster_ids, insert_face_cluster, update_face_label, get_face_clusters, get_face_cluster_by_id. No DB changes needed."
+      "how": "All face/face_cluster methods already exist: batch_insert_faces, get_faces_for_media, get_all_face_embeddings, clear_face_clusters, reset_face_cluster_ids, batch_update_face_cluster_ids, insert_face_cluster, update_face_label, get_face_clusters, get_face_cluster_by_id. No DB changes needed."
     },
     {
-      "what": "DB schema (faces + face_clusters tables)",
-      "where": "autopilot/db.py lines 97-112",
+      "what": "DB schema (faces + face_clusters tables with indexes)",
+      "where": "autopilot/db.py lines 97-112, 183-185",
       "how": "Tables already defined in _create_schema() with correct columns, PKs, FKs, and indexes. faces: (media_id, frame_number, face_index, bbox_json, embedding BLOB, cluster_id). face_clusters: (cluster_id, label, representative_embedding BLOB, sample_image_paths)."
     },
     {
       "what": "GPUScheduler context manager pattern",
       "where": "autopilot/analyze/gpu_scheduler.py",
-      "how": "Use `with scheduler.model(config.face_model) as face_model:` exactly as objects.py uses `with scheduler.model(config.yolo_variant) as yolo_model:`. The scheduler handles VRAM budget, LRU eviction, and reference counting."
+      "how": "Use `with scheduler.model(config.face_model) as face_model:` exactly as objects.py uses `with scheduler.model(config.yolo_variant) as yolo_model:`. Handles VRAM budget, LRU eviction, reference counting."
     },
     {
       "what": "ModelConfig.face_model field",
@@ -354,18 +331,18 @@
       "how": "Already defined as `face_model: str = 'buffalo_l'` in ModelConfig dataclass. No config changes needed."
     },
     {
-      "what": "objects.py architectural pattern",
+      "what": "objects.py architectural pattern (detect_objects)",
       "where": "autopilot/analyze/objects.py",
-      "how": "Follow same structure: lazy cv2 import after path validation, idempotency check on first line, custom Exception subclass, 1fps sampling via max(1,int(fps)), scheduler context manager for GPU model, transactional batch inserts with `with db:`, try/finally with cap.release(), structured logging."
+      "how": "Follow same structure: lazy cv2 import after path validation, idempotency check, custom Exception subclass, 1fps sampling via max(1,int(fps)), scheduler context manager for GPU model, transactional batch inserts with `with db:`, try/finally with cap.release(), structured logging."
     },
     {
-      "what": "Test fixtures and mock patterns",
+      "what": "Test fixtures (catalog_db) and mock patterns",
       "where": "tests/conftest.py + tests/test_objects.py",
-      "how": "Reuse catalog_db fixture (in-memory SQLite with autocommit). Mirror mock helpers from test_objects.py: _make_mock_capture for cv2.VideoCapture, _make_mock_cv2 for cv2 module with CAP_PROP constants, patch.dict(sys.modules, {'cv2': mock_cv2}) for lazy import mocking."
+      "how": "Reuse catalog_db fixture (in-memory SQLite with autocommit). Mirror mock helpers from test_objects.py: _make_mock_capture for cv2.VideoCapture, _make_mock_cv2 for cv2 module, patch.dict(sys.modules, {'cv2': mock_cv2}) for lazy import mocking."
     },
     {
-      "what": "sklearn DBSCAN",
-      "where": "scikit-learn (already in pyproject.toml dependencies)",
+      "what": "sklearn DBSCAN (already a project dependency)",
+      "where": "scikit-learn in pyproject.toml",
       "how": "Lazy import inside cluster_faces: `from sklearn.cluster import DBSCAN`. Use DBSCAN(eps=eps, min_samples=min_samples, metric='cosine').fit(embeddings)."
     }
   ]
