@@ -181,3 +181,130 @@ class TestPublicAPI:
 
         # Return annotation (string 'None' due to __future__ annotations)
         assert sig.return_annotation in (None, "None")
+
+
+class TestNormalizeSegments:
+    """Tests for _normalize_segments() private helper."""
+
+    def test_complete_segment(self):
+        """Input with all PRD fields produces correct output dict."""
+        from autopilot.analyze.asr import _normalize_segments
+
+        segments = [{
+            "start": 0.5,
+            "end": 2.3,
+            "text": "Hello world",
+            "speaker": "SPEAKER_01",
+            "words": [
+                {"word": "Hello", "start": 0.5, "end": 1.0, "score": 0.95},
+                {"word": "world", "start": 1.1, "end": 2.3, "score": 0.88},
+            ],
+        }]
+        result = _normalize_segments(segments)
+        assert len(result) == 1
+        seg = result[0]
+        assert seg["start"] == 0.5
+        assert seg["end"] == 2.3
+        assert seg["text"] == "Hello world"
+        assert seg["speaker"] == "SPEAKER_01"
+        assert len(seg["words"]) == 2
+        assert seg["words"][0] == {
+            "word": "Hello", "start": 0.5, "end": 1.0, "score": 0.95,
+        }
+        assert seg["words"][1] == {
+            "word": "world", "start": 1.1, "end": 2.3, "score": 0.88,
+        }
+
+    def test_multiple_segments(self):
+        """Three segments all formatted correctly."""
+        from autopilot.analyze.asr import _normalize_segments
+
+        segments = [
+            {"start": 0.0, "end": 1.0, "text": "First"},
+            {"start": 1.0, "end": 2.0, "text": "Second"},
+            {"start": 2.0, "end": 3.0, "text": "Third"},
+        ]
+        result = _normalize_segments(segments)
+        assert len(result) == 3
+        assert [s["text"] for s in result] == ["First", "Second", "Third"]
+
+    def test_empty_segments(self):
+        """Empty list input returns empty list."""
+        from autopilot.analyze.asr import _normalize_segments
+
+        assert _normalize_segments([]) == []
+
+    def test_missing_speaker_defaults_to_none(self):
+        """Segment without 'speaker' key gets speaker=None."""
+        from autopilot.analyze.asr import _normalize_segments
+
+        segments = [{"start": 0.0, "end": 1.0, "text": "Test"}]
+        result = _normalize_segments(segments)
+        assert result[0]["speaker"] is None
+
+    def test_missing_words_defaults_to_empty(self):
+        """Segment without 'words' key gets words=[]."""
+        from autopilot.analyze.asr import _normalize_segments
+
+        segments = [{"start": 0.0, "end": 1.0, "text": "Test"}]
+        result = _normalize_segments(segments)
+        assert result[0]["words"] == []
+
+    def test_word_missing_score_defaults_to_zero(self):
+        """Word without 'score' gets score=0.0."""
+        from autopilot.analyze.asr import _normalize_segments
+
+        segments = [{
+            "start": 0.0,
+            "end": 1.0,
+            "text": "Test",
+            "words": [{"word": "Test", "start": 0.0, "end": 1.0}],
+        }]
+        result = _normalize_segments(segments)
+        assert result[0]["words"][0]["score"] == 0.0
+
+    def test_strips_extra_fields(self):
+        """WhisperX internal fields are not present in output."""
+        from autopilot.analyze.asr import _normalize_segments
+
+        segments = [{
+            "start": 0.0,
+            "end": 1.0,
+            "text": "Test",
+            "tokens": [123, 456],
+            "avg_logprob": -0.5,
+            "temperature": 0.0,
+            "compression_ratio": 1.2,
+            "no_speech_prob": 0.01,
+        }]
+        result = _normalize_segments(segments)
+        seg = result[0]
+        assert "tokens" not in seg
+        assert "avg_logprob" not in seg
+        assert "temperature" not in seg
+        assert "compression_ratio" not in seg
+        assert "no_speech_prob" not in seg
+        # Only PRD keys present
+        assert set(seg.keys()) == {"start", "end", "text", "speaker", "words"}
+
+    def test_json_serializable(self):
+        """json.dumps succeeds on output, no numpy types leak."""
+        from autopilot.analyze.asr import _normalize_segments
+
+        import numpy as np
+
+        segments = [{
+            "start": np.float32(0.5),
+            "end": np.float64(2.3),
+            "text": "Hello",
+            "words": [{
+                "word": "Hello",
+                "start": np.float32(0.5),
+                "end": np.float64(2.3),
+                "score": np.float32(0.95),
+            }],
+        }]
+        result = _normalize_segments(segments)
+        # Should not raise
+        serialized = json.dumps(result)
+        assert isinstance(serialized, str)
