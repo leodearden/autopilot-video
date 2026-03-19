@@ -351,3 +351,64 @@ class TestTransNetV2BoundaryConversion:
             assert type(boundary["end_frame"]) is int
             # Verify JSON-serializable
             json.dumps(boundary)
+
+
+def _make_mock_timecode(frame: int) -> MagicMock:
+    """Create a MagicMock mimicking a PySceneDetect FrameTimecode."""
+    tc = MagicMock()
+    tc.get_frames.return_value = frame
+    return tc
+
+
+class TestPySceneDetectBoundaryConversion:
+    """Tests for _pyscenedetect_to_boundaries helper."""
+
+    def test_converts_scene_list_to_boundaries(self) -> None:
+        """Converts PySceneDetect SceneList to boundary dicts using get_frames()."""
+        from autopilot.analyze.scenes import _pyscenedetect_to_boundaries
+
+        scenes = [
+            (_make_mock_timecode(0), _make_mock_timecode(100)),
+            (_make_mock_timecode(100), _make_mock_timecode(300)),
+        ]
+        result = _pyscenedetect_to_boundaries(scenes)
+
+        assert len(result) == 2
+        assert result[0] == {
+            "start_frame": 0,
+            "end_frame": 99,
+            "transition_type": "cut",
+        }
+        assert result[1] == {
+            "start_frame": 100,
+            "end_frame": 299,
+            "transition_type": "cut",
+        }
+
+    def test_empty_scene_list(self) -> None:
+        """Empty scene list returns empty list."""
+        from autopilot.analyze.scenes import _pyscenedetect_to_boundaries
+
+        result = _pyscenedetect_to_boundaries([])
+        assert result == []
+
+    def test_single_scene(self) -> None:
+        """Single scene converted correctly."""
+        from autopilot.analyze.scenes import _pyscenedetect_to_boundaries
+
+        scenes = [(_make_mock_timecode(0), _make_mock_timecode(500))]
+        result = _pyscenedetect_to_boundaries(scenes)
+
+        assert len(result) == 1
+        assert result[0]["start_frame"] == 0
+        assert result[0]["end_frame"] == 499
+
+    def test_end_frame_is_get_frames_minus_one(self) -> None:
+        """end_frame is end.get_frames()-1 since get_frames() returns next scene start."""
+        from autopilot.analyze.scenes import _pyscenedetect_to_boundaries
+
+        scenes = [(_make_mock_timecode(50), _make_mock_timecode(150))]
+        result = _pyscenedetect_to_boundaries(scenes)
+
+        # end.get_frames() returns 150, but the end frame of this scene is 149
+        assert result[0]["end_frame"] == 149
