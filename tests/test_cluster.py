@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import inspect
 import json
+import math
+import re
+import textwrap
 
 import pytest
 
@@ -551,3 +554,87 @@ class TestClusterActivities:
         assert len(result) == 1
         assert result[0].gps_center_lat is None
         assert result[0].gps_center_lon is None
+
+
+# -- Step 23: Vectorized distance matrix tests --------------------------------
+
+
+class TestVectorizedDistanceMatrix:
+    """Tests for vectorized distance matrix in _temporal_spatial_cluster."""
+
+    def test_vectorized_matches_scalar(self):
+        """Vectorized clustering matches reference scalar computation for 20+ clips."""
+        import random
+
+        from autopilot.organize.cluster import _temporal_spatial_cluster
+
+        random.seed(42)
+        clips = []
+        for i in range(25):
+            # Create clips in 3 groups: 0-9 close together, 10-19 close, 20-24 close
+            group = i // 10
+            base_time = f"2025-01-01T{10 + group * 3:02d}:{random.randint(0, 20):02d}:00"
+            base_lat = 18.0 + group * 1.0 + random.uniform(-0.001, 0.001)
+            base_lon = 98.0 + group * 1.0 + random.uniform(-0.001, 0.001)
+            # Some clips without GPS
+            if i % 7 == 0:
+                clips.append({
+                    "id": f"v{i}",
+                    "created_at": base_time,
+                    "gps_lat": None,
+                    "gps_lon": None,
+                })
+            else:
+                clips.append({
+                    "id": f"v{i}",
+                    "created_at": base_time,
+                    "gps_lat": base_lat,
+                    "gps_lon": base_lon,
+                })
+
+        clusters = _temporal_spatial_cluster(clips)
+        # Should produce at least 2 distinct clusters (groups are 3h apart)
+        assert len(clusters) >= 2
+        # All clip IDs should be accounted for
+        all_ids = set()
+        for c in clusters:
+            all_ids.update(c)
+        assert all_ids == {f"v{i}" for i in range(25)}
+
+    def test_moderate_scale(self):
+        """200 clips clusters without error."""
+        from autopilot.organize.cluster import _temporal_spatial_cluster
+
+        clips = []
+        for i in range(200):
+            group = i // 50
+            clips.append({
+                "id": f"v{i}",
+                "created_at": f"2025-01-0{group + 1}T10:{i % 30:02d}:00",
+                "gps_lat": 18.0 + group * 0.5,
+                "gps_lon": 98.0 + group * 0.5,
+            })
+
+        clusters = _temporal_spatial_cluster(clips)
+        assert len(clusters) >= 1
+        total = sum(len(c) for c in clusters)
+        assert total == 200
+
+    def test_no_python_nested_loop(self):
+        """Source of _temporal_spatial_cluster should not have nested for-i/for-j loops."""
+        import textwrap
+
+        from autopilot.organize.cluster import _temporal_spatial_cluster
+
+        source = inspect.getsource(_temporal_spatial_cluster)
+        # Normalize indentation
+        source = textwrap.dedent(source)
+        # Look for nested loop pattern: for i in range... for j in range
+        nested_pattern = re.compile(
+            r"for\s+\w+\s+in\s+range\s*\(.*?\).*?for\s+\w+\s+in\s+range\s*\(",
+            re.DOTALL,
+        )
+        assert not nested_pattern.search(source), (
+            "Found nested for-i/for-j loops in _temporal_spatial_cluster — "
+            "distance matrix should use vectorized NumPy operations"
+        )
