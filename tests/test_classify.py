@@ -363,6 +363,26 @@ class TestLLMLabeling:
             with pytest.raises(ClassifyError, match="missing required"):
                 _call_llm(summary, config)
 
+    def test_empty_content_raises_classify_error(self):
+        """Empty response.content list raises ClassifyError, not IndexError."""
+        from autopilot.config import LLMConfig
+        from autopilot.organize.classify import ClassifyError, _call_llm
+
+        config = LLMConfig()
+        summary = {"time_range": "test"}
+
+        mock_response = MagicMock()
+        mock_response.content = []  # empty content list
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_response
+
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            with pytest.raises(ClassifyError, match="[Ee]mpty response"):
+                _call_llm(summary, config)
+
 
 # -- Step 11: label_activities end-to-end tests --------------------------------
 
