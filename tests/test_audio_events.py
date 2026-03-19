@@ -105,3 +105,49 @@ def _make_full_pipeline_mocks(
     scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
 
     return mock_panns, mock_panns_config, mock_librosa, scheduler
+
+
+# -- Test classes --------------------------------------------------------------
+
+
+class TestPublicAPI:
+    """Verify public API surface and type signatures."""
+
+    def test_exports_importable(self):
+        """AudioEventError and classify_audio_events are importable."""
+        from autopilot.analyze.audio_events import (
+            AudioEventError,
+            classify_audio_events,
+        )
+
+        assert AudioEventError is not None
+        assert classify_audio_events is not None
+
+    def test_audio_event_error_is_exception(self):
+        """AudioEventError is a subclass of Exception with message."""
+        from autopilot.analyze.audio_events import AudioEventError
+
+        assert issubclass(AudioEventError, Exception)
+        err = AudioEventError("test message")
+        assert str(err) == "test message"
+
+    def test_classify_audio_events_signature(self):
+        """classify_audio_events has correct parameter signature."""
+        from autopilot.analyze.audio_events import classify_audio_events
+
+        sig = inspect.signature(classify_audio_events)
+        params = list(sig.parameters.keys())
+
+        # Positional parameters
+        assert "media_id" in params
+        assert "audio_path" in params
+        assert "db" in params
+        assert "scheduler" in params
+
+        # Keyword-only parameter with default
+        top_k_param = sig.parameters["top_k"]
+        assert top_k_param.kind == inspect.Parameter.KEYWORD_ONLY
+        assert top_k_param.default == 5
+
+        # Return annotation (string 'None' due to __future__ annotations)
+        assert sig.return_annotation in (None, "None")
