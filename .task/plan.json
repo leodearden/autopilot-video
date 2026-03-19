@@ -1,17 +1,21 @@
 {
-  "task_id": "12",
-  "title": "Audio event classification",
-  "modules": [
-    "autopilot/analyze/audio_events.py",
-    "tests/test_audio_events.py"
+  "task_id": "8",
+  "title": "Shot boundary detection",
+  "files": [
+    "autopilot/analyze/scenes.py",
+    "tests/test_scenes.py"
   ],
-  "analysis": "Implement autopilot/analyze/audio_events.py with PANNs CNN14 for per-second top-5 audio event classification against AudioSet's 527 classes. The codebase has a well-established pattern for analyze modules (see asr.py, objects.py, faces.py): module docstring, __future__ annotations, logging, TYPE_CHECKING guard for GPUScheduler/CatalogDB, __all__ exports, custom Exception subclass, private helpers, main function with idempotency check -> path validation -> status update -> lazy imports -> scheduler context -> processing loop -> DB batch insert -> error wrapping. The DB schema (audio_events table with columns media_id TEXT, timestamp_seconds REAL, events_json TEXT and PK on media_id+timestamp_seconds) and CRUD methods (batch_insert_audio_events, get_audio_events_for_range) already exist in db.py. panns-inference is already in pyproject.toml dependencies. No config.py changes needed since CNN14 is the single model specified by the task -- scheduler key 'panns_cnn14' will be hardcoded. Two private helpers needed: _window_audio() to split 1D waveform into 1-second zero-padded chunks, _extract_top_k() to extract top-k class predictions with numpy-to-Python float coercion. Test patterns from test_asr.py: class-based test organization, sys.modules patching for lazy imports, MagicMock scheduler with __enter__/__exit__, catalog_db in-memory fixture. PANNs inference API: AudioTagging(checkpoint_path=None, device='cuda:0'), model.inference(waveform) returns (clipwise_output shape (batch,527), embedding); labels via panns_inference.config.labels (527 strings). Must mock both 'panns_inference' and 'panns_inference.config' in sys.modules for tests.",
+  "modules": [
+    "autopilot/analyze",
+    "tests"
+  ],
+  "analysis": "Implement autopilot/analyze/scenes.py for shot boundary detection using TransNetV2 (primary, GPU) and PySceneDetect detect-adaptive (fallback, CPU). The codebase has a very consistent pattern across peer analyze modules (asr.py, faces.py, objects.py): custom exception, deferred heavy imports, idempotency check via DB, path validation, GPUScheduler context manager for model access, transactional DB writes with `with db:`, cap.release() in finally, and structured logging. The DB layer already has a shot_boundaries table with composite PK (media_id, method) and full CRUD: upsert_boundaries(media_id, boundaries_json, method) and get_boundaries(media_id, method=None). PySceneDetect (`scenedetect`) is already in pyproject.toml. TransNetV2 is a PyTorch model expecting 48x27 RGB frames, outputting per-frame transition probabilities which are converted to scene boundary pairs via predictions_to_scenes. The function signature follows the task spec: detect_shots(media_id, video_path, db, scheduler) \u2014 no config param since TransNetV2 has no user-configurable variants (unlike whisper_size or yolo_variant). Both methods can store results independently via the composite key. Path validation lives in detect_shots since neither method can work without the file. cv2.VideoCapture lifecycle is managed inside _read_and_downsample_frames with cap.release() in finally. PySceneDetect handles its own video I/O via scenedetect.detect(). The fallback logic: try TransNetV2, on any failure log WARNING and try PySceneDetect, on double failure raise ShotDetectionError. Test mocking follows established patterns: patch.dict(sys.modules) for deferred imports, _make_mock_cv2/_make_mock_capture helpers, MagicMock scheduler with context manager protocol.",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Create tests/test_audio_events.py with module docstring, standard imports (inspect, json, logging, sys, pathlib.Path, unittest.mock.MagicMock/patch, pytest, numpy), and mock helper functions: _make_mock_panns(labels) returning MagicMock module with AudioTagging whose instances have .inference returning (np.random probabilities shape (1,len(labels)), mock_embedding), plus config sub-mock with .labels; _make_mock_librosa(duration_seconds, sr=32000) returning MagicMock with .load returning (np.zeros waveform, sr); _make_full_pipeline_mocks(catalog_db, media_id, duration_seconds) that inserts media, builds all mocks + scheduler, returns (mock_panns, mock_panns_config, mock_librosa, scheduler).",
+      "description": "Create empty autopilot/analyze/scenes.py module with docstring, __future__ annotations import, TYPE_CHECKING imports for GPUScheduler and CatalogDB, __all__, logger, ShotDetectionError exception class, module constants (TRANSNETV2_INPUT_WIDTH=48, TRANSNETV2_INPUT_HEIGHT=27, PYSCENEDETECT_THRESHOLD=27.0), and detect_shots stub that raises NotImplementedError. This gives tests a valid import target.",
       "status": "done",
-      "commit": "7ec340c",
+      "commit": "b7035c1",
       "tests": []
     }
   ],
@@ -19,245 +23,255 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write TestPublicAPI class: test_exports_importable (AudioEventError and classify_audio_events importable from autopilot.analyze.audio_events), test_audio_event_error_is_exception (subclass of Exception, preserves message), test_classify_audio_events_signature (positional params: media_id, audio_path, db, scheduler; keyword-only: top_k with default 5; return annotation is None or 'None').",
+      "description": "Write TestPublicAPI tests in tests/test_scenes.py: (a) ShotDetectionError and detect_shots importable from autopilot.analyze.scenes; (b) ShotDetectionError is Exception subclass with message; (c) detect_shots has correct signature \u2014 positional params media_id, video_path, db, scheduler (no config), returns None; (d) __all__ exports both names; (e) module constants TRANSNETV2_INPUT_WIDTH=48, TRANSNETV2_INPUT_HEIGHT=27, PYSCENEDETECT_THRESHOLD=27.0 are accessible.",
       "status": "done",
-      "commit": "8464910"
+      "commit": "ac5e2f4"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Create autopilot/analyze/audio_events.py following asr.py structure: module docstring, from __future__ import annotations, import json/logging/Path, import numpy as np, TYPE_CHECKING guard for GPUScheduler and CatalogDB, __all__ = ['AudioEventError', 'classify_audio_events'], logger, AudioEventError(Exception), classify_audio_events stub with correct signature (media_id, audio_path, db, scheduler, *, top_k=5) -> None and pass body.",
+      "description": "Ensure scenes.py public API passes: finalize ShotDetectionError, detect_shots signature with proper type hints (media_id: str, video_path: Path, db: CatalogDB, scheduler: GPUScheduler) -> None, __all__ = ['ShotDetectionError', 'detect_shots'], and module constants.",
       "status": "done",
-      "commit": "0b14eda"
+      "commit": "ac5e2f4"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write TestWindowAudio class: test_exact_multiple (3s at 32kHz -> 3 windows of 32000 samples each), test_short_audio_padded (0.5s -> 1 window zero-padded to 32000), test_remainder_padded (2.5s -> 3 windows, last zero-padded), test_empty_audio (0 samples -> empty list), test_exactly_one_second (32000 samples -> 1 window), test_output_dtype_preserved (float32 in -> float32 out).",
+      "description": "Write TestIdempotency tests: (a) when boundaries already exist for media_id (any method), detect_shots returns early without calling scheduler.model or importing scenedetect; (b) when no boundaries exist, detect_shots proceeds past the guard. Use catalog_db fixture, insert a media row + upsert_boundaries for setup.",
       "status": "done",
-      "commit": "cacbd52"
+      "commit": "6b72c6f"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement _window_audio(audio: np.ndarray, sample_rate: int, window_seconds: float = 1.0) -> list[np.ndarray]: compute window_size = int(sample_rate * window_seconds), return [] for empty input, calculate number of windows via ceil division, pad with zeros if needed, slice into non-overlapping windows.",
+      "description": "Implement idempotency guard in detect_shots: call db.get_boundaries(media_id) (no method filter \u2014 returns list), return early with logger.info('...skipping') if list is non-empty.",
       "status": "done",
-      "commit": "a4c6827"
+      "commit": "a5b5488"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write TestExtractTopK class: test_basic_top5 (527-element array -> correct top-5 sorted descending), test_k_parameter (k=3 -> 3 items), test_output_keys (each dict has exactly {'class', 'probability'}), test_numpy_float_coercion (np.float32 probabilities -> isinstance(p, float) for all), test_json_serializable (json.dumps succeeds on output), test_all_zeros (returns k items with prob 0.0), test_k_larger_than_labels (k=600 with 527 labels -> 527 items).",
+      "description": "Write TestInputValidation tests: (a) nonexistent video_path raises ShotDetectionError matching 'not found'; (b) validation happens before heavy imports (scheduler not called on bad path).",
       "status": "done",
-      "commit": "f4bdf32"
+      "commit": "0d37c5f"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Implement _extract_top_k(probabilities: np.ndarray, labels: list[str], k: int = 5) -> list[dict[str, object]]: clamp k to min(k, len(labels)), argsort descending, return [{'class': str(labels[i]), 'probability': float(probabilities[i])} for i in top_k_indices].",
+      "description": "Implement path validation in detect_shots: check video_path.exists(), raise ShotDetectionError if not found. This runs after idempotency check, before any heavy imports or detection attempts.",
       "status": "done",
-      "commit": "e491850"
+      "commit": "ec9dda7"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write TestIdempotency class: test_skip_when_events_exist (pre-insert audio event at t=0.0 for media_id, call classify_audio_events, verify scheduler.model NOT called), test_processes_when_no_events (no pre-existing events, full mocks, verify scheduler.model called with 'panns_cnn14').",
+      "description": "Write TestFrameReading tests for _read_and_downsample_frames helper: (a) returns numpy array of shape (N, 27, 48, 3) for N-frame video; (b) returns correct fps float and total_frames int; (c) skips bad frames (cap.read returns False) without crashing; (d) correctly downsamples from arbitrary resolution (e.g. 1920x1080) to 48x27 via cv2.resize; (e) raises ShotDetectionError when video cannot be opened (isOpened=False); (f) cap.release() called even on error (finally block). Mock cv2 via patch.dict(sys.modules) and _make_mock_capture helper.",
       "status": "done",
-      "commit": "837a4e4"
+      "commit": "f70ed47"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Add idempotency check at top of classify_audio_events body: existing = db.get_audio_events_for_range(media_id, 0.0, 0.0); if existing: logger.info('Audio events already exist for %s, skipping', media_id); return.",
+      "description": "Implement _read_and_downsample_frames(video_path: Path, cv2_module) -> tuple[np.ndarray, float, int]: open VideoCapture, get fps/total_frames, read all frames in loop, resize each to (TRANSNETV2_INPUT_WIDTH, TRANSNETV2_INPUT_HEIGHT) via cv2.resize with INTER_AREA, stack into array shape (N, 27, 48, 3), return tuple. Cap.release() in finally block. Raise ShotDetectionError if not opened.",
       "status": "done",
-      "commit": "dd7415b"
+      "commit": "6d10baf"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write TestInputValidation class: test_file_not_found_raises (AudioEventError raised with 'not found' match when audio_path doesn't exist), test_raises_before_lazy_imports (scheduler.model NOT called when path validation fails).",
+      "description": "Write TestTransNetV2BoundaryConversion tests for _transnetv2_to_boundaries helper: (a) converts TransNetV2 scenes array [[0,99],[100,299]] to [{start_frame:0, end_frame:99, transition_type:'cut'}, ...]; (b) single-scene input [[0,299]] returns one-element list; (c) empty scenes array returns empty list; (d) output values are plain ints not numpy types (JSON-serializable).",
       "status": "done",
-      "commit": "eb8d2eb"
+      "commit": "2ce7746"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Add path validation after idempotency check: if not audio_path.exists(): raise AudioEventError(f'Audio file not found: {audio_path}'). Placed before any lazy imports or scheduler usage.",
+      "description": "Implement _transnetv2_to_boundaries(scenes: np.ndarray) -> list[dict]: iterate scene rows, build dict with int(start_frame), int(end_frame), transition_type='cut' for each. Return empty list for empty input.",
       "status": "done",
-      "commit": "1ab5570"
+      "commit": "c681d4b"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write TestStatusUpdate class: test_sets_status_analyzing (after successful classify_audio_events with full mocks, db.get_media(media_id)['status'] == 'analyzing'). Uses _make_full_pipeline_mocks with patched sys.modules.",
+      "description": "Write TestPySceneDetectBoundaryConversion tests for _pyscenedetect_to_boundaries helper: (a) converts PySceneDetect SceneList [(start_tc, end_tc), ...] to boundary dicts using timecode.get_frames(); (b) empty scene list returns empty list; (c) single scene converted correctly; (d) end_frame is end.get_frames()-1 since get_frames() returns the first frame of the next scene. Use MagicMock FrameTimecodes.",
       "status": "done",
-      "commit": "b02d56a"
+      "commit": "94c2055"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Add status update after path validation: 'with db: db.update_media_status(media_id, \"analyzing\")'. Placed before lazy imports, matching asr.py pattern.",
+      "description": "Implement _pyscenedetect_to_boundaries(scenes: list) -> list[dict]: iterate scene tuples, extract frame numbers via start.get_frames() and end.get_frames()-1, build boundary dicts with start_frame, end_frame, transition_type='cut'.",
       "status": "done",
-      "commit": "179e7ff"
+      "commit": "c1cf476"
     },
     {
       "id": "step-13",
       "type": "test",
-      "description": "Write TestClassification class: test_loads_audio_at_32khz (librosa.load called with str(audio_path), sr=32000, mono=True), test_loads_model_via_scheduler (scheduler.model called with 'panns_cnn14'), test_correct_window_count (3s audio -> model.inference called 3 times), test_stores_top_k_per_second (events_json is list of top_k dicts per window), test_custom_top_k (top_k=3 -> 3 events per window in DB).",
+      "description": "Write TestTransNetV2Pipeline tests for the TransNetV2 path in detect_shots: (a) scheduler.model('transnetv2') is called as context manager; (b) model receives downsampled frames array; (c) model.predict_frames then model.predictions_to_scenes are called; (d) boundaries stored in DB via db.upsert_boundaries with method='transnetv2' inside with db: block; (e) stored boundaries_json is valid JSON list of dicts with start_frame, end_frame, transition_type keys; (f) handles zero-frame video gracefully (stores empty list). Mock cv2, TransNetV2 model, scheduler.",
       "status": "done",
-      "commit": "9392fd2"
+      "commit": "db06e63"
     },
     {
       "id": "step-14",
       "type": "impl",
-      "description": "Implement core classification pipeline in classify_audio_events: (1) lazy import librosa, (2) audio, sr = librosa.load(str(audio_path), sr=32000, mono=True), (3) windows = _window_audio(audio, 32000), (4) lazy import panns_inference for labels via panns_inference.config.labels, (5) logger.info start message, (6) with scheduler.model('panns_cnn14') as model: loop windows, call model.inference(window[None, :]) for batch dim, extract top-k, build rows as (media_id, float(i), json.dumps(events)), (7) with db: db.batch_insert_audio_events(rows), (8) logger.info completion.",
+      "description": "Implement TransNetV2 path in detect_shots: deferred import cv2, call _read_and_downsample_frames, use scheduler.model('transnetv2') context manager, call model.predict_frames(frames) then model.predictions_to_scenes(predictions), convert via _transnetv2_to_boundaries, json.dumps and db.upsert_boundaries with method='transnetv2' inside with db: block.",
       "status": "done",
-      "commit": "bf825be"
+      "commit": "e2c0537"
     },
     {
       "id": "step-15",
       "type": "test",
-      "description": "Write TestDBStorage class: test_correct_timestamps (5s audio -> timestamps 0.0, 1.0, 2.0, 3.0, 4.0 in DB), test_events_json_schema (each row's events_json deserializes to list of dicts with 'class' str and 'probability' float keys), test_retrievable_by_range (get_audio_events_for_range returns stored rows), test_no_numpy_in_json (all probability values are plain Python float, not numpy).",
+      "description": "Write TestPySceneDetectPipeline tests for the PySceneDetect path: (a) scenedetect.detect called with str(video_path) and AdaptiveDetector; (b) AdaptiveDetector created with adaptive_threshold=27.0; (c) stores results via db.upsert_boundaries with method='pyscenedetect' inside with db: block; (d) stored boundaries_json is valid JSON. Mock scenedetect via patch.dict(sys.modules).",
       "status": "done",
-      "commit": "6cb7541"
+      "commit": "38f1dde"
     },
     {
       "id": "step-16",
       "type": "impl",
-      "description": "Verify DB storage correctness: timestamps as float(i) for clean integer-like floats 0.0, 1.0, etc. _extract_top_k already handles numpy coercion. json.dumps produces valid JSON. Ensure rows list built correctly before batch insert.",
+      "description": "Implement PySceneDetect path: deferred import scenedetect, call scenedetect.detect(str(video_path), AdaptiveDetector(adaptive_threshold=PYSCENEDETECT_THRESHOLD)), convert via _pyscenedetect_to_boundaries, json.dumps and db.upsert_boundaries with method='pyscenedetect' inside with db: block.",
       "status": "done",
-      "commit": "6cb7541"
+      "commit": "5789a36"
     },
     {
       "id": "step-17",
       "type": "test",
-      "description": "Write TestErrorHandling class: test_runtime_error_wrapped (librosa.load raises RuntimeError -> AudioEventError), test_audio_event_error_passthrough (AudioEventError raised inside pipeline propagates unchanged, not double-wrapped), test_error_contains_media_id (wrapped error message includes media_id string), test_no_partial_writes (model.inference raises mid-way -> 0 audio_events rows in DB).",
+      "description": "Write TestFallbackBehavior tests: (a) when TransNetV2 succeeds, PySceneDetect is NOT called (scenedetect not imported); (b) when TransNetV2 raises exception, PySceneDetect fallback runs and stores results with method='pyscenedetect'; (c) when both methods fail, ShotDetectionError is raised wrapping the fallback exception via __cause__; (d) TransNetV2 failure logs WARNING with exc_info before attempting fallback; (e) no partial results stored in DB on double failure.",
       "status": "done",
-      "commit": "90d4b25"
+      "commit": "bf9d6bf"
     },
     {
       "id": "step-18",
       "type": "impl",
-      "description": "Add error wrapping try/except around processing block (from lazy imports through DB write): except AudioEventError: raise, except Exception as exc: raise AudioEventError(f'Audio event classification failed for {media_id}: {exc}') from exc. DB write is inside try block, so failure means no partial data.",
+      "description": "Wire up detect_shots main flow after validation: try TransNetV2 path, on success log completion and return. On exception, log warning with exc_info=True, try PySceneDetect path, on success log completion and return. On double failure: raise ShotDetectionError(f'Shot detection failed for {media_id}: {exc}') from exc.",
       "status": "done",
-      "commit": "58a584d"
+      "commit": "2ac780e"
     },
     {
       "id": "step-19",
       "type": "test",
-      "description": "Write TestLogging class with caplog fixture: test_start_log (INFO log containing media_id and 'Starting'), test_completion_log (INFO log containing media_id and window/seconds count), test_skip_log (INFO log containing 'skipping' when idempotency triggers).",
+      "description": "Write TestLogging tests using caplog fixture: (a) INFO log on detection start with media_id; (b) INFO log on successful completion with method name and boundary count; (c) INFO log mentioning 'skipping' for idempotent call; (d) WARNING log containing media_id when TransNetV2 fails and fallback triggers.",
       "status": "done",
-      "commit": "471517b"
+      "commit": "a666172"
     },
     {
       "id": "step-20",
       "type": "impl",
-      "description": "Verify/add logging calls: logger.info('Starting audio event classification for %s', media_id) before processing loop, logger.info('Completed audio event classification for %s: %d seconds', media_id, len(windows)) after DB write, logger.info('Audio events already exist for %s, skipping', media_id) in idempotency path.",
+      "description": "Ensure all logging statements are complete: logger.info('Starting shot detection for %s', media_id) at start; logger.info('Boundaries already exist for %s, skipping', media_id) on idempotent skip; logger.warning('TransNetV2 failed for %s, falling back to PySceneDetect', media_id, exc_info=True) on fallback; logger.info('Completed shot detection for %s: %d boundaries via %s', media_id, count, method) on completion.",
       "status": "done",
-      "commit": "471517b"
+      "commit": "494d9b5"
     },
     {
       "id": "step-21",
       "type": "test",
-      "description": "Write TestIntegration class: test_full_pipeline (5s audio -> exactly 5 rows in DB, each with 5 events, timestamps 0.0-4.0, all events have string class and float probability, probabilities sorted descending), test_idempotent_second_call (call twice, scheduler.model called only once), test_short_audio (0.5s -> 1 row at t=0.0 with zero-padded window), test_custom_top_k_integration (top_k=3 -> 3 events per window), test_media_status_updated (status='analyzing' after run).",
+      "description": "Write TestIntegration end-to-end tests: (a) mock cv2 and TransNetV2 model, run detect_shots on mocked 300-frame 30fps video, verify boundaries stored in DB with correct structure (list of dicts with start_frame/end_frame/transition_type), method='transnetv2', retrievable via db.get_boundaries; (b) second call to same media_id is idempotent (scheduler.model not called again); (c) fallback path stores boundaries with method='pyscenedetect' when TransNetV2 fails; (d) both methods' results can coexist in DB for same media_id via composite PK.",
       "status": "done",
-      "commit": "b3eaf6f"
+      "commit": "3f1f94e"
     },
     {
       "id": "step-22",
       "type": "impl",
-      "description": "Final review and cleanup: handle empty audio edge case (0 windows -> log info and return without DB write), ensure ruff compliance (line length 100, import order), verify all tests pass green, confirm module follows codebase conventions exactly.",
+      "description": "Final cleanup pass: verify cap.release() in all cv2 code paths (finally block in _read_and_downsample_frames), module docstring complete, __all__ exports accurate, no unused imports, edge cases handled (zero-frame video), ruff lint clean, all tests green.",
       "status": "done",
-      "commit": "17eaa4e"
+      "commit": "6708d22"
+    },
+    {
+      "id": "step-23",
+      "type": "test",
+      "description": "Write tests for false-negative error-handling bug in PySceneDetect fallback path (reviewer_robustness: error_handling_correctness, scenes.py:215-230). Add two tests: (a) test_run_pyscenedetect_returns_boundaries in TestPySceneDetectPipeline: verify that _run_pyscenedetect returns list[dict] (the boundaries list) so the caller can obtain the count without a DB round-trip. Call _run_pyscenedetect with mocked scenedetect returning 2 scenes, assert return value is a list of 2 dicts with start_frame/end_frame/transition_type keys. (b) test_pyscenedetect_fallback_success_not_masked_by_logging_failure in TestFallbackBehavior: prove the false-negative bug is fixed. Setup: TransNetV2 fails (cap.isOpened=False), scenedetect succeeds (writes boundaries to DB). After _run_pyscenedetect returns, monkey-patch catalog_db.get_boundaries to raise RuntimeError('DB read error') so any attempt to read-back for logging would fail. Assert detect_shots does NOT raise ShotDetectionError \u2014 the detection succeeded and data is in DB, so a logging failure must not propagate as a detection failure. Verify boundaries ARE in the DB by restoring get_boundaries and checking.",
+      "status": "done",
+      "commit": "2527b46"
+    },
+    {
+      "id": "step-24",
+      "type": "impl",
+      "description": "Fix false-negative error-handling bug (reviewer_robustness: error_handling_correctness, scenes.py:215-230). Two changes: (1) Refactor _run_pyscenedetect to return list[dict] instead of None \u2014 after calling scenedetect.detect, converting, and upserting to DB, return the boundaries list. Update type hint to -> list[dict]. (2) In detect_shots PySceneDetect fallback block, restructure so ONLY the _run_pyscenedetect call is inside the try/except that raises ShotDetectionError. Capture the returned boundaries: `try: boundaries = _run_pyscenedetect(media_id, video_path, db) except Exception as exc: raise ShotDetectionError(...) from exc`. Then OUTSIDE the try/except, log the completion using len(boundaries): `logger.info('Completed shot detection for %s: %d boundaries via %s', media_id, len(boundaries), 'pyscenedetect')`. This eliminates the DB round-trip for count logging and ensures a successful detection is never masked by a post-detection logging failure.",
+      "status": "done",
+      "commit": "3cc38de"
     }
   ],
   "design_decisions": [
     {
-      "decision": "No ModelConfig parameter -- hardcode scheduler key 'panns_cnn14'",
-      "rationale": "ModelConfig (config.py:65-74) has no panns field, and CNN14 is the only audio tagging model specified by the task/PRD. Unlike YOLO (multiple variants) or Whisper (multiple sizes), there's no reason to parameterize this. The scheduler key is just a registry identifier."
+      "decision": "No ModelConfig parameter in detect_shots signature",
+      "rationale": "TransNetV2 has no user-configurable variants (unlike whisper_size or yolo_variant). The model name 'transnetv2' is a fixed constant used with scheduler.model(). PySceneDetect threshold (27.0) is hardcoded per task spec. This keeps the API simpler than peer modules."
     },
     {
-      "decision": "Idempotency via get_audio_events_for_range(media_id, 0.0, 0.0)",
-      "rationale": "Mirrors objects.py pattern (checks frame 0 existence). Processing always produces a t=0.0 row (even sub-second audio gets zero-padded to 1 window). Uses existing DB CRUD at db.py:476 -- no new method needed."
+      "decision": "Idempotency checks all methods via db.get_boundaries(media_id) with no method filter",
+      "rationale": "Task spec says 'skip files already processed'. Using get_boundaries(media_id) returns all methods as a list. If ANY boundaries exist, skip. This is consistent with the single-entry-point design where detect_shots handles both methods internally."
     },
     {
-      "decision": "1-second non-overlapping windows, zero-pad final partial window",
-      "rationale": "Task spec says 'per-second' classification. Non-overlapping maximizes throughput (>100x real-time). Zero-padding preserves temporal coverage for the final partial second rather than discarding it. CNN14 handles silence gracefully."
+      "decision": "Video I/O is method-specific, not centralized in detect_shots",
+      "rationale": "TransNetV2 needs cv2.VideoCapture for frame-by-frame reading + downsampling to 48x27. PySceneDetect handles its own video I/O via scenedetect.detect(path). Centralizing cv2 VideoCapture in detect_shots would unnecessarily couple the fallback path to cv2. Path validation (exists check) stays in detect_shots since both methods need the file to exist."
     },
     {
-      "decision": "Load audio via librosa at 32kHz mono",
-      "rationale": "32kHz matches PANNs CNN14 training sample rate. librosa is a transitive dependency of panns-inference and handles format detection, resampling, and channel mixing automatically."
+      "decision": "TransNetV2 frame downsampling isolated in _read_and_downsample_frames helper",
+      "rationale": "TransNetV2 expects exactly 48x27 RGB frames. Isolating this in a helper with cv2 passed as parameter makes it independently testable with mock cv2 and keeps the GPU pipeline code focused on model interaction."
     },
     {
-      "decision": "top_k=5 as keyword-only parameter",
-      "rationale": "Task specifies top-5 default. Making it configurable follows asr.py keyword-only pattern (batch_size, hf_token). No batch_size param needed because CNN14 processes at >100x real-time -- per-window inference is already fast enough."
+      "decision": "Separate boundary conversion helpers for each detection method",
+      "rationale": "TransNetV2 returns numpy arrays (scenes as [start, end] pairs via predictions_to_scenes). PySceneDetect returns SceneList of (FrameTimecode, FrameTimecode) tuples. Different input types warrant separate pure-function converters: _transnetv2_to_boundaries and _pyscenedetect_to_boundaries."
     },
     {
-      "decision": "Lazy imports of librosa and panns_inference inside function body",
-      "rationale": "Follows asr.py (lazy whisperx at line 98) and objects.py (lazy cv2). Avoids loading heavy ML libs at module import time. Enables test mocking via sys.modules patching."
+      "decision": "Fallback labels results honestly with method='pyscenedetect'",
+      "rationale": "The composite PK (media_id, method) allows both methods' results to coexist. When fallback runs, it stores results as 'pyscenedetect', not 'transnetv2'. If both are run separately, both are stored for later comparison per task spec."
     },
     {
-      "decision": "Single atomic DB batch insert after all windows processed",
-      "rationale": "Unlike objects.py per-batch inserts needed for large video frame data, audio event results are tiny (5 dicts per second). Even 50h of audio = 180K rows of small tuples fitting easily in memory. Single batch_insert inside 'with db:' ensures atomicity -- no partial writes on failure."
+      "decision": "Deferred imports for cv2 and scenedetect",
+      "rationale": "Follows established pattern in faces.py, objects.py, asr.py. Heavy ML/video libraries imported only after validation checks pass, improving startup time and enabling path-validation tests to run without these dependencies installed."
     },
     {
-      "decision": "Store top-k from full 527 AudioSet classes, no pre-filtering to interest classes",
-      "rationale": "The 10 interest classes (speech, music, applause, etc.) are informational for downstream consumers. Pre-filtering would lose potentially useful classifications and couple this module to a specific use case. Task 14 (activity clustering) can filter stored events."
+      "decision": "Cap.release() in finally block inside _read_and_downsample_frames, not detect_shots",
+      "rationale": "Since cv2.VideoCapture is opened in the frame-reading helper (not in detect_shots), the release must be in that helper's finally block. This keeps resource lifecycle colocated with resource creation."
     },
     {
-      "decision": "numpy imported at module level (not lazily)",
-      "rationale": "numpy is a lightweight core dependency already imported at module level in objects.py. Needed for _window_audio and _extract_top_k helpers which are pure-Python testable functions. Unlike librosa/panns_inference which are heavy GPU-dependent libs."
+      "decision": "All boundary entries use transition_type='cut' initially",
+      "rationale": "Both TransNetV2 and PySceneDetect detect hard cuts (scene boundaries). Neither distinguishes transition types (dissolves, wipes). The transition_type field allows future extension but 'cut' is the correct default for both detectors."
     },
     {
-      "decision": "Mock both 'panns_inference' and 'panns_inference.config' in sys.modules for tests",
-      "rationale": "panns_inference.config is a submodule containing the 527 AudioSet labels list. Python resolves submodule access via sys.modules entries, so both must be patched for lazy import to work correctly in the test environment."
+      "decision": "_run_pyscenedetect returns boundaries list instead of None (review fix)",
+      "rationale": "Reviewer identified that count-logging code (db.get_boundaries + json.loads) inside the try/except block at lines 215-230 creates a false-negative failure: if the DB read-back for logging fails after data is already persisted, the caller receives ShotDetectionError even though detection succeeded. Returning the boundaries list directly from _run_pyscenedetect avoids the DB round-trip for counting and allows the completion logging to live outside the error-handling try/except. This mirrors how the TransNetV2 path already works (boundaries variable computed before logging, not read back from DB)."
     }
   ],
   "reuse": [
     {
-      "what": "Analyzer module structure pattern (idempotency -> validate -> status -> lazy import -> scheduler -> process -> store -> error wrap)",
-      "where": "autopilot/analyze/asr.py (179 lines), autopilot/analyze/objects.py (304 lines)",
-      "how": "Follow identical structure. audio_events.py is closest to asr.py -- simpler than objects.py (no frame interpolation) or faces.py (no clustering). Same 10-step flow."
+      "what": "CatalogDB.upsert_boundaries / get_boundaries",
+      "where": "autopilot/db.py lines 282-309",
+      "how": "Direct use for storing and retrieving shot boundaries. upsert_boundaries(media_id, boundaries_json, method) for writes. get_boundaries(media_id) with no method filter for idempotency check (returns list). No DB schema changes needed."
     },
     {
-      "what": "CatalogDB.batch_insert_audio_events() and get_audio_events_for_range()",
-      "where": "autopilot/db.py lines 467-486",
-      "how": "Use directly for storage (rows as list[tuple[str, float, str]]) and idempotency check. No DB schema or CRUD changes needed."
+      "what": "GPUScheduler context manager pattern",
+      "where": "autopilot/analyze/gpu_scheduler.py scheduler.model(name) context manager",
+      "how": "Use `with scheduler.model('transnetv2') as model:` to load TransNetV2 with VRAM management. Same pattern as objects.py uses for YOLO and asr.py uses for Whisper."
     },
     {
-      "what": "CatalogDB.update_media_status()",
-      "where": "autopilot/db.py line 243",
-      "how": "Set status to 'analyzing' inside 'with db:' context, same pattern as asr.py lines 95-96."
+      "what": "Module structure pattern (exception, deferred imports, idempotency, validation, logging)",
+      "where": "autopilot/analyze/objects.py, asr.py, faces.py",
+      "how": "Mirror exact structure: from __future__ import annotations, TYPE_CHECKING block, __all__, custom exception, logger, path validation before heavy imports, with db: for transactional writes, error wrapping try/except pattern."
     },
     {
-      "what": "GPUScheduler.model() context manager",
-      "where": "autopilot/analyze/gpu_scheduler.py lines 136-193",
-      "how": "with scheduler.model('panns_cnn14') as model: -- handles VRAM eviction, loading, ref counting automatically."
+      "what": "Test mock helpers (_make_mock_cv2, _make_mock_capture)",
+      "where": "tests/test_objects.py lines 83-132",
+      "how": "Replicate _make_mock_cv2 (with CAP_PROP constants) and _make_mock_capture (with configurable fps/total_frames/width/height, side_effect for get, read returning numpy frames) in test_scenes.py. Add TransNetV2-specific and PySceneDetect-specific mock helpers."
     },
     {
-      "what": "catalog_db pytest fixture (in-memory SQLite)",
+      "what": "Test fixture catalog_db (in-memory CatalogDB with autocommit)",
       "where": "tests/conftest.py lines 26-39",
-      "how": "In-memory CatalogDB with autocommit and full schema including audio_events table. Use via fixture injection in test functions."
+      "how": "Use shared fixture for all DB-dependent tests. Insert media row with catalog_db.insert_media() before boundary operations for FK constraints."
     },
     {
-      "what": "sys.modules mock injection pattern for ML libraries",
-      "where": "tests/test_asr.py _make_mock_whisperx() + patch.dict(sys.modules, {...}) throughout",
-      "how": "Create _make_mock_panns() and _make_mock_librosa() helper functions. Inject via patch.dict(sys.modules, {'panns_inference': mock, 'panns_inference.config': mock.config, 'librosa': mock_librosa})."
+      "what": "Deferred import test pattern (patch.dict sys.modules)",
+      "where": "tests/test_objects.py lines 473, 519",
+      "how": "Use `with patch.dict(sys.modules, {'cv2': mock_cv2}):` and `with patch.dict(sys.modules, {'scenedetect': mock_sd, 'scenedetect.detectors': mock_detectors}):` to mock deferred imports."
     },
     {
       "what": "Mock scheduler with context manager protocol",
-      "where": "tests/test_asr.py lines 129-133",
-      "how": "scheduler = MagicMock(device=0); scheduler.model.return_value.__enter__ = MagicMock(return_value=mock_model); scheduler.model.return_value.__exit__ = MagicMock(return_value=False)."
+      "where": "tests/test_objects.py (TestIdempotency, TestSparseMode)",
+      "how": "scheduler = MagicMock(); scheduler.model.return_value.__enter__ = MagicMock(return_value=mock_model); scheduler.model.return_value.__exit__ = MagicMock(return_value=False). Reuse this pattern for TransNetV2 model mocking."
     },
     {
-      "what": "numpy-to-Python float coercion for JSON serialization",
-      "where": "autopilot/analyze/asr.py _normalize_segments() lines 46-52",
-      "how": "Wrap numpy scalars with float() in _extract_top_k to prevent json.dumps TypeError. Same pattern used in asr.py and objects.py."
-    },
-    {
-      "what": "Error wrapping pattern (passthrough + wrap)",
-      "where": "autopilot/analyze/asr.py lines 173-178",
-      "how": "except AudioEventError: raise / except Exception as exc: raise AudioEventError(f'...{media_id}...') from exc. Identical pattern."
+      "what": "Test class organization by concern",
+      "where": "tests/test_objects.py, tests/test_asr.py",
+      "how": "Follow same class-per-concern structure: TestPublicAPI, TestIdempotency, TestInputValidation, TestFrameReading, TestTransNetV2Pipeline, TestPySceneDetectPipeline, TestFallbackBehavior, TestLogging, TestIntegration."
     }
-  ]
+  ],
+  "_schema_version": 1
 }
