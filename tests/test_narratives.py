@@ -643,3 +643,108 @@ class TestParseNarratives:
 
         narratives = _parse_narratives("[]")
         assert narratives == []
+
+
+# -- Step 11: propose_narratives end-to-end tests -----------------------------
+
+
+def _setup_mock_narrative_anthropic(narratives_data=None):
+    """Create a mock anthropic module and client for narrative tests."""
+    mock_response = _make_narrative_llm_response(
+        json.dumps(narratives_data) if narratives_data else None
+    )
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = mock_response
+    mock_anthropic = MagicMock()
+    mock_anthropic.Anthropic.return_value = mock_client
+    return mock_anthropic, mock_client
+
+
+class TestProposeNarratives:
+    """Tests for propose_narratives() end-to-end."""
+
+    def test_calls_llm_and_returns_narratives(self, catalog_db):
+        """propose_narratives calls LLM and returns Narrative list."""
+        from autopilot.config import AutopilotConfig
+        from autopilot.organize.narratives import Narrative, propose_narratives
+
+        config = AutopilotConfig(input_dir=Path("."), output_dir=Path("."))
+        storyboard = "# Master Storyboard\n\n## Cluster: c1\n- **Label**: Temple visit"
+
+        mock_anthropic, mock_client = _setup_mock_narrative_anthropic()
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            result = propose_narratives(storyboard, catalog_db, config)
+
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert isinstance(result[0], Narrative)
+        assert result[0].title == "Three Days in Northern Thailand"
+        mock_client.messages.create.assert_called_once()
+
+    def test_stores_narratives_in_db(self, catalog_db):
+        """Proposed narratives are stored in the DB with status='proposed'."""
+        from autopilot.config import AutopilotConfig
+        from autopilot.organize.narratives import propose_narratives
+
+        config = AutopilotConfig(input_dir=Path("."), output_dir=Path("."))
+        storyboard = "# Master Storyboard"
+
+        mock_anthropic, _ = _setup_mock_narrative_anthropic()
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            result = propose_narratives(storyboard, catalog_db, config)
+
+        # Check DB
+        db_narratives = catalog_db.list_narratives(status="proposed")
+        assert len(db_narratives) == 1
+        assert db_narratives[0]["title"] == "Three Days in Northern Thailand"
+        assert db_narratives[0]["narrative_id"] == result[0].narrative_id
+
+    def test_empty_storyboard_handled(self, catalog_db):
+        """Empty storyboard still works (LLM may return empty array)."""
+        from autopilot.config import AutopilotConfig
+        from autopilot.organize.narratives import propose_narratives
+
+        config = AutopilotConfig(input_dir=Path("."), output_dir=Path("."))
+
+        mock_anthropic, _ = _setup_mock_narrative_anthropic([])
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            result = propose_narratives("", catalog_db, config)
+
+        assert result == []
+        assert catalog_db.list_narratives() == []
+
+    def test_multiple_narratives_stored(self, catalog_db):
+        """Multiple narrative proposals are all stored in DB."""
+        from autopilot.config import AutopilotConfig
+        from autopilot.organize.narratives import propose_narratives
+
+        config = AutopilotConfig(input_dir=Path("."), output_dir=Path("."))
+
+        two_narratives = [
+            {
+                "title": "Narrative A",
+                "activity_cluster_ids": ["c1"],
+                "proposed_duration_seconds": 300,
+                "arc": {"beginning": "A", "middle": "B", "end": "C"},
+                "emotional_journey": "Joy",
+                "target_audience": "All",
+                "reasoning": "Good.",
+            },
+            {
+                "title": "Narrative B",
+                "activity_cluster_ids": ["c2", "c3"],
+                "proposed_duration_seconds": 600,
+                "arc": {"beginning": "D", "middle": "E", "end": "F"},
+                "emotional_journey": "Wonder",
+                "target_audience": "Travelers",
+                "reasoning": "Great.",
+            },
+        ]
+
+        mock_anthropic, _ = _setup_mock_narrative_anthropic(two_narratives)
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            result = propose_narratives("storyboard", catalog_db, config)
+
+        assert len(result) == 2
+        db_narratives = catalog_db.list_narratives()
+        assert len(db_narratives) == 2
