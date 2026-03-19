@@ -380,8 +380,8 @@ class TestLabelActivities:
 
     def test_labels_clusters(self, catalog_db):
         """Labels unlabeled clusters in the DB."""
-        from autopilot.organize.classify import label_activities
         from autopilot.config import LLMConfig
+        from autopilot.organize.classify import label_activities
 
         config = LLMConfig()
 
@@ -471,6 +471,46 @@ class TestLabelActivities:
         clusters = catalog_db.get_activity_clusters()
         assert all(c["label"] == "Morning hike" for c in clusters)
         assert mock_client.messages.create.call_count == 2
+
+    def test_split_recommended_logs_warning(self, catalog_db, caplog):
+        """split_recommended=true triggers WARNING log with cluster_id and split_reason."""
+        import logging
+        from autopilot.organize.classify import label_activities
+        from autopilot.config import LLMConfig
+
+        config = LLMConfig()
+
+        catalog_db.insert_media("v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00")
+        catalog_db.insert_activity_cluster(
+            "c-split-test",
+            time_start="2025-01-01T10:00:00",
+            time_end="2025-01-01T10:30:00",
+            clip_ids_json=json.dumps(["v1"]),
+        )
+
+        mock_response = _make_llm_response(
+            label="Mixed activity",
+            description="A mix of hiking and dining.",
+            split_recommended=True,
+            split_reason="Topic shift at 10:15 from hiking to restaurant",
+        )
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_response
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+
+        with caplog.at_level(logging.WARNING, logger="autopilot.organize.classify"):
+            with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+                label_activities(catalog_db, config)
+
+        # Should have a WARNING log mentioning the cluster_id and split reason
+        warning_msgs = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("c-split-test" in msg for msg in warning_msgs), (
+            f"Expected warning with cluster_id, got: {warning_msgs}"
+        )
+        assert any("split" in msg.lower() for msg in warning_msgs), (
+            f"Expected warning mentioning split, got: {warning_msgs}"
+        )
 
 
 # -- Step 13: Integration test ------------------------------------------------

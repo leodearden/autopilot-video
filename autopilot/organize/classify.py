@@ -197,6 +197,15 @@ def label_activities(db: CatalogDB, config: LLMConfig) -> None:
         summary = _assemble_cluster_summary(cluster, db)
         result = _call_llm(summary, config)
 
+        # Log split recommendation if present
+        if result.get("split_recommended"):
+            split_reason = result.get("split_reason", "no reason given")
+            logger.warning(
+                "Split recommended for cluster %s: %s",
+                cluster_id,
+                split_reason,
+            )
+
         # Update DB
         db.update_activity_cluster(
             cluster_id,
