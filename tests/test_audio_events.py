@@ -651,3 +651,84 @@ class TestErrorHandling:
         # No partial data should be stored
         events = catalog_db.get_audio_events_for_range("vid1", 0.0, 100.0)
         assert len(events) == 0
+
+
+class TestLogging:
+    """Tests for structured logging output."""
+
+    def test_start_log(self, catalog_db, caplog):
+        """INFO log containing media_id and 'Starting'."""
+        from autopilot.analyze.audio_events import classify_audio_events
+
+        mock_panns, mock_config, mock_librosa, scheduler = (
+            _make_full_pipeline_mocks(catalog_db, "vid1", 3.0)
+        )
+
+        with patch.dict(sys.modules, {
+            "panns_inference": mock_panns,
+            "panns_inference.config": mock_config,
+            "librosa": mock_librosa,
+        }):
+            with patch.object(Path, "exists", return_value=True):
+                with caplog.at_level(logging.INFO):
+                    classify_audio_events(
+                        "vid1",
+                        Path("/tmp/vid1.wav"),
+                        catalog_db,
+                        scheduler,
+                    )
+
+        info_messages = [
+            r.message for r in caplog.records if r.levelno == logging.INFO
+        ]
+        assert any("vid1" in m and "Starting" in m for m in info_messages)
+
+    def test_completion_log(self, catalog_db, caplog):
+        """INFO log containing media_id and seconds count."""
+        from autopilot.analyze.audio_events import classify_audio_events
+
+        mock_panns, mock_config, mock_librosa, scheduler = (
+            _make_full_pipeline_mocks(catalog_db, "vid1", 3.0)
+        )
+
+        with patch.dict(sys.modules, {
+            "panns_inference": mock_panns,
+            "panns_inference.config": mock_config,
+            "librosa": mock_librosa,
+        }):
+            with patch.object(Path, "exists", return_value=True):
+                with caplog.at_level(logging.INFO):
+                    classify_audio_events(
+                        "vid1",
+                        Path("/tmp/vid1.wav"),
+                        catalog_db,
+                        scheduler,
+                    )
+
+        info_messages = [
+            r.message for r in caplog.records if r.levelno == logging.INFO
+        ]
+        assert any("3 seconds" in m for m in info_messages)
+
+    def test_skip_log(self, catalog_db, caplog):
+        """INFO log containing 'skipping' when idempotency triggers."""
+        from autopilot.analyze.audio_events import classify_audio_events
+
+        catalog_db.insert_media("vid1", "/tmp/vid1.wav")
+        with catalog_db:
+            catalog_db.batch_insert_audio_events([
+                ("vid1", 0.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
+            ])
+
+        with caplog.at_level(logging.INFO):
+            classify_audio_events(
+                "vid1",
+                Path("/tmp/vid1.wav"),
+                catalog_db,
+                MagicMock(),
+            )
+
+        info_messages = [
+            r.message for r in caplog.records if r.levelno == logging.INFO
+        ]
+        assert any("skipping" in m.lower() for m in info_messages)
