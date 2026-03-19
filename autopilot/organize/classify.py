@@ -41,7 +41,10 @@ def _assemble_cluster_summary(
     Returns:
         Dict with keys: time_range, transcripts, detections, audio_events, gps.
     """
-    clip_ids = json.loads(str(cluster["clip_ids_json"]))
+    try:
+        clip_ids = json.loads(str(cluster["clip_ids_json"]))
+    except json.JSONDecodeError as e:
+        raise ClassifyError(f"Corrupt clip_ids_json in cluster: {e}") from e
     time_start = str(cluster.get("time_start", ""))
     time_end = str(cluster.get("time_end", ""))
 
@@ -54,7 +57,11 @@ def _assemble_cluster_summary(
     for cid in clip_ids:
         tr = db.get_transcript(cid)
         if tr and tr.get("segments_json"):
-            segments = json.loads(str(tr["segments_json"]))
+            try:
+                segments = json.loads(str(tr["segments_json"]))
+            except json.JSONDecodeError:
+                logger.warning("Corrupt segments_json for media %s, skipping", cid)
+                continue
             for seg in segments:
                 if isinstance(seg, dict) and "text" in seg:
                     transcript_texts.append(str(seg["text"]))
@@ -65,7 +72,11 @@ def _assemble_cluster_summary(
     for cid in clip_ids:
         dets = db.get_detections_for_media(cid)
         for det_row in dets:
-            det_list = json.loads(str(det_row["detections_json"]))
+            try:
+                det_list = json.loads(str(det_row["detections_json"]))
+            except json.JSONDecodeError:
+                logger.warning("Corrupt detections_json for media %s, skipping", cid)
+                continue
             for det in det_list:
                 if isinstance(det, dict) and "class" in det:
                     detection_counter[str(det["class"])] += 1
@@ -81,7 +92,11 @@ def _assemble_cluster_summary(
     for cid in clip_ids:
         events = db.get_audio_events_for_media(cid)
         for ev_row in events:
-            ev_list = json.loads(str(ev_row["events_json"]))
+            try:
+                ev_list = json.loads(str(ev_row["events_json"]))
+            except json.JSONDecodeError:
+                logger.warning("Corrupt events_json for media %s, skipping", cid)
+                continue
             for ev in ev_list:
                 if isinstance(ev, dict) and "class" in ev:
                     audio_counter[str(ev["class"])] += 1
