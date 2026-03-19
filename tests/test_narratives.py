@@ -376,3 +376,62 @@ class TestBuildMasterStoryboard:
         storyboard = build_master_storyboard(catalog_db)
         assert isinstance(storyboard, str)
         assert "c1" in storyboard
+
+
+# -- Step 7: _load_and_fill_prompt tests ---------------------------------------
+
+
+class TestLoadAndFillPrompt:
+    """Tests for _load_and_fill_prompt() helper."""
+
+    def test_fills_all_placeholders(self):
+        """All 6 creator profile placeholders are replaced."""
+        from autopilot.config import AutopilotConfig, CreatorConfig
+        from autopilot.organize.narratives import _load_and_fill_prompt
+
+        config = AutopilotConfig(
+            input_dir=__import__("pathlib").Path("."),
+            output_dir=__import__("pathlib").Path("."),
+            creator=CreatorConfig(
+                name="Test Creator",
+                channel_style="Travel vlog",
+                target_audience="Travel enthusiasts",
+                default_video_duration_minutes="10-15",
+                narration_style="First person conversational",
+                music_preference="Ambient lo-fi",
+            ),
+        )
+
+        prompt = _load_and_fill_prompt(config)
+
+        assert isinstance(prompt, str)
+        assert "Test Creator" in prompt
+        assert "Travel vlog" in prompt
+        assert "Travel enthusiasts" in prompt
+        assert "10-15" in prompt
+        assert "First person conversational" in prompt
+        assert "Ambient lo-fi" in prompt
+        # No remaining placeholders
+        assert "{creator_name}" not in prompt
+        assert "{channel_style}" not in prompt
+        assert "{target_audience}" not in prompt
+        assert "{default_video_duration}" not in prompt
+        assert "{narration_style}" not in prompt
+        assert "{music_preference}" not in prompt
+
+    def test_missing_prompt_raises_narrative_error(self):
+        """Missing prompt file raises NarrativeError."""
+        from autopilot.config import AutopilotConfig
+        from autopilot.organize.narratives import NarrativeError, _load_and_fill_prompt
+
+        config = AutopilotConfig(
+            input_dir=__import__("pathlib").Path("."),
+            output_dir=__import__("pathlib").Path("."),
+        )
+
+        with patch(
+            "autopilot.organize.narratives._PROMPT_PATH",
+            __import__("pathlib").Path("/nonexistent/prompt.md"),
+        ):
+            with pytest.raises(NarrativeError, match="[Pp]rompt"):
+                _load_and_fill_prompt(config)
