@@ -187,3 +187,156 @@ class TestComputeSampleIndices:
 
         result = _compute_sample_indices(10, 1.0)
         assert result == [0, 2, 4, 6, 8]
+
+
+# -- Mock helpers for SigLIP and cv2 ------------------------------------------
+
+
+def _make_mock_capture(
+    fps: float = 30.0,
+    total_frames: int = 300,
+    width: int = 1920,
+    height: int = 1080,
+) -> MagicMock:
+    """Create a MagicMock mimicking cv2.VideoCapture."""
+    CAP_PROP_FPS = 5
+    CAP_PROP_FRAME_COUNT = 7
+
+    cap = MagicMock()
+    cap.isOpened.return_value = True
+
+    def get_prop(prop_id):
+        return {CAP_PROP_FPS: fps, CAP_PROP_FRAME_COUNT: total_frames}.get(prop_id, 0.0)
+
+    cap.get.side_effect = get_prop
+    frame = np.zeros((height, width, 3), dtype=np.uint8)
+    cap.read.return_value = (True, frame)
+    cap.set.return_value = True
+    return cap
+
+
+def _make_mock_cv2() -> MagicMock:
+    """Create a MagicMock cv2 module with correct CAP_PROP constants."""
+    mock_cv2 = MagicMock()
+    mock_cv2.CAP_PROP_FPS = 5
+    mock_cv2.CAP_PROP_FRAME_COUNT = 7
+    mock_cv2.CAP_PROP_POS_FRAMES = 1
+    return mock_cv2
+
+
+def _make_mock_siglip(dim: int = 768) -> tuple[MagicMock, MagicMock]:
+    """Create mock (model, processor) mimicking SigLIP2.
+
+    Returns:
+        (model, processor) where model.get_image_features() returns a
+        mock tensor-like object with .detach().cpu().numpy() chain yielding
+        a deterministic L2-normalized 768-d embedding, and processor returns
+        mock inputs.
+    """
+    model = MagicMock()
+    processor = MagicMock()
+
+    # Create a deterministic L2-normalized embedding
+    rng = np.random.RandomState(42)
+    raw = rng.randn(1, dim).astype(np.float32)
+    norm = np.linalg.norm(raw, axis=-1, keepdims=True)
+    normed = raw / norm
+
+    # model.get_image_features returns mock with .detach().cpu().numpy() chain
+    img_features = MagicMock()
+    img_features.detach.return_value.cpu.return_value.numpy.return_value = normed
+    model.get_image_features.return_value = img_features
+
+    # model.get_text_features for text search
+    raw_text = rng.randn(1, dim).astype(np.float32)
+    norm_text = np.linalg.norm(raw_text, axis=-1, keepdims=True)
+    normed_text = raw_text / norm_text
+    text_features = MagicMock()
+    text_features.detach.return_value.cpu.return_value.numpy.return_value = normed_text
+    model.get_text_features.return_value = text_features
+
+    # processor returns a dict-like MagicMock with .to() support
+    mock_inputs = MagicMock()
+    mock_inputs.to.return_value = mock_inputs
+    processor.return_value = mock_inputs
+
+    return model, processor
+
+
+def _make_mock_torch() -> MagicMock:
+    """Create a mock torch module with nn.functional.normalize."""
+    mock_torch = MagicMock()
+
+    def mock_normalize(features, dim=-1):
+        # Return features as-is (already normalized in mock)
+        return features
+
+    mock_torch.nn.functional.normalize.side_effect = mock_normalize
+    mock_torch.no_grad.return_value.__enter__ = MagicMock()
+    mock_torch.no_grad.return_value.__exit__ = MagicMock(return_value=False)
+    return mock_torch
+
+
+def _make_mock_pil() -> MagicMock:
+    """Create a mock PIL module."""
+    mock_pil = MagicMock()
+    mock_pil.Image.fromarray.return_value = MagicMock()
+    return mock_pil
+
+
+def _make_scheduler_mock(model_obj: object) -> MagicMock:
+    """Create a mock GPUScheduler that yields model_obj from .model() context."""
+    scheduler = MagicMock()
+    scheduler.model.return_value.__enter__ = MagicMock(return_value=model_obj)
+    scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
+    return scheduler
+
+
+class TestIdempotency:
+    """Tests for compute_embeddings idempotency check."""
+
+    def test_existing_embeddings_skips(self, catalog_db) -> None:
+        """If embeddings exist for media_id, compute_embeddings returns early."""
+        from pathlib import Path
+
+        from autopilot.analyze.embeddings import compute_embeddings
+        from autopilot.config import ModelConfig
+
+        catalog_db.insert_media("m1", "/fake/video.mp4")
+        blob = struct.pack("f" * 768, *([0.1] * 768))
+        catalog_db.batch_insert_embeddings([("m1", 0, blob)])
+
+        scheduler = MagicMock()
+        config = ModelConfig()
+        compute_embeddings("m1", Path("/fake/video.mp4"), catalog_db, scheduler, config)
+        scheduler.model.assert_not_called()
+
+    def test_no_existing_embeddings_proceeds(self, catalog_db) -> None:
+        """Without existing embeddings, scheduler.model() is called."""
+        from pathlib import Path
+
+        from autopilot.analyze.embeddings import compute_embeddings
+        from autopilot.config import ModelConfig
+
+        catalog_db.insert_media("m2", "/fake/video.mp4")
+        mock_model, mock_processor = _make_mock_siglip()
+        scheduler = _make_scheduler_mock((mock_model, mock_processor))
+        config = ModelConfig()
+
+        mock_cap = _make_mock_capture(total_frames=3, fps=30.0)
+        mock_cv2 = _make_mock_cv2()
+        mock_cv2.VideoCapture.return_value = mock_cap
+        mock_torch = _make_mock_torch()
+        mock_pil = _make_mock_pil()
+
+        with patch.dict(sys.modules, {
+            "cv2": mock_cv2, "torch": mock_torch, "torch.nn": mock_torch.nn,
+            "torch.nn.functional": mock_torch.nn.functional,
+            "PIL": mock_pil, "PIL.Image": mock_pil.Image,
+        }):
+            with patch.object(Path, "exists", return_value=True):
+                compute_embeddings(
+                    "m2", Path("/fake/video.mp4"), catalog_db, scheduler, config
+                )
+
+        scheduler.model.assert_called_once()

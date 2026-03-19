@@ -71,7 +71,70 @@ def compute_embeddings(
         config: Model configuration (clip_model name).
         batch_size: Number of frames to process per batch.
     """
-    raise NotImplementedError
+    # Idempotency: skip if embeddings already exist for this media
+    existing = db.get_embeddings_for_media(media_id)
+    if existing:
+        logger.info("Embeddings already exist for %s, skipping", media_id)
+        return
+
+    # Validate video path
+    if not video_path.exists():
+        raise EmbeddingError(f"Video file not found: {video_path}")
+
+    import cv2  # type: ignore[import-not-found]
+
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise EmbeddingError(f"Failed to open video: {video_path}")
+
+    try:
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        sample_indices = _compute_sample_indices(total_frames, fps)
+
+        logger.info(
+            "Computing embeddings for %s: %d frames at %.1f fps, %d samples",
+            media_id, total_frames, fps, len(sample_indices),
+        )
+
+        import numpy as np
+        import torch
+        from PIL import Image
+
+        with scheduler.model(config.clip_model) as (model_obj, processor):
+            rows: list[tuple[str, int, bytes]] = []
+            for frame_idx in sample_indices:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                ret, frame = cap.read()
+                if not ret:
+                    logger.warning(
+                        "Failed to read frame %d for %s, skipping",
+                        frame_idx, media_id,
+                    )
+                    continue
+
+                # BGR -> RGB -> PIL
+                rgb = frame[:, :, ::-1]
+                pil_image = Image.fromarray(rgb)
+
+                inputs = processor(images=pil_image, return_tensors="pt")
+                with torch.no_grad():
+                    features = model_obj.get_image_features(**inputs)
+                features = torch.nn.functional.normalize(features, dim=-1)
+                embedding_blob = (
+                    features.detach().cpu().numpy().astype(np.float32).tobytes()
+                )
+                rows.append((media_id, frame_idx, embedding_blob))
+
+            with db:
+                db.batch_insert_embeddings(rows)
+
+        logger.info(
+            "Completed embeddings for %s: %d embeddings stored",
+            media_id, len(rows),
+        )
+    finally:
+        cap.release()
 
 
 def build_search_index(db: CatalogDB, output_path: Path) -> None:
