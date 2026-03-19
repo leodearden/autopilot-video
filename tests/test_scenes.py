@@ -811,3 +811,109 @@ class TestFallbackBehavior:
 
         # No boundaries should exist
         assert catalog_db.get_boundaries("vid-fb5") == []
+
+
+class TestLogging:
+    """Tests for structured log output."""
+
+    def test_info_on_start(self, catalog_db, tmp_path, caplog) -> None:
+        """INFO log on detection start with media_id."""
+        import logging
+
+        from autopilot.analyze.scenes import detect_shots
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("vid-log1", str(video_file))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=30.0, total_frames=300)
+        mock_cv2.VideoCapture.return_value = cap
+        resized = np.zeros((27, 48, 3), dtype=np.uint8)
+        mock_cv2.resize.return_value = resized
+
+        model = _make_mock_transnetv2_model()
+        scheduler = _make_mock_scheduler(model)
+
+        with caplog.at_level(logging.INFO, logger="autopilot.analyze.scenes"):
+            with patch.dict(sys.modules, {"cv2": mock_cv2}):
+                detect_shots("vid-log1", video_file, catalog_db, scheduler)
+
+        assert any("vid-log1" in r.message and "Starting" in r.message for r in caplog.records)
+
+    def test_info_on_completion(self, catalog_db, tmp_path, caplog) -> None:
+        """INFO log on successful completion with method name and boundary count."""
+        import logging
+
+        from autopilot.analyze.scenes import detect_shots
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("vid-log2", str(video_file))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture(fps=30.0, total_frames=300)
+        mock_cv2.VideoCapture.return_value = cap
+        resized = np.zeros((27, 48, 3), dtype=np.uint8)
+        mock_cv2.resize.return_value = resized
+
+        model = _make_mock_transnetv2_model()
+        scheduler = _make_mock_scheduler(model)
+
+        with caplog.at_level(logging.INFO, logger="autopilot.analyze.scenes"):
+            with patch.dict(sys.modules, {"cv2": mock_cv2}):
+                detect_shots("vid-log2", video_file, catalog_db, scheduler)
+
+        assert any(
+            "vid-log2" in r.message and "Completed" in r.message and "transnetv2" in r.message
+            for r in caplog.records
+        )
+
+    def test_info_on_idempotent_skip(self, catalog_db, tmp_path, caplog) -> None:
+        """INFO log mentioning 'skipping' for idempotent call."""
+        import logging
+
+        from autopilot.analyze.scenes import detect_shots
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("vid-log3", str(video_file))
+        catalog_db.upsert_boundaries("vid-log3", "[]", "transnetv2")
+
+        scheduler = MagicMock()
+
+        with caplog.at_level(logging.INFO, logger="autopilot.analyze.scenes"):
+            detect_shots("vid-log3", video_file, catalog_db, scheduler)
+
+        assert any("skipping" in r.message.lower() for r in caplog.records)
+
+    def test_warning_on_transnetv2_failure(self, catalog_db, tmp_path, caplog) -> None:
+        """WARNING log containing media_id when TransNetV2 fails and fallback triggers."""
+        import logging
+
+        from autopilot.analyze.scenes import detect_shots
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("vid-log4", str(video_file))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = _make_mock_capture()
+        mock_cv2.VideoCapture.return_value = cap
+        cap.isOpened.return_value = False
+
+        scheduler = MagicMock()
+        mock_sd, mock_detectors = _make_mock_scenedetect()
+
+        with caplog.at_level(logging.WARNING, logger="autopilot.analyze.scenes"):
+            with patch.dict(sys.modules, {
+                "cv2": mock_cv2,
+                "scenedetect": mock_sd,
+                "scenedetect.detectors": mock_detectors,
+            }):
+                detect_shots("vid-log4", video_file, catalog_db, scheduler)
+
+        assert any(
+            "vid-log4" in r.message and r.levelno == logging.WARNING
+            for r in caplog.records
+        )
