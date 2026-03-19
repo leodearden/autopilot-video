@@ -984,3 +984,83 @@ class TestIntegration:
         call_kwargs = mock_client.messages.create.call_args[1]
         assert call_kwargs["model"] == config.llm.planning_model
         assert "Temple visit" in call_kwargs["messages"][0]["content"]
+
+
+# -- Step 17: Corrupt-cluster resilience tests ---------------------------------
+
+
+class TestCorruptClusterResilience:
+    """build_master_storyboard() skips corrupt clusters instead of aborting."""
+
+    def _seed_three_clusters_with_second_corrupt(self, catalog_db):
+        """Seed DB with 3 activity clusters; the 2nd has corrupt clip_ids_json."""
+        # Media for clusters 1 and 3
+        catalog_db.insert_media(
+            "v1", "/tmp/v1.mp4",
+            created_at="2025-01-01T10:00:00",
+            duration_seconds=60.0,
+        )
+        catalog_db.insert_media(
+            "v3", "/tmp/v3.mp4",
+            created_at="2025-01-01T14:00:00",
+            duration_seconds=90.0,
+        )
+
+        # Cluster 1 — valid
+        catalog_db.insert_activity_cluster(
+            "c1",
+            label="Morning walk",
+            description="A walk in the park",
+            time_start="2025-01-01T10:00:00",
+            time_end="2025-01-01T10:30:00",
+            clip_ids_json=json.dumps(["v1"]),
+        )
+        # Cluster 2 — corrupt clip_ids_json
+        catalog_db.insert_activity_cluster(
+            "c2",
+            label="Corrupt cluster",
+            description="This cluster has bad JSON",
+            time_start="2025-01-01T12:00:00",
+            time_end="2025-01-01T12:30:00",
+            clip_ids_json="NOT_JSON",
+        )
+        # Cluster 3 — valid
+        catalog_db.insert_activity_cluster(
+            "c3",
+            label="Afternoon market",
+            description="Shopping at the market",
+            time_start="2025-01-01T14:00:00",
+            time_end="2025-01-01T14:30:00",
+            clip_ids_json=json.dumps(["v3"]),
+        )
+
+    def test_corrupt_cluster_skipped_gracefully(self, catalog_db):
+        """Storyboard contains clusters 1 and 3 but not the corrupt cluster 2."""
+        from autopilot.organize.narratives import build_master_storyboard
+
+        self._seed_three_clusters_with_second_corrupt(catalog_db)
+
+        storyboard = build_master_storyboard(catalog_db)
+
+        # Clusters 1 and 3 should appear
+        assert "Morning walk" in storyboard
+        assert "Afternoon market" in storyboard
+        # Cluster 2 label should NOT appear in a section header
+        # (it was skipped due to corrupt clip_ids_json)
+        assert "Corrupt cluster" not in storyboard
+
+    def test_corrupt_cluster_logged(self, catalog_db, caplog):
+        """A warning/error is logged with the corrupt cluster's cluster_id."""
+        import logging
+
+        from autopilot.organize.narratives import build_master_storyboard
+
+        self._seed_three_clusters_with_second_corrupt(catalog_db)
+
+        with caplog.at_level(logging.WARNING, logger="autopilot.organize.narratives"):
+            build_master_storyboard(catalog_db)
+
+        # Should log a warning mentioning cluster_id "c2"
+        assert any("c2" in record.message for record in caplog.records), (
+            f"Expected a log record mentioning 'c2', got: {[r.message for r in caplog.records]}"
+        )
