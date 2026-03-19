@@ -105,11 +105,26 @@ def caption_clip(
     Returns:
         Generated caption string.
     """
+    # Validate time range inputs (before any DB/IO)
+    if start_time < 0:
+        raise CaptionError(f"Invalid start_time: {start_time} (must be >= 0)")
+    if start_time > end_time:
+        raise CaptionError(
+            f"Invalid time range: start_time={start_time} > end_time={end_time}"
+        )
+
     # Idempotency: return existing caption if available
     existing = db.get_caption(media_id, start_time, end_time)
     if existing is not None:
-        logger.info("Caption already exists for %s [%.1f-%.1f], skipping", media_id, start_time, end_time)
+        logger.info(
+            "Caption already exists for %s [%.1f-%.1f], skipping",
+            media_id, start_time, end_time,
+        )
         return str(existing["caption"])
+
+    # Validate video path (after idempotency check, before IO)
+    if not video_path.exists():
+        raise CaptionError(f"Video file not found: {video_path}")
 
     # Get media metadata for fps
     media = db.get_media(media_id)
@@ -117,6 +132,8 @@ def caption_clip(
 
     # Extract frames from clip segment
     frames = _extract_clip_frames(video_path, start_time, end_time, fps)
+    if not frames:
+        raise CaptionError(f"No frames extracted from {video_path} [{start_time}-{end_time}]")
 
     # Load model via scheduler and run inference
     with scheduler.model(config.caption_model) as model_bundle:

@@ -287,7 +287,10 @@ class TestCaptionClip:
         # Mock _extract_clip_frames to return dummy PIL images
         dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(8)]
 
-        with patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames):
+        with (
+            patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames),
+            patch.object(Path, "exists", return_value=True),
+        ):
             result = caption_clip(
                 "m1", Path("/test/video.mp4"), 0.0, 30.0,
                 db=catalog_db, scheduler=scheduler, config=config,
@@ -312,7 +315,10 @@ class TestCaptionClip:
 
         dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(8)]
 
-        with patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames):
+        with (
+            patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames),
+            patch.object(Path, "exists", return_value=True),
+        ):
             caption_clip(
                 "m1", Path("/test/video.mp4"), 0.0, 30.0,
                 db=catalog_db, scheduler=scheduler, config=config,
@@ -338,7 +344,10 @@ class TestCaptionClip:
 
         dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(8)]
 
-        with patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames):
+        with (
+            patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames),
+            patch.object(Path, "exists", return_value=True),
+        ):
             caption_clip(
                 "m1", Path("/test/video.mp4"), 0.0, 30.0,
                 db=catalog_db, scheduler=scheduler, config=config,
@@ -362,9 +371,12 @@ class TestCaptionClip:
 
         dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(8)]
 
-        with patch(
-            "autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames
-        ) as mock_extract:
+        with (
+            patch(
+                "autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames
+            ) as mock_extract,
+            patch.object(Path, "exists", return_value=True),
+        ):
             caption_clip(
                 "m1", Path("/test/video.mp4"), 5.0, 25.0,
                 db=catalog_db, scheduler=scheduler, config=config,
@@ -420,7 +432,10 @@ class TestIdempotency:
 
         dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(8)]
 
-        with patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames):
+        with (
+            patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames),
+            patch.object(Path, "exists", return_value=True),
+        ):
             caption_clip(
                 "m1", Path("/test/video.mp4"), 0.0, 30.0,
                 db=catalog_db, scheduler=scheduler, config=config,
@@ -463,7 +478,10 @@ class TestErrorHandling:
         scheduler = _make_mock_scheduler()
         config = _make_mock_config()
 
-        with patch("autopilot.analyze.captions._extract_clip_frames", return_value=[]):
+        with (
+            patch("autopilot.analyze.captions._extract_clip_frames", return_value=[]),
+            patch.object(Path, "exists", return_value=True),
+        ):
             with pytest.raises(CaptionError, match="No frames"):
                 caption_clip(
                     "m1", Path("/test/video.mp4"), 0.0, 30.0,
