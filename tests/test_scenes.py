@@ -828,7 +828,7 @@ class TestFallbackBehavior:
     def test_pyscenedetect_fallback_success_not_masked_by_logging_failure(
         self, catalog_db, tmp_path
     ) -> None:
-        """Successful PySceneDetect detection must not be masked by a post-detection logging failure.
+        """Successful detection must not be masked by post-detection logging failure.
 
         Proves the false-negative bug is fixed: if _run_pyscenedetect succeeds (writes
         boundaries to DB) but a subsequent DB read-back for logging fails, detect_shots

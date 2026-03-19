@@ -129,13 +129,16 @@ def _read_and_downsample_frames(
         cap.release()
 
 
-def _run_pyscenedetect(media_id: str, video_path: Path, db: CatalogDB) -> None:
+def _run_pyscenedetect(media_id: str, video_path: Path, db: CatalogDB) -> list[dict]:
     """Run PySceneDetect adaptive detection and store boundaries.
 
     Args:
         media_id: Unique identifier for the media file.
         video_path: Path to the video file.
         db: Catalog database for storing boundaries.
+
+    Returns:
+        List of boundary dicts with start_frame, end_frame, transition_type keys.
     """
     import scenedetect  # type: ignore[import-untyped]
     from scenedetect.detectors import AdaptiveDetector  # type: ignore[import-untyped]
@@ -148,6 +151,8 @@ def _run_pyscenedetect(media_id: str, video_path: Path, db: CatalogDB) -> None:
 
     with db:
         db.upsert_boundaries(media_id, json.dumps(boundaries), "pyscenedetect")
+
+    return boundaries
 
 
 def detect_shots(
@@ -213,18 +218,13 @@ def detect_shots(
 
     # Fallback to PySceneDetect (CPU)
     try:
-        _run_pyscenedetect(media_id, video_path, db)
-        # Read back to log count
-        row = db.get_boundaries(media_id, method="pyscenedetect")
-        if isinstance(row, dict):
-            count = len(json.loads(str(row["boundaries_json"])))
-        else:
-            count = 0
-        logger.info(
-            "Completed shot detection for %s: %d boundaries via %s",
-            media_id,
-            count,
-            "pyscenedetect",
-        )
+        boundaries = _run_pyscenedetect(media_id, video_path, db)
     except Exception as exc:
         raise ShotDetectionError(f"Shot detection failed for {media_id}: {exc}") from exc
+
+    logger.info(
+        "Completed shot detection for %s: %d boundaries via %s",
+        media_id,
+        len(boundaries),
+        "pyscenedetect",
+    )
