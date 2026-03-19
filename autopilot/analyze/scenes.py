@@ -7,6 +7,7 @@ as a CPU-based fallback if TransNetV2 fails.
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -154,4 +155,17 @@ def detect_shots(
     if not video_path.exists():
         raise ShotDetectionError(f"Video file not found: {video_path}")
 
-    raise NotImplementedError
+    import cv2  # type: ignore[import-untyped]
+
+    # Read and downsample frames for TransNetV2
+    frames, fps, total_frames = _read_and_downsample_frames(video_path, cv2)
+
+    # Run TransNetV2 via GPU scheduler
+    with scheduler.model("transnetv2") as model:
+        predictions, _ = model.predict_frames(frames)
+        scenes = model.predictions_to_scenes(predictions)
+
+    boundaries = _transnetv2_to_boundaries(scenes)
+
+    with db:
+        db.upsert_boundaries(media_id, json.dumps(boundaries), "transnetv2")
