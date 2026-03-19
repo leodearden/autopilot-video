@@ -228,3 +228,149 @@ class TestExtractClipFrames:
         pixel = img.getpixel((0, 0))
         # After BGR->RGB conversion: R=200, G=0, B=100
         assert pixel == (200, 0, 100)
+
+
+# ---------------------------------------------------------------------------
+# TestCaptionClip — caption_clip() core generation path
+# ---------------------------------------------------------------------------
+
+
+def _make_mock_model_and_processor():
+    """Create mock transformers model and processor."""
+    model = MagicMock()
+    processor = MagicMock()
+
+    # model.generate returns token ids
+    model.generate.return_value = MagicMock()
+
+    # processor.batch_decode returns caption strings
+    processor.batch_decode.return_value = ["A person walking on a beach"]
+
+    return model, processor
+
+
+def _make_mock_scheduler(model_obj=None):
+    """Create mock GPUScheduler that yields model_obj from context manager."""
+    scheduler = MagicMock()
+    ctx = MagicMock()
+    ctx.__enter__ = MagicMock(return_value=model_obj)
+    ctx.__exit__ = MagicMock(return_value=False)
+    scheduler.model.return_value = ctx
+    return scheduler
+
+
+def _make_mock_config():
+    """Create mock ModelConfig with caption_model."""
+    config = MagicMock()
+    config.caption_model = "Qwen/Qwen2.5-VL-7B-Instruct"
+    return config
+
+
+class TestCaptionClip:
+    """Tests for caption_clip() core path."""
+
+    def test_returns_caption_string(self, catalog_db):
+        """caption_clip returns generated caption string."""
+        from PIL import Image as PILImage
+
+        from autopilot.analyze.captions import caption_clip
+
+        # Insert media with fps/duration
+        catalog_db.insert_media(
+            id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
+        )
+
+        model, processor = _make_mock_model_and_processor()
+        scheduler = _make_mock_scheduler(model_obj={"model": model, "processor": processor})
+        config = _make_mock_config()
+
+        # Mock _extract_clip_frames to return dummy PIL images
+        dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(8)]
+
+        with patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames):
+            result = caption_clip(
+                "m1", Path("/test/video.mp4"), 0.0, 30.0,
+                db=catalog_db, scheduler=scheduler, config=config,
+            )
+
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_stores_caption_in_db(self, catalog_db):
+        """After caption_clip, db.get_caption returns the caption."""
+        from PIL import Image as PILImage
+
+        from autopilot.analyze.captions import caption_clip
+
+        catalog_db.insert_media(
+            id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
+        )
+
+        model, processor = _make_mock_model_and_processor()
+        scheduler = _make_mock_scheduler(model_obj={"model": model, "processor": processor})
+        config = _make_mock_config()
+
+        dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(8)]
+
+        with patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames):
+            caption_clip(
+                "m1", Path("/test/video.mp4"), 0.0, 30.0,
+                db=catalog_db, scheduler=scheduler, config=config,
+            )
+
+        stored = catalog_db.get_caption("m1", 0.0, 30.0)
+        assert stored is not None
+        assert len(stored["caption"]) > 0
+
+    def test_uses_scheduler(self, catalog_db):
+        """Verify scheduler.model() context manager is called."""
+        from PIL import Image as PILImage
+
+        from autopilot.analyze.captions import caption_clip
+
+        catalog_db.insert_media(
+            id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
+        )
+
+        model, processor = _make_mock_model_and_processor()
+        scheduler = _make_mock_scheduler(model_obj={"model": model, "processor": processor})
+        config = _make_mock_config()
+
+        dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(8)]
+
+        with patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames):
+            caption_clip(
+                "m1", Path("/test/video.mp4"), 0.0, 30.0,
+                db=catalog_db, scheduler=scheduler, config=config,
+            )
+
+        scheduler.model.assert_called_once_with("Qwen/Qwen2.5-VL-7B-Instruct")
+
+    def test_extracts_frames_from_clip_segment(self, catalog_db):
+        """Verify _extract_clip_frames is called with correct time range."""
+        from PIL import Image as PILImage
+
+        from autopilot.analyze.captions import caption_clip
+
+        catalog_db.insert_media(
+            id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
+        )
+
+        model, processor = _make_mock_model_and_processor()
+        scheduler = _make_mock_scheduler(model_obj={"model": model, "processor": processor})
+        config = _make_mock_config()
+
+        dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(8)]
+
+        with patch(
+            "autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames
+        ) as mock_extract:
+            caption_clip(
+                "m1", Path("/test/video.mp4"), 5.0, 25.0,
+                db=catalog_db, scheduler=scheduler, config=config,
+            )
+
+        mock_extract.assert_called_once()
+        args = mock_extract.call_args
+        assert args[0][1] == 5.0  # start_time
+        assert args[0][2] == 25.0  # end_time
