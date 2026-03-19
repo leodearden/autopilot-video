@@ -192,6 +192,90 @@ class TestSummaryAssembly:
         assert isinstance(summary, dict)
         assert "time_range" in summary
 
+    def test_corrupt_clip_ids_json_raises_classify_error(self, catalog_db):
+        """Corrupt clip_ids_json raises ClassifyError (cluster is unusable)."""
+        from autopilot.organize.classify import ClassifyError, _assemble_cluster_summary
+
+        cluster = {
+            "cluster_id": "c1",
+            "clip_ids_json": "NOT VALID JSON",
+            "time_start": "2025-01-01T10:00:00",
+            "time_end": "2025-01-01T10:00:00",
+            "gps_center_lat": None,
+            "gps_center_lon": None,
+        }
+
+        with pytest.raises(ClassifyError, match="clip_ids"):
+            _assemble_cluster_summary(cluster, catalog_db)
+
+    def test_corrupt_segments_json_skips_row(self, catalog_db):
+        """Corrupt segments_json in transcript is skipped, not a crash."""
+        from autopilot.organize.classify import _assemble_cluster_summary
+
+        catalog_db.insert_media("v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00")
+        # Insert corrupt transcript directly
+        catalog_db.conn.execute(
+            "INSERT INTO transcripts (media_id, segments_json, language) VALUES (?, ?, ?)",
+            ("v1", "NOT VALID JSON", "en"),
+        )
+
+        cluster = {
+            "cluster_id": "c1",
+            "clip_ids_json": json.dumps(["v1"]),
+            "time_start": "2025-01-01T10:00:00",
+            "time_end": "2025-01-01T10:00:00",
+            "gps_center_lat": None,
+            "gps_center_lon": None,
+        }
+
+        # Should not crash - corrupt row is skipped
+        summary = _assemble_cluster_summary(cluster, catalog_db)
+        assert summary["transcripts"] == ""
+
+    def test_corrupt_detections_json_skips_row(self, catalog_db):
+        """Corrupt detections_json is skipped, not a crash."""
+        from autopilot.organize.classify import _assemble_cluster_summary
+
+        catalog_db.insert_media("v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00")
+        catalog_db.conn.execute(
+            "INSERT INTO detections (media_id, frame_number, detections_json) VALUES (?, ?, ?)",
+            ("v1", 0, "CORRUPT"),
+        )
+
+        cluster = {
+            "cluster_id": "c1",
+            "clip_ids_json": json.dumps(["v1"]),
+            "time_start": "2025-01-01T10:00:00",
+            "time_end": "2025-01-01T10:00:00",
+            "gps_center_lat": None,
+            "gps_center_lon": None,
+        }
+
+        summary = _assemble_cluster_summary(cluster, catalog_db)
+        assert summary["detections"] == ""
+
+    def test_corrupt_events_json_skips_row(self, catalog_db):
+        """Corrupt events_json in audio events is skipped, not a crash."""
+        from autopilot.organize.classify import _assemble_cluster_summary
+
+        catalog_db.insert_media("v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00")
+        catalog_db.conn.execute(
+            "INSERT INTO audio_events (media_id, timestamp_seconds, events_json) VALUES (?, ?, ?)",
+            ("v1", 0.0, "BAD JSON"),
+        )
+
+        cluster = {
+            "cluster_id": "c1",
+            "clip_ids_json": json.dumps(["v1"]),
+            "time_start": "2025-01-01T10:00:00",
+            "time_end": "2025-01-01T10:00:00",
+            "gps_center_lat": None,
+            "gps_center_lon": None,
+        }
+
+        summary = _assemble_cluster_summary(cluster, catalog_db)
+        assert summary["audio_events"] == ""
+
 
 # -- Step 9: LLM labeling tests -----------------------------------------------
 
