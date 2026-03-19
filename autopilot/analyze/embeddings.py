@@ -142,7 +142,45 @@ def build_search_index(db: CatalogDB, output_path: Path) -> None:
         db: Catalog database containing clip embeddings.
         output_path: Path to write the FAISS index file.
     """
-    raise NotImplementedError
+    import json
+
+    import faiss  # type: ignore[import-not-found]
+    import numpy as _np  # local alias to avoid TYPE_CHECKING conflict
+
+    rows = db.get_all_clip_embeddings()
+    if not rows:
+        logger.info("No embeddings found, skipping index build")
+        return
+
+    # Reconstruct float32 matrix from BLOBs
+    dim = 768
+    vectors = _np.stack(
+        [_np.frombuffer(r["embedding"], dtype=_np.float32) for r in rows]
+    )
+    n = len(vectors)
+    logger.info("Building search index: %d vectors, %d dimensions", n, dim)
+
+    # Build ID mapping: list of [media_id, frame_number]
+    id_mapping = [[r["media_id"], r["frame_number"]] for r in rows]
+
+    # Two-tier index strategy
+    if n < 256:
+        index = faiss.IndexFlatIP(dim)
+    else:
+        nlist = max(1, int(_np.sqrt(n)))
+        quantizer = faiss.IndexFlatIP(dim)
+        index = faiss.IndexIVFFlat(quantizer, dim, nlist, faiss.METRIC_INNER_PRODUCT)
+        index.train(vectors)
+
+    index.add(vectors)
+    faiss.write_index(index, str(output_path))
+
+    # Write sidecar ID mapping
+    mapping_path = output_path.with_suffix(".ids.json")
+    with open(mapping_path, "w") as f:
+        json.dump(id_mapping, f)
+
+    logger.info("Search index written to %s (%d vectors)", output_path, n)
 
 
 def search_by_text(

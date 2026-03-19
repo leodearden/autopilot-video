@@ -541,3 +541,121 @@ class TestLogging:
         messages = " ".join(r.message for r in caplog.records)
         assert "300" in messages  # total frames
         assert "30.0" in messages  # fps
+
+
+def _insert_mock_embeddings(catalog_db, count=10, dim=768):
+    """Insert mock embeddings into catalog_db for index tests."""
+    inserted_media: set[str] = set()
+    rows = []
+    for i in range(count):
+        mid = f"vid{i // 5}"
+        if mid not in inserted_media:
+            catalog_db.insert_media(mid, f"/{mid}.mp4")
+            inserted_media.add(mid)
+        vec = np.random.randn(dim).astype(np.float32)
+        vec = vec / np.linalg.norm(vec)
+        blob = vec.tobytes()
+        rows.append((mid, i * 60, blob))
+    catalog_db.batch_insert_embeddings(rows)
+    return rows
+
+
+def _make_mock_faiss():
+    """Create a mock faiss module that tracks write_index calls."""
+    mock_faiss = MagicMock()
+
+    # IndexFlatIP returns a mock with ntotal tracking
+    index_obj = MagicMock()
+    index_obj.d = 768
+    index_obj.ntotal = 0
+
+    def add_fn(vectors):
+        index_obj.ntotal += len(vectors)
+
+    index_obj.add.side_effect = add_fn
+    mock_faiss.IndexFlatIP.return_value = index_obj
+
+    # write_index actually writes a marker file
+    def write_index_fn(index, path):
+        from pathlib import Path as _Path
+
+        _Path(path).write_text("faiss_index")
+
+    mock_faiss.write_index.side_effect = write_index_fn
+
+    return mock_faiss, index_obj
+
+
+class TestBuildSearchIndex:
+    """Tests for build_search_index."""
+
+    def test_empty_db_no_index(self, catalog_db, tmp_path) -> None:
+        """Empty DB returns without creating files."""
+        from autopilot.analyze.embeddings import build_search_index
+
+        output = tmp_path / "index.faiss"
+        mock_faiss, _ = _make_mock_faiss()
+
+        with patch.dict(sys.modules, {"faiss": mock_faiss}):
+            build_search_index(catalog_db, output)
+
+        assert not output.exists()
+
+    def test_small_dataset_creates_index(self, catalog_db, tmp_path) -> None:
+        """Insert 10 mock embeddings, build index, verify output file exists."""
+        from autopilot.analyze.embeddings import build_search_index
+
+        _insert_mock_embeddings(catalog_db, count=10)
+        output = tmp_path / "index.faiss"
+        mock_faiss, index_obj = _make_mock_faiss()
+
+        with patch.dict(sys.modules, {"faiss": mock_faiss}):
+            build_search_index(catalog_db, output)
+
+        assert output.exists()
+
+    def test_id_mapping_written(self, catalog_db, tmp_path) -> None:
+        """Sidecar .ids.json exists with correct entries."""
+        import json
+
+        from autopilot.analyze.embeddings import build_search_index
+
+        _insert_mock_embeddings(catalog_db, count=10)
+        output = tmp_path / "index.faiss"
+        mock_faiss, _ = _make_mock_faiss()
+
+        with patch.dict(sys.modules, {"faiss": mock_faiss}):
+            build_search_index(catalog_db, output)
+
+        mapping_path = tmp_path / "index.ids.json"
+        assert mapping_path.exists()
+        mapping = json.loads(mapping_path.read_text())
+        assert len(mapping) == 10
+        # Each entry is [media_id, frame_number]
+        assert all(len(entry) == 2 for entry in mapping)
+
+    def test_index_vector_count(self, catalog_db, tmp_path) -> None:
+        """FAISS index.add called with correct number of vectors."""
+        from autopilot.analyze.embeddings import build_search_index
+
+        _insert_mock_embeddings(catalog_db, count=10)
+        output = tmp_path / "index.faiss"
+        mock_faiss, index_obj = _make_mock_faiss()
+
+        with patch.dict(sys.modules, {"faiss": mock_faiss}):
+            build_search_index(catalog_db, output)
+
+        assert index_obj.ntotal == 10
+
+    def test_index_uses_flat_ip(self, catalog_db, tmp_path) -> None:
+        """Small dataset (<256) uses IndexFlatIP(768)."""
+        from autopilot.analyze.embeddings import build_search_index
+
+        _insert_mock_embeddings(catalog_db, count=10)
+        output = tmp_path / "index.faiss"
+        mock_faiss, _ = _make_mock_faiss()
+
+        with patch.dict(sys.modules, {"faiss": mock_faiss}):
+            build_search_index(catalog_db, output)
+
+        mock_faiss.IndexFlatIP.assert_called_once_with(768)
