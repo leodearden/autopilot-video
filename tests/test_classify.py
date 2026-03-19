@@ -218,8 +218,8 @@ class TestLLMLabeling:
 
     def test_calls_anthropic_api(self):
         """_call_llm calls Anthropic API with correct model."""
-        from autopilot.organize.classify import _call_llm
         from autopilot.config import LLMConfig
+        from autopilot.organize.classify import _call_llm
 
         config = LLMConfig()
         summary = {"time_range": "2025-01-01T10:00:00 to 2025-01-01T11:00:00"}
@@ -238,8 +238,8 @@ class TestLLMLabeling:
 
     def test_prompt_includes_activity_label_content(self):
         """System prompt contains activity_label.md content."""
-        from autopilot.organize.classify import _call_llm
         from autopilot.config import LLMConfig
+        from autopilot.organize.classify import _call_llm
 
         config = LLMConfig()
         summary = {"time_range": "test"}
@@ -257,8 +257,8 @@ class TestLLMLabeling:
 
     def test_parses_json_response(self):
         """Correctly parses JSON from response text."""
-        from autopilot.organize.classify import _call_llm
         from autopilot.config import LLMConfig
+        from autopilot.organize.classify import _call_llm
 
         config = LLMConfig()
         summary = {"time_range": "test"}
@@ -279,8 +279,8 @@ class TestLLMLabeling:
 
     def test_parses_json_in_code_block(self):
         """Parses JSON wrapped in ```json code block."""
-        from autopilot.organize.classify import _call_llm
         from autopilot.config import LLMConfig
+        from autopilot.organize.classify import _call_llm
 
         config = LLMConfig()
         summary = {"time_range": "test"}
@@ -302,8 +302,8 @@ class TestLLMLabeling:
 
     def test_api_error_raises_classify_error(self):
         """API errors wrapped in ClassifyError."""
-        from autopilot.organize.classify import ClassifyError, _call_llm
         from autopilot.config import LLMConfig
+        from autopilot.organize.classify import ClassifyError, _call_llm
 
         config = LLMConfig()
         summary = {"time_range": "test"}
@@ -319,8 +319,8 @@ class TestLLMLabeling:
 
     def test_malformed_json_raises_classify_error(self):
         """Malformed JSON response raises ClassifyError."""
-        from autopilot.organize.classify import ClassifyError, _call_llm
         from autopilot.config import LLMConfig
+        from autopilot.organize.classify import ClassifyError, _call_llm
 
         config = LLMConfig()
         summary = {"time_range": "test"}
@@ -341,8 +341,8 @@ class TestLLMLabeling:
 
     def test_missing_fields_raises_classify_error(self):
         """Response missing label/description raises ClassifyError."""
-        from autopilot.organize.classify import ClassifyError, _call_llm
         from autopilot.config import LLMConfig
+        from autopilot.organize.classify import ClassifyError, _call_llm
 
         config = LLMConfig()
         summary = {"time_range": "test"}
@@ -406,8 +406,8 @@ class TestLabelActivities:
 
     def test_skips_already_labeled(self, catalog_db):
         """Skips clusters that already have labels."""
-        from autopilot.organize.classify import label_activities
         from autopilot.config import LLMConfig
+        from autopilot.organize.classify import label_activities
 
         config = LLMConfig()
 
@@ -434,8 +434,8 @@ class TestLabelActivities:
 
     def test_handles_empty_clusters(self, catalog_db):
         """No clusters in DB -> no errors."""
-        from autopilot.organize.classify import label_activities
         from autopilot.config import LLMConfig
+        from autopilot.organize.classify import label_activities
 
         config = LLMConfig()
         # No clusters to label
@@ -443,8 +443,8 @@ class TestLabelActivities:
 
     def test_labels_multiple_clusters(self, catalog_db):
         """Labels multiple clusters, calling LLM for each."""
-        from autopilot.organize.classify import label_activities
         from autopilot.config import LLMConfig
+        from autopilot.organize.classify import label_activities
 
         config = LLMConfig()
 
@@ -475,8 +475,8 @@ class TestLabelActivities:
     def test_split_recommended_logs_warning(self, catalog_db, caplog):
         """split_recommended=true triggers WARNING log with cluster_id and split_reason."""
         import logging
-        from autopilot.organize.classify import label_activities
         from autopilot.config import LLMConfig
+        from autopilot.organize.classify import label_activities
 
         config = LLMConfig()
 
@@ -522,9 +522,10 @@ class TestIntegration:
     def test_cluster_then_label(self, catalog_db):
         """Full pipeline: insert media, cluster, then label with mocked LLM."""
         import numpy as np
-        from autopilot.organize.cluster import cluster_activities
-        from autopilot.organize.classify import label_activities
+
         from autopilot.config import LLMConfig
+        from autopilot.organize.classify import label_activities
+        from autopilot.organize.cluster import cluster_activities
 
         config = LLMConfig()
 

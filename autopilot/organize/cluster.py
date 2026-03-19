@@ -12,6 +12,7 @@ import math
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -168,7 +169,7 @@ def _temporal_spatial_cluster(
 
 def _semantic_refine(
     clip_ids: list[str],
-    clips_data: dict[str, dict[str, object]],
+    clips_data: Mapping[str, Mapping[str, object]],
     db: CatalogDB,
     *,
     cosine_threshold: float = 0.5,
