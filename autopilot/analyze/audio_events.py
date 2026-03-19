@@ -107,3 +107,30 @@ def classify_audio_events(
     # Update media status
     with db:
         db.update_media_status(media_id, "analyzing")
+
+    import librosa  # type: ignore[import-untyped]
+
+    audio, sr = librosa.load(str(audio_path), sr=32000, mono=True)
+    windows = _window_audio(audio, 32000)
+
+    import panns_inference  # type: ignore[import-untyped]
+
+    labels = panns_inference.config.labels
+
+    logger.info("Starting audio event classification for %s", media_id)
+
+    rows: list[tuple[str, float, str]] = []
+    with scheduler.model("panns_cnn14") as model:
+        for i, window in enumerate(windows):
+            clipwise_output, _ = model.inference(window[None, :])
+            events = _extract_top_k(clipwise_output[0], labels, k=top_k)
+            rows.append((media_id, float(i), json.dumps(events)))
+
+    with db:
+        db.batch_insert_audio_events(rows)
+
+    logger.info(
+        "Completed audio event classification for %s: %d seconds",
+        media_id,
+        len(windows),
+    )
