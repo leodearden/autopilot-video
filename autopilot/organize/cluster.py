@@ -166,6 +166,81 @@ def _temporal_spatial_cluster(
     return list(cluster_map.values())
 
 
+def _semantic_refine(
+    clip_ids: list[str],
+    clips_data: dict[str, dict[str, object]],
+    db: CatalogDB,
+    *,
+    cosine_threshold: float = 0.5,
+) -> list[list[str]]:
+    """Refine a cluster using SigLIP embedding discontinuities.
+
+    Loads embeddings from the DB for the given clip IDs, sorts by timestamp,
+    computes cosine distance between consecutive clips' mean embeddings, and
+    splits at points where the distance exceeds the threshold.
+
+    Args:
+        clip_ids: List of clip IDs in the cluster.
+        clips_data: Mapping from clip ID to media dict (needs 'created_at').
+        db: Catalog database for loading embeddings.
+        cosine_threshold: Cosine distance threshold for split detection.
+
+    Returns:
+        List of sub-clusters (each a list of clip IDs).
+    """
+    if len(clip_ids) <= 1:
+        return [clip_ids]
+
+    import numpy as np  # type: ignore[reportMissingImports]
+
+    # Sort clips by timestamp
+    sorted_ids = sorted(
+        clip_ids,
+        key=lambda cid: _parse_iso(str(clips_data[cid]["created_at"])).timestamp(),
+    )
+
+    # Load mean embedding per clip
+    clip_embeddings: list[tuple[str, object]] = []
+    for cid in sorted_ids:
+        rows = db.get_embeddings_for_media(cid)
+        if not rows:
+            clip_embeddings.append((cid, None))
+            continue
+        embs = [np.frombuffer(row["embedding"], dtype=np.float32) for row in rows]
+        mean_emb = np.mean(embs, axis=0)
+        clip_embeddings.append((cid, mean_emb))
+
+    # Find split points based on cosine distance discontinuities
+    split_points: list[int] = []
+    for i in range(len(clip_embeddings) - 1):
+        emb_a = clip_embeddings[i][1]
+        emb_b = clip_embeddings[i + 1][1]
+        if emb_a is None or emb_b is None:
+            continue
+        # Cosine distance = 1 - cosine similarity
+        norm_a = np.linalg.norm(emb_a)
+        norm_b = np.linalg.norm(emb_b)
+        if norm_a == 0 or norm_b == 0:
+            continue
+        cos_sim = float(np.dot(emb_a, emb_b) / (norm_a * norm_b))
+        cos_dist = 1.0 - cos_sim
+        if cos_dist > cosine_threshold:
+            split_points.append(i + 1)
+
+    if not split_points:
+        return [sorted_ids]
+
+    # Split at detected boundaries
+    sub_clusters: list[list[str]] = []
+    prev = 0
+    for sp in split_points:
+        sub_clusters.append(sorted_ids[prev:sp])
+        prev = sp
+    sub_clusters.append(sorted_ids[prev:])
+
+    return sub_clusters
+
+
 def cluster_activities(db: CatalogDB) -> list[ActivityCluster]:
     """Cluster all media files into activity groups.
 
