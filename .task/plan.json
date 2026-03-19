@@ -1,8 +1,15 @@
 {
   "task_id": "8",
   "title": "Shot boundary detection",
-  "modules": ["autopilot/analyze/scenes.py", "tests/test_scenes.py"],
-  "analysis": "Implement autopilot/analyze/scenes.py for shot boundary detection using TransNetV2 (primary, GPU) and PySceneDetect detect-adaptive (fallback, CPU). The codebase has a very consistent pattern across peer analyze modules (asr.py, faces.py, objects.py): custom exception, deferred heavy imports, idempotency check via DB, path validation, GPUScheduler context manager for model access, transactional DB writes with `with db:`, cap.release() in finally, and structured logging. The DB layer already has a shot_boundaries table with composite PK (media_id, method) and full CRUD: upsert_boundaries(media_id, boundaries_json, method) and get_boundaries(media_id, method=None). PySceneDetect (`scenedetect`) is already in pyproject.toml. TransNetV2 is a PyTorch model expecting 48x27 RGB frames, outputting per-frame transition probabilities which are converted to scene boundary pairs via predictions_to_scenes. The function signature follows the task spec: detect_shots(media_id, video_path, db, scheduler) — no config param since TransNetV2 has no user-configurable variants (unlike whisper_size or yolo_variant). Both methods can store results independently via the composite key. Path validation lives in detect_shots since neither method can work without the file. cv2.VideoCapture lifecycle is managed inside _read_and_downsample_frames with cap.release() in finally. PySceneDetect handles its own video I/O via scenedetect.detect(). The fallback logic: try TransNetV2, on any failure log WARNING and try PySceneDetect, on double failure raise ShotDetectionError. Test mocking follows established patterns: patch.dict(sys.modules) for deferred imports, _make_mock_cv2/_make_mock_capture helpers, MagicMock scheduler with context manager protocol.",
+  "files": [
+    "autopilot/analyze/scenes.py",
+    "tests/test_scenes.py"
+  ],
+  "modules": [
+    "autopilot/analyze",
+    "tests"
+  ],
+  "analysis": "Implement autopilot/analyze/scenes.py for shot boundary detection using TransNetV2 (primary, GPU) and PySceneDetect detect-adaptive (fallback, CPU). The codebase has a very consistent pattern across peer analyze modules (asr.py, faces.py, objects.py): custom exception, deferred heavy imports, idempotency check via DB, path validation, GPUScheduler context manager for model access, transactional DB writes with `with db:`, cap.release() in finally, and structured logging. The DB layer already has a shot_boundaries table with composite PK (media_id, method) and full CRUD: upsert_boundaries(media_id, boundaries_json, method) and get_boundaries(media_id, method=None). PySceneDetect (`scenedetect`) is already in pyproject.toml. TransNetV2 is a PyTorch model expecting 48x27 RGB frames, outputting per-frame transition probabilities which are converted to scene boundary pairs via predictions_to_scenes. The function signature follows the task spec: detect_shots(media_id, video_path, db, scheduler) \u2014 no config param since TransNetV2 has no user-configurable variants (unlike whisper_size or yolo_variant). Both methods can store results independently via the composite key. Path validation lives in detect_shots since neither method can work without the file. cv2.VideoCapture lifecycle is managed inside _read_and_downsample_frames with cap.release() in finally. PySceneDetect handles its own video I/O via scenedetect.detect(). The fallback logic: try TransNetV2, on any failure log WARNING and try PySceneDetect, on double failure raise ShotDetectionError. Test mocking follows established patterns: patch.dict(sys.modules) for deferred imports, _make_mock_cv2/_make_mock_capture helpers, MagicMock scheduler with context manager protocol.",
   "prerequisites": [
     {
       "id": "pre-1",
@@ -16,7 +23,7 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write TestPublicAPI tests in tests/test_scenes.py: (a) ShotDetectionError and detect_shots importable from autopilot.analyze.scenes; (b) ShotDetectionError is Exception subclass with message; (c) detect_shots has correct signature — positional params media_id, video_path, db, scheduler (no config), returns None; (d) __all__ exports both names; (e) module constants TRANSNETV2_INPUT_WIDTH=48, TRANSNETV2_INPUT_HEIGHT=27, PYSCENEDETECT_THRESHOLD=27.0 are accessible.",
+      "description": "Write TestPublicAPI tests in tests/test_scenes.py: (a) ShotDetectionError and detect_shots importable from autopilot.analyze.scenes; (b) ShotDetectionError is Exception subclass with message; (c) detect_shots has correct signature \u2014 positional params media_id, video_path, db, scheduler (no config), returns None; (d) __all__ exports both names; (e) module constants TRANSNETV2_INPUT_WIDTH=48, TRANSNETV2_INPUT_HEIGHT=27, PYSCENEDETECT_THRESHOLD=27.0 are accessible.",
       "status": "done",
       "commit": "ac5e2f4"
     },
@@ -37,7 +44,7 @@
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement idempotency guard in detect_shots: call db.get_boundaries(media_id) (no method filter — returns list), return early with logger.info('...skipping') if list is non-empty.",
+      "description": "Implement idempotency guard in detect_shots: call db.get_boundaries(media_id) (no method filter \u2014 returns list), return early with logger.info('...skipping') if list is non-empty.",
       "status": "done",
       "commit": "a5b5488"
     },
@@ -166,6 +173,20 @@
       "description": "Final cleanup pass: verify cap.release() in all cv2 code paths (finally block in _read_and_downsample_frames), module docstring complete, __all__ exports accurate, no unused imports, edge cases handled (zero-frame video), ruff lint clean, all tests green.",
       "status": "done",
       "commit": "6708d22"
+    },
+    {
+      "id": "step-23",
+      "type": "test",
+      "description": "Write tests for false-negative error-handling bug in PySceneDetect fallback path (reviewer_robustness: error_handling_correctness, scenes.py:215-230). Add two tests: (a) test_run_pyscenedetect_returns_boundaries in TestPySceneDetectPipeline: verify that _run_pyscenedetect returns list[dict] (the boundaries list) so the caller can obtain the count without a DB round-trip. Call _run_pyscenedetect with mocked scenedetect returning 2 scenes, assert return value is a list of 2 dicts with start_frame/end_frame/transition_type keys. (b) test_pyscenedetect_fallback_success_not_masked_by_logging_failure in TestFallbackBehavior: prove the false-negative bug is fixed. Setup: TransNetV2 fails (cap.isOpened=False), scenedetect succeeds (writes boundaries to DB). After _run_pyscenedetect returns, monkey-patch catalog_db.get_boundaries to raise RuntimeError('DB read error') so any attempt to read-back for logging would fail. Assert detect_shots does NOT raise ShotDetectionError \u2014 the detection succeeded and data is in DB, so a logging failure must not propagate as a detection failure. Verify boundaries ARE in the DB by restoring get_boundaries and checking.",
+      "status": "done",
+      "commit": "2527b46"
+    },
+    {
+      "id": "step-24",
+      "type": "impl",
+      "description": "Fix false-negative error-handling bug (reviewer_robustness: error_handling_correctness, scenes.py:215-230). Two changes: (1) Refactor _run_pyscenedetect to return list[dict] instead of None \u2014 after calling scenedetect.detect, converting, and upserting to DB, return the boundaries list. Update type hint to -> list[dict]. (2) In detect_shots PySceneDetect fallback block, restructure so ONLY the _run_pyscenedetect call is inside the try/except that raises ShotDetectionError. Capture the returned boundaries: `try: boundaries = _run_pyscenedetect(media_id, video_path, db) except Exception as exc: raise ShotDetectionError(...) from exc`. Then OUTSIDE the try/except, log the completion using len(boundaries): `logger.info('Completed shot detection for %s: %d boundaries via %s', media_id, len(boundaries), 'pyscenedetect')`. This eliminates the DB round-trip for count logging and ensures a successful detection is never masked by a post-detection logging failure.",
+      "status": "done",
+      "commit": "3cc38de"
     }
   ],
   "design_decisions": [
@@ -204,6 +225,10 @@
     {
       "decision": "All boundary entries use transition_type='cut' initially",
       "rationale": "Both TransNetV2 and PySceneDetect detect hard cuts (scene boundaries). Neither distinguishes transition types (dissolves, wipes). The transition_type field allows future extension but 'cut' is the correct default for both detectors."
+    },
+    {
+      "decision": "_run_pyscenedetect returns boundaries list instead of None (review fix)",
+      "rationale": "Reviewer identified that count-logging code (db.get_boundaries + json.loads) inside the try/except block at lines 215-230 creates a false-negative failure: if the DB read-back for logging fails after data is already persisted, the caller receives ShotDetectionError even though detection succeeded. Returning the boundaries list directly from _run_pyscenedetect avoids the DB round-trip for counting and allows the completion logging to live outside the error-handling try/except. This mirrors how the TransNetV2 path already works (boundaries variable computed before logging, not read back from DB)."
     }
   ],
   "reuse": [
@@ -247,5 +272,6 @@
       "where": "tests/test_objects.py, tests/test_asr.py",
       "how": "Follow same class-per-concern structure: TestPublicAPI, TestIdempotency, TestInputValidation, TestFrameReading, TestTransNetV2Pipeline, TestPySceneDetectPipeline, TestFallbackBehavior, TestLogging, TestIntegration."
     }
-  ]
+  ],
+  "_schema_version": 1
 }
