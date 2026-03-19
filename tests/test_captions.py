@@ -692,3 +692,116 @@ class TestBackendSelection:
         # spec should be created successfully (transformers fallback)
         assert spec is not None
         assert callable(spec.load_fn)
+
+
+# ---------------------------------------------------------------------------
+# TestLogging — structured logging output
+# ---------------------------------------------------------------------------
+
+
+class TestLogging:
+    """Tests for caption_clip() and batch_caption() logging."""
+
+    def test_log_contains_media_id(self, catalog_db, caplog):
+        """INFO log includes media_id on caption start."""
+        from PIL import Image as PILImage
+
+        from autopilot.analyze.captions import caption_clip
+
+        catalog_db.insert_media(
+            id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
+        )
+
+        model, processor = _make_mock_model_and_processor()
+        scheduler = _make_mock_scheduler(model_obj={"model": model, "processor": processor})
+        config = _make_mock_config()
+
+        dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(8)]
+
+        with (
+            caplog.at_level(logging.INFO, logger="autopilot.analyze.captions"),
+            patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames),
+            patch.object(Path, "exists", return_value=True),
+        ):
+            caption_clip(
+                "m1", Path("/test/video.mp4"), 0.0, 30.0,
+                db=catalog_db, scheduler=scheduler, config=config,
+            )
+
+        assert any("m1" in msg for msg in caplog.messages)
+
+    def test_log_caption_complete(self, catalog_db, caplog):
+        """INFO log on completion with media_id and caption length."""
+        from PIL import Image as PILImage
+
+        from autopilot.analyze.captions import caption_clip
+
+        catalog_db.insert_media(
+            id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
+        )
+
+        model, processor = _make_mock_model_and_processor()
+        scheduler = _make_mock_scheduler(model_obj={"model": model, "processor": processor})
+        config = _make_mock_config()
+
+        dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(8)]
+
+        with (
+            caplog.at_level(logging.INFO, logger="autopilot.analyze.captions"),
+            patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames),
+            patch.object(Path, "exists", return_value=True),
+        ):
+            caption_clip(
+                "m1", Path("/test/video.mp4"), 0.0, 30.0,
+                db=catalog_db, scheduler=scheduler, config=config,
+            )
+
+        # Should log completion
+        assert any("m1" in msg and ("complete" in msg.lower() or "caption" in msg.lower()) for msg in caplog.messages)
+
+    def test_log_skipping_on_idempotent(self, catalog_db, caplog):
+        """INFO log with 'already exists' when caption exists."""
+        from autopilot.analyze.captions import caption_clip
+
+        catalog_db.insert_media(
+            id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
+        )
+        catalog_db.upsert_caption("m1", 0.0, 30.0, "Existing", "old-model")
+
+        scheduler = _make_mock_scheduler()
+        config = _make_mock_config()
+
+        with caplog.at_level(logging.INFO, logger="autopilot.analyze.captions"):
+            caption_clip(
+                "m1", Path("/test/video.mp4"), 0.0, 30.0,
+                db=catalog_db, scheduler=scheduler, config=config,
+            )
+
+        assert any("already exists" in msg for msg in caplog.messages)
+
+    def test_log_batch_progress(self, catalog_db, caplog):
+        """batch_caption logs progress count."""
+        from autopilot.analyze.captions import batch_caption
+
+        catalog_db.insert_media(
+            id="m0", file_path="/test/v0.mp4", fps=30.0, duration_seconds=60.0
+        )
+
+        model, processor = _make_mock_model_and_processor()
+        scheduler = _make_mock_scheduler(model_obj={"model": model, "processor": processor})
+        config = _make_mock_config()
+
+        with (
+            caplog.at_level(logging.INFO, logger="autopilot.analyze.captions"),
+            patch("autopilot.analyze.captions._extract_clip_frames") as mock_extract,
+            patch.object(Path, "exists", return_value=True),
+        ):
+            from PIL import Image as PILImage
+
+            mock_extract.return_value = [PILImage.new("RGB", (100, 100))]
+            batch_caption(
+                ["m0"], db=catalog_db, scheduler=scheduler, config=config,
+                sample_rate=1.0,
+            )
+
+        assert any("1/1" in msg and "captioned" in msg for msg in caplog.messages)
