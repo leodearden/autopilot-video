@@ -90,3 +90,9 @@ def transcribe_media(
     # Validate audio path before importing whisperx
     if not audio_path.exists():
         raise TranscriptionError(f"Audio file not found: {audio_path}")
+
+    # Update media status
+    with db:
+        db.update_media_status(media_id, "analyzing")
+
+    import whisperx  # type: ignore[import-untyped]
