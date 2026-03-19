@@ -1,17 +1,17 @@
 {
-  "task_id": "6",
-  "title": "GPU scheduler",
+  "task_id": "12",
+  "title": "Audio event classification",
   "modules": [
-    "autopilot/analyze",
-    "tests"
+    "autopilot/analyze/audio_events.py",
+    "tests/test_audio_events.py"
   ],
-  "analysis": "Task 6 requires creating autopilot/analyze/gpu_scheduler.py \u2014 a VRAM-aware GPU model scheduler with context-manager API. The analyze/ directory exists with an empty __init__.py. No GPU-related code exists yet in the project.\n\n**Architecture:** GPUScheduler class manages a registry of ModelSpec entries (load_fn, unload_fn, vram_bytes, warmup_fn) and tracks loaded models with LRU ordering. The context manager `scheduler.model('name')` loads the requested model (evicting LRU models if VRAM is insufficient) and returns the loaded model object. Models stay resident after context exit (LRU cache behavior) \u2014 only evicted when VRAM is needed for a new model. A force_unload_all() method clears everything.\n\n**Key design constraints:**\n- Must work WITHOUT a real GPU in tests \u2014 all torch.cuda calls must be injectable/mockable\n- Thread safety via threading.Lock (pipeline may run audio + video analysis concurrently)\n- Device selection from config's processing.gpu_device field\n- LRU eviction: when loading a model that won't fit, unload least-recently-used models until there's enough VRAM\n- VRAM tracking via torch.cuda.mem_get_info() in production, but mockable for tests\n\n**Test strategy:** All unit tests use mock VRAM tracking (no GPU required). We inject a vram_query callable into GPUScheduler so tests can control reported free/total VRAM. Model load/unload functions are simple callables that tests can spy on with MagicMock.\n\n**Dependencies:** Only depends on task 2 (config.py, done). Uses ProcessingConfig.gpu_device for device selection. No other autopilot modules needed.\n\n**Existing patterns followed:**\n- Dataclasses for data containers (ModelSpec follows CreatorConfig/StageDefinition pattern)\n- __all__ exports in module\n- logging module for structured output\n- Tests use pytest with descriptive docstrings, follow test_config.py/test_orchestrator.py style\n\n**Post-review fixes (steps 25-28):** Three blocking issues identified in code review: (1) vacuous assertion `assert ... or True` on line 95 of tests that can never fail, (2) untested failure mode where load_fn returns None causing the LRU cache to break, (3) incorrect sentinel check using `is not None` instead of `name in self._loaded` for the cached-model guard. Steps 25-26 add a test for None-returning load_fn and fix the sentinel check in the implementation (TDD order). Steps 27-28 fix the vacuous test assertion and run a full validation pass.",
+  "analysis": "Implement autopilot/analyze/audio_events.py with PANNs CNN14 for per-second top-5 audio event classification against AudioSet's 527 classes. The codebase has a well-established pattern for analyze modules (see asr.py, objects.py, faces.py): module docstring, __future__ annotations, logging, TYPE_CHECKING guard for GPUScheduler/CatalogDB, __all__ exports, custom Exception subclass, private helpers, main function with idempotency check -> path validation -> status update -> lazy imports -> scheduler context -> processing loop -> DB batch insert -> error wrapping. The DB schema (audio_events table with columns media_id TEXT, timestamp_seconds REAL, events_json TEXT and PK on media_id+timestamp_seconds) and CRUD methods (batch_insert_audio_events, get_audio_events_for_range) already exist in db.py. panns-inference is already in pyproject.toml dependencies. No config.py changes needed since CNN14 is the single model specified by the task -- scheduler key 'panns_cnn14' will be hardcoded. Two private helpers needed: _window_audio() to split 1D waveform into 1-second zero-padded chunks, _extract_top_k() to extract top-k class predictions with numpy-to-Python float coercion. Test patterns from test_asr.py: class-based test organization, sys.modules patching for lazy imports, MagicMock scheduler with __enter__/__exit__, catalog_db in-memory fixture. PANNs inference API: AudioTagging(checkpoint_path=None, device='cuda:0'), model.inference(waveform) returns (clipwise_output shape (batch,527), embedding); labels via panns_inference.config.labels (527 strings). Must mock both 'panns_inference' and 'panns_inference.config' in sys.modules for tests.",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Create empty test file tests/test_gpu_scheduler.py with module docstring, standard imports (pytest, unittest.mock, threading), and no test functions yet. This is the test home for the GPU scheduler.",
+      "description": "Create tests/test_audio_events.py with module docstring, standard imports (inspect, json, logging, sys, pathlib.Path, unittest.mock.MagicMock/patch, pytest, numpy), and mock helper functions: _make_mock_panns(labels) returning MagicMock module with AudioTagging whose instances have .inference returning (np.random probabilities shape (1,len(labels)), mock_embedding), plus config sub-mock with .labels; _make_mock_librosa(duration_seconds, sr=32000) returning MagicMock with .load returning (np.zeros waveform, sr); _make_full_pipeline_mocks(catalog_db, media_id, duration_seconds) that inserts media, builds all mocks + scheduler, returns (mock_panns, mock_panns_config, mock_librosa, scheduler).",
       "status": "done",
-      "commit": "4073dfa",
+      "commit": "7ec340c",
       "tests": []
     }
   ],
@@ -19,263 +19,245 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing tests for ModelSpec dataclass and public API imports. Tests: (1) test_model_spec_fields \u2014 instantiate ModelSpec with load_fn, unload_fn, vram_bytes, warmup_fn; verify all attributes stored correctly. (2) test_model_spec_warmup_fn_optional \u2014 instantiate ModelSpec without warmup_fn, verify it defaults to None. (3) test_public_api_importable \u2014 verify GPUScheduler, ModelSpec, SchedulerError are importable from autopilot.analyze.gpu_scheduler. (4) test_scheduler_error_is_exception \u2014 verify SchedulerError is an Exception subclass.",
+      "description": "Write TestPublicAPI class: test_exports_importable (AudioEventError and classify_audio_events importable from autopilot.analyze.audio_events), test_audio_event_error_is_exception (subclass of Exception, preserves message), test_classify_audio_events_signature (positional params: media_id, audio_path, db, scheduler; keyword-only: top_k with default 5; return annotation is None or 'None').",
       "status": "done",
-      "commit": "c5f456a"
+      "commit": "8464910"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Create autopilot/analyze/gpu_scheduler.py with ModelSpec dataclass (load_fn: Callable[[], Any], unload_fn: Callable[[Any], None], vram_bytes: int, warmup_fn: Callable[[Any], None] | None = None), SchedulerError exception class, and empty GPUScheduler class stub. Add __all__ exports. Make step-1 tests pass.",
+      "description": "Create autopilot/analyze/audio_events.py following asr.py structure: module docstring, from __future__ import annotations, import json/logging/Path, import numpy as np, TYPE_CHECKING guard for GPUScheduler and CatalogDB, __all__ = ['AudioEventError', 'classify_audio_events'], logger, AudioEventError(Exception), classify_audio_events stub with correct signature (media_id, audio_path, db, scheduler, *, top_k=5) -> None and pass body.",
       "status": "done",
-      "commit": "acd4e6e"
+      "commit": "0b14eda"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write failing tests for GPUScheduler initialization and model registration. Tests: (1) test_init_default_device \u2014 GPUScheduler() defaults to device=0 and total_vram provided at init. (2) test_init_custom_device \u2014 GPUScheduler(device=1, total_vram=24*1024**3) stores device correctly. (3) test_register_model \u2014 call scheduler.register('whisperx', spec), verify model is in scheduler's registry. (4) test_register_duplicate_raises \u2014 registering same name twice raises SchedulerError. (5) test_unregister_model \u2014 register then unregister, verify model removed from registry.",
+      "description": "Write TestWindowAudio class: test_exact_multiple (3s at 32kHz -> 3 windows of 32000 samples each), test_short_audio_padded (0.5s -> 1 window zero-padded to 32000), test_remainder_padded (2.5s -> 3 windows, last zero-padded), test_empty_audio (0 samples -> empty list), test_exactly_one_second (32000 samples -> 1 window), test_output_dtype_preserved (float32 in -> float32 out).",
       "status": "done",
-      "commit": "5946c7d"
+      "commit": "cacbd52"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement GPUScheduler.__init__(device, total_vram, vram_query) with model registry dict, loaded models dict, LRU ordering list, and threading.Lock. Implement register(name, spec) and unregister(name) methods. The vram_query parameter is a callable returning (free, total) bytes \u2014 defaults to None (will use torch.cuda in production). total_vram is the VRAM budget for scheduling decisions. Make step-3 tests pass.",
+      "description": "Implement _window_audio(audio: np.ndarray, sample_rate: int, window_seconds: float = 1.0) -> list[np.ndarray]: compute window_size = int(sample_rate * window_seconds), return [] for empty input, calculate number of windows via ceil division, pad with zeros if needed, slice into non-overlapping windows.",
       "status": "done",
-      "commit": "d24362e"
+      "commit": "a4c6827"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write failing tests for basic model loading via context manager. Tests: (1) test_context_manager_loads_model \u2014 register a model with MagicMock load_fn, use `with scheduler.model('test') as m:`, verify load_fn called once and m is the return value. (2) test_context_manager_model_stays_loaded \u2014 after exiting context, model remains in loaded set (LRU cache). (3) test_context_manager_reuses_loaded_model \u2014 enter context twice for same model, load_fn called only once. (4) test_context_manager_unknown_model_raises \u2014 using scheduler.model('nonexistent') raises SchedulerError.",
+      "description": "Write TestExtractTopK class: test_basic_top5 (527-element array -> correct top-5 sorted descending), test_k_parameter (k=3 -> 3 items), test_output_keys (each dict has exactly {'class', 'probability'}), test_numpy_float_coercion (np.float32 probabilities -> isinstance(p, float) for all), test_json_serializable (json.dumps succeeds on output), test_all_zeros (returns k items with prob 0.0), test_k_larger_than_labels (k=600 with 527 labels -> 527 items).",
       "status": "done",
-      "commit": "de0fcd6"
+      "commit": "f4bdf32"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Implement GPUScheduler.model(name) as a context manager (using contextlib.contextmanager). On enter: check if model already loaded (return cached), otherwise call spec.load_fn(), add to loaded dict, update LRU order. On exit: model stays loaded (LRU cache). Track loaded models as dict[str, Any] mapping name -> loaded model object. Make step-5 tests pass.",
+      "description": "Implement _extract_top_k(probabilities: np.ndarray, labels: list[str], k: int = 5) -> list[dict[str, object]]: clamp k to min(k, len(labels)), argsort descending, return [{'class': str(labels[i]), 'probability': float(probabilities[i])} for i in top_k_indices].",
       "status": "done",
-      "commit": "de0fcd6"
+      "commit": "e491850"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write failing tests for LRU eviction when VRAM is insufficient. Use GPUScheduler with total_vram=10GB. Tests: (1) test_evicts_lru_when_vram_insufficient \u2014 register model_a (3GB) and model_b (8GB), load model_a, then load model_b (needs 8GB but only 7GB free), verify model_a's unload_fn called before model_b loads. (2) test_evicts_multiple_models_if_needed \u2014 register 3 small models (3GB each) and 1 large (9GB), load all 3 small, then load large, verify all 3 small unloaded. (3) test_no_eviction_when_vram_sufficient \u2014 register two small models (3GB each, total_vram=10GB), load both, verify neither unload_fn called. (4) test_eviction_order_is_lru \u2014 load A then B then C, request D that requires eviction, verify A (least recently used) is evicted first.",
+      "description": "Write TestIdempotency class: test_skip_when_events_exist (pre-insert audio event at t=0.0 for media_id, call classify_audio_events, verify scheduler.model NOT called), test_processes_when_no_events (no pre-existing events, full mocks, verify scheduler.model called with 'panns_cnn14').",
       "status": "done",
-      "commit": "ce4bbcd"
+      "commit": "837a4e4"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Implement LRU eviction logic in the model() context manager. Before loading a new model: calculate currently used VRAM (sum of loaded models' vram_bytes), check if new model fits within total_vram. If not, unload models in LRU order (oldest first) until enough VRAM is free. Call spec.unload_fn(loaded_obj) for each evicted model. If even after unloading all models the new model doesn't fit, raise SchedulerError. Update LRU order on every model access (move to most-recently-used). Make step-7 tests pass.",
+      "description": "Add idempotency check at top of classify_audio_events body: existing = db.get_audio_events_for_range(media_id, 0.0, 0.0); if existing: logger.info('Audio events already exist for %s, skipping', media_id); return.",
       "status": "done",
-      "commit": "80add36"
+      "commit": "dd7415b"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write failing tests for LRU ordering updates on re-access. Tests: (1) test_lru_order_updated_on_reaccess \u2014 load A, B, C in order. Re-access A (now most recent). Request D that needs eviction. Verify B (now LRU) is evicted, not A. (2) test_model_too_large_for_total_vram_raises \u2014 register a model with vram_bytes > total_vram, attempting to load raises SchedulerError with descriptive message.",
+      "description": "Write TestInputValidation class: test_file_not_found_raises (AudioEventError raised with 'not found' match when audio_path doesn't exist), test_raises_before_lazy_imports (scheduler.model NOT called when path validation fails).",
       "status": "done",
-      "commit": "0f7e6eb"
+      "commit": "eb8d2eb"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Ensure LRU order is updated on every context manager entry (not just first load). When model is already loaded and re-accessed, move it to most-recently-used position. Add check: if model's vram_bytes exceeds total_vram, raise SchedulerError immediately without attempting eviction. Make step-9 tests pass.",
+      "description": "Add path validation after idempotency check: if not audio_path.exists(): raise AudioEventError(f'Audio file not found: {audio_path}'). Placed before any lazy imports or scheduler usage.",
       "status": "done",
-      "commit": "0f7e6eb"
+      "commit": "1ab5570"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write failing tests for force_unload_all(). Tests: (1) test_force_unload_all_unloads_everything \u2014 load 3 models, call force_unload_all(), verify all 3 unload_fns called and loaded dict is empty. (2) test_force_unload_all_when_empty \u2014 call on empty scheduler, no error. (3) test_force_unload_all_clears_lru \u2014 after force_unload_all, LRU tracking is reset. (4) test_can_reload_after_force_unload \u2014 force_unload_all then load a model again, load_fn called again.",
+      "description": "Write TestStatusUpdate class: test_sets_status_analyzing (after successful classify_audio_events with full mocks, db.get_media(media_id)['status'] == 'analyzing'). Uses _make_full_pipeline_mocks with patched sys.modules.",
       "status": "done",
-      "commit": "dcaff0b"
+      "commit": "b02d56a"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Implement force_unload_all() method. Iterates all loaded models, calls unload_fn for each, clears loaded dict and LRU list. Acquires the lock for thread safety. Make step-11 tests pass.",
+      "description": "Add status update after path validation: 'with db: db.update_media_status(media_id, \"analyzing\")'. Placed before lazy imports, matching asr.py pattern.",
       "status": "done",
-      "commit": "3309c06"
+      "commit": "179e7ff"
     },
     {
       "id": "step-13",
       "type": "test",
-      "description": "Write failing tests for warmup function support. Tests: (1) test_warmup_called_after_load \u2014 register model with warmup_fn, load it, verify warmup_fn called with the loaded model object after load_fn. (2) test_warmup_not_called_on_cached_access \u2014 re-access already-loaded model, warmup_fn not called again. (3) test_warmup_none_skipped \u2014 register model without warmup_fn (None), load it, no error.",
+      "description": "Write TestClassification class: test_loads_audio_at_32khz (librosa.load called with str(audio_path), sr=32000, mono=True), test_loads_model_via_scheduler (scheduler.model called with 'panns_cnn14'), test_correct_window_count (3s audio -> model.inference called 3 times), test_stores_top_k_per_second (events_json is list of top_k dicts per window), test_custom_top_k (top_k=3 -> 3 events per window in DB).",
       "status": "done",
-      "commit": "e7696f4"
+      "commit": "9392fd2"
     },
     {
       "id": "step-14",
       "type": "impl",
-      "description": "Add warmup support to model loading path. After calling load_fn and storing the result, if spec.warmup_fn is not None, call warmup_fn(loaded_model). Only on first load, not on cached re-access. Make step-13 tests pass.",
+      "description": "Implement core classification pipeline in classify_audio_events: (1) lazy import librosa, (2) audio, sr = librosa.load(str(audio_path), sr=32000, mono=True), (3) windows = _window_audio(audio, 32000), (4) lazy import panns_inference for labels via panns_inference.config.labels, (5) logger.info start message, (6) with scheduler.model('panns_cnn14') as model: loop windows, call model.inference(window[None, :]) for batch dim, extract top-k, build rows as (media_id, float(i), json.dumps(events)), (7) with db: db.batch_insert_audio_events(rows), (8) logger.info completion.",
       "status": "done",
-      "commit": "b7cf85e"
+      "commit": "bf825be"
     },
     {
       "id": "step-15",
       "type": "test",
-      "description": "Write failing tests for thread safety. Tests: (1) test_concurrent_model_access \u2014 spawn 10 threads that each do `with scheduler.model('model_a')` 5 times, verify load_fn called exactly once (not multiple concurrent loads). (2) test_concurrent_different_models \u2014 spawn 2 threads loading different models concurrently, verify both load correctly without data corruption (check loaded count equals 2). (3) test_force_unload_during_active_context \u2014 thread A holds model context, thread B calls force_unload_all(), verify force_unload_all blocks until context exits OR raises SchedulerError (design decision: block is preferred).",
+      "description": "Write TestDBStorage class: test_correct_timestamps (5s audio -> timestamps 0.0, 1.0, 2.0, 3.0, 4.0 in DB), test_events_json_schema (each row's events_json deserializes to list of dicts with 'class' str and 'probability' float keys), test_retrievable_by_range (get_audio_events_for_range returns stored rows), test_no_numpy_in_json (all probability values are plain Python float, not numpy).",
       "status": "done",
-      "commit": "5fa8e76"
+      "commit": "6cb7541"
     },
     {
       "id": "step-16",
       "type": "impl",
-      "description": "Ensure thread safety with threading.Lock in all public methods: model(), force_unload_all(), register(), unregister(). The lock is acquired at the start of model() context manager (for the load/eviction logic) and released before yielding the model to the caller \u2014 but a re-entrant check is needed so the context body doesn't deadlock. Use a RLock or separate the lock acquisition from the yield. Design: acquire lock for load/eviction, release before yield, re-acquire for cleanup if needed. Make step-15 tests pass.",
+      "description": "Verify DB storage correctness: timestamps as float(i) for clean integer-like floats 0.0, 1.0, etc. _extract_top_k already handles numpy coercion. json.dumps produces valid JSON. Ensure rows list built correctly before batch insert.",
       "status": "done",
-      "commit": "5fa8e76"
+      "commit": "6cb7541"
     },
     {
       "id": "step-17",
       "type": "test",
-      "description": "Write failing tests for device selection and loaded_models property. Tests: (1) test_device_property \u2014 GPUScheduler(device=2).device returns 2. (2) test_loaded_models_returns_names \u2014 load 2 models, scheduler.loaded_models returns set of their names. (3) test_loaded_models_empty_initially \u2014 scheduler.loaded_models returns empty set. (4) test_vram_used_property \u2014 load 2 models (3GB + 8GB), scheduler.vram_used returns 11GB. (5) test_vram_free_property \u2014 total_vram=24GB, load 8GB model, scheduler.vram_free returns 16GB.",
+      "description": "Write TestErrorHandling class: test_runtime_error_wrapped (librosa.load raises RuntimeError -> AudioEventError), test_audio_event_error_passthrough (AudioEventError raised inside pipeline propagates unchanged, not double-wrapped), test_error_contains_media_id (wrapped error message includes media_id string), test_no_partial_writes (model.inference raises mid-way -> 0 audio_events rows in DB).",
       "status": "done",
-      "commit": "591e621"
+      "commit": "90d4b25"
     },
     {
       "id": "step-18",
       "type": "impl",
-      "description": "Add read-only properties: device (int), loaded_models (set[str] \u2014 names of currently loaded models), vram_used (int \u2014 sum of loaded models' vram_bytes), vram_free (int \u2014 total_vram - vram_used). These provide introspection for pipeline stages and debugging. Make step-17 tests pass.",
+      "description": "Add error wrapping try/except around processing block (from lazy imports through DB write): except AudioEventError: raise, except Exception as exc: raise AudioEventError(f'Audio event classification failed for {media_id}: {exc}') from exc. DB write is inside try block, so failure means no partial data.",
       "status": "done",
-      "commit": "591e621"
+      "commit": "58a584d"
     },
     {
       "id": "step-19",
       "type": "test",
-      "description": "Write failing tests for logging integration. Tests: (1) test_load_logs_model_name_and_vram \u2014 capture log output, load a model, verify log contains model name and VRAM amount. (2) test_eviction_logs_evicted_model \u2014 trigger eviction, verify log mentions which model was evicted and why. (3) test_force_unload_logs \u2014 call force_unload_all with loaded models, verify log mentions clearing all models.",
+      "description": "Write TestLogging class with caplog fixture: test_start_log (INFO log containing media_id and 'Starting'), test_completion_log (INFO log containing media_id and window/seconds count), test_skip_log (INFO log containing 'skipping' when idempotency triggers).",
       "status": "done",
-      "commit": "bfd05cf"
+      "commit": "471517b"
     },
     {
       "id": "step-20",
       "type": "impl",
-      "description": "Add structured logging throughout GPUScheduler using logging.getLogger(__name__). Log on: model load (INFO with name, vram_bytes), model eviction (INFO with evicted name, reason), warmup (DEBUG), force_unload_all (INFO with count of unloaded models), errors (ERROR). Follow the logging pattern from orchestrator.py. Make step-19 tests pass.",
+      "description": "Verify/add logging calls: logger.info('Starting audio event classification for %s', media_id) before processing loop, logger.info('Completed audio event classification for %s: %d seconds', media_id, len(windows)) after DB write, logger.info('Audio events already exist for %s, skipping', media_id) in idempotency path.",
       "status": "done",
-      "commit": "80ea8df"
+      "commit": "471517b"
     },
     {
       "id": "step-21",
       "type": "test",
-      "description": "Write failing integration-style tests simulating the real pipeline VRAM budget. Tests: (1) test_prd_vram_budget_sequential \u2014 create scheduler with total_vram=24GB, register all 7 PRD models with their real VRAM sizes (whisperx 3GB, transnet 1GB, yolo 8GB, insightface 2GB, siglip 3GB, panns 1GB, qwen 14GB). Load them sequentially in pipeline order, verify correct evictions happen (e.g., loading qwen must evict enough to fit 14GB). (2) test_prd_largest_model_fits \u2014 verify the largest single model (qwen 14GB) can be loaded alone. (3) test_prd_concurrent_small_models \u2014 load whisperx (3GB) + panns (1GB) simultaneously (both fit), verify no eviction.",
+      "description": "Write TestIntegration class: test_full_pipeline (5s audio -> exactly 5 rows in DB, each with 5 events, timestamps 0.0-4.0, all events have string class and float probability, probabilities sorted descending), test_idempotent_second_call (call twice, scheduler.model called only once), test_short_audio (0.5s -> 1 row at t=0.0 with zero-padded window), test_custom_top_k_integration (top_k=3 -> 3 events per window), test_media_status_updated (status='analyzing' after run).",
       "status": "done",
-      "commit": "557199b"
+      "commit": "b3eaf6f"
     },
     {
       "id": "step-22",
       "type": "impl",
-      "description": "Review and refine implementation to ensure all integration tests pass. This step may require no code changes if prior steps were implemented correctly \u2014 it serves as a validation checkpoint. Fix any edge cases revealed by the integration tests. Make step-21 tests pass.",
+      "description": "Final review and cleanup: handle empty audio edge case (0 windows -> log info and return without DB write), ensure ruff compliance (line length 100, import order), verify all tests pass green, confirm module follows codebase conventions exactly.",
       "status": "done",
-      "commit": "557199b"
-    },
-    {
-      "id": "step-23",
-      "type": "test",
-      "description": "Write failing tests for error handling edge cases. Tests: (1) test_load_fn_exception_propagates \u2014 load_fn raises RuntimeError, verify SchedulerError raised and model NOT added to loaded set. (2) test_unload_fn_exception_logged_not_raised \u2014 unload_fn raises during eviction, verify error is logged but eviction continues (best-effort unload). (3) test_warmup_fn_exception_unloads_model \u2014 warmup_fn raises, verify model is unloaded (cleanup) and SchedulerError raised.",
-      "status": "done",
-      "commit": "af07390"
-    },
-    {
-      "id": "step-24",
-      "type": "impl",
-      "description": "Add robust error handling: wrap load_fn calls in try/except, convert to SchedulerError, ensure partially-loaded models don't pollute state. Wrap unload_fn calls in try/except during eviction, log errors but continue evicting. If warmup_fn fails, call unload_fn to clean up, then raise SchedulerError. Make step-23 tests pass.",
-      "status": "done",
-      "commit": "f231c3c"
-    },
-    {
-      "id": "step-25",
-      "type": "test",
-      "description": "Write failing test for load_fn returning None (addresses review issues: incorrect_sentinel_check and untested_failure_mode). Add test to TestContextManager class: test_load_fn_returning_none_cached_correctly \u2014 create a ModelSpec with load_fn=MagicMock(return_value=None), unload_fn=MagicMock(), vram_bytes=3*GB. Register and load it via context manager, assert the yielded value is None. Assert the model name is in scheduler.loaded_models after first load. Load it a second time via context manager and assert load_fn was called exactly once (proving the None result was cached, not re-loaded). This test will FAIL against the current implementation because `model_obj = self._loaded.get(name)` returns None for a stored None value, causing `if model_obj is not None` to take the else branch and re-invoke load_fn on every access.",
-      "status": "done",
-      "commit": "446d399"
-    },
-    {
-      "id": "step-26",
-      "type": "impl",
-      "description": "Fix the incorrect sentinel check in GPUScheduler.model() method (gpu_scheduler.py lines 133-138). Replace:\n  `model_obj = self._loaded.get(name)`\n  `if model_obj is not None:`\nwith:\n  `if name in self._loaded:`\n  `    model_obj = self._loaded[name]`\nand keep the else branch for the fresh-load case. This correctly distinguishes 'not loaded' (key absent) from 'loaded with None value' (key present, value is None), preventing double-counting VRAM and redundant load_fn calls when load_fn returns None. Make step-25 test pass. Verify all existing tests still pass.",
-      "status": "done",
-      "commit": "e3c311b"
-    },
-    {
-      "id": "step-27",
-      "type": "test",
-      "description": "Fix the vacuous assertion in TestRegistration.test_register_model (test_gpu_scheduler.py line 95). The assertion `assert \"whisperx\" in scheduler.loaded_models or True` is permanently True due to `or True` and can never fail. Replace that line with `assert \"whisperx\" in scheduler._registry` which directly verifies that the register() call stored the model spec in the internal registry. Keep the subsequent context-manager assertion (`with scheduler.model('whisperx') as m: assert m is not None`) as a secondary check. The test should pass since the implementation already stores specs correctly in _registry.",
-      "status": "done",
-      "commit": "3daa110"
-    },
-    {
-      "id": "step-28",
-      "type": "impl",
-      "description": "Validation checkpoint: run the full test suite (`pytest tests/test_gpu_scheduler.py -v`) to confirm all tests pass after the fixes from steps 25-27. Verify: (1) test_load_fn_returning_none_cached_correctly passes with the sentinel fix from step-26, (2) test_register_model now has a meaningful non-vacuous assertion from step-27, (3) no regressions in any of the 30+ existing tests. No implementation code changes expected in this step \u2014 it is purely a validation pass.",
-      "status": "done",
-      "commit": "3daa110"
+      "commit": "17eaa4e"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use total_vram constructor parameter instead of querying torch.cuda at runtime for VRAM capacity",
-      "rationale": "Makes the scheduler fully testable without a GPU. In production, the caller passes the real VRAM from torch.cuda.mem_get_info(). In tests, pass any value. This also allows VRAM budget to be set below physical VRAM as a safety margin."
+      "decision": "No ModelConfig parameter -- hardcode scheduler key 'panns_cnn14'",
+      "rationale": "ModelConfig (config.py:65-74) has no panns field, and CNN14 is the only audio tagging model specified by the task/PRD. Unlike YOLO (multiple variants) or Whisper (multiple sizes), there's no reason to parameterize this. The scheduler key is just a registry identifier."
     },
     {
-      "decision": "Track VRAM usage by summing registered vram_bytes of loaded models, not by querying actual GPU memory",
-      "rationale": "Actual GPU memory can fluctuate due to CUDA contexts, fragmentation, and other processes. Using declared vram_bytes from ModelSpec gives deterministic, predictable scheduling. The real torch.cuda.mem_get_info() could be used as a secondary check but is not the primary scheduling mechanism."
+      "decision": "Idempotency via get_audio_events_for_range(media_id, 0.0, 0.0)",
+      "rationale": "Mirrors objects.py pattern (checks frame 0 existence). Processing always produces a t=0.0 row (even sub-second audio gets zero-padded to 1 window). Uses existing DB CRUD at db.py:476 -- no new method needed."
     },
     {
-      "decision": "Models stay loaded after context manager exit (LRU cache) rather than eager unload",
-      "rationale": "Per task spec: 'Eager unloading: after context manager exits, model stays loaded (LRU cache) unless another model needs the VRAM.' This avoids expensive re-loads when the same model is used across multiple pipeline stages."
+      "decision": "1-second non-overlapping windows, zero-pad final partial window",
+      "rationale": "Task spec says 'per-second' classification. Non-overlapping maximizes throughput (>100x real-time). Zero-padding preserves temporal coverage for the final partial second rather than discarding it. CNN14 handles silence gracefully."
     },
     {
-      "decision": "Use threading.Lock (not asyncio) for thread safety",
-      "rationale": "Per task spec: 'Thread safety: use a threading.Lock since the pipeline may run audio analysis concurrently with video analysis.' The pipeline uses threads, not async/await."
+      "decision": "Load audio via librosa at 32kHz mono",
+      "rationale": "32kHz matches PANNs CNN14 training sample rate. librosa is a transitive dependency of panns-inference and handles format detection, resampling, and channel mixing automatically."
     },
     {
-      "decision": "SchedulerError custom exception wraps all errors from load/unload/warmup functions",
-      "rationale": "Follows the project pattern where ConfigError wraps all config-related errors. Callers handle one exception type for all scheduler failures."
+      "decision": "top_k=5 as keyword-only parameter",
+      "rationale": "Task specifies top-5 default. Making it configurable follows asr.py keyword-only pattern (batch_size, hf_token). No batch_size param needed because CNN14 processes at >100x real-time -- per-window inference is already fast enough."
     },
     {
-      "decision": "Unload errors during eviction are logged but don't stop the eviction process",
-      "rationale": "If unload_fn fails (e.g., CUDA error), we should still attempt to continue loading the requested model. A hard failure here would block the pipeline. The VRAM tracking removes the model from the loaded set regardless."
+      "decision": "Lazy imports of librosa and panns_inference inside function body",
+      "rationale": "Follows asr.py (lazy whisperx at line 98) and objects.py (lazy cv2). Avoids loading heavy ML libs at module import time. Enables test mocking via sys.modules patching."
     },
     {
-      "decision": "Use contextlib.contextmanager decorator for the model() method",
-      "rationale": "Simpler than implementing __enter__/__exit__ on a separate class. Follows Python idiom for resource managers. The generator pattern makes the load-yield-keep flow natural."
+      "decision": "Single atomic DB batch insert after all windows processed",
+      "rationale": "Unlike objects.py per-batch inserts needed for large video frame data, audio event results are tiny (5 dicts per second). Even 50h of audio = 180K rows of small tuples fitting easily in memory. Single batch_insert inside 'with db:' ensures atomicity -- no partial writes on failure."
     },
     {
-      "decision": "LRU tracking uses a simple list (append/remove/insert) rather than collections.OrderedDict",
-      "rationale": "The number of models is tiny (7 in the PRD). A list gives clear, debuggable LRU semantics with O(n) operations that are negligible at this scale. OrderedDict would be premature optimization."
+      "decision": "Store top-k from full 527 AudioSet classes, no pre-filtering to interest classes",
+      "rationale": "The 10 interest classes (speech, music, applause, etc.) are informational for downstream consumers. Pre-filtering would lose potentially useful classifications and couple this module to a specific use case. Task 14 (activity clustering) can filter stored events."
     },
     {
-      "decision": "Use `name in self._loaded` instead of `self._loaded.get(name) is not None` for cached-model check",
-      "rationale": "dict.get() returns None for both missing keys and keys mapped to None. If load_fn legitimately returns None, the truthiness check treats it as 'not loaded', causing redundant load_fn calls and double-counting VRAM. Using `in` correctly distinguishes 'not loaded' from 'loaded with None value'. This was identified as a bug in code review (incorrect_sentinel_check / untested_failure_mode)."
+      "decision": "numpy imported at module level (not lazily)",
+      "rationale": "numpy is a lightweight core dependency already imported at module level in objects.py. Needed for _window_audio and _extract_top_k helpers which are pure-Python testable functions. Unlike librosa/panns_inference which are heavy GPU-dependent libs."
+    },
+    {
+      "decision": "Mock both 'panns_inference' and 'panns_inference.config' in sys.modules for tests",
+      "rationale": "panns_inference.config is a submodule containing the 527 AudioSet labels list. Python resolves submodule access via sys.modules entries, so both must be patched for lazy import to work correctly in the test environment."
     }
   ],
   "reuse": [
     {
-      "what": "ProcessingConfig.gpu_device",
-      "where": "autopilot/config.py",
-      "how": "The caller reads config.processing.gpu_device and passes it as the device parameter to GPUScheduler(). The scheduler itself doesn't depend on config.py directly \u2014 it receives device as a plain int."
+      "what": "Analyzer module structure pattern (idempotency -> validate -> status -> lazy import -> scheduler -> process -> store -> error wrap)",
+      "where": "autopilot/analyze/asr.py (179 lines), autopilot/analyze/objects.py (304 lines)",
+      "how": "Follow identical structure. audio_events.py is closest to asr.py -- simpler than objects.py (no frame interpolation) or faces.py (no clustering). Same 10-step flow."
     },
     {
-      "what": "Dataclass pattern for ModelSpec",
-      "where": "autopilot/config.py (CreatorConfig, etc.), autopilot/orchestrator.py (StageDefinition)",
-      "how": "Follow the same @dataclass pattern with typed fields, defaults, and __all__ exports."
+      "what": "CatalogDB.batch_insert_audio_events() and get_audio_events_for_range()",
+      "where": "autopilot/db.py lines 467-486",
+      "how": "Use directly for storage (rows as list[tuple[str, float, str]]) and idempotency check. No DB schema or CRUD changes needed."
     },
     {
-      "what": "Logging pattern",
-      "where": "autopilot/orchestrator.py (logger = logging.getLogger(__name__))",
-      "how": "Use the same module-level logger pattern for structured log output."
+      "what": "CatalogDB.update_media_status()",
+      "where": "autopilot/db.py line 243",
+      "how": "Set status to 'analyzing' inside 'with db:' context, same pattern as asr.py lines 95-96."
     },
     {
-      "what": "Custom exception pattern",
-      "where": "autopilot/config.py (ConfigError)",
-      "how": "SchedulerError follows the same pattern: simple Exception subclass, used to wrap all internal errors."
+      "what": "GPUScheduler.model() context manager",
+      "where": "autopilot/analyze/gpu_scheduler.py lines 136-193",
+      "how": "with scheduler.model('panns_cnn14') as model: -- handles VRAM eviction, loading, ref counting automatically."
     },
     {
-      "what": "Test style and fixtures",
-      "where": "tests/conftest.py, tests/test_orchestrator.py",
-      "how": "Follow pytest style with descriptive docstrings, MagicMock for callables, class-based test grouping for related tests."
+      "what": "catalog_db pytest fixture (in-memory SQLite)",
+      "where": "tests/conftest.py lines 26-39",
+      "how": "In-memory CatalogDB with autocommit and full schema including audio_events table. Use via fixture injection in test functions."
+    },
+    {
+      "what": "sys.modules mock injection pattern for ML libraries",
+      "where": "tests/test_asr.py _make_mock_whisperx() + patch.dict(sys.modules, {...}) throughout",
+      "how": "Create _make_mock_panns() and _make_mock_librosa() helper functions. Inject via patch.dict(sys.modules, {'panns_inference': mock, 'panns_inference.config': mock.config, 'librosa': mock_librosa})."
+    },
+    {
+      "what": "Mock scheduler with context manager protocol",
+      "where": "tests/test_asr.py lines 129-133",
+      "how": "scheduler = MagicMock(device=0); scheduler.model.return_value.__enter__ = MagicMock(return_value=mock_model); scheduler.model.return_value.__exit__ = MagicMock(return_value=False)."
+    },
+    {
+      "what": "numpy-to-Python float coercion for JSON serialization",
+      "where": "autopilot/analyze/asr.py _normalize_segments() lines 46-52",
+      "how": "Wrap numpy scalars with float() in _extract_top_k to prevent json.dumps TypeError. Same pattern used in asr.py and objects.py."
+    },
+    {
+      "what": "Error wrapping pattern (passthrough + wrap)",
+      "where": "autopilot/analyze/asr.py lines 173-178",
+      "how": "except AudioEventError: raise / except Exception as exc: raise AudioEventError(f'...{media_id}...') from exc. Identical pattern."
     }
   ]
 }
