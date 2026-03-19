@@ -11,7 +11,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # -- Mock helpers --------------------------------------------------------------
 
 
@@ -289,9 +288,9 @@ class TestNormalizeSegments:
 
     def test_json_serializable(self):
         """json.dumps succeeds on output, no numpy types leak."""
-        from autopilot.analyze.asr import _normalize_segments
-
         import numpy as np
+
+        from autopilot.analyze.asr import _normalize_segments
 
         segments = [{
             "start": np.float32(0.5),

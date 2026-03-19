@@ -104,63 +104,75 @@ def transcribe_media(
         config.whisper_size,
     )
 
-    # Stage 1: Load audio and transcribe
-    audio = whisperx.load_audio(str(audio_path))
-    with scheduler.model(config.whisper_size) as model:
-        result = model.transcribe(audio, batch_size=batch_size)
-    language = result.get("language", "en")
-
-    # Stage 2: Forced alignment for word-level timestamps (non-fatal)
     try:
-        align_model, metadata = whisperx.load_align_model(
-            language_code=language, device=device_str
-        )
-        result = whisperx.align(
-            result["segments"],
-            align_model,
-            metadata,
-            audio,
-            device_str,
-            return_char_alignments=False,
-        )
-        del align_model, metadata
-    except Exception:
-        logger.warning(
-            "Forced alignment failed for %s, continuing without word timestamps",
-            media_id,
-            exc_info=True,
-        )
+        # Stage 1: Load audio and transcribe
+        audio = whisperx.load_audio(str(audio_path))
+        with scheduler.model(config.whisper_size) as model:
+            result = model.transcribe(audio, batch_size=batch_size)
+        language = result.get("language", "en")
 
-    # Stage 3: Speaker diarization (non-fatal, requires HF token)
-    token = hf_token or os.environ.get("HF_TOKEN")
-    if token:
+        # Stage 2: Forced alignment for word-level timestamps (non-fatal)
         try:
-            diarize_pipeline = whisperx.DiarizationPipeline(
-                use_auth_token=token, device=device_str
+            align_model, metadata = whisperx.load_align_model(
+                language_code=language, device=device_str
             )
-            diarize_segments = diarize_pipeline(audio)
-            result = whisperx.assign_word_speakers(diarize_segments, result)
+            result = whisperx.align(
+                result["segments"],
+                align_model,
+                metadata,
+                audio,
+                device_str,
+                return_char_alignments=False,
+            )
+            del align_model, metadata
         except Exception:
             logger.warning(
-                "Diarization failed for %s, continuing without speaker labels",
+                "Forced alignment failed for %s, continuing without"
+                " word timestamps",
                 media_id,
                 exc_info=True,
             )
-    else:
+
+        # Stage 3: Speaker diarization (non-fatal, requires HF token)
+        token = hf_token or os.environ.get("HF_TOKEN")
+        if token:
+            try:
+                diarize_pipeline = whisperx.DiarizationPipeline(
+                    use_auth_token=token, device=device_str
+                )
+                diarize_segments = diarize_pipeline(audio)
+                result = whisperx.assign_word_speakers(
+                    diarize_segments, result
+                )
+            except Exception:
+                logger.warning(
+                    "Diarization failed for %s, continuing without"
+                    " speaker labels",
+                    media_id,
+                    exc_info=True,
+                )
+        else:
+            logger.info(
+                "No HuggingFace token provided, skipping diarization"
+                " for %s",
+                media_id,
+            )
+
+        # Stage 4: Normalize and store transcript
+        segments = _normalize_segments(result.get("segments", []))
+        segments_json = json.dumps(segments)
+        with db:
+            db.upsert_transcript(media_id, segments_json, language)
+
         logger.info(
-            "No HuggingFace token provided, skipping diarization for %s",
+            "Completed transcription for %s: %d segments, language=%s",
             media_id,
+            len(segments),
+            language,
         )
-
-    # Stage 4: Normalize and store transcript
-    segments = _normalize_segments(result.get("segments", []))
-    segments_json = json.dumps(segments)
-    with db:
-        db.upsert_transcript(media_id, segments_json, language)
-
-    logger.info(
-        "Completed transcription for %s: %d segments, language=%s",
-        media_id,
-        len(segments),
-        language,
-    )
+    except TranscriptionError:
+        raise
+    except Exception as exc:
+        raise TranscriptionError(
+            f"Transcription failed for {media_id}: {exc}"
+        ) from exc
