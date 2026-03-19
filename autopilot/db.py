@@ -53,7 +53,7 @@ class CatalogDB:
             self.conn.rollback()
 
     def _create_schema(self) -> None:
-        """Create all 13 catalog tables if they don't already exist."""
+        """Create all 14 catalog tables if they don't already exist."""
         self.conn.executescript(
             """\
             CREATE TABLE IF NOT EXISTS media_files (
@@ -164,6 +164,15 @@ class CatalogDB:
                 PRIMARY KEY (media_id, target_aspect, subject_track_id)
             );
 
+            CREATE TABLE IF NOT EXISTS captions (
+                media_id TEXT REFERENCES media_files(id),
+                start_time REAL,
+                end_time REAL,
+                caption TEXT,
+                model_name TEXT,
+                PRIMARY KEY (media_id, start_time, end_time)
+            );
+
             CREATE TABLE IF NOT EXISTS uploads (
                 narrative_id TEXT REFERENCES narratives(narrative_id),
                 youtube_video_id TEXT,
@@ -186,6 +195,8 @@ class CatalogDB:
                 ON audio_events(media_id, timestamp_seconds);
             CREATE INDEX IF NOT EXISTS idx_narratives_status
                 ON narratives(status);
+            CREATE INDEX IF NOT EXISTS idx_captions_media
+                ON captions(media_id);
             """
         )
 
@@ -686,6 +697,44 @@ class CatalogDB:
         )
         row = cur.fetchone()
         return dict(row) if row else None
+
+    # -- captions CRUD ----------------------------------------------------------
+
+    def upsert_caption(
+        self,
+        media_id: str,
+        start_time: float,
+        end_time: float,
+        caption: str,
+        model_name: str,
+    ) -> None:
+        """Insert or replace a caption for a media clip segment."""
+        self.conn.execute(
+            "INSERT OR REPLACE INTO captions "
+            "(media_id, start_time, end_time, caption, model_name) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (media_id, start_time, end_time, caption, model_name),
+        )
+
+    def get_caption(
+        self, media_id: str, start_time: float, end_time: float
+    ) -> dict[str, object] | None:
+        """Get a caption by composite key, or None if not found."""
+        cur = self.conn.execute(
+            "SELECT * FROM captions "
+            "WHERE media_id = ? AND start_time = ? AND end_time = ?",
+            (media_id, start_time, end_time),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+    def get_captions_for_media(self, media_id: str) -> list[dict[str, object]]:
+        """Get all captions for a media file, ordered by start_time."""
+        cur = self.conn.execute(
+            "SELECT * FROM captions WHERE media_id = ? ORDER BY start_time",
+            (media_id,),
+        )
+        return [dict(row) for row in cur.fetchall()]
 
     def close(self) -> None:
         """Close the underlying database connection."""

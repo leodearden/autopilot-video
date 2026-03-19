@@ -20,6 +20,7 @@ dependencies = [
     "ultralytics",
     "insightface",
     "transformers",
+    "qwen-vl-utils",
     "faiss-gpu",
     "scikit-learn",
     # ML — generation
@@ -43,6 +44,9 @@ dev = [
     "pytest",
     "ruff",
     "pyright",
+]
+vllm = [
+    "vllm",
 ]
 
 [tool.pytest.ini_options]
