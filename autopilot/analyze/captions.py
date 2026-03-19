@@ -45,7 +45,36 @@ def _extract_clip_frames(
     Returns:
         List of PIL Image objects (RGB).
     """
-    raise NotImplementedError
+    from PIL import Image as PILImage
+
+    if end_time <= start_time:
+        return []
+
+    import cv2  # type: ignore[reportMissingImports]
+
+    cap = cv2.VideoCapture(str(video_path))
+    try:
+        # Compute evenly-spaced timestamps in [start_time, end_time]
+        if num_frames == 1:
+            timestamps = [(start_time + end_time) / 2.0]
+        else:
+            step = (end_time - start_time) / (num_frames - 1)
+            timestamps = [start_time + i * step for i in range(num_frames)]
+
+        frames: list[Image.Image] = []
+        for ts in timestamps:
+            frame_idx = int(ts * fps)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                continue
+            # Convert BGR (cv2) to RGB (PIL)
+            rgb_frame = frame[:, :, ::-1].copy()
+            frames.append(PILImage.fromarray(rgb_frame))
+
+        return frames
+    finally:
+        cap.release()
 
 
 def caption_clip(
