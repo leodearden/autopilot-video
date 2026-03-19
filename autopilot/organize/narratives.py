@@ -429,17 +429,23 @@ def propose_narratives(
 
     narratives = _parse_narratives(response_text)
 
-    # Store each narrative in the DB
-    for narrative in narratives:
-        db.insert_narrative(
-            narrative.narrative_id,
-            title=narrative.title,
-            description=narrative.description,
-            proposed_duration_seconds=narrative.proposed_duration_seconds,
-            activity_cluster_ids_json=json.dumps(narrative.activity_cluster_ids),
-            arc_notes=json.dumps(narrative.arc),
-            status=narrative.status,
-        )
+    # Store all narratives atomically — rollback if any insert fails.
+    try:
+        with db.conn:
+            for narrative in narratives:
+                db.insert_narrative(
+                    narrative.narrative_id,
+                    title=narrative.title,
+                    description=narrative.description,
+                    proposed_duration_seconds=narrative.proposed_duration_seconds,
+                    activity_cluster_ids_json=json.dumps(narrative.activity_cluster_ids),
+                    arc_notes=json.dumps(narrative.arc),
+                    status=narrative.status,
+                )
+    except NarrativeError:
+        raise
+    except Exception as e:
+        raise NarrativeError(f"Failed to store narratives: {e}") from e
 
     logger.info("Proposed %d narratives", len(narratives))
     return narratives

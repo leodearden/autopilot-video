@@ -1113,12 +1113,22 @@ class TestProposeNarrativesTransactional:
                 raise sqlite3.IntegrityError("UNIQUE constraint failed")
             return original_insert(*args, **kwargs)
 
-        with (
-            patch.dict(sys.modules, {"anthropic": mock_anthropic}),
-            patch.object(catalog_db, "insert_narrative", side_effect=failing_insert),
-        ):
-            with pytest.raises(NarrativeError):
-                propose_narratives("storyboard", catalog_db, config)
+        # Disable autocommit so 'with db.conn:' manages a real transaction
+        # (the test fixture enables autocommit for convenience; production
+        # code uses the default deferred isolation_level).
+        old_isolation = catalog_db.conn.isolation_level
+        catalog_db.conn.isolation_level = "DEFERRED"
+        try:
+            with (
+                patch.dict(sys.modules, {"anthropic": mock_anthropic}),
+                patch.object(
+                    catalog_db, "insert_narrative", side_effect=failing_insert,
+                ),
+            ):
+                with pytest.raises(NarrativeError):
+                    propose_narratives("storyboard", catalog_db, config)
+        finally:
+            catalog_db.conn.isolation_level = old_isolation
 
         # No narratives should be in the DB (rolled back)
         assert catalog_db.list_narratives() == []
