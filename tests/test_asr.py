@@ -357,3 +357,49 @@ class TestIdempotency:
 
         # Scheduler SHOULD be called for model loading
         scheduler.model.assert_called_once()
+
+
+class TestInputValidation:
+    """Tests for audio path validation."""
+
+    def test_raises_on_missing_audio(self, catalog_db):
+        """TranscriptionError raised for non-existent audio file."""
+        from autopilot.analyze.asr import TranscriptionError, transcribe_media
+
+        catalog_db.insert_media("vid1", "/nonexistent/audio.wav")
+
+        scheduler = MagicMock()
+        config = MagicMock()
+        config.whisper_size = "large-v3"
+
+        with pytest.raises(TranscriptionError, match="not found"):
+            transcribe_media(
+                "vid1",
+                Path("/nonexistent/audio.wav"),
+                catalog_db,
+                scheduler,
+                config,
+            )
+
+    def test_audio_path_validated_before_whisperx(self, catalog_db):
+        """Path validation happens before whisperx is touched."""
+        from autopilot.analyze.asr import TranscriptionError, transcribe_media
+
+        catalog_db.insert_media("vid1", "/nonexistent/audio.wav")
+
+        scheduler = MagicMock()
+        config = MagicMock()
+        config.whisper_size = "large-v3"
+
+        with patch.object(Path, "exists", return_value=False):
+            with pytest.raises(TranscriptionError):
+                transcribe_media(
+                    "vid1",
+                    Path("/tmp/audio.wav"),
+                    catalog_db,
+                    scheduler,
+                    config,
+                )
+
+        # Scheduler should NOT be called (failed before whisperx)
+        scheduler.model.assert_not_called()
