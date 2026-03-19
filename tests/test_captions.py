@@ -1050,7 +1050,9 @@ class TestBackendDispatch:
 
         dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(4)]
 
+        mock_vllm = MagicMock()
         with (
+            patch.dict(sys.modules, {"vllm": mock_vllm}),
             patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames),
             patch.object(Path, "exists", return_value=True),
         ):
@@ -1124,7 +1126,9 @@ class TestBackendDispatch:
 
         dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(4)]
 
+        mock_vllm = MagicMock()
         with (
+            patch.dict(sys.modules, {"vllm": mock_vllm}),
             patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames),
             patch.object(Path, "exists", return_value=True),
         ):

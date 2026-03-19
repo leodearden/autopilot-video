@@ -134,6 +134,62 @@ _CAPTION_PROMPT = (
 )
 
 
+def _run_transformers_inference(
+    model_bundle: dict[str, Any],
+    frames: list[Image.Image],
+) -> str:
+    """Run inference via HuggingFace transformers backend.
+
+    Args:
+        model_bundle: Dict with 'model' and 'processor' keys.
+        frames: List of PIL Images from the clip.
+
+    Returns:
+        Generated caption string.
+    """
+    model = model_bundle["model"]
+    processor = model_bundle["processor"]
+
+    content: list[dict[str, Any]] = [{"type": "image", "image": img} for img in frames]
+    content.append({"type": "text", "text": _CAPTION_PROMPT})
+    messages = [{"role": "user", "content": content}]
+
+    inputs = processor(messages, return_tensors="pt")
+    output_ids = model.generate(**inputs, max_new_tokens=256)
+    # Slice off input prompt tokens before decoding (standard HF pattern)
+    output_ids = output_ids[:, inputs["input_ids"].shape[-1]:]
+    return str(processor.batch_decode(output_ids, skip_special_tokens=True)[0])
+
+
+def _run_vllm_inference(
+    model_bundle: dict[str, Any],
+    frames: list[Image.Image],
+) -> str:
+    """Run inference via vLLM backend.
+
+    Args:
+        model_bundle: Dict with 'model' key (vLLM LLM instance).
+        frames: List of PIL Images from the clip.
+
+    Returns:
+        Generated caption string.
+    """
+    from vllm import SamplingParams  # type: ignore[import-untyped]
+
+    llm = model_bundle["model"]
+
+    # Build prompt with image placeholders for vLLM
+    image_tokens = "".join("<image>" for _ in frames)
+    prompt = f"{image_tokens}\n{_CAPTION_PROMPT}"
+
+    sampling_params = SamplingParams(max_tokens=256)
+    outputs = llm.generate(
+        [{"prompt": prompt, "multi_modal_data": {"image": frames}}],
+        sampling_params=sampling_params,
+    )
+    return str(outputs[0].outputs[0].text)
+
+
 def caption_clip(
     media_id: str,
     video_path: Path,
@@ -192,23 +248,11 @@ def caption_clip(
 
     # Load model via scheduler and run inference
     with scheduler.model(config.caption_model) as model_bundle:
-        model = model_bundle["model"]
-        processor = model_bundle["processor"]
-
-        # Build conversation for the VLM
-        content = [{"type": "image", "image": img} for img in frames]
-        content.append({"type": "text", "text": _CAPTION_PROMPT})
-
-        messages = [{"role": "user", "content": content}]
-
-        # Process inputs and generate
-        inputs = processor(messages, return_tensors="pt")
-        output_ids = model.generate(**inputs, max_new_tokens=256)
-        # Slice off input prompt tokens before decoding (standard HF pattern)
-        output_ids = output_ids[:, inputs["input_ids"].shape[-1]:]
-        caption = processor.batch_decode(
-            output_ids, skip_special_tokens=True
-        )[0]
+        backend = model_bundle.get("backend", "transformers")
+        if backend == "vllm":
+            caption = _run_vllm_inference(model_bundle, frames)
+        else:
+            caption = _run_transformers_inference(model_bundle, frames)
 
     # Store in database
     db.upsert_caption(media_id, start_time, end_time, caption, config.caption_model)
