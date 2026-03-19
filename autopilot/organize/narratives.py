@@ -227,7 +227,38 @@ def build_master_storyboard(db: CatalogDB) -> str:
     Returns:
         Structured text storyboard.
     """
-    raise NotImplementedError
+    clusters = db.get_activity_clusters()
+    if not clusters:
+        logger.info("No activity clusters for storyboard")
+        return "# Master Storyboard\n\nNo activity clusters found."
+
+    sections: list[str] = ["# Master Storyboard\n"]
+
+    for cluster in clusters:
+        cluster_id = str(cluster.get("cluster_id", "unknown"))
+        summary = _build_cluster_summary(cluster, db)
+
+        section_lines: list[str] = [
+            f"## Cluster: {cluster_id}",
+            f"- **Label**: {summary['label']}",
+        ]
+        if summary["description"]:
+            section_lines.append(f"- **Description**: {summary['description']}")
+        section_lines.append(f"- **Duration**: {summary['duration']}")
+        if summary["key_moments"]:
+            section_lines.append(f"- **Key moments**: {summary['key_moments']}")
+        if summary["people_present"]:
+            section_lines.append(f"- **People present**: {summary['people_present']}")
+        if summary["emotional_tone"]:
+            section_lines.append(f"- **Emotional tone**: {summary['emotional_tone']}")
+        if summary["visual_quality_notes"]:
+            section_lines.append(
+                f"- **Visual quality**: {summary['visual_quality_notes']}"
+            )
+
+        sections.append("\n".join(section_lines))
+
+    return "\n\n".join(sections)
 
 
 def propose_narratives(
