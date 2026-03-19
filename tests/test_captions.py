@@ -427,3 +427,77 @@ class TestIdempotency:
             )
 
         scheduler.model.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# TestErrorHandling — caption_clip() error cases
+# ---------------------------------------------------------------------------
+
+
+class TestErrorHandling:
+    """Tests for caption_clip() error handling."""
+
+    def test_video_not_found_raises(self, catalog_db):
+        """Nonexistent video_path raises CaptionError matching 'not found'."""
+        from autopilot.analyze.captions import CaptionError, caption_clip
+
+        catalog_db.insert_media(
+            id="m1", file_path="/nonexistent/video.mp4", fps=30.0, duration_seconds=60.0
+        )
+        scheduler = _make_mock_scheduler()
+        config = _make_mock_config()
+
+        with pytest.raises(CaptionError, match="not found"):
+            caption_clip(
+                "m1", Path("/nonexistent/video.mp4"), 0.0, 30.0,
+                db=catalog_db, scheduler=scheduler, config=config,
+            )
+
+    def test_no_frames_extracted_raises(self, catalog_db):
+        """When _extract_clip_frames returns empty list, raises CaptionError."""
+        from autopilot.analyze.captions import CaptionError, caption_clip
+
+        catalog_db.insert_media(
+            id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
+        )
+        scheduler = _make_mock_scheduler()
+        config = _make_mock_config()
+
+        with patch("autopilot.analyze.captions._extract_clip_frames", return_value=[]):
+            with pytest.raises(CaptionError, match="No frames"):
+                caption_clip(
+                    "m1", Path("/test/video.mp4"), 0.0, 30.0,
+                    db=catalog_db, scheduler=scheduler, config=config,
+                )
+
+    def test_invalid_time_range_raises(self, catalog_db):
+        """start_time > end_time raises CaptionError matching 'Invalid time range'."""
+        from autopilot.analyze.captions import CaptionError, caption_clip
+
+        catalog_db.insert_media(
+            id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
+        )
+        scheduler = _make_mock_scheduler()
+        config = _make_mock_config()
+
+        with pytest.raises(CaptionError, match="Invalid time range"):
+            caption_clip(
+                "m1", Path("/test/video.mp4"), 30.0, 10.0,
+                db=catalog_db, scheduler=scheduler, config=config,
+            )
+
+    def test_start_time_negative_raises(self, catalog_db):
+        """start_time < 0 raises CaptionError."""
+        from autopilot.analyze.captions import CaptionError, caption_clip
+
+        catalog_db.insert_media(
+            id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
+        )
+        scheduler = _make_mock_scheduler()
+        config = _make_mock_config()
+
+        with pytest.raises(CaptionError):
+            caption_clip(
+                "m1", Path("/test/video.mp4"), -5.0, 10.0,
+                db=catalog_db, scheduler=scheduler, config=config,
+            )
