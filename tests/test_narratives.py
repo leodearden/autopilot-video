@@ -303,3 +303,76 @@ class TestBuildClusterSummary:
         # Should not crash
         summary = _build_cluster_summary(cluster, catalog_db)
         assert isinstance(summary, dict)
+
+
+# -- Step 5: build_master_storyboard tests -------------------------------------
+
+
+class TestBuildMasterStoryboard:
+    """Tests for build_master_storyboard()."""
+
+    def test_multiple_clusters(self, catalog_db):
+        """Storyboard contains summaries for multiple clusters."""
+        from autopilot.organize.narratives import build_master_storyboard
+
+        catalog_db.insert_media(
+            "v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00",
+            duration_seconds=120.0,
+        )
+        catalog_db.insert_media(
+            "v2", "/tmp/v2.mp4", created_at="2025-01-01T14:00:00",
+            duration_seconds=60.0,
+        )
+        catalog_db.upsert_transcript(
+            "v1",
+            json.dumps([{"text": "Hello at the temple", "start": 0.0, "end": 2.0}]),
+            "en",
+        )
+
+        catalog_db.insert_activity_cluster(
+            "c1",
+            label="Temple visit",
+            description="Exploring a temple",
+            time_start="2025-01-01T10:00:00",
+            time_end="2025-01-01T10:30:00",
+            clip_ids_json=json.dumps(["v1"]),
+        )
+        catalog_db.insert_activity_cluster(
+            "c2",
+            label="Market walk",
+            description="Walking through a market",
+            time_start="2025-01-01T14:00:00",
+            time_end="2025-01-01T14:30:00",
+            clip_ids_json=json.dumps(["v2"]),
+        )
+
+        storyboard = build_master_storyboard(catalog_db)
+
+        assert isinstance(storyboard, str)
+        assert "Temple visit" in storyboard
+        assert "Market walk" in storyboard
+        assert "c1" in storyboard
+        assert "c2" in storyboard
+
+    def test_empty_db(self, catalog_db):
+        """Empty database returns empty/minimal storyboard."""
+        from autopilot.organize.narratives import build_master_storyboard
+
+        storyboard = build_master_storyboard(catalog_db)
+        assert isinstance(storyboard, str)
+
+    def test_cluster_without_label(self, catalog_db):
+        """Clusters without labels still appear in storyboard."""
+        from autopilot.organize.narratives import build_master_storyboard
+
+        catalog_db.insert_media("v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00")
+        catalog_db.insert_activity_cluster(
+            "c1",
+            time_start="2025-01-01T10:00:00",
+            time_end="2025-01-01T10:30:00",
+            clip_ids_json=json.dumps(["v1"]),
+        )
+
+        storyboard = build_master_storyboard(catalog_db)
+        assert isinstance(storyboard, str)
+        assert "c1" in storyboard
