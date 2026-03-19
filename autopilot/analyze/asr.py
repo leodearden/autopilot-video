@@ -109,3 +109,24 @@ def transcribe_media(
     with scheduler.model(config.whisper_size) as model:
         result = model.transcribe(audio, batch_size=batch_size)
     language = result.get("language", "en")
+
+    # Stage 2: Forced alignment for word-level timestamps (non-fatal)
+    try:
+        align_model, metadata = whisperx.load_align_model(
+            language_code=language, device=device_str
+        )
+        result = whisperx.align(
+            result["segments"],
+            align_model,
+            metadata,
+            audio,
+            device_str,
+            return_char_alignments=False,
+        )
+        del align_model, metadata
+    except Exception:
+        logger.warning(
+            "Forced alignment failed for %s, continuing without word timestamps",
+            media_id,
+            exc_info=True,
+        )
