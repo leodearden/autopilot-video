@@ -452,4 +452,33 @@ def format_for_review(narratives: list[Narrative]) -> str:
     Returns:
         Formatted review text.
     """
-    raise NotImplementedError
+    if not narratives:
+        return "No narratives proposed."
+
+    lines: list[str] = ["=" * 60, "PROPOSED NARRATIVES FOR REVIEW", "=" * 60, ""]
+
+    for i, n in enumerate(narratives, 1):
+        duration_min = n.proposed_duration_seconds / 60
+        clusters_str = ", ".join(n.activity_cluster_ids) if n.activity_cluster_ids else "none"
+
+        lines.append(f"--- Narrative {i} ---")
+        lines.append(f"  Title: {n.title}")
+        lines.append(f"  Duration: {n.proposed_duration_seconds:.0f}s ({duration_min:.1f} min)")
+        lines.append(f"  Clusters: {clusters_str}")
+
+        if n.arc:
+            lines.append("  Arc:")
+            for phase in ("beginning", "middle", "end"):
+                if phase in n.arc:
+                    lines.append(f"    {phase.capitalize()}: {n.arc[phase]}")
+
+        if n.emotional_journey:
+            lines.append(f"  Emotional journey: {n.emotional_journey}")
+
+        if n.reasoning:
+            lines.append(f"  Reasoning: {n.reasoning}")
+
+        lines.append("")
+
+    lines.append("=" * 60)
+    return "\n".join(lines)
