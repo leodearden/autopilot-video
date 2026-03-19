@@ -242,7 +242,7 @@ def caption_clip(
     media = db.get_media(media_id)
     if media is None:
         raise CaptionError(f"Media not found: {media_id}")
-    fps = float(media.get("fps") or 30.0)
+    fps = float(media.get("fps") or 30.0)  # type: ignore[arg-type]
 
     # Extract frames from clip segment
     frames = _extract_clip_frames(video_path, start_time, end_time, fps)

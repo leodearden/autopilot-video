@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
@@ -213,7 +213,7 @@ def build_search_index(
     id_mapping = []  # list of [media_id, frame_number]
 
     for row in all_rows:
-        embedding = np.frombuffer(row["embedding"], dtype=np.float32)
+        embedding = np.frombuffer(cast(bytes, row["embedding"]), dtype=np.float32)
         vectors.append(embedding)
         id_mapping.append([row["media_id"], row["frame_number"]])
 
