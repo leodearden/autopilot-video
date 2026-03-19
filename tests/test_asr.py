@@ -579,3 +579,119 @@ class TestForcedAlignment:
         # Warning should be logged
         assert any("align" in r.message.lower() for r in caplog.records
                     if r.levelno >= logging.WARNING)
+
+
+class TestDiarization:
+    """Tests for pyannote speaker diarization stage."""
+
+    def test_runs_diarization_with_explicit_token(self, catalog_db):
+        """DiarizationPipeline called with explicit hf_token."""
+        from autopilot.analyze.asr import transcribe_media
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db,
+            "vid1",
+            [{"start": 0.0, "end": 1.0, "text": "Hello"}],
+        )
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                transcribe_media(
+                    "vid1",
+                    Path("/tmp/audio.wav"),
+                    catalog_db,
+                    scheduler,
+                    MagicMock(whisper_size="large-v3"),
+                    hf_token="test-token",
+                )
+
+        # Verify DiarizationPipeline called with token and device
+        mock_wx.DiarizationPipeline.assert_called_once()
+        call_kwargs = mock_wx.DiarizationPipeline.call_args[1]
+        assert call_kwargs["use_auth_token"] == "test-token"
+        assert "cuda" in call_kwargs["device"]
+
+        # Verify assign_word_speakers called
+        mock_wx.assign_word_speakers.assert_called_once()
+
+    def test_uses_env_token_as_fallback(self, catalog_db, monkeypatch):
+        """HF_TOKEN env var used when hf_token not passed."""
+        from autopilot.analyze.asr import transcribe_media
+
+        monkeypatch.setenv("HF_TOKEN", "env-token")
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db,
+            "vid1",
+            [{"start": 0.0, "end": 1.0, "text": "Hello"}],
+        )
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                transcribe_media(
+                    "vid1",
+                    Path("/tmp/audio.wav"),
+                    catalog_db,
+                    scheduler,
+                    MagicMock(whisper_size="large-v3"),
+                )
+
+        call_kwargs = mock_wx.DiarizationPipeline.call_args[1]
+        assert call_kwargs["use_auth_token"] == "env-token"
+
+    def test_skips_without_token(self, catalog_db, monkeypatch):
+        """No diarization when no HF token available."""
+        from autopilot.analyze.asr import transcribe_media
+
+        monkeypatch.delenv("HF_TOKEN", raising=False)
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db,
+            "vid1",
+            [{"start": 0.0, "end": 1.0, "text": "Hello"}],
+        )
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                transcribe_media(
+                    "vid1",
+                    Path("/tmp/audio.wav"),
+                    catalog_db,
+                    scheduler,
+                    MagicMock(whisper_size="large-v3"),
+                )
+
+        # DiarizationPipeline should NOT be called
+        mock_wx.DiarizationPipeline.assert_not_called()
+
+    def test_diarization_failure_continues(self, catalog_db, caplog):
+        """Diarization failure logs warning but transcript still stored."""
+        from autopilot.analyze.asr import transcribe_media
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db,
+            "vid1",
+            [{"start": 0.0, "end": 1.0, "text": "Hello"}],
+        )
+        # Make diarization fail
+        mock_wx.DiarizationPipeline.side_effect = RuntimeError("diarization failed")
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                with caplog.at_level(logging.WARNING):
+                    transcribe_media(
+                        "vid1",
+                        Path("/tmp/audio.wav"),
+                        catalog_db,
+                        scheduler,
+                        MagicMock(whisper_size="large-v3"),
+                        hf_token="test-token",
+                    )
+
+        # Should NOT raise, transcript should be stored
+        transcript = catalog_db.get_transcript("vid1")
+        assert transcript is not None
+
+        # Warning should be logged
+        assert any("diariz" in r.message.lower() for r in caplog.records
+                    if r.levelno >= logging.WARNING)
