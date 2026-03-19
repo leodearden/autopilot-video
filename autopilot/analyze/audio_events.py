@@ -99,3 +99,7 @@ def classify_audio_events(
     if existing:
         logger.info("Audio events already exist for %s, skipping", media_id)
         return
+
+    # Validate audio path before importing heavy ML libraries
+    if not audio_path.exists():
+        raise AudioEventError(f"Audio file not found: {audio_path}")
