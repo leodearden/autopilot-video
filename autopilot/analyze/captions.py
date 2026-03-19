@@ -174,6 +174,8 @@ def caption_clip(
         )
         return str(existing["caption"])
 
+    logger.info("Captioning %s [%.1f-%.1f]", media_id, start_time, end_time)
+
     # Validate video path (after idempotency check, before IO)
     if not video_path.exists():
         raise CaptionError(f"Video file not found: {video_path}")
@@ -207,6 +209,11 @@ def caption_clip(
 
     # Store in database
     db.upsert_caption(media_id, start_time, end_time, caption, config.caption_model)
+
+    logger.info(
+        "Caption complete for %s [%.1f-%.1f]: %d chars",
+        media_id, start_time, end_time, len(caption),
+    )
 
     return caption
 
