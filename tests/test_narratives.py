@@ -748,3 +748,72 @@ class TestProposeNarratives:
         assert len(result) == 2
         db_narratives = catalog_db.list_narratives()
         assert len(db_narratives) == 2
+
+
+# -- Step 13: format_for_review tests -----------------------------------------
+
+
+class TestFormatForReview:
+    """Tests for format_for_review()."""
+
+    def test_single_narrative(self):
+        """Formats a single narrative with all sections."""
+        from autopilot.organize.narratives import Narrative, format_for_review
+
+        n = Narrative(
+            narrative_id="n1",
+            title="Temple Exploration",
+            description="A morning at the temple.",
+            proposed_duration_seconds=480,
+            activity_cluster_ids=["c1", "c2"],
+            arc={"beginning": "Arrival", "middle": "Exploring", "end": "Sunset"},
+            emotional_journey="Curiosity to wonder to peace",
+            reasoning="Strong visual arc with natural progression.",
+        )
+
+        result = format_for_review([n])
+
+        assert isinstance(result, str)
+        assert "Temple Exploration" in result
+        assert "480" in result or "8" in result  # seconds or minutes
+        assert "c1" in result
+        assert "c2" in result
+        assert "Arrival" in result
+        assert "Curiosity" in result
+        assert "Strong visual arc" in result
+
+    def test_multiple_narratives_numbered(self):
+        """Multiple narratives are numbered."""
+        from autopilot.organize.narratives import Narrative, format_for_review
+
+        n1 = Narrative(
+            narrative_id="n1", title="Narrative A",
+            proposed_duration_seconds=300,
+            activity_cluster_ids=["c1"],
+            arc={"beginning": "A", "middle": "B", "end": "C"},
+            emotional_journey="Joy",
+            reasoning="Good.",
+        )
+        n2 = Narrative(
+            narrative_id="n2", title="Narrative B",
+            proposed_duration_seconds=600,
+            activity_cluster_ids=["c2", "c3"],
+            arc={"beginning": "D", "middle": "E", "end": "F"},
+            emotional_journey="Wonder",
+            reasoning="Great.",
+        )
+
+        result = format_for_review([n1, n2])
+
+        assert "1" in result
+        assert "2" in result
+        assert "Narrative A" in result
+        assert "Narrative B" in result
+
+    def test_empty_list(self):
+        """Empty list returns appropriate message."""
+        from autopilot.organize.narratives import format_for_review
+
+        result = format_for_review([])
+        assert isinstance(result, str)
+        assert len(result) > 0  # Should have some message, not empty string
