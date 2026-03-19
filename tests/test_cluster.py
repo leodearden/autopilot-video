@@ -501,6 +501,41 @@ class TestClusterActivities:
         result = cluster_activities(catalog_db)
         assert result == []
 
+    def test_preserves_data_on_failure(self, catalog_db):
+        """Mid-run failure preserves existing clusters (no data loss)."""
+        from unittest.mock import patch
+
+        from autopilot.organize.cluster import cluster_activities
+
+        # Insert media and pre-populate clusters
+        catalog_db.insert_media(
+            "v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00",
+        )
+        catalog_db.insert_activity_cluster(
+            "existing-1",
+            time_start="2025-01-01T10:00:00",
+            time_end="2025-01-01T10:30:00",
+            clip_ids_json='["v1"]',
+            label="Existing label",
+        )
+
+        # Verify pre-condition: 1 cluster exists
+        assert len(catalog_db.get_activity_clusters()) == 1
+
+        # Make _temporal_spatial_cluster raise mid-computation
+        with patch(
+            "autopilot.organize.cluster._temporal_spatial_cluster",
+            side_effect=RuntimeError("computation failed"),
+        ):
+            with pytest.raises(RuntimeError, match="computation failed"):
+                cluster_activities(catalog_db)
+
+        # Existing cluster should still be there (not wiped)
+        clusters = catalog_db.get_activity_clusters()
+        assert len(clusters) == 1
+        assert clusters[0]["cluster_id"] == "existing-1"
+        assert clusters[0]["label"] == "Existing label"
+
     def test_missing_gps_graceful(self, catalog_db):
         """All clips with None GPS still cluster by time."""
         from autopilot.organize.cluster import cluster_activities
