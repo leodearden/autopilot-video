@@ -77,6 +77,11 @@ def _extract_clip_frames(
         cap.release()
 
 
+_CAPTION_PROMPT = (
+    "Describe the scene, activities, and notable elements in this video clip."
+)
+
+
 def caption_clip(
     media_id: str,
     video_path: Path,
@@ -100,7 +105,35 @@ def caption_clip(
     Returns:
         Generated caption string.
     """
-    raise NotImplementedError
+    # Get media metadata for fps
+    media = db.get_media(media_id)
+    fps = float(media["fps"]) if media and media.get("fps") else 30.0
+
+    # Extract frames from clip segment
+    frames = _extract_clip_frames(video_path, start_time, end_time, fps)
+
+    # Load model via scheduler and run inference
+    with scheduler.model(config.caption_model) as model_bundle:
+        model = model_bundle["model"]
+        processor = model_bundle["processor"]
+
+        # Build conversation for the VLM
+        content = [{"type": "image", "image": img} for img in frames]
+        content.append({"type": "text", "text": _CAPTION_PROMPT})
+
+        messages = [{"role": "user", "content": content}]
+
+        # Process inputs and generate
+        inputs = processor(messages, return_tensors="pt")
+        output_ids = model.generate(**inputs, max_new_tokens=256)
+        caption = processor.batch_decode(
+            output_ids, skip_special_tokens=True
+        )[0]
+
+    # Store in database
+    db.upsert_caption(media_id, start_time, end_time, caption, config.caption_model)
+
+    return caption
 
 
 def batch_caption(
