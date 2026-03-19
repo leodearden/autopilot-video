@@ -45,8 +45,8 @@ def _make_caption_model_spec(config: ModelConfig) -> ModelSpec:
             logger.info("Loading %s via vLLM", model_name)
             llm = vllm.LLM(model=model_name, dtype="float16")
             return {"backend": "vllm", "model": llm, "processor": None}
-        except (ImportError, Exception):
-            logger.info("vLLM not available, loading %s via transformers", model_name)
+        except ImportError:
+            logger.warning("vLLM unavailable, falling back to transformers for %s", model_name)
             import torch
             from transformers import AutoModelForVision2Seq, AutoProcessor
 
