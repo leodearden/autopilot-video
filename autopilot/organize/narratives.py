@@ -43,3 +43,59 @@ class Narrative:
     emotional_journey: str = ""
     reasoning: str = ""
     status: str = "proposed"
+
+
+def build_master_storyboard(db: CatalogDB) -> str:
+    """Build a structured text storyboard from all activity clusters.
+
+    Iterates over activity clusters in the database, enriches each with
+    signal data (transcripts, detections, audio events, faces), and
+    formats everything into structured text suitable for LLM consumption.
+
+    Args:
+        db: Catalog database instance.
+
+    Returns:
+        Structured text storyboard.
+    """
+    raise NotImplementedError
+
+
+def propose_narratives(
+    storyboard: str,
+    db: CatalogDB,
+    config: AutopilotConfig,
+) -> list[Narrative]:
+    """Propose video narratives using LLM analysis of the storyboard.
+
+    Sends the master storyboard to Claude Opus for narrative planning,
+    parses the response into Narrative objects, and stores them in the DB.
+
+    Args:
+        storyboard: Structured text storyboard from build_master_storyboard.
+        db: Catalog database instance for storing proposals.
+        config: Full autopilot config with creator profile and LLM settings.
+
+    Returns:
+        List of proposed Narrative objects.
+
+    Raises:
+        NarrativeError: If LLM call fails or response is malformed.
+    """
+    raise NotImplementedError
+
+
+def format_for_review(narratives: list[Narrative]) -> str:
+    """Format proposed narratives for human review.
+
+    Produces a human-readable summary of each narrative with numbered
+    entries showing title, duration, included clusters, arc, emotional
+    journey, and reasoning.
+
+    Args:
+        narratives: List of Narrative objects to format.
+
+    Returns:
+        Formatted review text.
+    """
+    raise NotImplementedError
