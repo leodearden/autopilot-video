@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import numpy as np
+import numpy as np  # type: ignore[import-not-found]
 
 if TYPE_CHECKING:
     from autopilot.analyze.gpu_scheduler import GPUScheduler
@@ -216,7 +216,10 @@ def detect_shots(
         _run_pyscenedetect(media_id, video_path, db)
         # Read back to log count
         row = db.get_boundaries(media_id, method="pyscenedetect")
-        count = len(json.loads(row["boundaries_json"])) if row else 0
+        if isinstance(row, dict):
+            count = len(json.loads(str(row["boundaries_json"])))
+        else:
+            count = 0
         logger.info(
             "Completed shot detection for %s: %d boundaries via %s",
             media_id,
