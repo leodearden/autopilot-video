@@ -834,3 +834,65 @@ class TestModelConfig:
         )
         config = load_config(config_file)
         assert config.models.caption_model == "custom/model-name"
+
+
+# ---------------------------------------------------------------------------
+# TestIntegration — end-to-end integration test
+# ---------------------------------------------------------------------------
+
+
+class TestIntegration:
+    """End-to-end integration test with mocked model and real DB."""
+
+    def test_caption_clip_end_to_end(self, catalog_db):
+        """Mock cv2 + mock model, run caption_clip with real DB."""
+        from PIL import Image as PILImage
+
+        from autopilot.analyze.captions import caption_clip
+
+        # Insert media with all fields needed
+        catalog_db.insert_media(
+            id="vid1", file_path="/test/vacation.mp4",
+            fps=24.0, duration_seconds=120.0,
+        )
+
+        # Mock model to return a specific caption
+        model = MagicMock()
+        processor = MagicMock()
+        expected_caption = "A family enjoying a sunset on the beach"
+        processor.batch_decode.return_value = [expected_caption]
+
+        scheduler = _make_mock_scheduler(model_obj={"model": model, "processor": processor})
+        config = _make_mock_config()
+
+        dummy_frames = [PILImage.new("RGB", (640, 480)) for _ in range(8)]
+
+        with (
+            patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames),
+            patch.object(Path, "exists", return_value=True),
+        ):
+            result = caption_clip(
+                "vid1", Path("/test/vacation.mp4"), 10.0, 40.0,
+                db=catalog_db, scheduler=scheduler, config=config,
+            )
+
+        # Verify return value
+        assert result == expected_caption
+
+        # Verify stored in DB and retrievable
+        stored = catalog_db.get_caption("vid1", 10.0, 40.0)
+        assert stored is not None
+        assert stored["caption"] == expected_caption
+        assert stored["model_name"] == "Qwen/Qwen2.5-VL-7B-Instruct"
+        assert stored["media_id"] == "vid1"
+        assert stored["start_time"] == 10.0
+        assert stored["end_time"] == 40.0
+
+        # Verify idempotency on second call (should skip model)
+        scheduler2 = _make_mock_scheduler()
+        result2 = caption_clip(
+            "vid1", Path("/test/vacation.mp4"), 10.0, 40.0,
+            db=catalog_db, scheduler=scheduler2, config=config,
+        )
+        assert result2 == expected_caption
+        scheduler2.model.assert_not_called()
