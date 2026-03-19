@@ -485,3 +485,64 @@ class TestClassification:
         for ev in events:
             parsed = json.loads(str(ev["events_json"]))
             assert len(parsed) == 3
+
+
+class TestDBStorage:
+    """Tests for audio event DB storage."""
+
+    def _run_and_get_events(self, catalog_db, duration_seconds, **kwargs):
+        """Run classification and return stored events."""
+        from autopilot.analyze.audio_events import classify_audio_events
+
+        mock_panns, mock_config, mock_librosa, scheduler = (
+            _make_full_pipeline_mocks(catalog_db, "vid1", duration_seconds)
+        )
+
+        with patch.dict(sys.modules, {
+            "panns_inference": mock_panns,
+            "panns_inference.config": mock_config,
+            "librosa": mock_librosa,
+        }):
+            with patch.object(Path, "exists", return_value=True):
+                classify_audio_events(
+                    "vid1",
+                    Path("/tmp/vid1.wav"),
+                    catalog_db,
+                    scheduler,
+                    **kwargs,
+                )
+
+        return catalog_db.get_audio_events_for_range("vid1", 0.0, 100.0)
+
+    def test_correct_timestamps(self, catalog_db):
+        """5s audio -> timestamps 0.0, 1.0, 2.0, 3.0, 4.0 in DB."""
+        events = self._run_and_get_events(catalog_db, 5.0)
+        timestamps = sorted(float(ev["timestamp_seconds"]) for ev in events)
+        assert timestamps == [0.0, 1.0, 2.0, 3.0, 4.0]
+
+    def test_events_json_schema(self, catalog_db):
+        """Each row's events_json deserializes to list of dicts with correct keys."""
+        events = self._run_and_get_events(catalog_db, 3.0)
+        assert len(events) == 3
+        for ev in events:
+            parsed = json.loads(str(ev["events_json"]))
+            assert isinstance(parsed, list)
+            for item in parsed:
+                assert isinstance(item["class"], str)
+                assert isinstance(item["probability"], float)
+
+    def test_retrievable_by_range(self, catalog_db):
+        """get_audio_events_for_range returns stored rows."""
+        self._run_and_get_events(catalog_db, 5.0)
+        # Query subset
+        subset = catalog_db.get_audio_events_for_range("vid1", 1.0, 3.0)
+        timestamps = sorted(float(ev["timestamp_seconds"]) for ev in subset)
+        assert timestamps == [1.0, 2.0, 3.0]
+
+    def test_no_numpy_in_json(self, catalog_db):
+        """All probability values are plain Python float, not numpy."""
+        events = self._run_and_get_events(catalog_db, 2.0)
+        for ev in events:
+            parsed = json.loads(str(ev["events_json"]))
+            for item in parsed:
+                assert type(item["probability"]) is float
