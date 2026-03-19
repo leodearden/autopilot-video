@@ -387,3 +387,29 @@ class TestInputValidation:
 
         # Scheduler should NOT be called (failed before imports)
         scheduler.model.assert_not_called()
+
+
+class TestStatusUpdate:
+    """Tests for media status update."""
+
+    def test_sets_status_analyzing(self, catalog_db):
+        """Media status updated to 'analyzing' during classification."""
+        from autopilot.analyze.audio_events import classify_audio_events
+
+        mock_panns, mock_config, mock_librosa, scheduler = (
+            _make_full_pipeline_mocks(catalog_db, "vid1", 3.0)
+        )
+
+        with patch.dict(sys.modules, {
+            "panns_inference": mock_panns,
+            "panns_inference.config": mock_config,
+            "librosa": mock_librosa,
+        }):
+            with patch.object(Path, "exists", return_value=True):
+                classify_audio_events(
+                    "vid1", Path("/tmp/vid1.wav"), catalog_db, scheduler,
+                )
+
+        media = catalog_db.get_media("vid1")
+        assert media is not None
+        assert media["status"] == "analyzing"
