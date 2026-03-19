@@ -492,3 +492,52 @@ class TestEmbeddingComputation:
         rows = catalog_db.get_embeddings_for_media("m1")
         frame_numbers = [r["frame_number"] for r in rows]
         assert frame_numbers == [0, 60, 120, 180, 240]
+
+
+class TestLogging:
+    """Tests for compute_embeddings structured logging."""
+
+    def test_log_contains_media_id_on_start(self, catalog_db, caplog) -> None:
+        """INFO log includes media_id on start."""
+        import logging
+
+        with caplog.at_level(logging.INFO, logger="autopilot.analyze.embeddings"):
+            _run_compute(catalog_db, media_id="test_vid")
+        assert any("test_vid" in r.message for r in caplog.records)
+
+    def test_log_contains_completion(self, catalog_db, caplog) -> None:
+        """Log includes 'Completed' or embedding count."""
+        import logging
+
+        with caplog.at_level(logging.INFO, logger="autopilot.analyze.embeddings"):
+            _run_compute(catalog_db)
+        messages = " ".join(r.message for r in caplog.records)
+        assert "Completed" in messages or "embeddings stored" in messages
+
+    def test_log_skipping_on_idempotent(self, catalog_db, caplog) -> None:
+        """Log mentions 'skipping' on idempotent skip."""
+        import logging
+
+        from pathlib import Path
+
+        from autopilot.analyze.embeddings import compute_embeddings
+        from autopilot.config import ModelConfig
+
+        catalog_db.insert_media("m1", "/v.mp4")
+        blob = struct.pack("f" * 768, *([0.1] * 768))
+        catalog_db.batch_insert_embeddings([("m1", 0, blob)])
+
+        with caplog.at_level(logging.INFO, logger="autopilot.analyze.embeddings"):
+            compute_embeddings("m1", Path("/v.mp4"), catalog_db, MagicMock(), ModelConfig())
+        messages = " ".join(r.message for r in caplog.records).lower()
+        assert "skipping" in messages
+
+    def test_log_contains_frame_info(self, catalog_db, caplog) -> None:
+        """Log mentions frames/fps."""
+        import logging
+
+        with caplog.at_level(logging.INFO, logger="autopilot.analyze.embeddings"):
+            _run_compute(catalog_db, total_frames=300, fps=30.0)
+        messages = " ".join(r.message for r in caplog.records)
+        assert "300" in messages  # total frames
+        assert "30.0" in messages  # fps
