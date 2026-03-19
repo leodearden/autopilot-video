@@ -86,3 +86,7 @@ def transcribe_media(
     if existing is not None:
         logger.info("Transcript already exists for %s, skipping", media_id)
         return
+
+    # Validate audio path before importing whisperx
+    if not audio_path.exists():
+        raise TranscriptionError(f"Audio file not found: {audio_path}")
