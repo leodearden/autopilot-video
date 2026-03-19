@@ -295,3 +295,59 @@ class TestFrameReading:
             _read_and_downsample_frames(Path("/fake/video.mp4"), mock_cv2)
 
         cap.release.assert_called_once()
+
+
+class TestTransNetV2BoundaryConversion:
+    """Tests for _transnetv2_to_boundaries helper."""
+
+    def test_converts_scenes_to_boundaries(self) -> None:
+        """Converts TransNetV2 scenes array to boundary dicts."""
+        from autopilot.analyze.scenes import _transnetv2_to_boundaries
+
+        scenes = np.array([[0, 99], [100, 299]])
+        result = _transnetv2_to_boundaries(scenes)
+
+        assert len(result) == 2
+        assert result[0] == {
+            "start_frame": 0,
+            "end_frame": 99,
+            "transition_type": "cut",
+        }
+        assert result[1] == {
+            "start_frame": 100,
+            "end_frame": 299,
+            "transition_type": "cut",
+        }
+
+    def test_single_scene(self) -> None:
+        """Single-scene input returns one-element list."""
+        from autopilot.analyze.scenes import _transnetv2_to_boundaries
+
+        scenes = np.array([[0, 299]])
+        result = _transnetv2_to_boundaries(scenes)
+
+        assert len(result) == 1
+        assert result[0]["start_frame"] == 0
+        assert result[0]["end_frame"] == 299
+
+    def test_empty_scenes(self) -> None:
+        """Empty scenes array returns empty list."""
+        from autopilot.analyze.scenes import _transnetv2_to_boundaries
+
+        scenes = np.empty((0, 2), dtype=np.int64)
+        result = _transnetv2_to_boundaries(scenes)
+
+        assert result == []
+
+    def test_output_values_are_plain_ints(self) -> None:
+        """Output values are plain ints not numpy types (JSON-serializable)."""
+        from autopilot.analyze.scenes import _transnetv2_to_boundaries
+
+        scenes = np.array([[0, 99], [100, 299]])
+        result = _transnetv2_to_boundaries(scenes)
+
+        for boundary in result:
+            assert type(boundary["start_frame"]) is int
+            assert type(boundary["end_frame"]) is int
+            # Verify JSON-serializable
+            json.dumps(boundary)
