@@ -435,3 +435,210 @@ class TestLoadAndFillPrompt:
         ):
             with pytest.raises(NarrativeError, match="[Pp]rompt"):
                 _load_and_fill_prompt(config)
+
+
+# -- Step 9: _call_llm / _parse_narratives tests ------------------------------
+
+
+def _make_narrative_llm_response(narratives_json=None):
+    """Create a mock Anthropic API response for narrative proposals."""
+    if narratives_json is None:
+        narratives_json = json.dumps([{
+            "title": "Three Days in Northern Thailand",
+            "activity_cluster_ids": ["c1", "c2"],
+            "proposed_duration_seconds": 600,
+            "arc": {
+                "beginning": "Arrival at the temple",
+                "middle": "Exploring the grounds",
+                "end": "Sunset reflections",
+            },
+            "emotional_journey": "Curiosity to wonder to peace",
+            "target_audience": "Travel enthusiasts",
+            "reasoning": "These clusters form a natural arc.",
+        }])
+    mock_response = MagicMock()
+    mock_content = MagicMock()
+    mock_content.text = narratives_json
+    mock_response.content = [mock_content]
+    return mock_response
+
+
+class TestCallLLM:
+    """Tests for _call_llm() helper."""
+
+    def test_uses_planning_model(self):
+        """_call_llm calls Anthropic API with planning_model (not utility_model)."""
+        from autopilot.config import AutopilotConfig
+        from autopilot.organize.narratives import _call_llm
+
+        config = AutopilotConfig(
+            input_dir=Path("."), output_dir=Path("."),
+        )
+        storyboard = "# Master Storyboard\n\nCluster c1: Temple visit"
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = _make_narrative_llm_response()
+
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            _call_llm(storyboard, config)
+
+        call_kwargs = mock_client.messages.create.call_args[1]
+        assert call_kwargs["model"] == config.llm.planning_model
+
+    def test_sends_storyboard_as_user_message(self):
+        """Storyboard text is sent as user message content."""
+        from autopilot.config import AutopilotConfig
+        from autopilot.organize.narratives import _call_llm
+
+        config = AutopilotConfig(
+            input_dir=Path("."), output_dir=Path("."),
+        )
+        storyboard = "# My unique storyboard content"
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = _make_narrative_llm_response()
+
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            _call_llm(storyboard, config)
+
+        call_kwargs = mock_client.messages.create.call_args[1]
+        messages = call_kwargs["messages"]
+        user_msg = messages[0]
+        assert user_msg["role"] == "user"
+        assert "My unique storyboard content" in user_msg["content"]
+
+    def test_system_prompt_from_narrative_planner(self):
+        """System prompt contains narrative_planner.md content."""
+        from autopilot.config import AutopilotConfig
+        from autopilot.organize.narratives import _call_llm
+
+        config = AutopilotConfig(
+            input_dir=Path("."), output_dir=Path("."),
+        )
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = _make_narrative_llm_response()
+
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            _call_llm("storyboard", config)
+
+        call_kwargs = mock_client.messages.create.call_args[1]
+        assert "Narrative Architect" in call_kwargs["system"]
+
+    def test_api_error_raises_narrative_error(self):
+        """API errors wrapped in NarrativeError."""
+        from autopilot.config import AutopilotConfig
+        from autopilot.organize.narratives import NarrativeError, _call_llm
+
+        config = AutopilotConfig(
+            input_dir=Path("."), output_dir=Path("."),
+        )
+
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = RuntimeError("API timeout")
+
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            with pytest.raises(NarrativeError, match="API.*failed"):
+                _call_llm("storyboard", config)
+
+    def test_empty_response_raises_narrative_error(self):
+        """Empty response.content raises NarrativeError."""
+        from autopilot.config import AutopilotConfig
+        from autopilot.organize.narratives import NarrativeError, _call_llm
+
+        config = AutopilotConfig(
+            input_dir=Path("."), output_dir=Path("."),
+        )
+
+        mock_response = MagicMock()
+        mock_response.content = []
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_response
+
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            with pytest.raises(NarrativeError, match="[Ee]mpty"):
+                _call_llm("storyboard", config)
+
+
+class TestParseNarratives:
+    """Tests for _parse_narratives() helper."""
+
+    def test_parses_json_array(self):
+        """Parses JSON array into Narrative objects."""
+        from autopilot.organize.narratives import Narrative, _parse_narratives
+
+        text = json.dumps([{
+            "title": "Temple Day",
+            "activity_cluster_ids": ["c1"],
+            "proposed_duration_seconds": 480,
+            "arc": {"beginning": "Arrival", "middle": "Exploring", "end": "Sunset"},
+            "emotional_journey": "Wonder to peace",
+            "target_audience": "Travelers",
+            "reasoning": "Strong visual arc.",
+        }])
+
+        narratives = _parse_narratives(text)
+        assert len(narratives) == 1
+        assert isinstance(narratives[0], Narrative)
+        assert narratives[0].title == "Temple Day"
+        assert narratives[0].proposed_duration_seconds == 480
+        assert narratives[0].activity_cluster_ids == ["c1"]
+        assert "beginning" in narratives[0].arc
+
+    def test_parses_json_in_code_block(self):
+        """Parses JSON wrapped in ```json code block."""
+        from autopilot.organize.narratives import _parse_narratives
+
+        text = '```json\n[{"title": "Beach Day", "activity_cluster_ids": ["c1"], "proposed_duration_seconds": 300, "arc": {"beginning": "A", "middle": "B", "end": "C"}, "emotional_journey": "Joy", "target_audience": "All", "reasoning": "Fun."}]\n```'
+
+        narratives = _parse_narratives(text)
+        assert len(narratives) == 1
+        assert narratives[0].title == "Beach Day"
+
+    def test_generates_narrative_ids(self):
+        """Each parsed narrative gets a unique narrative_id."""
+        from autopilot.organize.narratives import _parse_narratives
+
+        text = json.dumps([
+            {"title": "A", "activity_cluster_ids": ["c1"], "proposed_duration_seconds": 300, "arc": {}, "emotional_journey": "", "target_audience": "", "reasoning": ""},
+            {"title": "B", "activity_cluster_ids": ["c2"], "proposed_duration_seconds": 600, "arc": {}, "emotional_journey": "", "target_audience": "", "reasoning": ""},
+        ])
+
+        narratives = _parse_narratives(text)
+        assert len(narratives) == 2
+        assert narratives[0].narrative_id != ""
+        assert narratives[1].narrative_id != ""
+        assert narratives[0].narrative_id != narratives[1].narrative_id
+
+    def test_malformed_json_raises_narrative_error(self):
+        """Malformed JSON raises NarrativeError."""
+        from autopilot.organize.narratives import NarrativeError, _parse_narratives
+
+        with pytest.raises(NarrativeError, match="parse"):
+            _parse_narratives("This is not valid JSON")
+
+    def test_missing_required_fields_raises_narrative_error(self):
+        """Response missing title raises NarrativeError."""
+        from autopilot.organize.narratives import NarrativeError, _parse_narratives
+
+        text = json.dumps([{"only_field": "test"}])
+        with pytest.raises(NarrativeError, match="missing"):
+            _parse_narratives(text)
+
+    def test_empty_array_returns_empty_list(self):
+        """Empty JSON array returns empty list."""
+        from autopilot.organize.narratives import _parse_narratives
+
+        narratives = _parse_narratives("[]")
+        assert narratives == []
