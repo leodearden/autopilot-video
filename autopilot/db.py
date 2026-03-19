@@ -462,6 +462,14 @@ class CatalogDB:
         )
         return [dict(row) for row in cur.fetchall()]
 
+    def get_all_clip_embeddings(self) -> list[dict[str, object]]:
+        """Get all clip embedding rows with non-null embedding."""
+        cur = self.conn.execute(
+            "SELECT media_id, frame_number, embedding "
+            "FROM clip_embeddings WHERE embedding IS NOT NULL"
+        )
+        return [dict(row) for row in cur.fetchall()]
+
     # -- audio_events CRUD ------------------------------------------------------
 
     def batch_insert_audio_events(self, rows: list[tuple[str, float, str]]) -> None:
