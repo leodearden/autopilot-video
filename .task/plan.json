@@ -1,281 +1,255 @@
 {
-  "task_id": "6",
-  "title": "GPU scheduler",
+  "task_id": "11",
+  "title": "Frame embeddings and search index",
+  "files": [
+    "autopilot/analyze/embeddings.py",
+    "autopilot/db.py",
+    "tests/test_embeddings.py"
+  ],
   "modules": [
     "autopilot/analyze",
+    "autopilot",
     "tests"
   ],
-  "analysis": "Task 6 requires creating autopilot/analyze/gpu_scheduler.py \u2014 a VRAM-aware GPU model scheduler with context-manager API. The analyze/ directory exists with an empty __init__.py. No GPU-related code exists yet in the project.\n\n**Architecture:** GPUScheduler class manages a registry of ModelSpec entries (load_fn, unload_fn, vram_bytes, warmup_fn) and tracks loaded models with LRU ordering. The context manager `scheduler.model('name')` loads the requested model (evicting LRU models if VRAM is insufficient) and returns the loaded model object. Models stay resident after context exit (LRU cache behavior) \u2014 only evicted when VRAM is needed for a new model. A force_unload_all() method clears everything.\n\n**Key design constraints:**\n- Must work WITHOUT a real GPU in tests \u2014 all torch.cuda calls must be injectable/mockable\n- Thread safety via threading.Lock (pipeline may run audio + video analysis concurrently)\n- Device selection from config's processing.gpu_device field\n- LRU eviction: when loading a model that won't fit, unload least-recently-used models until there's enough VRAM\n- VRAM tracking via torch.cuda.mem_get_info() in production, but mockable for tests\n\n**Test strategy:** All unit tests use mock VRAM tracking (no GPU required). We inject a vram_query callable into GPUScheduler so tests can control reported free/total VRAM. Model load/unload functions are simple callables that tests can spy on with MagicMock.\n\n**Dependencies:** Only depends on task 2 (config.py, done). Uses ProcessingConfig.gpu_device for device selection. No other autopilot modules needed.\n\n**Existing patterns followed:**\n- Dataclasses for data containers (ModelSpec follows CreatorConfig/StageDefinition pattern)\n- __all__ exports in module\n- logging module for structured output\n- Tests use pytest with descriptive docstrings, follow test_config.py/test_orchestrator.py style\n\n**Post-review fixes (steps 25-28):** Three blocking issues identified in code review: (1) vacuous assertion `assert ... or True` on line 95 of tests that can never fail, (2) untested failure mode where load_fn returns None causing the LRU cache to break, (3) incorrect sentinel check using `is not None` instead of `name in self._loaded` for the cached-model guard. Steps 25-26 add a test for None-returning load_fn and fix the sentinel check in the implementation (TDD order). Steps 27-28 fix the vacuous test assertion and run a full validation pass.",
+  "analysis": "Implement autopilot/analyze/embeddings.py with four functions: compute_embeddings (SigLIP 2 vision encoder at 0.5 FPS, stores 768-d float32 BLOBs in clip_embeddings table), build_search_index (FAISS IVF), search_by_text (SigLIP text encoder + FAISS), and search_by_image (SigLIP vision encoder + FAISS). The codebase follows a consistent pattern across analyze modules (asr.py, objects.py, faces.py): lazy imports of heavy ML libs inside functions, TYPE_CHECKING guards for type hints, GPUScheduler context manager for model access, CatalogDB for storage with transactional context managers, custom error classes, structured logging, and idempotency checks. Tests use unittest.mock with sys.modules patching for heavy dependencies (cv2, transformers, etc.) and the catalog_db fixture from conftest.py. The DB already has clip_embeddings table (media_id, frame_number, embedding BLOB) with batch_insert_embeddings and get_embeddings_for_media methods. A new get_all_clip_embeddings() DB method is needed for build_search_index (follows get_all_face_embeddings pattern). The config already has clip_model='google/siglip2-so400m-patch14'. FAISS index needs a sidecar JSON mapping file to map vector indices back to (media_id, frame_number) tuples for search result resolution.",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Create empty test file tests/test_gpu_scheduler.py with module docstring, standard imports (pytest, unittest.mock, threading), and no test functions yet. This is the test home for the GPU scheduler.",
+      "description": "Add get_all_clip_embeddings() method to CatalogDB that returns all rows from clip_embeddings with non-null embedding (media_id, frame_number, embedding BLOB). Pattern follows get_all_face_embeddings(). Write tests for it in test_embeddings.py::TestDBHelpers: test empty table returns [], test with inserted rows returns all, test multiple media IDs returned correctly.",
       "status": "done",
-      "commit": "4073dfa",
-      "tests": []
+      "commit": "c8434dd",
+      "tests": [
+        "tests/test_embeddings.py::TestDBHelpers::test_get_all_clip_embeddings_empty",
+        "tests/test_embeddings.py::TestDBHelpers::test_get_all_clip_embeddings_returns_all",
+        "tests/test_embeddings.py::TestDBHelpers::test_get_all_clip_embeddings_multiple_media"
+      ]
     }
   ],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing tests for ModelSpec dataclass and public API imports. Tests: (1) test_model_spec_fields \u2014 instantiate ModelSpec with load_fn, unload_fn, vram_bytes, warmup_fn; verify all attributes stored correctly. (2) test_model_spec_warmup_fn_optional \u2014 instantiate ModelSpec without warmup_fn, verify it defaults to None. (3) test_public_api_importable \u2014 verify GPUScheduler, ModelSpec, SchedulerError are importable from autopilot.analyze.gpu_scheduler. (4) test_scheduler_error_is_exception \u2014 verify SchedulerError is an Exception subclass.",
+      "description": "Write TestPublicAPI class in test_embeddings.py: (1) test_embedding_error_importable - EmbeddingError importable and is Exception subclass; (2) test_compute_embeddings_signature - importable with positional params (media_id, video_path, db, scheduler, config) and keyword-only batch_size; (3) test_build_search_index_signature - importable with params (db, output_path); (4) test_search_by_text_signature - importable with params (query, index_path, model, top_k=10); (5) test_search_by_image_signature - importable with params (image, index_path, model, top_k=10). Verify all are in __all__.",
       "status": "done",
-      "commit": "c5f456a"
+      "commit": "be3b8e3"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Create autopilot/analyze/gpu_scheduler.py with ModelSpec dataclass (load_fn: Callable[[], Any], unload_fn: Callable[[Any], None], vram_bytes: int, warmup_fn: Callable[[Any], None] | None = None), SchedulerError exception class, and empty GPUScheduler class stub. Add __all__ exports. Make step-1 tests pass.",
+      "description": "Create autopilot/analyze/embeddings.py with module skeleton: docstring, TYPE_CHECKING imports for GPUScheduler/ModelConfig/CatalogDB, EmbeddingError class, module-level logger, __all__ exports, function stubs with correct signatures. compute_embeddings and build_search_index raise NotImplementedError. search_by_text/search_by_image return empty lists. Follow objects.py module pattern.",
       "status": "done",
-      "commit": "acd4e6e"
+      "commit": "5ca9aeb"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write failing tests for GPUScheduler initialization and model registration. Tests: (1) test_init_default_device \u2014 GPUScheduler() defaults to device=0 and total_vram provided at init. (2) test_init_custom_device \u2014 GPUScheduler(device=1, total_vram=24*1024**3) stores device correctly. (3) test_register_model \u2014 call scheduler.register('whisperx', spec), verify model is in scheduler's registry. (4) test_register_duplicate_raises \u2014 registering same name twice raises SchedulerError. (5) test_unregister_model \u2014 register then unregister, verify model removed from registry.",
-      "status": "done",
-      "commit": "5946c7d"
+      "description": "Write TestComputeSampleIndices class for _compute_sample_indices helper: (1) test_half_fps_30fps - 300 frames at 30fps -> [0, 60, 120, 180, 240]; (2) test_half_fps_24fps - 240 frames at 24fps -> [0, 48, 96, 144, 192]; (3) test_empty_video - 0 frames -> []; (4) test_short_video - 30 frames at 30fps -> [0]; (5) test_low_fps - 10 frames at 1fps -> [0, 2, 4, 6, 8].",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement GPUScheduler.__init__(device, total_vram, vram_query) with model registry dict, loaded models dict, LRU ordering list, and threading.Lock. Implement register(name, spec) and unregister(name) methods. The vram_query parameter is a callable returning (free, total) bytes \u2014 defaults to None (will use torch.cuda in production). total_vram is the VRAM budget for scheduling decisions. Make step-3 tests pass.",
-      "status": "done",
-      "commit": "d24362e"
+      "description": "Implement _compute_sample_indices(total_frames, fps, sample_fps=0.5) helper: interval = max(1, int(fps / sample_fps)), return list(range(0, total_frames, interval)). Handle total_frames <= 0 -> [].",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write failing tests for basic model loading via context manager. Tests: (1) test_context_manager_loads_model \u2014 register a model with MagicMock load_fn, use `with scheduler.model('test') as m:`, verify load_fn called once and m is the return value. (2) test_context_manager_model_stays_loaded \u2014 after exiting context, model remains in loaded set (LRU cache). (3) test_context_manager_reuses_loaded_model \u2014 enter context twice for same model, load_fn called only once. (4) test_context_manager_unknown_model_raises \u2014 using scheduler.model('nonexistent') raises SchedulerError.",
-      "status": "done",
-      "commit": "de0fcd6"
+      "description": "Write TestIdempotency class: (1) test_existing_embeddings_skips - insert media + clip embeddings into DB, call compute_embeddings, verify scheduler.model not called; (2) test_no_existing_embeddings_proceeds - insert media only, call compute_embeddings with full mocks (cv2, model, scheduler), verify scheduler.model IS called. Follow pattern from test_objects.py::TestIdempotency.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Implement GPUScheduler.model(name) as a context manager (using contextlib.contextmanager). On enter: check if model already loaded (return cached), otherwise call spec.load_fn(), add to loaded dict, update LRU order. On exit: model stays loaded (LRU cache). Track loaded models as dict[str, Any] mapping name -> loaded model object. Make step-5 tests pass.",
-      "status": "done",
-      "commit": "de0fcd6"
+      "description": "Implement compute_embeddings idempotency check: call db.get_embeddings_for_media(media_id), return early if non-empty with INFO log. Add video path validation (path.exists() check, cap.isOpened check), lazy cv2 import. Enough to pass idempotency and basic structure tests.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write failing tests for LRU eviction when VRAM is insufficient. Use GPUScheduler with total_vram=10GB. Tests: (1) test_evicts_lru_when_vram_insufficient \u2014 register model_a (3GB) and model_b (8GB), load model_a, then load model_b (needs 8GB but only 7GB free), verify model_a's unload_fn called before model_b loads. (2) test_evicts_multiple_models_if_needed \u2014 register 3 small models (3GB each) and 1 large (9GB), load all 3 small, then load large, verify all 3 small unloaded. (3) test_no_eviction_when_vram_sufficient \u2014 register two small models (3GB each, total_vram=10GB), load both, verify neither unload_fn called. (4) test_eviction_order_is_lru \u2014 load A then B then C, request D that requires eviction, verify A (least recently used) is evicted first.",
-      "status": "done",
-      "commit": "ce4bbcd"
+      "description": "Write TestErrorHandling class: (1) test_video_not_found_raises - nonexistent path raises EmbeddingError matching 'not found'; (2) test_video_not_opened_raises - cap.isOpened() False raises EmbeddingError matching 'Failed to open'; (3) test_frame_read_failure_skipped - one frame read fails, other frames still produce embeddings in DB.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Implement LRU eviction logic in the model() context manager. Before loading a new model: calculate currently used VRAM (sum of loaded models' vram_bytes), check if new model fits within total_vram. If not, unload models in LRU order (oldest first) until enough VRAM is free. Call spec.unload_fn(loaded_obj) for each evicted model. If even after unloading all models the new model doesn't fit, raise SchedulerError. Update LRU order on every model access (move to most-recently-used). Make step-7 tests pass.",
-      "status": "done",
-      "commit": "80add36"
+      "description": "Implement compute_embeddings error handling: path.exists() check before cv2 import raising EmbeddingError, cap.isOpened() check after VideoCapture raising EmbeddingError, frame read failure skip with warning log. Follow objects.py/faces.py error handling pattern.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write failing tests for LRU ordering updates on re-access. Tests: (1) test_lru_order_updated_on_reaccess \u2014 load A, B, C in order. Re-access A (now most recent). Request D that needs eviction. Verify B (now LRU) is evicted, not A. (2) test_model_too_large_for_total_vram_raises \u2014 register a model with vram_bytes > total_vram, attempting to load raises SchedulerError with descriptive message.",
-      "status": "done",
-      "commit": "0f7e6eb"
+      "description": "Write TestEmbeddingComputation class: (1) test_correct_embedding_count - 300 frames at 30fps stores 5 embeddings (0.5 FPS); (2) test_embedding_size_768d - each stored BLOB is 3072 bytes (768 * 4 bytes float32); (3) test_embedding_roundtrip - stored embedding recoverable via np.frombuffer dtype=float32 matches original; (4) test_model_called_per_frame - model encoder called once per sampled frame; (5) test_correct_frame_numbers - DB rows have frame_numbers matching sample indices [0, 60, 120, 180, 240]. Mock SigLIP model to return deterministic 768-d embeddings, mock cv2.VideoCapture.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Ensure LRU order is updated on every context manager entry (not just first load). When model is already loaded and re-accessed, move it to most-recently-used position. Add check: if model's vram_bytes exceeds total_vram, raise SchedulerError immediately without attempting eviction. Make step-9 tests pass.",
-      "status": "done",
-      "commit": "0f7e6eb"
+      "description": "Implement compute_embeddings core loop: load SigLIP (model, processor) tuple via scheduler.model(config.clip_model), iterate sampled frames, read frame with cv2, convert BGR->RGB via PIL.Image, preprocess via processor(images=image, return_tensors='pt'), encode via model.get_image_features(), L2-normalize output, pack 768-d float32 to bytes, accumulate rows, batch_insert_embeddings in with-db block. Release cap in finally block.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write failing tests for force_unload_all(). Tests: (1) test_force_unload_all_unloads_everything \u2014 load 3 models, call force_unload_all(), verify all 3 unload_fns called and loaded dict is empty. (2) test_force_unload_all_when_empty \u2014 call on empty scheduler, no error. (3) test_force_unload_all_clears_lru \u2014 after force_unload_all, LRU tracking is reset. (4) test_can_reload_after_force_unload \u2014 force_unload_all then load a model again, load_fn called again.",
-      "status": "done",
-      "commit": "dcaff0b"
+      "description": "Write TestLogging class: (1) test_log_contains_media_id_on_start - INFO log includes media_id and frame info; (2) test_log_contains_completion - log includes 'Completed' and embedding count; (3) test_log_skipping_on_idempotent - log mentions 'skipping' on idempotent skip; (4) test_log_contains_fps - log mentions fps info.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Implement force_unload_all() method. Iterates all loaded models, calls unload_fn for each, clears loaded dict and LRU list. Acquires the lock for thread safety. Make step-11 tests pass.",
-      "status": "done",
-      "commit": "3309c06"
+      "description": "Add structured logging to compute_embeddings: start message with media_id/total_frames/fps, completion message with embedding count, skip message on idempotent early return. Pattern: logger = logging.getLogger(__name__).",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-13",
       "type": "test",
-      "description": "Write failing tests for warmup function support. Tests: (1) test_warmup_called_after_load \u2014 register model with warmup_fn, load it, verify warmup_fn called with the loaded model object after load_fn. (2) test_warmup_not_called_on_cached_access \u2014 re-access already-loaded model, warmup_fn not called again. (3) test_warmup_none_skipped \u2014 register model without warmup_fn (None), load it, no error.",
-      "status": "done",
-      "commit": "e7696f4"
+      "description": "Write TestBuildSearchIndex class: (1) test_empty_db_no_index - empty DB logs and returns, no files written; (2) test_small_dataset_creates_index - insert 10 mock 768-d embeddings, build index, output_path file exists; (3) test_id_mapping_written - sidecar .ids.json exists with correct [[media_id, frame_number], ...] entries matching inserted data; (4) test_index_vector_count - FAISS index ntotal matches embedding count; (5) test_index_dimension - FAISS index d equals 768. Use faiss-cpu for real index behavior in tests.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-14",
       "type": "impl",
-      "description": "Add warmup support to model loading path. After calling load_fn and storing the result, if spec.warmup_fn is not None, call warmup_fn(loaded_model). Only on first load, not on cached re-access. Make step-13 tests pass.",
-      "status": "done",
-      "commit": "b7cf85e"
+      "description": "Implement build_search_index: load embeddings via db.get_all_clip_embeddings(), stack into float32 numpy matrix, L2-normalize. Choose index type: IndexFlatIP for n<256, IndexIVFFlat with nlist=max(1,int(sqrt(n))) for n>=256 (train on data, then add). Write index via faiss.write_index(). Write sidecar .ids.json with list of [media_id, frame_number] pairs. Handle empty DB with early return and log.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-15",
       "type": "test",
-      "description": "Write failing tests for thread safety. Tests: (1) test_concurrent_model_access \u2014 spawn 10 threads that each do `with scheduler.model('model_a')` 5 times, verify load_fn called exactly once (not multiple concurrent loads). (2) test_concurrent_different_models \u2014 spawn 2 threads loading different models concurrently, verify both load correctly without data corruption (check loaded count equals 2). (3) test_force_unload_during_active_context \u2014 thread A holds model context, thread B calls force_unload_all(), verify force_unload_all blocks until context exits OR raises SchedulerError (design decision: block is preferred).",
-      "status": "done",
-      "commit": "5fa8e76"
+      "description": "Write TestSearchByText class: (1) test_returns_correct_types - returns list of (str, int, float) tuples; (2) test_top_k_limits_results - top_k=3 returns at most 3 results; (3) test_text_encoder_called - model text features method invoked with query string; (4) test_results_contain_valid_media_ids - all media_ids in results are from the indexed data.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-16",
       "type": "impl",
-      "description": "Ensure thread safety with threading.Lock in all public methods: model(), force_unload_all(), register(), unregister(). The lock is acquired at the start of model() context manager (for the load/eviction logic) and released before yielding the model to the caller \u2014 but a re-entrant check is needed so the context body doesn't deadlock. Use a RLock or separate the lock acquisition from the yield. Design: acquire lock for load/eviction, release before yield, re-acquire for cleanup if needed. Make step-15 tests pass.",
-      "status": "done",
-      "commit": "5fa8e76"
+      "description": "Implement search_by_text: lazy import faiss. Load FAISS index via faiss.read_index(str(index_path)). Load .ids.json mapping. Extract (model, processor) from model param. Encode text: processor(text=[query], return_tensors='pt', padding=True) -> model.get_text_features() -> L2-normalize. Search index.search(query_vec, top_k). Map FAISS indices to (media_id, frame_number, distance) via mapping. Return results list.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-17",
       "type": "test",
-      "description": "Write failing tests for device selection and loaded_models property. Tests: (1) test_device_property \u2014 GPUScheduler(device=2).device returns 2. (2) test_loaded_models_returns_names \u2014 load 2 models, scheduler.loaded_models returns set of their names. (3) test_loaded_models_empty_initially \u2014 scheduler.loaded_models returns empty set. (4) test_vram_used_property \u2014 load 2 models (3GB + 8GB), scheduler.vram_used returns 11GB. (5) test_vram_free_property \u2014 total_vram=24GB, load 8GB model, scheduler.vram_free returns 16GB.",
-      "status": "done",
-      "commit": "591e621"
+      "description": "Write TestSearchByImage class: (1) test_returns_correct_types - returns list of (str, int, float) tuples; (2) test_top_k_limits_results - top_k=3 returns at most 3; (3) test_image_encoder_called - model vision features method invoked with image; (4) test_results_contain_valid_frame_numbers - all frame_numbers in results are from indexed data.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-18",
       "type": "impl",
-      "description": "Add read-only properties: device (int), loaded_models (set[str] \u2014 names of currently loaded models), vram_used (int \u2014 sum of loaded models' vram_bytes), vram_free (int \u2014 total_vram - vram_used). These provide introspection for pipeline stages and debugging. Make step-17 tests pass.",
-      "status": "done",
-      "commit": "591e621"
+      "description": "Implement search_by_image: load FAISS index + mapping. Extract (model, processor) from model param. Convert np.ndarray image to PIL, encode via processor(images=image, return_tensors='pt') -> model.get_image_features() -> L2-normalize. Search index. Map results. Return tuples. Extract shared _load_index_and_mapping helper used by both search functions.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-19",
       "type": "test",
-      "description": "Write failing tests for logging integration. Tests: (1) test_load_logs_model_name_and_vram \u2014 capture log output, load a model, verify log contains model name and VRAM amount. (2) test_eviction_logs_evicted_model \u2014 trigger eviction, verify log mentions which model was evicted and why. (3) test_force_unload_logs \u2014 call force_unload_all with loaded models, verify log mentions clearing all models.",
-      "status": "done",
-      "commit": "bfd05cf"
+      "description": "Write TestIntegration class: test_compute_build_search_pipeline - (1) compute_embeddings on mock video with 5 sampled frames, verify 5 rows in DB; (2) build_search_index from DB, verify index file + mapping exist with 5 entries; (3) search_by_text returns results with valid media_id; (4) search_by_image returns results; (5) all frame_numbers in results are from the original sample indices.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-20",
       "type": "impl",
-      "description": "Add structured logging throughout GPUScheduler using logging.getLogger(__name__). Log on: model load (INFO with name, vram_bytes), model eviction (INFO with evicted name, reason), warmup (DEBUG), force_unload_all (INFO with count of unloaded models), errors (ERROR). Follow the logging pattern from orchestrator.py. Make step-19 tests pass.",
-      "status": "done",
-      "commit": "80ea8df"
-    },
-    {
-      "id": "step-21",
-      "type": "test",
-      "description": "Write failing integration-style tests simulating the real pipeline VRAM budget. Tests: (1) test_prd_vram_budget_sequential \u2014 create scheduler with total_vram=24GB, register all 7 PRD models with their real VRAM sizes (whisperx 3GB, transnet 1GB, yolo 8GB, insightface 2GB, siglip 3GB, panns 1GB, qwen 14GB). Load them sequentially in pipeline order, verify correct evictions happen (e.g., loading qwen must evict enough to fit 14GB). (2) test_prd_largest_model_fits \u2014 verify the largest single model (qwen 14GB) can be loaded alone. (3) test_prd_concurrent_small_models \u2014 load whisperx (3GB) + panns (1GB) simultaneously (both fit), verify no eviction.",
-      "status": "done",
-      "commit": "557199b"
-    },
-    {
-      "id": "step-22",
-      "type": "impl",
-      "description": "Review and refine implementation to ensure all integration tests pass. This step may require no code changes if prior steps were implemented correctly \u2014 it serves as a validation checkpoint. Fix any edge cases revealed by the integration tests. Make step-21 tests pass.",
-      "status": "done",
-      "commit": "557199b"
-    },
-    {
-      "id": "step-23",
-      "type": "test",
-      "description": "Write failing tests for error handling edge cases. Tests: (1) test_load_fn_exception_propagates \u2014 load_fn raises RuntimeError, verify SchedulerError raised and model NOT added to loaded set. (2) test_unload_fn_exception_logged_not_raised \u2014 unload_fn raises during eviction, verify error is logged but eviction continues (best-effort unload). (3) test_warmup_fn_exception_unloads_model \u2014 warmup_fn raises, verify model is unloaded (cleanup) and SchedulerError raised.",
-      "status": "done",
-      "commit": "af07390"
-    },
-    {
-      "id": "step-24",
-      "type": "impl",
-      "description": "Add robust error handling: wrap load_fn calls in try/except, convert to SchedulerError, ensure partially-loaded models don't pollute state. Wrap unload_fn calls in try/except during eviction, log errors but continue evicting. If warmup_fn fails, call unload_fn to clean up, then raise SchedulerError. Make step-23 tests pass.",
-      "status": "done",
-      "commit": "f231c3c"
-    },
-    {
-      "id": "step-25",
-      "type": "test",
-      "description": "Write failing test for load_fn returning None (addresses review issues: incorrect_sentinel_check and untested_failure_mode). Add test to TestContextManager class: test_load_fn_returning_none_cached_correctly \u2014 create a ModelSpec with load_fn=MagicMock(return_value=None), unload_fn=MagicMock(), vram_bytes=3*GB. Register and load it via context manager, assert the yielded value is None. Assert the model name is in scheduler.loaded_models after first load. Load it a second time via context manager and assert load_fn was called exactly once (proving the None result was cached, not re-loaded). This test will FAIL against the current implementation because `model_obj = self._loaded.get(name)` returns None for a stored None value, causing `if model_obj is not None` to take the else branch and re-invoke load_fn on every access.",
-      "status": "done",
-      "commit": "446d399"
-    },
-    {
-      "id": "step-26",
-      "type": "impl",
-      "description": "Fix the incorrect sentinel check in GPUScheduler.model() method (gpu_scheduler.py lines 133-138). Replace:\n  `model_obj = self._loaded.get(name)`\n  `if model_obj is not None:`\nwith:\n  `if name in self._loaded:`\n  `    model_obj = self._loaded[name]`\nand keep the else branch for the fresh-load case. This correctly distinguishes 'not loaded' (key absent) from 'loaded with None value' (key present, value is None), preventing double-counting VRAM and redundant load_fn calls when load_fn returns None. Make step-25 test pass. Verify all existing tests still pass.",
-      "status": "done",
-      "commit": "e3c311b"
-    },
-    {
-      "id": "step-27",
-      "type": "test",
-      "description": "Fix the vacuous assertion in TestRegistration.test_register_model (test_gpu_scheduler.py line 95). The assertion `assert \"whisperx\" in scheduler.loaded_models or True` is permanently True due to `or True` and can never fail. Replace that line with `assert \"whisperx\" in scheduler._registry` which directly verifies that the register() call stored the model spec in the internal registry. Keep the subsequent context-manager assertion (`with scheduler.model('whisperx') as m: assert m is not None`) as a secondary check. The test should pass since the implementation already stores specs correctly in _registry.",
-      "status": "done",
-      "commit": "3daa110"
-    },
-    {
-      "id": "step-28",
-      "type": "impl",
-      "description": "Validation checkpoint: run the full test suite (`pytest tests/test_gpu_scheduler.py -v`) to confirm all tests pass after the fixes from steps 25-27. Verify: (1) test_load_fn_returning_none_cached_correctly passes with the sentinel fix from step-26, (2) test_register_model now has a meaningful non-vacuous assertion from step-27, (3) no regressions in any of the 30+ existing tests. No implementation code changes expected in this step \u2014 it is purely a validation pass.",
-      "status": "done",
-      "commit": "3daa110"
+      "description": "Final verification pass: run full test suite, fix any edge cases. Ensure cap.release() in finally block, proper error wrapping, clean docstrings and type hints. Verify __all__ exports are correct.",
+      "status": "pending",
+      "commit": null
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use total_vram constructor parameter instead of querying torch.cuda at runtime for VRAM capacity",
-      "rationale": "Makes the scheduler fully testable without a GPU. In production, the caller passes the real VRAM from torch.cuda.mem_get_info(). In tests, pass any value. This also allows VRAM budget to be set below physical VRAM as a safety margin."
+      "decision": "Use inner product (IndexFlatIP) for FAISS similarity since SigLIP embeddings are L2-normalized",
+      "rationale": "For L2-normalized vectors, inner product equals cosine similarity and is faster than L2 distance. SigLIP produces normalized embeddings, so IP gives correct semantic similarity ranking. Higher IP score = more similar."
     },
     {
-      "decision": "Track VRAM usage by summing registered vram_bytes of loaded models, not by querying actual GPU memory",
-      "rationale": "Actual GPU memory can fluctuate due to CUDA contexts, fragmentation, and other processes. Using declared vram_bytes from ModelSpec gives deterministic, predictable scheduling. The real torch.cuda.mem_get_info() could be used as a secondary check but is not the primary scheduling mechanism."
+      "decision": "Store FAISS ID mapping as a JSON sidecar file (.ids.json) alongside the index",
+      "rationale": "FAISS indices only store integer IDs. A JSON file mapping FAISS row index -> [media_id, frame_number] is simple, human-readable, and avoids pickle security concerns. The mapping list is small (~90K entries for 50h at 0.5 FPS = ~3.6MB JSON)."
     },
     {
-      "decision": "Models stay loaded after context manager exit (LRU cache) rather than eager unload",
-      "rationale": "Per task spec: 'Eager unloading: after context manager exits, model stays loaded (LRU cache) unless another model needs the VRAM.' This avoids expensive re-loads when the same model is used across multiple pipeline stages."
+      "decision": "Two-tier FAISS index strategy: IndexFlatIP (<256), IndexIVFFlat (>=256)",
+      "rationale": "Small datasets don't need IVF overhead - exact brute-force search is fast. Medium-to-large datasets benefit from IVF partitioning with nlist=sqrt(n). The PRD example (50h at 0.5 FPS = 90K) falls in the IVFFlat range. IndexIVFPQ can be added later if needed for >1M vectors."
     },
     {
-      "decision": "Use threading.Lock (not asyncio) for thread safety",
-      "rationale": "Per task spec: 'Thread safety: use a threading.Lock since the pipeline may run audio analysis concurrently with video analysis.' The pipeline uses threads, not async/await."
+      "decision": "Frame sampling at 0.5 FPS via interval = max(1, int(fps / sample_fps))",
+      "rationale": "0.5 FPS = 1 frame every 2 seconds. For 30fps video: interval=60. Using fps/sample_fps is general. max(1,...) prevents zero interval for very low FPS. int() rounds down, slightly over-sampling rather than under-sampling to avoid missing content."
     },
     {
-      "decision": "SchedulerError custom exception wraps all errors from load/unload/warmup functions",
-      "rationale": "Follows the project pattern where ConfigError wraps all config-related errors. Callers handle one exception type for all scheduler failures."
+      "decision": "GPU scheduler model entry stores (model, processor) tuple for SigLIP",
+      "rationale": "SigLIP requires both model and processor for inference. Storing them together in the scheduler means a single model() context manager call provides everything needed. The caller unpacks: with scheduler.model(name) as (model, processor)."
     },
     {
-      "decision": "Unload errors during eviction are logged but don't stop the eviction process",
-      "rationale": "If unload_fn fails (e.g., CUDA error), we should still attempt to continue loading the requested model. A hard failure here would block the pipeline. The VRAM tracking removes the model from the loaded set regardless."
+      "decision": "search_by_text/search_by_image take pre-loaded model tuple rather than scheduler",
+      "rationale": "Per task spec, search functions accept a 'model' parameter directly. Search may be called interactively many times - the caller manages model lifecycle. This decouples search from the GPU scheduler's batch processing context."
     },
     {
-      "decision": "Use contextlib.contextmanager decorator for the model() method",
-      "rationale": "Simpler than implementing __enter__/__exit__ on a separate class. Follows Python idiom for resource managers. The generator pattern makes the load-yield-keep flow natural."
+      "decision": "768-d embeddings stored as raw float32 BLOBs in SQLite",
+      "rationale": "768 * 4 bytes = 3072 bytes per embedding. Consistent with how face embeddings (512-d BLOBs) are stored. numpy tobytes/frombuffer provides zero-copy serialization. SQLite handles BLOBs efficiently."
     },
     {
-      "decision": "LRU tracking uses a simple list (append/remove/insert) rather than collections.OrderedDict",
-      "rationale": "The number of models is tiny (7 in the PRD). A list gives clear, debuggable LRU semantics with O(n) operations that are negligible at this scale. OrderedDict would be premature optimization."
+      "decision": "Add get_all_clip_embeddings() to CatalogDB rather than raw SQL in embeddings.py",
+      "rationale": "All SQL is encapsulated in CatalogDB methods following the get_all_face_embeddings pattern. Keeps embeddings.py focused on ML logic."
     },
     {
-      "decision": "Use `name in self._loaded` instead of `self._loaded.get(name) is not None` for cached-model check",
-      "rationale": "dict.get() returns None for both missing keys and keys mapped to None. If load_fn legitimately returns None, the truthiness check treats it as 'not loaded', causing redundant load_fn calls and double-counting VRAM. Using `in` correctly distinguishes 'not loaded' from 'loaded with None value'. This was identified as a bug in code review (incorrect_sentinel_check / untested_failure_mode)."
+      "decision": "L2-normalize embeddings at compute time before storage",
+      "rationale": "Pre-normalizing avoids redundant computation during index building and search. FAISS IndexFlatIP on normalized vectors gives cosine similarity directly. All downstream consumers get properly normalized embeddings."
     }
   ],
   "reuse": [
     {
-      "what": "ProcessingConfig.gpu_device",
-      "where": "autopilot/config.py",
-      "how": "The caller reads config.processing.gpu_device and passes it as the device parameter to GPUScheduler(). The scheduler itself doesn't depend on config.py directly \u2014 it receives device as a plain int."
+      "what": "CatalogDB.batch_insert_embeddings()",
+      "where": "autopilot/db.py line 448",
+      "how": "Existing method accepts (media_id, frame_number, embedding_blob) tuples. Use directly in compute_embeddings to store SigLIP embeddings."
     },
     {
-      "what": "Dataclass pattern for ModelSpec",
-      "where": "autopilot/config.py (CreatorConfig, etc.), autopilot/orchestrator.py (StageDefinition)",
-      "how": "Follow the same @dataclass pattern with typed fields, defaults, and __all__ exports."
+      "what": "CatalogDB.get_embeddings_for_media()",
+      "where": "autopilot/db.py line 457",
+      "how": "Use for idempotency check in compute_embeddings - if media already has embeddings, skip processing."
     },
     {
-      "what": "Logging pattern",
-      "where": "autopilot/orchestrator.py (logger = logging.getLogger(__name__))",
-      "how": "Use the same module-level logger pattern for structured log output."
+      "what": "clip_embeddings table schema",
+      "where": "autopilot/db.py line 114-119",
+      "how": "Table already exists with (media_id, frame_number, embedding BLOB) PK. No schema changes needed."
     },
     {
-      "what": "Custom exception pattern",
-      "where": "autopilot/config.py (ConfigError)",
-      "how": "SchedulerError follows the same pattern: simple Exception subclass, used to wrap all internal errors."
+      "what": "catalog_db fixture",
+      "where": "tests/conftest.py line 26",
+      "how": "Reuse in-memory CatalogDB fixture with autocommit for all embedding tests."
     },
     {
-      "what": "Test style and fixtures",
-      "where": "tests/conftest.py, tests/test_orchestrator.py",
-      "how": "Follow pytest style with descriptive docstrings, MagicMock for callables, class-based test grouping for related tests."
+      "what": "cv2 mock helpers pattern",
+      "where": "tests/test_objects.py lines 83-132",
+      "how": "Replicate _make_mock_capture() and _make_mock_cv2() patterns for mocking cv2.VideoCapture with configurable fps, total_frames. Use patch.dict(sys.modules, {'cv2': mock_cv2})."
+    },
+    {
+      "what": "GPUScheduler.model() context manager",
+      "where": "autopilot/analyze/gpu_scheduler.py line 136",
+      "how": "Use scheduler.model(config.clip_model) to load/unload SigLIP model, same as objects.py uses scheduler.model(config.yolo_variant)."
+    },
+    {
+      "what": "ModelConfig.clip_model",
+      "where": "autopilot/config.py line 71",
+      "how": "Default value 'google/siglip2-so400m-patch14' already configured. Access via config.clip_model in compute_embeddings."
+    },
+    {
+      "what": "Module structure pattern (docstring, TYPE_CHECKING, __all__, logger, error class)",
+      "where": "autopilot/analyze/objects.py, asr.py, faces.py",
+      "how": "Follow identical module layout: future annotations import, TYPE_CHECKING guard for GPUScheduler/ModelConfig/CatalogDB, __all__ list, module-level logger, custom error class inheriting Exception, lazy heavy imports."
+    },
+    {
+      "what": "get_all_face_embeddings() query pattern",
+      "where": "autopilot/db.py line 380-386",
+      "how": "Model get_all_clip_embeddings() after this: SELECT media_id, frame_number, embedding FROM clip_embeddings WHERE embedding IS NOT NULL."
     }
   ]
 }
