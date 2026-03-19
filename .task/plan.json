@@ -1,17 +1,47 @@
 {
-  "task_id": "6",
-  "title": "GPU scheduler",
+  "task_id": "13",
+  "title": "Selective video captioning",
   "modules": [
     "autopilot/analyze",
+    "autopilot/db.py",
+    "autopilot/config.py",
     "tests"
   ],
-  "analysis": "Task 6 requires creating autopilot/analyze/gpu_scheduler.py \u2014 a VRAM-aware GPU model scheduler with context-manager API. The analyze/ directory exists with an empty __init__.py. No GPU-related code exists yet in the project.\n\n**Architecture:** GPUScheduler class manages a registry of ModelSpec entries (load_fn, unload_fn, vram_bytes, warmup_fn) and tracks loaded models with LRU ordering. The context manager `scheduler.model('name')` loads the requested model (evicting LRU models if VRAM is insufficient) and returns the loaded model object. Models stay resident after context exit (LRU cache behavior) \u2014 only evicted when VRAM is needed for a new model. A force_unload_all() method clears everything.\n\n**Key design constraints:**\n- Must work WITHOUT a real GPU in tests \u2014 all torch.cuda calls must be injectable/mockable\n- Thread safety via threading.Lock (pipeline may run audio + video analysis concurrently)\n- Device selection from config's processing.gpu_device field\n- LRU eviction: when loading a model that won't fit, unload least-recently-used models until there's enough VRAM\n- VRAM tracking via torch.cuda.mem_get_info() in production, but mockable for tests\n\n**Test strategy:** All unit tests use mock VRAM tracking (no GPU required). We inject a vram_query callable into GPUScheduler so tests can control reported free/total VRAM. Model load/unload functions are simple callables that tests can spy on with MagicMock.\n\n**Dependencies:** Only depends on task 2 (config.py, done). Uses ProcessingConfig.gpu_device for device selection. No other autopilot modules needed.\n\n**Existing patterns followed:**\n- Dataclasses for data containers (ModelSpec follows CreatorConfig/StageDefinition pattern)\n- __all__ exports in module\n- logging module for structured output\n- Tests use pytest with descriptive docstrings, follow test_config.py/test_orchestrator.py style\n\n**Post-review fixes (steps 25-28):** Three blocking issues identified in code review: (1) vacuous assertion `assert ... or True` on line 95 of tests that can never fail, (2) untested failure mode where load_fn returns None causing the LRU cache to break, (3) incorrect sentinel check using `is not None` instead of `name in self._loaded` for the cached-model guard. Steps 25-26 add a test for None-returning load_fn and fix the sentinel check in the implementation (TDD order). Steps 27-28 fix the vacuous test assertion and run a full validation pass.",
+  "analysis": "Task 13 requires creating autopilot/analyze/captions.py with Qwen2.5-VL-7B for on-demand clip captioning. Two public functions: caption_clip() for single-clip captioning and batch_caption() for sampling/bulk captioning.\n\n**Codebase state:**\n- No captions table exists in db.py's 13-table schema — must add table #14 and CRUD methods.\n- ModelConfig has no caption_model field — must add with default 'Qwen/Qwen2.5-VL-7B-Instruct'.\n- `transformers` is already a pyproject.toml dependency; `vllm` is NOT — add as optional.\n- Frame extraction pattern is well-established in faces.py/objects.py via cv2.VideoCapture + cap.set(CAP_PROP_POS_FRAMES).\n- GPUScheduler API is stable: register ModelSpec, use `with scheduler.model(name) as model:`.\n\n**Architecture decisions:**\n- New `captions` table with composite PK (media_id, start_time, end_time) since captions are per-clip-segment, not per-whole-media.\n- Frame extraction reuses the cv2.VideoCapture pattern (no shared utility exists; consistent with faces.py/objects.py inline approach).\n- Model loading via GPUScheduler with ~14 GB VRAM FP16 budget.\n- vLLM detection at runtime via try/import; fallback to transformers for single inference.\n- Prompt engineering for scene description: system prompt asks for activities, setting, notable elements.\n\n**Test strategy:**\n- All tests mock cv2, transformers, and vllm (no real GPU/model needed).\n- Use catalog_db fixture (in-memory SQLite) from conftest.py.\n- Follow faces.py test patterns: mock helpers at top, class-based test grouping, sys.modules patching for cv2.\n- DB tests added to test_db.py following existing TestTranscriptsCRUD pattern.\n\n**Dependencies:** Task 3 (CatalogDB — done) and Task 6 (GPUScheduler — done).",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Create empty test file tests/test_gpu_scheduler.py with module docstring, standard imports (pytest, unittest.mock, threading), and no test functions yet. This is the test home for the GPU scheduler.",
+      "description": "Add `captions` table to CatalogDB._create_schema() in db.py: CREATE TABLE IF NOT EXISTS captions (media_id TEXT REFERENCES media_files(id), start_time REAL, end_time REAL, caption TEXT, model_name TEXT, PRIMARY KEY (media_id, start_time, end_time)). Add performance index idx_captions_media on captions(media_id).",
       "status": "done",
-      "commit": "4073dfa",
+      "commit": "a1cef0c",
+      "tests": []
+    },
+    {
+      "id": "pre-2",
+      "description": "Add CRUD methods to CatalogDB: upsert_caption(media_id, start_time, end_time, caption, model_name), get_caption(media_id, start_time, end_time) -> dict|None, get_captions_for_media(media_id) -> list[dict]. Follow existing upsert_transcript/get_transcript pattern with INSERT OR REPLACE.",
+      "status": "done",
+      "commit": "a1cef0c",
+      "tests": []
+    },
+    {
+      "id": "pre-3",
+      "description": "Add `caption_model` field to ModelConfig in config.py with default value 'Qwen/Qwen2.5-VL-7B-Instruct'. No validation constraint needed (free-form HuggingFace model ID).",
+      "status": "done",
+      "commit": "a1cef0c",
+      "tests": []
+    },
+    {
+      "id": "pre-4",
+      "description": "Create empty test file tests/test_captions.py with module docstring, standard imports (pytest, json, logging, sys, pathlib.Path, unittest.mock.MagicMock/patch, numpy), and mock helper stubs. This is the test home for captions module.",
+      "status": "done",
+      "commit": "a1cef0c",
+      "tests": []
+    },
+    {
+      "id": "pre-5",
+      "description": "Add `vllm` as an optional dependency in pyproject.toml under [project.optional-dependencies] vllm = ['vllm']. Also add `qwen-vl-utils` to main dependencies (needed for Qwen2.5-VL image preprocessing).",
+      "status": "done",
+      "commit": "a1cef0c",
       "tests": []
     }
   ],
@@ -19,263 +49,232 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing tests for ModelSpec dataclass and public API imports. Tests: (1) test_model_spec_fields \u2014 instantiate ModelSpec with load_fn, unload_fn, vram_bytes, warmup_fn; verify all attributes stored correctly. (2) test_model_spec_warmup_fn_optional \u2014 instantiate ModelSpec without warmup_fn, verify it defaults to None. (3) test_public_api_importable \u2014 verify GPUScheduler, ModelSpec, SchedulerError are importable from autopilot.analyze.gpu_scheduler. (4) test_scheduler_error_is_exception \u2014 verify SchedulerError is an Exception subclass.",
+      "description": "Write failing tests for captions DB CRUD in tests/test_db.py — new TestCaptionsCRUD class: (1) test_upsert_and_get_caption — insert caption, retrieve by PK, verify all fields. (2) test_upsert_overwrites — upsert same PK twice, verify latest caption wins. (3) test_get_caption_not_found — returns None for missing caption. (4) test_get_captions_for_media — insert 3 captions for same media_id, verify all returned ordered by start_time. (5) test_get_captions_for_media_empty — returns empty list for media with no captions. (6) test_caption_fk_enforcement — inserting caption with nonexistent media_id raises IntegrityError.",
       "status": "done",
-      "commit": "c5f456a"
+      "commit": "8b873b3"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Create autopilot/analyze/gpu_scheduler.py with ModelSpec dataclass (load_fn: Callable[[], Any], unload_fn: Callable[[Any], None], vram_bytes: int, warmup_fn: Callable[[Any], None] | None = None), SchedulerError exception class, and empty GPUScheduler class stub. Add __all__ exports. Make step-1 tests pass.",
+      "description": "Implement captions table schema in db.py _create_schema() and CRUD methods (upsert_caption, get_caption, get_captions_for_media) to make step-1 tests pass. Follow existing patterns: INSERT OR REPLACE for upsert, dict(row) returns, ORDER BY start_time for list query.",
       "status": "done",
-      "commit": "acd4e6e"
+      "commit": "a1cef0c"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write failing tests for GPUScheduler initialization and model registration. Tests: (1) test_init_default_device \u2014 GPUScheduler() defaults to device=0 and total_vram provided at init. (2) test_init_custom_device \u2014 GPUScheduler(device=1, total_vram=24*1024**3) stores device correctly. (3) test_register_model \u2014 call scheduler.register('whisperx', spec), verify model is in scheduler's registry. (4) test_register_duplicate_raises \u2014 registering same name twice raises SchedulerError. (5) test_unregister_model \u2014 register then unregister, verify model removed from registry.",
+      "description": "Write failing tests for captions.py public API and error class in TestPublicAPI class: (1) test_caption_error_importable — CaptionError importable from autopilot.analyze.captions. (2) test_caption_error_is_exception — subclass of Exception. (3) test_caption_clip_importable — caption_clip importable with params (media_id, video_path, start_time, end_time, db, scheduler). (4) test_batch_caption_importable — batch_caption importable with params (media_ids, db, scheduler, sample_rate). (5) test_extract_clip_frames_importable — _extract_clip_frames is a module-level helper.",
       "status": "done",
-      "commit": "5946c7d"
+      "commit": "ef55d6b"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement GPUScheduler.__init__(device, total_vram, vram_query) with model registry dict, loaded models dict, LRU ordering list, and threading.Lock. Implement register(name, spec) and unregister(name) methods. The vram_query parameter is a callable returning (free, total) bytes \u2014 defaults to None (will use torch.cuda in production). total_vram is the VRAM budget for scheduling decisions. Make step-3 tests pass.",
+      "description": "Create autopilot/analyze/captions.py with CaptionError exception, caption_clip() stub (raises NotImplementedError), batch_caption() stub (raises NotImplementedError), and _extract_clip_frames() stub. Add __all__ exports, TYPE_CHECKING imports for GPUScheduler/CatalogDB, logger setup. Follow faces.py module structure exactly.",
       "status": "done",
-      "commit": "d24362e"
+      "commit": "a3da0c4"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write failing tests for basic model loading via context manager. Tests: (1) test_context_manager_loads_model \u2014 register a model with MagicMock load_fn, use `with scheduler.model('test') as m:`, verify load_fn called once and m is the return value. (2) test_context_manager_model_stays_loaded \u2014 after exiting context, model remains in loaded set (LRU cache). (3) test_context_manager_reuses_loaded_model \u2014 enter context twice for same model, load_fn called only once. (4) test_context_manager_unknown_model_raises \u2014 using scheduler.model('nonexistent') raises SchedulerError.",
+      "description": "Write failing tests for _extract_clip_frames() in TestExtractClipFrames class: (1) test_extracts_correct_number_of_frames — 8 frames requested from 30s clip returns 8 PIL Images. (2) test_frame_times_evenly_spaced — for start=10.0, end=40.0, num_frames=4, verify cap.set() called with frame indices corresponding to evenly-spaced timestamps. (3) test_handles_read_failure — when cap.read() returns (False, None) for some frames, returns only successful frames without error. (4) test_empty_range_returns_empty — start_time == end_time returns empty list. (5) test_converts_bgr_to_rgb — verify cv2 BGR frame is converted to RGB PIL Image.",
       "status": "done",
-      "commit": "de0fcd6"
+      "commit": "6efe5ab"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Implement GPUScheduler.model(name) as a context manager (using contextlib.contextmanager). On enter: check if model already loaded (return cached), otherwise call spec.load_fn(), add to loaded dict, update LRU order. On exit: model stays loaded (LRU cache). Track loaded models as dict[str, Any] mapping name -> loaded model object. Make step-5 tests pass.",
+      "description": "Implement _extract_clip_frames(video_path, start_time, end_time, fps, num_frames=8) -> list[PIL.Image.Image]. Opens cv2.VideoCapture, computes evenly-spaced timestamps in [start_time, end_time], converts timestamp to frame index via fps, reads each frame, converts BGR->RGB, wraps in PIL Image. Returns list of successfully read frames. Releases capture in finally block.",
       "status": "done",
-      "commit": "de0fcd6"
+      "commit": "5935538"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write failing tests for LRU eviction when VRAM is insufficient. Use GPUScheduler with total_vram=10GB. Tests: (1) test_evicts_lru_when_vram_insufficient \u2014 register model_a (3GB) and model_b (8GB), load model_a, then load model_b (needs 8GB but only 7GB free), verify model_a's unload_fn called before model_b loads. (2) test_evicts_multiple_models_if_needed \u2014 register 3 small models (3GB each) and 1 large (9GB), load all 3 small, then load large, verify all 3 small unloaded. (3) test_no_eviction_when_vram_sufficient \u2014 register two small models (3GB each, total_vram=10GB), load both, verify neither unload_fn called. (4) test_eviction_order_is_lru \u2014 load A then B then C, request D that requires eviction, verify A (least recently used) is evicted first.",
+      "description": "Write failing tests for caption_clip() core path in TestCaptionClip class: (1) test_returns_caption_string — mock model processor+generate to return 'A person walking on a beach', verify caption_clip returns that string. (2) test_stores_caption_in_db — after caption_clip completes, db.get_caption() returns the generated caption with correct media_id/start_time/end_time. (3) test_uses_scheduler — verify scheduler.model() context manager called with config.caption_model name. (4) test_extracts_frames_from_clip_segment — verify cv2.VideoCapture.set() is called with frame positions within [start_time, end_time] range only.",
       "status": "done",
-      "commit": "ce4bbcd"
+      "commit": "65fe1a0"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Implement LRU eviction logic in the model() context manager. Before loading a new model: calculate currently used VRAM (sum of loaded models' vram_bytes), check if new model fits within total_vram. If not, unload models in LRU order (oldest first) until enough VRAM is free. Call spec.unload_fn(loaded_obj) for each evicted model. If even after unloading all models the new model doesn't fit, raise SchedulerError. Update LRU order on every model access (move to most-recently-used). Make step-7 tests pass.",
+      "description": "Implement caption_clip() core logic: (1) Get media metadata from db.get_media() for fps/duration. (2) Call _extract_clip_frames() to get PIL images. (3) Load model via scheduler.model(config.caption_model). (4) Build prompt: 'Describe the scene, activities, and notable elements in this video clip.' (5) Process images+prompt through model (transformers path: processor + model.generate + processor.batch_decode). (6) Store result via db.upsert_caption(). (7) Return caption string. Use 'with db:' for transactional write.",
       "status": "done",
-      "commit": "80add36"
+      "commit": "e29eb34"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write failing tests for LRU ordering updates on re-access. Tests: (1) test_lru_order_updated_on_reaccess \u2014 load A, B, C in order. Re-access A (now most recent). Request D that needs eviction. Verify B (now LRU) is evicted, not A. (2) test_model_too_large_for_total_vram_raises \u2014 register a model with vram_bytes > total_vram, attempting to load raises SchedulerError with descriptive message.",
+      "description": "Write failing tests for caption_clip() idempotency in TestIdempotency class: (1) test_existing_caption_skips — when caption already exists for (media_id, start, end), return existing caption without touching scheduler. (2) test_no_existing_caption_proceeds — when no caption exists, scheduler.model() is called.",
       "status": "done",
-      "commit": "0f7e6eb"
+      "commit": "318d19f"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Ensure LRU order is updated on every context manager entry (not just first load). When model is already loaded and re-accessed, move it to most-recently-used position. Add check: if model's vram_bytes exceeds total_vram, raise SchedulerError immediately without attempting eviction. Make step-9 tests pass.",
+      "description": "Add idempotency check to caption_clip(): at function start, call db.get_caption(media_id, start_time, end_time). If not None, log 'Caption already exists for {media_id}' and return existing caption text. Otherwise proceed with generation.",
       "status": "done",
-      "commit": "0f7e6eb"
+      "commit": "0605ef7"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write failing tests for force_unload_all(). Tests: (1) test_force_unload_all_unloads_everything \u2014 load 3 models, call force_unload_all(), verify all 3 unload_fns called and loaded dict is empty. (2) test_force_unload_all_when_empty \u2014 call on empty scheduler, no error. (3) test_force_unload_all_clears_lru \u2014 after force_unload_all, LRU tracking is reset. (4) test_can_reload_after_force_unload \u2014 force_unload_all then load a model again, load_fn called again.",
+      "description": "Write failing tests for caption_clip() error handling in TestErrorHandling class: (1) test_video_not_found_raises — nonexistent video_path raises CaptionError matching 'not found'. (2) test_video_not_opened_raises — cap.isOpened()==False raises CaptionError. (3) test_no_frames_extracted_raises — when _extract_clip_frames returns empty list, raises CaptionError matching 'No frames'. (4) test_invalid_time_range_raises — start_time > end_time raises CaptionError matching 'Invalid time range'. (5) test_start_time_negative_raises — start_time < 0 raises CaptionError.",
       "status": "done",
-      "commit": "dcaff0b"
+      "commit": "007b9d1"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Implement force_unload_all() method. Iterates all loaded models, calls unload_fn for each, clears loaded dict and LRU list. Acquires the lock for thread safety. Make step-11 tests pass.",
+      "description": "Add error handling to caption_clip(): validate video_path exists, validate start_time >= 0 and start_time < end_time, check _extract_clip_frames returns non-empty list, wrap model errors in CaptionError. Follow faces.py error pattern (validate before importing cv2).",
       "status": "done",
-      "commit": "3309c06"
+      "commit": "215aafb"
     },
     {
       "id": "step-13",
       "type": "test",
-      "description": "Write failing tests for warmup function support. Tests: (1) test_warmup_called_after_load \u2014 register model with warmup_fn, load it, verify warmup_fn called with the loaded model object after load_fn. (2) test_warmup_not_called_on_cached_access \u2014 re-access already-loaded model, warmup_fn not called again. (3) test_warmup_none_skipped \u2014 register model without warmup_fn (None), load it, no error.",
+      "description": "Write failing tests for batch_caption() in TestBatchCaption class: (1) test_samples_10_percent — given 100 media_ids with sample_rate=0.1, approximately 10 get captioned (allow ±3 tolerance for randomness). (2) test_custom_sample_rate — sample_rate=0.5 captions ~50% of clips. (3) test_specific_media_ids — when media_ids list has 3 items and sample_rate=1.0, all 3 get captioned. (4) test_skips_already_captioned — media_ids that already have captions in DB are skipped. (5) test_empty_media_ids_noop — empty list returns immediately without error.",
       "status": "done",
-      "commit": "e7696f4"
+      "commit": "85077b8"
     },
     {
       "id": "step-14",
       "type": "impl",
-      "description": "Add warmup support to model loading path. After calling load_fn and storing the result, if spec.warmup_fn is not None, call warmup_fn(loaded_model). Only on first load, not on cached re-access. Make step-13 tests pass.",
+      "description": "Implement batch_caption(): (1) If media_ids empty, return. (2) For each media_id, get media metadata from DB (needs file_path, fps, duration). (3) Generate clip segments (full video as one clip, or use shot_boundaries if available). (4) Apply sample_rate: random.sample() to select subset. (5) Loop over selected clips, calling caption_clip() for each. (6) Log progress: '{completed}/{total} clips captioned'.",
       "status": "done",
-      "commit": "b7cf85e"
+      "commit": "f533ef3"
     },
     {
       "id": "step-15",
       "type": "test",
-      "description": "Write failing tests for thread safety. Tests: (1) test_concurrent_model_access \u2014 spawn 10 threads that each do `with scheduler.model('model_a')` 5 times, verify load_fn called exactly once (not multiple concurrent loads). (2) test_concurrent_different_models \u2014 spawn 2 threads loading different models concurrently, verify both load correctly without data corruption (check loaded count equals 2). (3) test_force_unload_during_active_context \u2014 thread A holds model context, thread B calls force_unload_all(), verify force_unload_all blocks until context exits OR raises SchedulerError (design decision: block is preferred).",
+      "description": "Write failing tests for vLLM/transformers backend selection in TestBackendSelection class: (1) test_vllm_used_when_available — when 'vllm' is importable (mock sys.modules), the vLLM inference path is taken. (2) test_transformers_fallback — when 'vllm' import fails, transformers inference path is taken. (3) test_model_registration_vram — verify ModelSpec registered with ~14GB vram_bytes for FP16.",
       "status": "done",
-      "commit": "5fa8e76"
+      "commit": "ad038b5"
     },
     {
       "id": "step-16",
       "type": "impl",
-      "description": "Ensure thread safety with threading.Lock in all public methods: model(), force_unload_all(), register(), unregister(). The lock is acquired at the start of model() context manager (for the load/eviction logic) and released before yielding the model to the caller \u2014 but a re-entrant check is needed so the context body doesn't deadlock. Use a RLock or separate the lock acquisition from the yield. Design: acquire lock for load/eviction, release before yield, re-acquire for cleanup if needed. Make step-15 tests pass.",
+      "description": "Implement backend selection: add _make_caption_model_spec(config) that returns a ModelSpec. load_fn tries vllm.LLM first, falls back to transformers AutoModelForVision2Seq + AutoProcessor. unload_fn deletes model and calls torch.cuda.empty_cache(). vram_bytes = 14 * 1024**3 (14 GB FP16). Add register_caption_model(scheduler, config) convenience function.",
       "status": "done",
-      "commit": "5fa8e76"
+      "commit": "16b449e"
     },
     {
       "id": "step-17",
       "type": "test",
-      "description": "Write failing tests for device selection and loaded_models property. Tests: (1) test_device_property \u2014 GPUScheduler(device=2).device returns 2. (2) test_loaded_models_returns_names \u2014 load 2 models, scheduler.loaded_models returns set of their names. (3) test_loaded_models_empty_initially \u2014 scheduler.loaded_models returns empty set. (4) test_vram_used_property \u2014 load 2 models (3GB + 8GB), scheduler.vram_used returns 11GB. (5) test_vram_free_property \u2014 total_vram=24GB, load 8GB model, scheduler.vram_free returns 16GB.",
+      "description": "Write failing tests for caption_clip() logging in TestLogging class: (1) test_log_contains_media_id — INFO log includes media_id on caption start. (2) test_log_caption_complete — INFO log on completion with media_id and caption length. (3) test_log_skipping_on_idempotent — INFO log with 'already exists' when caption exists. (4) test_log_batch_progress — batch_caption logs progress count.",
       "status": "done",
-      "commit": "591e621"
+      "commit": "a1dcfeb"
     },
     {
       "id": "step-18",
       "type": "impl",
-      "description": "Add read-only properties: device (int), loaded_models (set[str] \u2014 names of currently loaded models), vram_used (int \u2014 sum of loaded models' vram_bytes), vram_free (int \u2014 total_vram - vram_used). These provide introspection for pipeline stages and debugging. Make step-17 tests pass.",
+      "description": "Add logging throughout captions.py: logger.info on caption start (media_id, time range), completion (media_id, caption length), idempotent skip, batch progress. Follow faces.py logging pattern exactly.",
       "status": "done",
-      "commit": "591e621"
+      "commit": "d26a7c3"
     },
     {
       "id": "step-19",
       "type": "test",
-      "description": "Write failing tests for logging integration. Tests: (1) test_load_logs_model_name_and_vram \u2014 capture log output, load a model, verify log contains model name and VRAM amount. (2) test_eviction_logs_evicted_model \u2014 trigger eviction, verify log mentions which model was evicted and why. (3) test_force_unload_logs \u2014 call force_unload_all with loaded models, verify log mentions clearing all models.",
+      "description": "Write failing test for ModelConfig caption_model field in tests/test_config.py or test_captions.py: (1) test_model_config_has_caption_model — ModelConfig().caption_model == 'Qwen/Qwen2.5-VL-7B-Instruct'. (2) test_config_yaml_override — loading config YAML with models.caption_model set overrides default.",
       "status": "done",
-      "commit": "bfd05cf"
+      "commit": "31dd3d3"
     },
     {
       "id": "step-20",
       "type": "impl",
-      "description": "Add structured logging throughout GPUScheduler using logging.getLogger(__name__). Log on: model load (INFO with name, vram_bytes), model eviction (INFO with evicted name, reason), warmup (DEBUG), force_unload_all (INFO with count of unloaded models), errors (ERROR). Follow the logging pattern from orchestrator.py. Make step-19 tests pass.",
+      "description": "Add caption_model field to ModelConfig dataclass in config.py: caption_model: str = 'Qwen/Qwen2.5-VL-7B-Instruct'. Ensure load_config() correctly populates it from YAML.",
       "status": "done",
-      "commit": "80ea8df"
+      "commit": "a1cef0c"
     },
     {
       "id": "step-21",
       "type": "test",
-      "description": "Write failing integration-style tests simulating the real pipeline VRAM budget. Tests: (1) test_prd_vram_budget_sequential \u2014 create scheduler with total_vram=24GB, register all 7 PRD models with their real VRAM sizes (whisperx 3GB, transnet 1GB, yolo 8GB, insightface 2GB, siglip 3GB, panns 1GB, qwen 14GB). Load them sequentially in pipeline order, verify correct evictions happen (e.g., loading qwen must evict enough to fit 14GB). (2) test_prd_largest_model_fits \u2014 verify the largest single model (qwen 14GB) can be loaded alone. (3) test_prd_concurrent_small_models \u2014 load whisperx (3GB) + panns (1GB) simultaneously (both fit), verify no eviction.",
+      "description": "Write integration test in TestIntegration class: test_caption_clip_end_to_end — mock cv2 + mock transformers model, run caption_clip with real in-memory DB, verify caption stored and retrievable via db.get_caption(), verify returned string matches mock model output.",
       "status": "done",
-      "commit": "557199b"
+      "commit": "06e08cb"
     },
     {
       "id": "step-22",
       "type": "impl",
-      "description": "Review and refine implementation to ensure all integration tests pass. This step may require no code changes if prior steps were implemented correctly \u2014 it serves as a validation checkpoint. Fix any edge cases revealed by the integration tests. Make step-21 tests pass.",
+      "description": "Final polish: ensure all edge cases handled (zero-duration clips, clips beyond video duration clamped), add __all__ to captions.py with public exports, verify all tests pass with `pytest tests/test_captions.py tests/test_db.py -v`.",
       "status": "done",
-      "commit": "557199b"
-    },
-    {
-      "id": "step-23",
-      "type": "test",
-      "description": "Write failing tests for error handling edge cases. Tests: (1) test_load_fn_exception_propagates \u2014 load_fn raises RuntimeError, verify SchedulerError raised and model NOT added to loaded set. (2) test_unload_fn_exception_logged_not_raised \u2014 unload_fn raises during eviction, verify error is logged but eviction continues (best-effort unload). (3) test_warmup_fn_exception_unloads_model \u2014 warmup_fn raises, verify model is unloaded (cleanup) and SchedulerError raised.",
-      "status": "done",
-      "commit": "af07390"
-    },
-    {
-      "id": "step-24",
-      "type": "impl",
-      "description": "Add robust error handling: wrap load_fn calls in try/except, convert to SchedulerError, ensure partially-loaded models don't pollute state. Wrap unload_fn calls in try/except during eviction, log errors but continue evicting. If warmup_fn fails, call unload_fn to clean up, then raise SchedulerError. Make step-23 tests pass.",
-      "status": "done",
-      "commit": "f231c3c"
-    },
-    {
-      "id": "step-25",
-      "type": "test",
-      "description": "Write failing test for load_fn returning None (addresses review issues: incorrect_sentinel_check and untested_failure_mode). Add test to TestContextManager class: test_load_fn_returning_none_cached_correctly \u2014 create a ModelSpec with load_fn=MagicMock(return_value=None), unload_fn=MagicMock(), vram_bytes=3*GB. Register and load it via context manager, assert the yielded value is None. Assert the model name is in scheduler.loaded_models after first load. Load it a second time via context manager and assert load_fn was called exactly once (proving the None result was cached, not re-loaded). This test will FAIL against the current implementation because `model_obj = self._loaded.get(name)` returns None for a stored None value, causing `if model_obj is not None` to take the else branch and re-invoke load_fn on every access.",
-      "status": "done",
-      "commit": "446d399"
-    },
-    {
-      "id": "step-26",
-      "type": "impl",
-      "description": "Fix the incorrect sentinel check in GPUScheduler.model() method (gpu_scheduler.py lines 133-138). Replace:\n  `model_obj = self._loaded.get(name)`\n  `if model_obj is not None:`\nwith:\n  `if name in self._loaded:`\n  `    model_obj = self._loaded[name]`\nand keep the else branch for the fresh-load case. This correctly distinguishes 'not loaded' (key absent) from 'loaded with None value' (key present, value is None), preventing double-counting VRAM and redundant load_fn calls when load_fn returns None. Make step-25 test pass. Verify all existing tests still pass.",
-      "status": "done",
-      "commit": "e3c311b"
-    },
-    {
-      "id": "step-27",
-      "type": "test",
-      "description": "Fix the vacuous assertion in TestRegistration.test_register_model (test_gpu_scheduler.py line 95). The assertion `assert \"whisperx\" in scheduler.loaded_models or True` is permanently True due to `or True` and can never fail. Replace that line with `assert \"whisperx\" in scheduler._registry` which directly verifies that the register() call stored the model spec in the internal registry. Keep the subsequent context-manager assertion (`with scheduler.model('whisperx') as m: assert m is not None`) as a secondary check. The test should pass since the implementation already stores specs correctly in _registry.",
-      "status": "done",
-      "commit": "3daa110"
-    },
-    {
-      "id": "step-28",
-      "type": "impl",
-      "description": "Validation checkpoint: run the full test suite (`pytest tests/test_gpu_scheduler.py -v`) to confirm all tests pass after the fixes from steps 25-27. Verify: (1) test_load_fn_returning_none_cached_correctly passes with the sentinel fix from step-26, (2) test_register_model now has a meaningful non-vacuous assertion from step-27, (3) no regressions in any of the 30+ existing tests. No implementation code changes expected in this step \u2014 it is purely a validation pass.",
-      "status": "done",
-      "commit": "3daa110"
+      "commit": "28abb88"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use total_vram constructor parameter instead of querying torch.cuda at runtime for VRAM capacity",
-      "rationale": "Makes the scheduler fully testable without a GPU. In production, the caller passes the real VRAM from torch.cuda.mem_get_info(). In tests, pass any value. This also allows VRAM budget to be set below physical VRAM as a safety margin."
+      "decision": "New dedicated `captions` table instead of storing in metadata_json",
+      "rationale": "Captions are per-clip-segment (media_id + time range), not per-media-file. A dedicated table with composite PK (media_id, start_time, end_time) enables efficient lookup, indexing, and querying. metadata_json is for extensible per-file attributes, not structured per-segment data."
     },
     {
-      "decision": "Track VRAM usage by summing registered vram_bytes of loaded models, not by querying actual GPU memory",
-      "rationale": "Actual GPU memory can fluctuate due to CUDA contexts, fragmentation, and other processes. Using declared vram_bytes from ModelSpec gives deterministic, predictable scheduling. The real torch.cuda.mem_get_info() could be used as a secondary check but is not the primary scheduling mechanism."
+      "decision": "Composite primary key (media_id, start_time, end_time) for captions table",
+      "rationale": "A clip is uniquely identified by its media source and time range. This allows multiple captions per video (different segments) and natural idempotency via INSERT OR REPLACE. Matches shot_boundaries PK pattern (media_id, method)."
     },
     {
-      "decision": "Models stay loaded after context manager exit (LRU cache) rather than eager unload",
-      "rationale": "Per task spec: 'Eager unloading: after context manager exits, model stays loaded (LRU cache) unless another model needs the VRAM.' This avoids expensive re-loads when the same model is used across multiple pipeline stages."
+      "decision": "8 evenly-spaced frames as default for clip frame extraction",
+      "rationale": "Task spec suggests '8 evenly-spaced frames for a 30-second clip'. This balances visual coverage with model context window limits. Qwen2.5-VL-7B handles up to 80 image tiles; 8 frames at typical resolution fits comfortably."
     },
     {
-      "decision": "Use threading.Lock (not asyncio) for thread safety",
-      "rationale": "Per task spec: 'Thread safety: use a threading.Lock since the pipeline may run audio analysis concurrently with video analysis.' The pipeline uses threads, not async/await."
+      "decision": "Runtime vLLM detection via try/import, not build-time flag",
+      "rationale": "vLLM is an optional heavyweight dependency (~2GB install). Runtime detection allows the same code to work on machines with or without vLLM. The load_fn in ModelSpec is the natural place for this branching — GPUScheduler doesn't need to know which backend is used."
     },
     {
-      "decision": "SchedulerError custom exception wraps all errors from load/unload/warmup functions",
-      "rationale": "Follows the project pattern where ConfigError wraps all config-related errors. Callers handle one exception type for all scheduler failures."
+      "decision": "caption_clip returns the caption string (not None)",
+      "rationale": "Task spec says '-> str'. Returning the caption enables the LLM planner (Stage 3) to use the result immediately without a DB round-trip. The caption is also stored in DB for persistence."
     },
     {
-      "decision": "Unload errors during eviction are logged but don't stop the eviction process",
-      "rationale": "If unload_fn fails (e.g., CUDA error), we should still attempt to continue loading the requested model. A hard failure here would block the pipeline. The VRAM tracking removes the model from the loaded set regardless."
+      "decision": "batch_caption generates full-video clips when no shot boundaries exist",
+      "rationale": "For initial cataloging, we may not have shot boundaries yet (Task 5). Using the full video duration as a single clip segment is the simplest fallback. When shot boundaries exist, they can be used to split into meaningful segments."
     },
     {
-      "decision": "Use contextlib.contextmanager decorator for the model() method",
-      "rationale": "Simpler than implementing __enter__/__exit__ on a separate class. Follows Python idiom for resource managers. The generator pattern makes the load-yield-keep flow natural."
+      "decision": "Inline cv2 frame extraction (no shared utility)",
+      "rationale": "faces.py and objects.py both do inline cv2 frame reading with slightly different sampling strategies. Extracting a shared utility would require refactoring existing modules (scope violation). _extract_clip_frames is specific to time-range extraction with PIL Image output for VLM input."
     },
     {
-      "decision": "LRU tracking uses a simple list (append/remove/insert) rather than collections.OrderedDict",
-      "rationale": "The number of models is tiny (7 in the PRD). A list gives clear, debuggable LRU semantics with O(n) operations that are negligible at this scale. OrderedDict would be premature optimization."
-    },
-    {
-      "decision": "Use `name in self._loaded` instead of `self._loaded.get(name) is not None` for cached-model check",
-      "rationale": "dict.get() returns None for both missing keys and keys mapped to None. If load_fn legitimately returns None, the truthiness check treats it as 'not loaded', causing redundant load_fn calls and double-counting VRAM. Using `in` correctly distinguishes 'not loaded' from 'loaded with None value'. This was identified as a bug in code review (incorrect_sentinel_check / untested_failure_mode)."
+      "decision": "~14 GB VRAM budget for Qwen2.5-VL-7B FP16",
+      "rationale": "7B parameter model at FP16 (2 bytes/param) = ~14 GB. This matches the task spec and fits on RTX 3090 (24 GB) with room for other small models. Registered via ModelSpec.vram_bytes for scheduler eviction."
     }
   ],
   "reuse": [
     {
-      "what": "ProcessingConfig.gpu_device",
-      "where": "autopilot/config.py",
-      "how": "The caller reads config.processing.gpu_device and passes it as the device parameter to GPUScheduler(). The scheduler itself doesn't depend on config.py directly \u2014 it receives device as a plain int."
+      "what": "GPUScheduler + ModelSpec pattern",
+      "where": "autopilot/analyze/gpu_scheduler.py",
+      "how": "Register Qwen2.5-VL-7B as ModelSpec with load_fn/unload_fn/vram_bytes. Use `with scheduler.model(name) as model:` context manager for inference. Same pattern as faces.py (InsightFace) and asr.py (WhisperX)."
     },
     {
-      "what": "Dataclass pattern for ModelSpec",
-      "where": "autopilot/config.py (CreatorConfig, etc.), autopilot/orchestrator.py (StageDefinition)",
-      "how": "Follow the same @dataclass pattern with typed fields, defaults, and __all__ exports."
+      "what": "cv2.VideoCapture frame reading pattern",
+      "where": "autopilot/analyze/faces.py lines 56-114",
+      "how": "Open with cv2.VideoCapture(str(path)), get fps/frame_count via cap.get(), seek with cap.set(CAP_PROP_POS_FRAMES), read with cap.read(), release in finally block. Adapt for time-range extraction instead of 1fps sampling."
     },
     {
-      "what": "Logging pattern",
-      "where": "autopilot/orchestrator.py (logger = logging.getLogger(__name__))",
-      "how": "Use the same module-level logger pattern for structured log output."
+      "what": "catalog_db pytest fixture",
+      "where": "tests/conftest.py",
+      "how": "Use existing catalog_db fixture for in-memory CatalogDB with autocommit. All caption CRUD tests and integration tests reuse this."
     },
     {
-      "what": "Custom exception pattern",
-      "where": "autopilot/config.py (ConfigError)",
-      "how": "SchedulerError follows the same pattern: simple Exception subclass, used to wrap all internal errors."
+      "what": "Mock cv2 + sys.modules patching pattern",
+      "where": "tests/test_faces.py lines 18-58",
+      "how": "Reuse _make_mock_capture() and _make_mock_cv2() patterns for creating mock VideoCapture with configurable fps/frame_count. Use patch.dict(sys.modules, {'cv2': mock_cv2}) for deferred import mocking."
     },
     {
-      "what": "Test style and fixtures",
-      "where": "tests/conftest.py, tests/test_orchestrator.py",
-      "how": "Follow pytest style with descriptive docstrings, MagicMock for callables, class-based test grouping for related tests."
+      "what": "CatalogDB CRUD pattern (upsert_transcript/get_transcript)",
+      "where": "autopilot/db.py lines 266-280",
+      "how": "Follow exact SQL pattern for upsert_caption: INSERT OR REPLACE INTO captions (...) VALUES (?, ?, ...). Follow get_transcript for get_caption: SELECT * WHERE media_id=? AND start_time=? AND end_time=?."
+    },
+    {
+      "what": "Custom exception class pattern",
+      "where": "autopilot/analyze/faces.py line 27 (FaceDetectionError)",
+      "how": "Create CaptionError(Exception) following same single-line pattern. Use for all caption-specific failures (video not found, model error, invalid time range)."
+    },
+    {
+      "what": "ModelConfig dataclass field pattern",
+      "where": "autopilot/config.py lines 65-74",
+      "how": "Add caption_model: str = 'Qwen/Qwen2.5-VL-7B-Instruct' following existing field pattern. No _ALLOWED_VALUES constraint needed (free-form HuggingFace ID)."
+    },
+    {
+      "what": "Test class organization pattern",
+      "where": "tests/test_faces.py",
+      "how": "Follow class-based grouping: TestPublicAPI, TestIdempotency, TestErrorHandling, TestDetectionLoop → TestCaptionClip, TestBatchCaption, TestLogging, TestIntegration."
     }
   ]
 }
