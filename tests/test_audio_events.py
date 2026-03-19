@@ -413,3 +413,75 @@ class TestStatusUpdate:
         media = catalog_db.get_media("vid1")
         assert media is not None
         assert media["status"] == "analyzing"
+
+
+class TestClassification:
+    """Tests for core classification pipeline."""
+
+    def _run_classification(
+        self, catalog_db, duration_seconds, *, top_k=5, labels=None,
+    ):
+        """Helper to run classify_audio_events with full mocks."""
+        from autopilot.analyze.audio_events import classify_audio_events
+
+        mock_panns, mock_config, mock_librosa, scheduler = (
+            _make_full_pipeline_mocks(
+                catalog_db, "vid1", duration_seconds, labels=labels,
+            )
+        )
+
+        with patch.dict(sys.modules, {
+            "panns_inference": mock_panns,
+            "panns_inference.config": mock_config,
+            "librosa": mock_librosa,
+        }):
+            with patch.object(Path, "exists", return_value=True):
+                classify_audio_events(
+                    "vid1",
+                    Path("/tmp/vid1.wav"),
+                    catalog_db,
+                    scheduler,
+                    top_k=top_k,
+                )
+
+        return mock_panns, mock_config, mock_librosa, scheduler
+
+    def test_loads_audio_at_32khz(self, catalog_db):
+        """librosa.load called with str(audio_path), sr=32000, mono=True."""
+        _, _, mock_librosa, _ = self._run_classification(catalog_db, 3.0)
+
+        mock_librosa.load.assert_called_once_with(
+            str(Path("/tmp/vid1.wav")), sr=32000, mono=True,
+        )
+
+    def test_loads_model_via_scheduler(self, catalog_db):
+        """scheduler.model called with 'panns_cnn14'."""
+        _, _, _, scheduler = self._run_classification(catalog_db, 3.0)
+
+        scheduler.model.assert_called_once_with("panns_cnn14")
+
+    def test_correct_window_count(self, catalog_db):
+        """3s audio -> model.inference called 3 times."""
+        mock_panns, _, _, _ = self._run_classification(catalog_db, 3.0)
+
+        mock_model = mock_panns.AudioTagging.return_value
+        assert mock_model.inference.call_count == 3
+
+    def test_stores_top_k_per_second(self, catalog_db):
+        """events_json is list of top_k dicts per window."""
+        self._run_classification(catalog_db, 3.0)
+
+        events = catalog_db.get_audio_events_for_range("vid1", 0.0, 10.0)
+        assert len(events) == 3
+        for ev in events:
+            parsed = json.loads(str(ev["events_json"]))
+            assert len(parsed) == 5
+
+    def test_custom_top_k(self, catalog_db):
+        """top_k=3 -> 3 events per window in DB."""
+        self._run_classification(catalog_db, 2.0, top_k=3)
+
+        events = catalog_db.get_audio_events_for_range("vid1", 0.0, 10.0)
+        for ev in events:
+            parsed = json.loads(str(ev["events_json"]))
+            assert len(parsed) == 3
