@@ -1017,3 +1017,133 @@ class TestTransformersInference:
             f"Expected 'caption text' but got '{result}'. "
             "Output tokens must be sliced before decoding to exclude prompt."
         )
+
+
+# ---------------------------------------------------------------------------
+# TestBackendDispatch — vLLM/transformers backend dispatch
+# ---------------------------------------------------------------------------
+
+
+class TestBackendDispatch:
+    """Tests for vLLM/transformers backend dispatch in caption_clip."""
+
+    def test_vllm_backend_uses_llm_generate(self, catalog_db):
+        """When backend is 'vllm', LLM.generate() is called, NOT processor()."""
+        from PIL import Image as PILImage
+
+        from autopilot.analyze.captions import caption_clip
+
+        catalog_db.insert_media(
+            id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
+        )
+
+        # Set up vLLM-style model bundle
+        llm = MagicMock()
+        # vLLM generate returns a list of RequestOutput with .outputs[0].text
+        output = MagicMock()
+        output.outputs = [MagicMock(text="A scenic beach view")]
+        llm.generate.return_value = [output]
+
+        model_bundle = {"backend": "vllm", "model": llm, "processor": None}
+        scheduler = _make_mock_scheduler(model_obj=model_bundle)
+        config = _make_mock_config()
+
+        dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(4)]
+
+        with (
+            patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames),
+            patch.object(Path, "exists", return_value=True),
+        ):
+            result = caption_clip(
+                "m1", Path("/test/video.mp4"), 0.0, 30.0,
+                db=catalog_db, scheduler=scheduler, config=config,
+            )
+
+        # vLLM's LLM.generate should be called
+        llm.generate.assert_called_once()
+        assert result == "A scenic beach view"
+
+    def test_transformers_backend_uses_processor(self, catalog_db):
+        """When backend is 'transformers', processor() and model.generate() are called."""
+        from PIL import Image as PILImage
+
+        from autopilot.analyze.captions import caption_clip
+
+        catalog_db.insert_media(
+            id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
+        )
+
+        model = MagicMock()
+        processor = MagicMock()
+
+        input_ids = np.zeros((1, 5), dtype=np.int64)
+        processor.return_value = {"input_ids": input_ids}
+        full_output = np.arange(10, dtype=np.int64).reshape(1, -1)
+        model.generate.return_value = full_output
+        processor.batch_decode.return_value = ["Beach sunset scene"]
+
+        model_bundle = {"backend": "transformers", "model": model, "processor": processor}
+        scheduler = _make_mock_scheduler(model_obj=model_bundle)
+        config = _make_mock_config()
+
+        dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(4)]
+
+        with (
+            patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames),
+            patch.object(Path, "exists", return_value=True),
+        ):
+            result = caption_clip(
+                "m1", Path("/test/video.mp4"), 0.0, 30.0,
+                db=catalog_db, scheduler=scheduler, config=config,
+            )
+
+        # Transformers path: processor is called, then model.generate
+        processor.assert_called_once()
+        model.generate.assert_called_once()
+        assert result == "Beach sunset scene"
+
+    def test_vllm_backend_processor_none_no_error(self, catalog_db):
+        """When backend is 'vllm' and processor is None, no TypeError."""
+        from PIL import Image as PILImage
+
+        from autopilot.analyze.captions import caption_clip
+
+        catalog_db.insert_media(
+            id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
+        )
+
+        llm = MagicMock()
+        output = MagicMock()
+        output.outputs = [MagicMock(text="Mountain landscape")]
+        llm.generate.return_value = [output]
+
+        # processor is explicitly None (vLLM doesn't need it)
+        model_bundle = {"backend": "vllm", "model": llm, "processor": None}
+        scheduler = _make_mock_scheduler(model_obj=model_bundle)
+        config = _make_mock_config()
+
+        dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(4)]
+
+        with (
+            patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames),
+            patch.object(Path, "exists", return_value=True),
+        ):
+            # Should NOT raise TypeError from calling None as a function
+            result = caption_clip(
+                "m1", Path("/test/video.mp4"), 0.0, 30.0,
+                db=catalog_db, scheduler=scheduler, config=config,
+            )
+
+        assert isinstance(result, str)
+
+    def test_run_vllm_inference_importable(self):
+        """_run_vllm_inference is a callable module-level helper."""
+        from autopilot.analyze.captions import _run_vllm_inference
+
+        assert callable(_run_vllm_inference)
+
+    def test_run_transformers_inference_importable(self):
+        """_run_transformers_inference is a callable module-level helper."""
+        from autopilot.analyze.captions import _run_transformers_inference
+
+        assert callable(_run_transformers_inference)
