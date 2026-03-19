@@ -272,9 +272,6 @@ def cluster_activities(db: CatalogDB) -> list[ActivityCluster]:
 
     logger.info("Clustering %d media files", len(clips))
 
-    # Clear existing clusters for idempotency
-    db.clear_activity_clusters()
-
     # Phase 1: Temporal-spatial clustering
     raw_clusters = _temporal_spatial_cluster(clips)
 
@@ -287,7 +284,7 @@ def cluster_activities(db: CatalogDB) -> list[ActivityCluster]:
         sub_clusters = _semantic_refine(cluster_ids, clip_lookup, db)
         refined_clusters.extend(sub_clusters)
 
-    # Create ActivityCluster objects
+    # Create ActivityCluster objects (compute all before writing)
     results: list[ActivityCluster] = []
     for clip_ids in refined_clusters:
         cluster_clips = [clip_lookup[cid] for cid in clip_ids]
@@ -314,15 +311,18 @@ def cluster_activities(db: CatalogDB) -> list[ActivityCluster]:
         )
         results.append(ac)
 
-        # Store in DB
-        db.insert_activity_cluster(
-            cluster_id,
-            time_start=time_start,
-            time_end=time_end,
-            gps_center_lat=gps_center_lat,
-            gps_center_lon=gps_center_lon,
-            clip_ids_json=json.dumps(clip_ids),
-        )
+    # Atomic clear+insert: only wipe old data after computation succeeds
+    with db.conn:
+        db.clear_activity_clusters()
+        for ac in results:
+            db.insert_activity_cluster(
+                ac.cluster_id,
+                time_start=ac.time_start,
+                time_end=ac.time_end,
+                gps_center_lat=ac.gps_center_lat,
+                gps_center_lon=ac.gps_center_lon,
+                clip_ids_json=json.dumps(ac.clip_ids),
+            )
 
     logger.info("Created %d activity clusters", len(results))
     return results
