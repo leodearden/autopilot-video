@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from PIL import Image
 
-    from autopilot.analyze.gpu_scheduler import GPUScheduler
+    from autopilot.analyze.gpu_scheduler import GPUScheduler, ModelSpec
     from autopilot.config import ModelConfig
     from autopilot.db import CatalogDB
 
@@ -24,6 +24,58 @@ logger = logging.getLogger(__name__)
 
 class CaptionError(Exception):
     """Raised for all captioning-related failures."""
+
+
+_CAPTION_VRAM_BYTES = 14 * 1024**3  # ~14 GB FP16 for 7B model
+
+
+def _make_caption_model_spec(config: ModelConfig) -> ModelSpec:
+    """Create a ModelSpec for the caption model.
+
+    Tries vLLM first for batched inference; falls back to transformers.
+    """
+    from autopilot.analyze.gpu_scheduler import ModelSpec
+
+    model_name = config.caption_model
+
+    def _load_fn() -> dict[str, Any]:
+        try:
+            import vllm  # noqa: F401
+
+            logger.info("Loading %s via vLLM", model_name)
+            llm = vllm.LLM(model=model_name, dtype="float16")
+            return {"backend": "vllm", "model": llm, "processor": None}
+        except (ImportError, Exception):
+            logger.info("vLLM not available, loading %s via transformers", model_name)
+            import torch
+            from transformers import AutoModelForVision2Seq, AutoProcessor
+
+            processor = AutoProcessor.from_pretrained(model_name)
+            model = AutoModelForVision2Seq.from_pretrained(
+                model_name, torch_dtype=torch.float16, device_map="auto"
+            )
+            return {"backend": "transformers", "model": model, "processor": processor}
+
+    def _unload_fn(model_bundle: Any) -> None:
+        del model_bundle
+        try:
+            import torch
+
+            torch.cuda.empty_cache()
+        except ImportError:
+            pass
+
+    return ModelSpec(
+        load_fn=_load_fn,
+        unload_fn=_unload_fn,
+        vram_bytes=_CAPTION_VRAM_BYTES,
+    )
+
+
+def register_caption_model(scheduler: GPUScheduler, config: ModelConfig) -> None:
+    """Register the caption model with the GPU scheduler."""
+    spec = _make_caption_model_spec(config)
+    scheduler.register(config.caption_model, spec)
 
 
 def _extract_clip_frames(
