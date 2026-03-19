@@ -51,4 +51,10 @@ def detect_shots(
     Raises:
         ShotDetectionError: If both detection methods fail.
     """
+    # Idempotency: skip if boundaries already exist for this media
+    existing = db.get_boundaries(media_id)
+    if existing:
+        logger.info("Boundaries already exist for %s, skipping", media_id)
+        return
+
     raise NotImplementedError
