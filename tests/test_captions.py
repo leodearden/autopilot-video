@@ -805,3 +805,32 @@ class TestLogging:
             )
 
         assert any("1/1" in msg and "captioned" in msg for msg in caplog.messages)
+
+
+# ---------------------------------------------------------------------------
+# TestModelConfig — caption_model field in config
+# ---------------------------------------------------------------------------
+
+
+class TestModelConfig:
+    """Tests for ModelConfig.caption_model field."""
+
+    def test_model_config_has_caption_model(self):
+        """ModelConfig().caption_model has correct default."""
+        from autopilot.config import ModelConfig
+
+        assert ModelConfig().caption_model == "Qwen/Qwen2.5-VL-7B-Instruct"
+
+    def test_config_yaml_override(self, tmp_path):
+        """Loading config YAML with models.caption_model overrides default."""
+        from autopilot.config import load_config
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            f"input_dir: {tmp_path}\n"
+            f"output_dir: {tmp_path}\n"
+            "models:\n"
+            "  caption_model: custom/model-name\n"
+        )
+        config = load_config(config_file)
+        assert config.models.caption_model == "custom/model-name"
