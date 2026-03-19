@@ -110,47 +110,44 @@ def _temporal_spatial_cluster(
 
     n = len(clips)
 
-    # Parse timestamps
-    timestamps = []
-    for clip in clips:
-        ts_str = str(clip["created_at"])
-        dt = _parse_iso(ts_str)
-        timestamps.append(dt.timestamp())
+    # Parse timestamps into array
+    ts_arr = np.array(
+        [_parse_iso(str(clip["created_at"])).timestamp() for clip in clips],
+        dtype=np.float64,
+    )
 
-    # Build precomputed distance matrix
-    # d(i,j) = max(temporal_norm, spatial_norm) where each is 0-1 scaled
-    dist_matrix = np.zeros((n, n), dtype=np.float64)
+    # Temporal distance matrix (normalized by threshold)
+    t_norm = np.abs(np.subtract.outer(ts_arr, ts_arr)) / temporal_threshold_s
 
-    for i in range(n):
-        for j in range(i + 1, n):
-            # Temporal distance normalized by threshold
-            t_diff = abs(timestamps[i] - timestamps[j])
-            t_norm = t_diff / temporal_threshold_s
+    # Extract GPS coordinates; use NaN for missing values
+    lats = np.array(
+        [float(c["gps_lat"]) if c.get("gps_lat") is not None else np.nan for c in clips],
+        dtype=np.float64,
+    )
+    lons = np.array(
+        [float(c["gps_lon"]) if c.get("gps_lon") is not None else np.nan for c in clips],
+        dtype=np.float64,
+    )
 
-            # Spatial distance
-            lat_i = clips[i].get("gps_lat")
-            lon_i = clips[i].get("gps_lon")
-            lat_j = clips[j].get("gps_lat")
-            lon_j = clips[j].get("gps_lon")
+    # Vectorized haversine distance matrix
+    lat_r = np.radians(lats)
+    lon_r = np.radians(lons)
+    dlat = np.subtract.outer(lat_r, lat_r)
+    dlon = np.subtract.outer(lon_r, lon_r)
+    a = (
+        np.sin(dlat / 2) ** 2
+        + np.multiply.outer(np.cos(lat_r), np.cos(lat_r)) * np.sin(dlon / 2) ** 2
+    )
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+    s_dist = _EARTH_RADIUS_M * c
+    s_norm = s_dist / spatial_threshold_m
 
-            if (
-                lat_i is not None
-                and lon_i is not None
-                and lat_j is not None
-                and lon_j is not None
-            ):
-                s_dist = _haversine(
-                    float(lat_i), float(lon_i), float(lat_j), float(lon_j)
-                )
-                s_norm = s_dist / spatial_threshold_m
-                # Combined: both must be within threshold (max of normalized)
-                combined = max(t_norm, s_norm)
-            else:
-                # Missing GPS: use temporal-only
-                combined = t_norm
+    # Mask: both clips must have valid GPS for spatial distance
+    has_gps = ~np.isnan(lats)
+    both_have_gps = np.outer(has_gps, has_gps)
 
-            dist_matrix[i, j] = combined
-            dist_matrix[j, i] = combined
+    # Combined: max(temporal, spatial) where both have GPS, else temporal-only
+    dist_matrix = np.where(both_have_gps, np.maximum(t_norm, s_norm), t_norm)
 
     # DBSCAN with eps=1.0 (since distances are normalized to threshold)
     db = DBSCAN(eps=1.0, min_samples=1, metric="precomputed")
