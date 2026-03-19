@@ -817,3 +817,151 @@ class TestFormatForReview:
         result = format_for_review([])
         assert isinstance(result, str)
         assert len(result) > 0  # Should have some message, not empty string
+
+
+# -- Step 15: Integration test ------------------------------------------------
+
+
+class TestIntegration:
+    """Full pipeline: seed DB -> build storyboard -> propose narratives -> format."""
+
+    def test_full_pipeline(self, catalog_db):
+        """End-to-end: seeded DB -> storyboard -> propose -> format -> verify DB."""
+        from autopilot.config import AutopilotConfig, CreatorConfig
+        from autopilot.organize.narratives import (
+            build_master_storyboard,
+            format_for_review,
+            propose_narratives,
+        )
+
+        # --- Seed DB ---
+        catalog_db.insert_media(
+            "v1", "/tmp/v1.mp4",
+            created_at="2025-01-01T10:00:00",
+            duration_seconds=120.0,
+            gps_lat=18.788, gps_lon=98.985,
+        )
+        catalog_db.insert_media(
+            "v2", "/tmp/v2.mp4",
+            created_at="2025-01-01T10:15:00",
+            duration_seconds=180.0,
+            gps_lat=18.789, gps_lon=98.986,
+        )
+        catalog_db.insert_media(
+            "v3", "/tmp/v3.mp4",
+            created_at="2025-01-01T14:00:00",
+            duration_seconds=240.0,
+            gps_lat=19.500, gps_lon=99.500,
+        )
+
+        # Transcripts
+        catalog_db.upsert_transcript(
+            "v1",
+            json.dumps([{"text": "Look at the temple!", "start": 0.0, "end": 2.0}]),
+            "en",
+        )
+        catalog_db.upsert_transcript(
+            "v3",
+            json.dumps([{"text": "The market is amazing.", "start": 0.0, "end": 1.5}]),
+            "en",
+        )
+
+        # Detections
+        catalog_db.batch_insert_detections([
+            ("v1", 0, json.dumps([{"class": "person", "confidence": 0.9}])),
+            ("v2", 0, json.dumps([{"class": "building", "confidence": 0.85}])),
+            ("v3", 0, json.dumps([{"class": "food", "confidence": 0.88}])),
+        ])
+
+        # Audio events
+        catalog_db.batch_insert_audio_events([
+            ("v1", 0.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
+            ("v3", 0.0, json.dumps([{"class": "Crowd", "probability": 0.8}])),
+        ])
+
+        # Faces
+        emb = np.zeros(512, dtype=np.float32).tobytes()
+        catalog_db.batch_insert_faces([
+            ("v1", 0, 0, json.dumps({"x": 10, "y": 10, "w": 50, "h": 50}), emb, 1),
+        ])
+        catalog_db.insert_face_cluster(1, label="Alice")
+
+        # Activity clusters
+        catalog_db.insert_activity_cluster(
+            "c1",
+            label="Temple visit",
+            description="Exploring a Buddhist temple",
+            time_start="2025-01-01T10:00:00",
+            time_end="2025-01-01T10:30:00",
+            clip_ids_json=json.dumps(["v1", "v2"]),
+        )
+        catalog_db.insert_activity_cluster(
+            "c2",
+            label="Market walk",
+            description="Walking through a night market",
+            time_start="2025-01-01T14:00:00",
+            time_end="2025-01-01T14:30:00",
+            clip_ids_json=json.dumps(["v3"]),
+        )
+
+        # --- Phase 1: Build storyboard ---
+        storyboard = build_master_storyboard(catalog_db)
+
+        assert isinstance(storyboard, str)
+        assert "Temple visit" in storyboard
+        assert "Market walk" in storyboard
+        assert "Alice" in storyboard
+
+        # --- Phase 2: Propose narratives (mocked LLM) ---
+        config = AutopilotConfig(
+            input_dir=Path("."), output_dir=Path("."),
+            creator=CreatorConfig(
+                name="Test Creator",
+                channel_style="Travel vlog",
+                target_audience="Travel enthusiasts",
+                default_video_duration_minutes="10-15",
+                narration_style="First person",
+                music_preference="Lo-fi",
+            ),
+        )
+
+        mock_narratives = [{
+            "title": "A Day in Northern Thailand",
+            "activity_cluster_ids": ["c1", "c2"],
+            "proposed_duration_seconds": 600,
+            "arc": {
+                "beginning": "Morning at the temple",
+                "middle": "Afternoon market exploration",
+                "end": "Evening reflections",
+            },
+            "emotional_journey": "Curiosity to wonder to contentment",
+            "target_audience": "Travel enthusiasts",
+            "reasoning": "Natural day-long arc combining both activities.",
+        }]
+
+        mock_anthropic, mock_client = _setup_mock_narrative_anthropic(mock_narratives)
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            narratives = propose_narratives(storyboard, catalog_db, config)
+
+        assert len(narratives) == 1
+        assert narratives[0].title == "A Day in Northern Thailand"
+
+        # --- Phase 3: Format for review ---
+        review = format_for_review(narratives)
+
+        assert "A Day in Northern Thailand" in review
+        assert "600" in review or "10" in review
+        assert "c1" in review
+        assert "c2" in review
+
+        # --- Verify DB state ---
+        db_narratives = catalog_db.list_narratives()
+        assert len(db_narratives) == 1
+        assert db_narratives[0]["status"] == "proposed"
+        assert db_narratives[0]["title"] == "A Day in Northern Thailand"
+
+        # Verify storyboard was sent to LLM
+        mock_client.messages.create.assert_called_once()
+        call_kwargs = mock_client.messages.create.call_args[1]
+        assert call_kwargs["model"] == config.llm.planning_model
+        assert "Temple visit" in call_kwargs["messages"][0]["content"]
