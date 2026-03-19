@@ -127,7 +127,10 @@ def _call_llm(
     """
     import anthropic  # type: ignore[reportMissingImports]
 
-    prompt_text = _load_prompt()
+    try:
+        prompt_text = _load_prompt()
+    except OSError as e:
+        raise ClassifyError(f"Failed to load prompt: {e}") from e
 
     # Format summary as user message
     user_content = json.dumps(summary, indent=2)
