@@ -57,4 +57,8 @@ def detect_shots(
         logger.info("Boundaries already exist for %s, skipping", media_id)
         return
 
+    # Validate video path before heavy imports
+    if not video_path.exists():
+        raise ShotDetectionError(f"Video file not found: {video_path}")
+
     raise NotImplementedError
