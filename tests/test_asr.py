@@ -1017,3 +1017,142 @@ class TestLogging:
         warn_messages = [r.message for r in caplog.records
                          if r.levelno >= logging.WARNING]
         assert any("align" in m.lower() for m in warn_messages)
+
+
+class TestIntegration:
+    """End-to-end integration tests."""
+
+    def test_end_to_end(self, catalog_db):
+        """Full pipeline with diverse segment data."""
+        from autopilot.analyze.asr import transcribe_media
+
+        segments = [
+            {
+                "start": 0.0,
+                "end": 2.5,
+                "text": "Hello and welcome",
+                "speaker": "SPEAKER_01",
+                "words": [
+                    {"word": "Hello", "start": 0.0, "end": 0.5, "score": 0.95},
+                    {"word": "and", "start": 0.6, "end": 0.8, "score": 0.9},
+                    {"word": "welcome", "start": 0.9, "end": 2.5, "score": 0.88},
+                ],
+            },
+            {
+                "start": 3.0,
+                "end": 4.5,
+                "text": "Just text",
+                # no speaker, no words
+            },
+            {
+                "start": 5.0,
+                "end": 5.0,
+                "text": "",
+                # empty text segment
+            },
+        ]
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db, "vid1", segments,
+        )
+        # Override assign_word_speakers to return the segments with speakers
+        mock_wx.assign_word_speakers.return_value = {"segments": segments}
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                transcribe_media(
+                    "vid1",
+                    Path("/tmp/audio.wav"),
+                    catalog_db,
+                    scheduler,
+                    MagicMock(whisper_size="large-v3"),
+                    hf_token="test-token",
+                )
+
+        # Verify transcript stored
+        transcript = catalog_db.get_transcript("vid1")
+        assert transcript is not None
+        assert transcript["language"] == "en"
+
+        stored = json.loads(str(transcript["segments_json"]))
+        assert len(stored) == 3
+
+        # PRD schema validation
+        for seg in stored:
+            assert set(seg.keys()) == {
+                "start", "end", "text", "speaker", "words",
+            }
+            for word in seg["words"]:
+                assert set(word.keys()) == {
+                    "word", "start", "end", "score",
+                }
+
+        # First segment has all data
+        assert stored[0]["speaker"] == "SPEAKER_01"
+        assert len(stored[0]["words"]) == 3
+
+        # Second segment has defaults
+        assert stored[1]["speaker"] is None
+        assert stored[1]["words"] == []
+
+        # Media status updated
+        media = catalog_db.get_media("vid1")
+        assert media is not None
+        assert media["status"] == "analyzing"
+
+    def test_idempotent_second_call(self, catalog_db):
+        """Second call to transcribe_media is skipped."""
+        from autopilot.analyze.asr import transcribe_media
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db,
+            "vid1",
+            [{"start": 0.0, "end": 1.0, "text": "Hello"}],
+        )
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                # First call
+                transcribe_media(
+                    "vid1",
+                    Path("/tmp/audio.wav"),
+                    catalog_db,
+                    scheduler,
+                    MagicMock(whisper_size="large-v3"),
+                )
+                # Second call - should skip
+                transcribe_media(
+                    "vid1",
+                    Path("/tmp/audio.wav"),
+                    catalog_db,
+                    scheduler,
+                    MagicMock(whisper_size="large-v3"),
+                )
+
+        # scheduler.model called only once (first call)
+        scheduler.model.assert_called_once()
+
+    def test_model_variant_turbo(self, catalog_db):
+        """Config whisper_size='large-v3-turbo' used correctly."""
+        from autopilot.analyze.asr import transcribe_media
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db,
+            "vid1",
+            [{"start": 0.0, "end": 1.0, "text": "Hello"}],
+        )
+
+        config = MagicMock()
+        config.whisper_size = "large-v3-turbo"
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                transcribe_media(
+                    "vid1",
+                    Path("/tmp/audio.wav"),
+                    catalog_db,
+                    scheduler,
+                    config,
+                )
+
+        scheduler.model.assert_called_once_with("large-v3-turbo")
