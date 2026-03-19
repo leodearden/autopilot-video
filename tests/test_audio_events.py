@@ -216,3 +216,87 @@ class TestWindowAudio:
         audio = np.zeros(32000, dtype=np.float32)
         windows = _window_audio(audio, 32000)
         assert windows[0].dtype == np.float32
+
+
+class TestExtractTopK:
+    """Tests for _extract_top_k() private helper."""
+
+    def test_basic_top5(self):
+        """527-element array -> correct top-5 sorted descending."""
+        from autopilot.analyze.audio_events import _extract_top_k
+
+        labels = [f"class_{i}" for i in range(527)]
+        probs = np.zeros(527, dtype=np.float32)
+        probs[10] = 0.9
+        probs[20] = 0.7
+        probs[30] = 0.5
+        probs[40] = 0.3
+        probs[50] = 0.1
+        result = _extract_top_k(probs, labels)
+        assert len(result) == 5
+        assert result[0]["class"] == "class_10"
+        assert result[0]["probability"] == pytest.approx(0.9)
+        assert result[1]["class"] == "class_20"
+        # Verify descending order
+        probabilities = [r["probability"] for r in result]
+        assert probabilities == sorted(probabilities, reverse=True)
+
+    def test_k_parameter(self):
+        """k=3 -> 3 items."""
+        from autopilot.analyze.audio_events import _extract_top_k
+
+        labels = [f"class_{i}" for i in range(527)]
+        probs = np.random.default_rng(0).random(527).astype(np.float32)
+        result = _extract_top_k(probs, labels, k=3)
+        assert len(result) == 3
+
+    def test_output_keys(self):
+        """Each dict has exactly {'class', 'probability'}."""
+        from autopilot.analyze.audio_events import _extract_top_k
+
+        labels = ["a", "b", "c"]
+        probs = np.array([0.1, 0.5, 0.3], dtype=np.float32)
+        result = _extract_top_k(probs, labels, k=3)
+        for item in result:
+            assert set(item.keys()) == {"class", "probability"}
+
+    def test_numpy_float_coercion(self):
+        """np.float32 probabilities -> isinstance(p, float) for all."""
+        from autopilot.analyze.audio_events import _extract_top_k
+
+        labels = [f"class_{i}" for i in range(10)]
+        probs = np.random.default_rng(1).random(10).astype(np.float32)
+        result = _extract_top_k(probs, labels, k=5)
+        for item in result:
+            assert isinstance(item["probability"], float)
+            assert isinstance(item["class"], str)
+
+    def test_json_serializable(self):
+        """json.dumps succeeds on output."""
+        from autopilot.analyze.audio_events import _extract_top_k
+
+        labels = [f"class_{i}" for i in range(527)]
+        probs = np.random.default_rng(2).random(527).astype(np.float32)
+        result = _extract_top_k(probs, labels)
+        serialized = json.dumps(result)
+        assert isinstance(serialized, str)
+
+    def test_all_zeros(self):
+        """Returns k items with prob 0.0."""
+        from autopilot.analyze.audio_events import _extract_top_k
+
+        labels = [f"class_{i}" for i in range(527)]
+        probs = np.zeros(527, dtype=np.float32)
+        result = _extract_top_k(probs, labels)
+        assert len(result) == 5
+        for item in result:
+            assert item["probability"] == 0.0
+
+    def test_k_larger_than_labels(self):
+        """k=600 with 527 labels -> 527 items."""
+        from autopilot.analyze.audio_events import _extract_top_k
+
+        labels = [f"class_{i}" for i in range(527)]
+        probs = np.random.default_rng(3).random(527).astype(np.float32)
+        result = _extract_top_k(probs, labels, k=600)
+        assert len(result) == 527
