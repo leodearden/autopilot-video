@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-import numpy as np
+import numpy as np  # type: ignore[reportMissingImports]
 
 if TYPE_CHECKING:
     from autopilot.analyze.gpu_scheduler import GPUScheduler
@@ -127,7 +127,7 @@ def cluster_faces(
         eps: DBSCAN epsilon parameter (cosine distance threshold).
         min_samples: DBSCAN minimum samples per cluster.
     """
-    from sklearn.cluster import DBSCAN
+    from sklearn.cluster import DBSCAN  # type: ignore[reportMissingImports]
 
     # Fetch all face embeddings
     face_rows = db.get_all_face_embeddings()
