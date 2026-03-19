@@ -130,3 +130,24 @@ def transcribe_media(
             media_id,
             exc_info=True,
         )
+
+    # Stage 3: Speaker diarization (non-fatal, requires HF token)
+    token = hf_token or os.environ.get("HF_TOKEN")
+    if token:
+        try:
+            diarize_pipeline = whisperx.DiarizationPipeline(
+                use_auth_token=token, device=device_str
+            )
+            diarize_segments = diarize_pipeline(audio)
+            result = whisperx.assign_word_speakers(diarize_segments, result)
+        except Exception:
+            logger.warning(
+                "Diarization failed for %s, continuing without speaker labels",
+                media_id,
+                exc_info=True,
+            )
+    else:
+        logger.info(
+            "No HuggingFace token provided, skipping diarization for %s",
+            media_id,
+        )
