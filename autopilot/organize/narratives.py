@@ -368,7 +368,13 @@ def build_master_storyboard(db: CatalogDB) -> str:
 
     for cluster in clusters:
         cluster_id = str(cluster.get("cluster_id", "unknown"))
-        summary = _build_cluster_summary(cluster, db)
+        try:
+            summary = _build_cluster_summary(cluster, db)
+        except NarrativeError as exc:
+            logger.warning(
+                "Skipping corrupt cluster %s: %s", cluster_id, exc,
+            )
+            continue
 
         section_lines: list[str] = [
             f"## Cluster: {cluster_id}",
