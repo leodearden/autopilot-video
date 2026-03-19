@@ -56,10 +56,9 @@ def detect_faces(
     import cv2  # type: ignore[reportMissingImports]
 
     cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
-        raise FaceDetectionError(f"Failed to open video: {video_path}")
-
     try:
+        if not cap.isOpened():
+            raise FaceDetectionError(f"Failed to open video: {video_path}")
         fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
@@ -149,12 +148,7 @@ def cluster_faces(
     )
     labels = clustering.labels_
 
-    # Clear old clusters and reset face cluster_ids
-    with db:
-        db.clear_face_clusters()
-        db.reset_face_cluster_ids()
-
-    # Group faces by cluster label
+    # Group faces by cluster label (pure in-memory computation)
     cluster_map: dict[int, list[int]] = {}
     noise_count = 0
     for idx, label in enumerate(labels):
@@ -164,40 +158,50 @@ def cluster_faces(
             continue
         cluster_map.setdefault(label, []).append(idx)
 
-    # Create face_clusters and update face rows
+    # Pre-compute all cluster data in memory before any DB mutations
+    cluster_data: list[tuple[int, bytes, str]] = []  # (label, centroid, paths_json)
+    cluster_id_updates: list[tuple[int, str, int, int]] = []
+
+    for cluster_label, member_indices in sorted(cluster_map.items()):
+        # Compute centroid as L2-normalized mean
+        member_embeddings = embeddings[member_indices]
+        centroid = member_embeddings.mean(axis=0)
+        centroid = centroid / np.linalg.norm(centroid)
+        centroid_blob = centroid.astype(np.float32).tobytes()
+
+        # Collect up to 5 sample paths
+        sample_paths = []
+        for mi in member_indices[:5]:
+            row = face_rows[mi]
+            sample_paths.append(f"{row['media_id']}:{row['frame_number']}")
+        sample_paths_json = json.dumps(sample_paths)
+
+        cluster_data.append((cluster_label, centroid_blob, sample_paths_json))
+
+        # Prepare cluster_id updates for member faces
+        for mi in member_indices:
+            row = face_rows[mi]
+            cluster_id_updates.append((
+                cluster_label,
+                cast(str, row["media_id"]),
+                cast(int, row["frame_number"]),
+                cast(int, row["face_index"]),
+            ))
+
+    # Perform all DB mutations atomically in a single transaction.
+    # If any step fails, CatalogDB.__exit__ rolls back the entire block,
+    # preserving the pre-existing cluster state.
     with db:
-        cluster_id_updates: list[tuple[int, str, int, int]] = []
+        db.clear_face_clusters()
+        db.reset_face_cluster_ids()
 
-        for cluster_label, member_indices in sorted(cluster_map.items()):
-            # Compute centroid as L2-normalized mean
-            member_embeddings = embeddings[member_indices]
-            centroid = member_embeddings.mean(axis=0)
-            centroid = centroid / np.linalg.norm(centroid)
-            centroid_blob = centroid.astype(np.float32).tobytes()
-
-            # Collect up to 5 sample paths
-            sample_paths = []
-            for mi in member_indices[:5]:
-                row = face_rows[mi]
-                sample_paths.append(f"{row['media_id']}:{row['frame_number']}")
-            sample_paths_json = json.dumps(sample_paths)
-
+        for cluster_label, centroid_blob, sample_paths_json in cluster_data:
             db.insert_face_cluster(
                 cluster_id=cluster_label,
                 label=None,
                 representative_embedding=centroid_blob,
                 sample_image_paths=sample_paths_json,
             )
-
-            # Prepare cluster_id updates for member faces
-            for mi in member_indices:
-                row = face_rows[mi]
-                cluster_id_updates.append((
-                    cluster_label,
-                    cast(str, row["media_id"]),
-                    cast(int, row["frame_number"]),
-                    cast(int, row["face_index"]),
-                ))
 
         if cluster_id_updates:
             db.batch_update_face_cluster_ids(cluster_id_updates)

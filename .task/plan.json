@@ -1,21 +1,37 @@
 {
-  "task_id": "8",
-  "title": "Shot boundary detection",
+  "task_id": "10",
+  "title": "Face detection and clustering",
   "files": [
-    "autopilot/analyze/scenes.py",
-    "tests/test_scenes.py"
+    "autopilot/analyze/faces.py",
+    "tests/test_faces.py",
+    "scripts/label_faces.py"
   ],
   "modules": [
     "autopilot/analyze",
-    "tests"
+    "tests",
+    "scripts"
   ],
-  "analysis": "Implement autopilot/analyze/scenes.py for shot boundary detection using TransNetV2 (primary, GPU) and PySceneDetect detect-adaptive (fallback, CPU). The codebase has a very consistent pattern across peer analyze modules (asr.py, faces.py, objects.py): custom exception, deferred heavy imports, idempotency check via DB, path validation, GPUScheduler context manager for model access, transactional DB writes with `with db:`, cap.release() in finally, and structured logging. The DB layer already has a shot_boundaries table with composite PK (media_id, method) and full CRUD: upsert_boundaries(media_id, boundaries_json, method) and get_boundaries(media_id, method=None). PySceneDetect (`scenedetect`) is already in pyproject.toml. TransNetV2 is a PyTorch model expecting 48x27 RGB frames, outputting per-frame transition probabilities which are converted to scene boundary pairs via predictions_to_scenes. The function signature follows the task spec: detect_shots(media_id, video_path, db, scheduler) \u2014 no config param since TransNetV2 has no user-configurable variants (unlike whisper_size or yolo_variant). Both methods can store results independently via the composite key. Path validation lives in detect_shots since neither method can work without the file. cv2.VideoCapture lifecycle is managed inside _read_and_downsample_frames with cap.release() in finally. PySceneDetect handles its own video I/O via scenedetect.detect(). The fallback logic: try TransNetV2, on any failure log WARNING and try PySceneDetect, on double failure raise ShotDetectionError. Test mocking follows established patterns: patch.dict(sys.modules) for deferred imports, _make_mock_cv2/_make_mock_capture helpers, MagicMock scheduler with context manager protocol.",
+  "analysis": "Task 10 implements face detection (InsightFace SCRFD + ArcFace 512-d embeddings) and DBSCAN clustering in autopilot/analyze/faces.py, plus an interactive labeling script in scripts/label_faces.py. Dependencies: DB schema (faces + face_clusters tables) and all CRUD methods already exist in autopilot/db.py (task 3). GPUScheduler and ModelConfig (with face_model='buffalo_l') already implemented (task 6). The pattern closely mirrors autopilot/analyze/objects.py: lazy cv2 import, idempotency check, 1fps sampling via max(1, int(fps)), GPU model via scheduler context manager, transactional batch inserts, custom exception class. detect_faces iterates sampled frames, runs face_model.get(frame), extracts bbox and normed_embedding per face, stores as (media_id, frame_idx, face_index, bbox_json, embedding_blob, None). cluster_faces loads all embeddings, runs sklearn DBSCAN with cosine metric, computes L2-normalized centroids, populates face_clusters table with up to 5 sample paths per cluster, and batch-updates face cluster_ids. Labels start NULL. scripts/label_faces.py provides get_unlabeled_clusters() and apply_label() helpers plus an interactive CLI main(). Tests follow existing conventions: mock cv2.VideoCapture, mock InsightFace model, use catalog_db fixture with in-memory SQLite autocommit. All 36 tests pass.\n\nREVIEW FIXES (post step-34): Three blocking issues identified by reviewers require remediation:\n\n(1) resource_leak [FIXED in step-36] — cv2.VideoCapture.release() is not called when isOpened() returns False because the raise at line 60 happens before the try/finally block at line 62. Fix: restructured so try/finally wraps the isOpened() check.\n\n(2) transactional_integrity [FIXED in step-38] — cluster_faces() splits its destructive clear-then-rebuild across two separate `with db:` transactions. Fix: all DB mutations now happen in a single atomic `with db:` block.\n\n(3) algorithmic_complexity [PENDING steps 39-40] — DBSCAN with metric='cosine' uses brute-force O(n²) in sklearn (no ball_tree/kd_tree for non-Euclidean metrics). At scale (180K frames × multiple faces = hundreds of thousands of embeddings), this is intractable and breaks the ~30-minute GPU budget SLA. Fix: since ArcFace normed_embedding is L2-normalized, cosine_distance(a,b) = 0.5 * euclidean_distance(a,b)². Convert eps internally: eps_euclidean = sqrt(2 * eps_cosine). Switch to metric='euclidean', algorithm='ball_tree' for O(n log n). The public API keeps eps in cosine-semantic units (default 0.5) for backward compatibility — all existing tests pass unchanged because the mathematical equivalence holds exactly for unit vectors.",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Create empty autopilot/analyze/scenes.py module with docstring, __future__ annotations import, TYPE_CHECKING imports for GPUScheduler and CatalogDB, __all__, logger, ShotDetectionError exception class, module constants (TRANSNETV2_INPUT_WIDTH=48, TRANSNETV2_INPUT_HEIGHT=27, PYSCENEDETECT_THRESHOLD=27.0), and detect_shots stub that raises NotImplementedError. This gives tests a valid import target.",
+      "description": "Verify DB schema has faces and face_clusters tables with correct columns and CRUD methods (batch_insert_faces, get_faces_for_media, get_all_face_embeddings, clear_face_clusters, reset_face_cluster_ids, batch_update_face_cluster_ids, insert_face_cluster, update_face_label, get_face_clusters, get_face_cluster_by_id). All confirmed present in db.py.",
       "status": "done",
-      "commit": "b7035c1",
+      "commit": "3b3fda4",
+      "tests": []
+    },
+    {
+      "id": "pre-2",
+      "description": "Verify ModelConfig has face_model field (default 'buffalo_l') and GPUScheduler context manager interface exists. Both confirmed in config.py and gpu_scheduler.py.",
+      "status": "done",
+      "commit": "3b3fda4",
+      "tests": []
+    },
+    {
+      "id": "pre-3",
+      "description": "Create test mock helpers in tests/test_faces.py: _make_mock_capture (cv2.VideoCapture mock with configurable fps/frames), _make_mock_cv2 (module mock with CAP_PROP constants), _make_mock_face (InsightFace Face mock with bbox, det_score, normed_embedding).",
+      "status": "done",
+      "commit": "3b3fda4",
       "tests": []
     }
   ],
@@ -23,254 +39,375 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write TestPublicAPI tests in tests/test_scenes.py: (a) ShotDetectionError and detect_shots importable from autopilot.analyze.scenes; (b) ShotDetectionError is Exception subclass with message; (c) detect_shots has correct signature \u2014 positional params media_id, video_path, db, scheduler (no config), returns None; (d) __all__ exports both names; (e) module constants TRANSNETV2_INPUT_WIDTH=48, TRANSNETV2_INPUT_HEIGHT=27, PYSCENEDETECT_THRESHOLD=27.0 are accessible.",
+      "description": "Write TestPublicAPI: test FaceDetectionError is importable and is subclass of Exception, test detect_faces is importable with correct params (media_id, video_path, db, scheduler, config), test cluster_faces is importable with (db, *, eps, min_samples) signature.",
       "status": "done",
-      "commit": "ac5e2f4"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Ensure scenes.py public API passes: finalize ShotDetectionError, detect_shots signature with proper type hints (media_id: str, video_path: Path, db: CatalogDB, scheduler: GPUScheduler) -> None, __all__ = ['ShotDetectionError', 'detect_shots'], and module constants.",
+      "description": "Create autopilot/analyze/faces.py with module docstring, imports, __all__, FaceDetectionError class, and stub detect_faces(media_id, video_path, db, scheduler, config) -> None and cluster_faces(db, *, eps=0.5, min_samples=3) -> None functions.",
       "status": "done",
-      "commit": "ac5e2f4"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write TestIdempotency tests: (a) when boundaries already exist for media_id (any method), detect_shots returns early without calling scheduler.model or importing scenedetect; (b) when no boundaries exist, detect_shots proceeds past the guard. Use catalog_db fixture, insert a media row + upsert_boundaries for setup.",
+      "description": "Write TestIdempotency: test that detect_faces returns early without calling scheduler.model when faces already exist for media_id; test that detect_faces proceeds (calls scheduler) when no faces exist.",
       "status": "done",
-      "commit": "6b72c6f"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement idempotency guard in detect_shots: call db.get_boundaries(media_id) (no method filter \u2014 returns list), return early with logger.info('...skipping') if list is non-empty.",
+      "description": "Implement idempotency guard in detect_faces: check db.get_faces_for_media(media_id), return early with logger.info if non-empty.",
       "status": "done",
-      "commit": "a5b5488"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write TestInputValidation tests: (a) nonexistent video_path raises ShotDetectionError matching 'not found'; (b) validation happens before heavy imports (scheduler not called on bad path).",
+      "description": "Write TestErrorHandling: test nonexistent video path raises FaceDetectionError matching 'not found'; test cap.isOpened() returning False raises FaceDetectionError matching 'Failed to open'; test frame read failure skips that frame but processes others.",
       "status": "done",
-      "commit": "0d37c5f"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Implement path validation in detect_shots: check video_path.exists(), raise ShotDetectionError if not found. This runs after idempotency check, before any heavy imports or detection attempts.",
+      "description": "Implement path validation (raise FaceDetectionError if not exists), lazy cv2 import, VideoCapture open with isOpened check, try/finally with cap.release(), frame read failure handled with logger.warning and continue.",
       "status": "done",
-      "commit": "ec9dda7"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write TestFrameReading tests for _read_and_downsample_frames helper: (a) returns numpy array of shape (N, 27, 48, 3) for N-frame video; (b) returns correct fps float and total_frames int; (c) skips bad frames (cap.read returns False) without crashing; (d) correctly downsamples from arbitrary resolution (e.g. 1920x1080) to 48x27 via cv2.resize; (e) raises ShotDetectionError when video cannot be opened (isOpened=False); (f) cap.release() called even on error (finally block). Mock cv2 via patch.dict(sys.modules) and _make_mock_capture helper.",
+      "description": "Write TestDetectionLoop: test_samples_at_1fps (300 frames at 30fps = 10 model.get calls), test_stores_faces_with_embeddings (2 faces/frame x 10 frames = 20 DB rows with correct frame_numbers and face_indices), test_single_face_per_frame (1 face stores 1 row with face_index=0).",
       "status": "done",
-      "commit": "f70ed47"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Implement _read_and_downsample_frames(video_path: Path, cv2_module) -> tuple[np.ndarray, float, int]: open VideoCapture, get fps/total_frames, read all frames in loop, resize each to (TRANSNETV2_INPUT_WIDTH, TRANSNETV2_INPUT_HEIGHT) via cv2.resize with INTER_AREA, stack into array shape (N, 27, 48, 3), return tuple. Cap.release() in finally block. Raise ShotDetectionError if not opened.",
+      "description": "Implement 1fps sampling loop: compute interval=max(1,int(fps)), frame_indices=range(0,total_frames,interval), load InsightFace model via scheduler.model(config.face_model), call face_model.get(frame) per sampled frame, skip faces with normed_embedding=None.",
       "status": "done",
-      "commit": "6d10baf"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write TestTransNetV2BoundaryConversion tests for _transnetv2_to_boundaries helper: (a) converts TransNetV2 scenes array [[0,99],[100,299]] to [{start_frame:0, end_frame:99, transition_type:'cut'}, ...]; (b) single-scene input [[0,299]] returns one-element list; (c) empty scenes array returns empty list; (d) output values are plain ints not numpy types (JSON-serializable).",
+      "description": "Write TestDataFormat: test bbox_json is valid JSON list of 4 floats matching input; test embedding BLOB is exactly 2048 bytes (512x float32); test embedding roundtrip via tobytes/frombuffer matches original; test cluster_id starts as None.",
       "status": "done",
-      "commit": "2ce7746"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Implement _transnetv2_to_boundaries(scenes: np.ndarray) -> list[dict]: iterate scene rows, build dict with int(start_frame), int(end_frame), transition_type='cut' for each. Return empty list for empty input.",
+      "description": "Implement face data serialization and storage: bbox_json=json.dumps(face.bbox.tolist()), emb_bytes=face.normed_embedding.astype(np.float32).tobytes(), accumulate rows, batch_insert_faces within db context manager. Early return if total_frames<=0.",
       "status": "done",
-      "commit": "c681d4b"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write TestPySceneDetectBoundaryConversion tests for _pyscenedetect_to_boundaries helper: (a) converts PySceneDetect SceneList [(start_tc, end_tc), ...] to boundary dicts using timecode.get_frames(); (b) empty scene list returns empty list; (c) single scene converted correctly; (d) end_frame is end.get_frames()-1 since get_frames() returns the first frame of the next scene. Use MagicMock FrameTimecodes.",
+      "description": "Write TestEdgeCases: test no faces detected stores 0 rows; test empty video (0 total_frames) returns without error and doesn't call scheduler.",
       "status": "done",
-      "commit": "94c2055"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Implement _pyscenedetect_to_boundaries(scenes: list) -> list[dict]: iterate scene tuples, extract frame numbers via start.get_frames() and end.get_frames()-1, build boundary dicts with start_frame, end_frame, transition_type='cut'.",
+      "description": "Verify edge case handling: early return if total_frames<=0 before scheduler.model(), only call batch_insert_faces if rows is non-empty. Tests should pass with existing implementation.",
       "status": "done",
-      "commit": "c1cf476"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-13",
       "type": "test",
-      "description": "Write TestTransNetV2Pipeline tests for the TransNetV2 path in detect_shots: (a) scheduler.model('transnetv2') is called as context manager; (b) model receives downsampled frames array; (c) model.predict_frames then model.predictions_to_scenes are called; (d) boundaries stored in DB via db.upsert_boundaries with method='transnetv2' inside with db: block; (e) stored boundaries_json is valid JSON list of dicts with start_frame, end_frame, transition_type keys; (f) handles zero-frame video gracefully (stores empty list). Mock cv2, TransNetV2 model, scheduler.",
+      "description": "Write TestLogging: test INFO log contains media_id on detection start; test INFO log contains 'skipping' when idempotency triggers.",
       "status": "done",
-      "commit": "db06e63"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-14",
       "type": "impl",
-      "description": "Implement TransNetV2 path in detect_shots: deferred import cv2, call _read_and_downsample_frames, use scheduler.model('transnetv2') context manager, call model.predict_frames(frames) then model.predictions_to_scenes(predictions), convert via _transnetv2_to_boundaries, json.dumps and db.upsert_boundaries with method='transnetv2' inside with db: block.",
+      "description": "Add structured logging to detect_faces: logger.info on start (media_id, total_frames, fps), logger.info on completion (face count, frame count), logger.info on idempotent skip, logger.warning on frame read failure.",
       "status": "done",
-      "commit": "e2c0537"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-15",
       "type": "test",
-      "description": "Write TestPySceneDetectPipeline tests for the PySceneDetect path: (a) scenedetect.detect called with str(video_path) and AdaptiveDetector; (b) AdaptiveDetector created with adaptive_threshold=27.0; (c) stores results via db.upsert_boundaries with method='pyscenedetect' inside with db: block; (d) stored boundaries_json is valid JSON. Mock scenedetect via patch.dict(sys.modules).",
+      "description": "Write TestClusterFaces.test_empty_db_no_error: cluster_faces with no face rows creates no clusters and raises no error.",
       "status": "done",
-      "commit": "38f1dde"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-16",
       "type": "impl",
-      "description": "Implement PySceneDetect path: deferred import scenedetect, call scenedetect.detect(str(video_path), AdaptiveDetector(adaptive_threshold=PYSCENEDETECT_THRESHOLD)), convert via _pyscenedetect_to_boundaries, json.dumps and db.upsert_boundaries with method='pyscenedetect' inside with db: block.",
+      "description": "Implement cluster_faces skeleton: lazy import sklearn.cluster.DBSCAN, fetch face_rows via db.get_all_face_embeddings(), return early with logger.info if empty.",
       "status": "done",
-      "commit": "5789a36"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-17",
       "type": "test",
-      "description": "Write TestFallbackBehavior tests: (a) when TransNetV2 succeeds, PySceneDetect is NOT called (scenedetect not imported); (b) when TransNetV2 raises exception, PySceneDetect fallback runs and stores results with method='pyscenedetect'; (c) when both methods fail, ShotDetectionError is raised wrapping the fallback exception via __cause__; (d) TransNetV2 failure logs WARNING with exc_info before attempting fallback; (e) no partial results stored in DB on double failure.",
+      "description": "Write TestClusterFaces.test_clusters_three_groups: insert 3 synthetic clusters of 5 faces each (unit vectors with dominant weight on different dimensions), verify 3 face_clusters rows, all faces have cluster_id assigned, faces within same synthetic group share same cluster_id.",
       "status": "done",
-      "commit": "bf9d6bf"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-18",
       "type": "impl",
-      "description": "Wire up detect_shots main flow after validation: try TransNetV2 path, on success log completion and return. On exception, log warning with exc_info=True, try PySceneDetect path, on success log completion and return. On double failure: raise ShotDetectionError(f'Shot detection failed for {media_id}: {exc}') from exc.",
+      "description": "Implement DBSCAN clustering core: unpack embeddings into numpy matrix via np.frombuffer, run DBSCAN(eps, min_samples, metric='cosine').fit(embeddings), group faces by label (skip -1 noise), compute L2-normalized centroids, call insert_face_cluster and batch_update_face_cluster_ids.",
       "status": "done",
-      "commit": "2ac780e"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-19",
       "type": "test",
-      "description": "Write TestLogging tests using caplog fixture: (a) INFO log on detection start with media_id; (b) INFO log on successful completion with method name and boundary count; (c) INFO log mentioning 'skipping' for idempotent call; (d) WARNING log containing media_id when TransNetV2 fails and fallback triggers.",
+      "description": "Write TestClusterFaces.test_centroid_is_normalized_mean: verify representative_embedding BLOB decodes to 512 float32 values with L2 norm approximately 1.0.",
       "status": "done",
-      "commit": "a666172"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-20",
       "type": "impl",
-      "description": "Ensure all logging statements are complete: logger.info('Starting shot detection for %s', media_id) at start; logger.info('Boundaries already exist for %s, skipping', media_id) on idempotent skip; logger.warning('TransNetV2 failed for %s, falling back to PySceneDetect', media_id, exc_info=True) on fallback; logger.info('Completed shot detection for %s: %d boundaries via %s', media_id, count, method) on completion.",
+      "description": "Verify centroid computation: mean of member embeddings normalized via centroid/np.linalg.norm(centroid), stored as float32 bytes. Tests should pass with step-18 implementation.",
       "status": "done",
-      "commit": "494d9b5"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-21",
       "type": "test",
-      "description": "Write TestIntegration end-to-end tests: (a) mock cv2 and TransNetV2 model, run detect_shots on mocked 300-frame 30fps video, verify boundaries stored in DB with correct structure (list of dicts with start_frame/end_frame/transition_type), method='transnetv2', retrievable via db.get_boundaries; (b) second call to same media_id is idempotent (scheduler.model not called again); (c) fallback path stores boundaries with method='pyscenedetect' when TransNetV2 fails; (d) both methods' results can coexist in DB for same media_id via composite PK.",
+      "description": "Write TestClusterFaces.test_sample_paths_populated: verify sample_image_paths is JSON list of <=5 'media_id:frame_number' strings per cluster.",
       "status": "done",
-      "commit": "3f1f94e"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-22",
       "type": "impl",
-      "description": "Final cleanup pass: verify cap.release() in all cv2 code paths (finally block in _read_and_downsample_frames), module docstring complete, __all__ exports accurate, no unused imports, edge cases handled (zero-frame video), ruff lint clean, all tests green.",
+      "description": "Implement sample paths: collect up to 5 member indices per cluster, format as 'media_id:frame_number' strings, store as JSON via insert_face_cluster.",
       "status": "done",
-      "commit": "6708d22"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-23",
       "type": "test",
-      "description": "Write tests for false-negative error-handling bug in PySceneDetect fallback path (reviewer_robustness: error_handling_correctness, scenes.py:215-230). Add two tests: (a) test_run_pyscenedetect_returns_boundaries in TestPySceneDetectPipeline: verify that _run_pyscenedetect returns list[dict] (the boundaries list) so the caller can obtain the count without a DB round-trip. Call _run_pyscenedetect with mocked scenedetect returning 2 scenes, assert return value is a list of 2 dicts with start_frame/end_frame/transition_type keys. (b) test_pyscenedetect_fallback_success_not_masked_by_logging_failure in TestFallbackBehavior: prove the false-negative bug is fixed. Setup: TransNetV2 fails (cap.isOpened=False), scenedetect succeeds (writes boundaries to DB). After _run_pyscenedetect returns, monkey-patch catalog_db.get_boundaries to raise RuntimeError('DB read error') so any attempt to read-back for logging would fail. Assert detect_shots does NOT raise ShotDetectionError \u2014 the detection succeeded and data is in DB, so a logging failure must not propagate as a detection failure. Verify boundaries ARE in the DB by restoring get_boundaries and checking.",
+      "description": "Write TestClusterFaces.test_label_starts_null: all face_clusters rows have label=None after clustering.",
       "status": "done",
-      "commit": "2527b46"
+      "commit": "3b3fda4"
     },
     {
       "id": "step-24",
       "type": "impl",
-      "description": "Fix false-negative error-handling bug (reviewer_robustness: error_handling_correctness, scenes.py:215-230). Two changes: (1) Refactor _run_pyscenedetect to return list[dict] instead of None \u2014 after calling scenedetect.detect, converting, and upserting to DB, return the boundaries list. Update type hint to -> list[dict]. (2) In detect_shots PySceneDetect fallback block, restructure so ONLY the _run_pyscenedetect call is inside the try/except that raises ShotDetectionError. Capture the returned boundaries: `try: boundaries = _run_pyscenedetect(media_id, video_path, db) except Exception as exc: raise ShotDetectionError(...) from exc`. Then OUTSIDE the try/except, log the completion using len(boundaries): `logger.info('Completed shot detection for %s: %d boundaries via %s', media_id, len(boundaries), 'pyscenedetect')`. This eliminates the DB round-trip for count logging and ensures a successful detection is never masked by a post-detection logging failure.",
+      "description": "Verify label=None is passed to insert_face_cluster. Tests should pass with existing implementation.",
       "status": "done",
-      "commit": "3cc38de"
+      "commit": "3b3fda4"
+    },
+    {
+      "id": "step-25",
+      "type": "test",
+      "description": "Write TestClusterFaces.test_noise_excluded_from_clusters: insert 2 tight clusters + 2 random outliers, verify outlier faces have cluster_id=None and only 2 cluster rows created.",
+      "status": "done",
+      "commit": "3b3fda4"
+    },
+    {
+      "id": "step-26",
+      "type": "impl",
+      "description": "Verify noise handling: DBSCAN labels noise as -1, skip label==-1 in cluster_map loop with noise_count increment. Noise faces keep cluster_id=None since only cluster members get batch_update_face_cluster_ids.",
+      "status": "done",
+      "commit": "3b3fda4"
+    },
+    {
+      "id": "step-27",
+      "type": "test",
+      "description": "Write TestClusterFaces.test_single_face_is_noise (1 face with min_samples=3 = 0 clusters, cluster_id=None) and test_reclustering_replaces_old (run twice, same cluster count, all faces still assigned).",
+      "status": "done",
+      "commit": "3b3fda4"
+    },
+    {
+      "id": "step-28",
+      "type": "impl",
+      "description": "Implement re-clustering cleanup: before creating new clusters, call db.clear_face_clusters() and db.reset_face_cluster_ids() within a db context manager to ensure idempotent re-runs.",
+      "status": "done",
+      "commit": "3b3fda4"
+    },
+    {
+      "id": "step-29",
+      "type": "test",
+      "description": "Write TestClusterFacesLogging: test INFO log contains cluster count; test INFO log contains noise count; test log mentions 'No face embeddings' when DB is empty.",
+      "status": "done",
+      "commit": "3b3fda4"
+    },
+    {
+      "id": "step-30",
+      "type": "impl",
+      "description": "Add cluster_faces logging: logger.info on start with embedding count, logger.info on completion with cluster count and noise count, logger.info on empty skip.",
+      "status": "done",
+      "commit": "3b3fda4"
+    },
+    {
+      "id": "step-31",
+      "type": "test",
+      "description": "Write TestLabelFaces: test get_unlabeled_clusters returns only clusters with label IS NULL; test apply_label updates face_clusters.label in DB; test label roundtrip verifies value; test all_labeled_returns_empty after labeling all clusters.",
+      "status": "done",
+      "commit": "3b3fda4"
+    },
+    {
+      "id": "step-32",
+      "type": "impl",
+      "description": "Create scripts/label_faces.py with get_unlabeled_clusters(db) filtering clusters where label is None, apply_label(db, cluster_id, label) calling db.update_face_label within context manager, and main(db_path) interactive CLI loop with argparse.",
+      "status": "done",
+      "commit": "3b3fda4"
+    },
+    {
+      "id": "step-33",
+      "type": "test",
+      "description": "Write TestIntegration.test_detect_then_cluster_pipeline: mock detect_faces on a 90-frame video with 2 distinct embedding groups per frame (3 sampled frames x 2 faces = 6 rows), then cluster_faces with min_samples=2 produces 2 clusters, all faces assigned, centroids normalized, sample_paths valid JSON, labels null.",
+      "status": "done",
+      "commit": "3b3fda4"
+    },
+    {
+      "id": "step-34",
+      "type": "impl",
+      "description": "Run full integration test to verify detect_faces -> cluster_faces pipeline end-to-end. Fix any remaining issues. Final verification: all 36 tests pass, ruff lint clean.",
+      "status": "done",
+      "commit": "3b3fda4"
+    },
+    {
+      "id": "step-35",
+      "type": "test",
+      "description": "Write TestErrorHandling.test_video_not_opened_releases_capture: verify that when cap.isOpened() returns False, cap.release() is still called before FaceDetectionError is raised. Create mock cv2 with VideoCapture returning a mock cap where isOpened() returns False. Call detect_faces, expect FaceDetectionError. Assert cap.release.called is True. This tests the resource leak fix where the current code raises at line 60 before entering the try/finally at line 62, so cap.release() is never called for failed-open captures.",
+      "status": "done",
+      "commit": "b9a35e1"
+    },
+    {
+      "id": "step-36",
+      "type": "impl",
+      "description": "Fix resource leak in detect_faces: restructure lines 58-62 so that try/finally wraps the isOpened() check. Change from `cap = cv2.VideoCapture(...); if not cap.isOpened(): raise ...; try: ... finally: cap.release()` to `cap = cv2.VideoCapture(...); try: if not cap.isOpened(): raise FaceDetectionError(...); ... finally: cap.release()`. This ensures cap.release() is called in all code paths including the failed-open case.",
+      "status": "done",
+      "commit": "0d1947d"
+    },
+    {
+      "id": "step-37",
+      "type": "test",
+      "description": "Write TestClusterFaces.test_atomic_rebuild_on_failure: first cluster_faces successfully on 2 synthetic clusters (5 faces each), verify 2 clusters exist and all 10 faces have cluster_ids. Then monkey-patch db.insert_face_cluster to raise RuntimeError on second call. Call cluster_faces again \u2014 it should raise RuntimeError. Verify the database still has the original 2 face_clusters rows and all 10 faces still have their original non-None cluster_ids (the failed rebuild rolled back the destructive clear, preserving pre-existing state). This tests the transactional integrity fix for the split-transaction atomicity issue.",
+      "status": "done",
+      "commit": "64b65d9"
+    },
+    {
+      "id": "step-38",
+      "type": "impl",
+      "description": "Fix transactional integrity in cluster_faces: merge the two separate `with db:` blocks into a single atomic transaction. Restructure so all pure in-memory computation happens first (cluster_map building from DBSCAN labels, centroid calculation, sample_paths construction, cluster_id_updates accumulation), then perform all DB mutations atomically in one `with db:` block: db.clear_face_clusters(); db.reset_face_cluster_ids(); for each cluster: db.insert_face_cluster(...); db.batch_update_face_cluster_ids(cluster_id_updates). If any mutation fails, CatalogDB.__exit__ rolls back the entire operation, preserving the pre-existing state.",
+      "status": "done",
+      "commit": "df195e3"
+    },
+    {
+      "id": "step-39",
+      "type": "test",
+      "description": "Write TestClusterFaces.test_uses_euclidean_ball_tree: patch sklearn.cluster.DBSCAN to spy on constructor args while still running the real DBSCAN. Call cluster_faces(catalog_db, eps=0.5, min_samples=3) on 2 synthetic clusters of 5 faces. Verify DBSCAN was instantiated with metric='euclidean', algorithm='ball_tree', and eps=pytest.approx(math.sqrt(2 * 0.5), abs=1e-6) (i.e. ~1.0). Also verify clustering still produces correct results (2 clusters, all faces assigned) \u2014 this confirms the cosine-to-euclidean conversion is mathematically equivalent for L2-normalized embeddings.",
+      "status": "done",
+      "commit": "956de77"
+    },
+    {
+      "id": "step-40",
+      "type": "impl",
+      "description": "Fix algorithmic complexity in cluster_faces: switch DBSCAN from metric='cosine' (O(n\u00b2) brute-force) to metric='euclidean' with algorithm='ball_tree' (O(n log n)). Since ArcFace normed_embedding is L2-normalized, cosine_distance(a,b) = 1 - dot(a,b) = 0.5 * ||a-b||\u00b2. Convert eps internally: eps_euclidean = math.sqrt(2.0 * eps). Change the DBSCAN call from `DBSCAN(eps=eps, min_samples=min_samples, metric='cosine')` to `DBSCAN(eps=math.sqrt(2.0 * eps), min_samples=min_samples, metric='euclidean', algorithm='ball_tree')`. Add `import math` to module imports. Update the docstring to note eps is in cosine distance units, converted internally to euclidean for O(n log n) performance. Update comment from '# Run DBSCAN with cosine distance' to '# Run DBSCAN with euclidean metric (equivalent to cosine for L2-normed vectors)'. All existing tests pass unchanged because the equivalence is exact for unit vectors.",
+      "status": "done",
+      "commit": "f5e2486"
     }
   ],
   "design_decisions": [
     {
-      "decision": "No ModelConfig parameter in detect_shots signature",
-      "rationale": "TransNetV2 has no user-configurable variants (unlike whisper_size or yolo_variant). The model name 'transnetv2' is a fixed constant used with scheduler.model(). PySceneDetect threshold (27.0) is hardcoded per task spec. This keeps the API simpler than peer modules."
+      "decision": "Use InsightFace buffalo_l model pack via GPUScheduler context manager, same pattern as YOLO in objects.py",
+      "rationale": "Consistent GPU model management across all analysis modules. The scheduler handles VRAM-aware loading/eviction with LRU, preventing OOM. buffalo_l includes both SCRFD (detection) and ArcFace (recognition/embedding) in a single model pack."
     },
     {
-      "decision": "Idempotency checks all methods via db.get_boundaries(media_id) with no method filter",
-      "rationale": "Task spec says 'skip files already processed'. Using get_boundaries(media_id) returns all methods as a list. If ANY boundaries exist, skip. This is consistent with the single-entry-point design where detect_shots handles both methods internally."
+      "decision": "1fps sampling via interval=max(1,int(fps)), identical to objects.py sparse mode",
+      "rationale": "Face detection doesn't need every frame \u2014 faces change slowly. 1fps gives adequate coverage for 50h of footage (~180K frames) within the ~30min GPU budget at SCRFD's ~100 FPS throughput on RTX 3090."
     },
     {
-      "decision": "Video I/O is method-specific, not centralized in detect_shots",
-      "rationale": "TransNetV2 needs cv2.VideoCapture for frame-by-frame reading + downsampling to 48x27. PySceneDetect handles its own video I/O via scenedetect.detect(path). Centralizing cv2 VideoCapture in detect_shots would unnecessarily couple the fallback path to cv2. Path validation (exists check) stays in detect_shots since both methods need the file to exist."
+      "decision": "Store 512-d ArcFace embeddings as float32 BLOB (2048 bytes) in faces table, not as JSON",
+      "rationale": "Binary BLOB is ~4x more space-efficient than JSON for float arrays and avoids float precision loss from string serialization. np.frombuffer/tobytes provides zero-copy roundtrip."
     },
     {
-      "decision": "TransNetV2 frame downsampling isolated in _read_and_downsample_frames helper",
-      "rationale": "TransNetV2 expects exactly 48x27 RGB frames. Isolating this in a helper with cv2 passed as parameter makes it independently testable with mock cv2 and keeps the GPU pipeline code focused on model interaction."
+      "decision": "DBSCAN with cosine distance metric for face clustering instead of agglomerative",
+      "rationale": "DBSCAN naturally handles noise (unclustered faces) by labeling them -1, requires no predetermined cluster count, and cosine distance is the standard metric for ArcFace embeddings. eps=0.5 and min_samples=3 are sensible defaults for face re-identification."
     },
     {
-      "decision": "Separate boundary conversion helpers for each detection method",
-      "rationale": "TransNetV2 returns numpy arrays (scenes as [start, end] pairs via predictions_to_scenes). PySceneDetect returns SceneList of (FrameTimecode, FrameTimecode) tuples. Different input types warrant separate pure-function converters: _transnetv2_to_boundaries and _pyscenedetect_to_boundaries."
+      "decision": "Clear and rebuild clusters on each cluster_faces() call (not incremental)",
+      "rationale": "Ensures idempotency and correctness when new face data is added or parameters change. The clustering operation is fast (sklearn DBSCAN on 180K embeddings is seconds) so full rebuild is acceptable."
     },
     {
-      "decision": "Fallback labels results honestly with method='pyscenedetect'",
-      "rationale": "The composite PK (media_id, method) allows both methods' results to coexist. When fallback runs, it stores results as 'pyscenedetect', not 'transnetv2'. If both are run separately, both are stored for later comparison per task spec."
+      "decision": "face_clusters.label starts NULL, assigned via separate scripts/label_faces.py",
+      "rationale": "Separation of concerns: automated clustering is decoupled from human labeling. The label_faces.py script provides an interactive CLI for assigning names to clusters after reviewing sample face crops."
     },
     {
-      "decision": "Deferred imports for cv2 and scenedetect",
-      "rationale": "Follows established pattern in faces.py, objects.py, asr.py. Heavy ML/video libraries imported only after validation checks pass, improving startup time and enabling path-validation tests to run without these dependencies installed."
+      "decision": "Skip faces where normed_embedding is None rather than raising",
+      "rationale": "InsightFace may occasionally fail to extract embeddings for low-quality detections. Skipping gracefully preserves all other detections instead of failing the entire video."
     },
     {
-      "decision": "Cap.release() in finally block inside _read_and_downsample_frames, not detect_shots",
-      "rationale": "Since cv2.VideoCapture is opened in the frame-reading helper (not in detect_shots), the release must be in that helper's finally block. This keeps resource lifecycle colocated with resource creation."
+      "decision": "Sample paths stored as 'media_id:frame_number' strings (up to 5 per cluster)",
+      "rationale": "Lightweight reference format that can be resolved to actual image crops on demand. 5 samples provide enough visual diversity for human cluster identification during labeling."
     },
     {
-      "decision": "All boundary entries use transition_type='cut' initially",
-      "rationale": "Both TransNetV2 and PySceneDetect detect hard cuts (scene boundaries). Neither distinguishes transition types (dissolves, wipes). The transition_type field allows future extension but 'cut' is the correct default for both detectors."
+      "decision": "VideoCapture try/finally must wrap the isOpened() check (review fix)",
+      "rationale": "cv2.VideoCapture may hold OS-level file descriptors or partial handles even when it fails to open. The try/finally with cap.release() must begin immediately after construction, before the isOpened() check, to guarantee release in all code paths including the failed-open error path."
     },
     {
-      "decision": "_run_pyscenedetect returns boundaries list instead of None (review fix)",
-      "rationale": "Reviewer identified that count-logging code (db.get_boundaries + json.loads) inside the try/except block at lines 215-230 creates a false-negative failure: if the DB read-back for logging fails after data is already persisted, the caller receives ShotDetectionError even though detection succeeded. Returning the boundaries list directly from _run_pyscenedetect avoids the DB round-trip for counting and allows the completion logging to live outside the error-handling try/except. This mirrors how the TransNetV2 path already works (boundaries variable computed before logging, not read back from DB)."
+      "decision": "All cluster_faces DB mutations in a single atomic transaction (review fix)",
+      "rationale": "The original code split clear_face_clusters/reset_face_cluster_ids into one transaction and insert_face_cluster/batch_update_face_cluster_ids into a second. A crash between them leaves the DB in an unrecoverable state (all clusters wiped, all cluster_ids NULL). By computing all cluster data in-memory first, then performing all DB writes in one `with db:` block, CatalogDB's __exit__ rollback guarantees atomicity: either the full rebuild completes or the original state is preserved."
+    },
+    {
+      "decision": "Use euclidean metric with ball_tree algorithm instead of cosine metric for DBSCAN (review fix for algorithmic_complexity)",
+      "rationale": "sklearn's DBSCAN with metric='cosine' forces brute-force neighborhood queries (O(n\u00b2)), which is intractable at the project's scale (50h video \u2248 180K sampled frames \u00d7 multiple faces = potentially hundreds of thousands of embeddings), breaking the ~30-minute GPU budget SLA. Since ArcFace embeddings are L2-normalized, cosine_distance(a,b) = 0.5 * euclidean_distance(a,b)\u00b2, so we convert eps_cosine to eps_euclidean = sqrt(2 * eps_cosine) and use metric='euclidean' with algorithm='ball_tree', reducing complexity to O(n log n). The public API retains cosine-semantic eps (default 0.5) for conceptual clarity and backward compatibility \u2014 the conversion is transparent and mathematically exact for unit vectors."
     }
   ],
   "reuse": [
     {
-      "what": "CatalogDB.upsert_boundaries / get_boundaries",
-      "where": "autopilot/db.py lines 282-309",
-      "how": "Direct use for storing and retrieving shot boundaries. upsert_boundaries(media_id, boundaries_json, method) for writes. get_boundaries(media_id) with no method filter for idempotency check (returns list). No DB schema changes needed."
+      "what": "CatalogDB face CRUD methods (10 methods)",
+      "where": "autopilot/db.py lines 346-444",
+      "how": "All face/face_cluster methods already exist: batch_insert_faces, get_faces_for_media, get_all_face_embeddings, clear_face_clusters, reset_face_cluster_ids, batch_update_face_cluster_ids, insert_face_cluster, update_face_label, get_face_clusters, get_face_cluster_by_id. No DB changes needed."
+    },
+    {
+      "what": "DB schema (faces + face_clusters tables with indexes)",
+      "where": "autopilot/db.py lines 97-112, 183-185",
+      "how": "Tables already defined in _create_schema() with correct columns, PKs, FKs, and indexes. faces: (media_id, frame_number, face_index, bbox_json, embedding BLOB, cluster_id). face_clusters: (cluster_id, label, representative_embedding BLOB, sample_image_paths)."
     },
     {
       "what": "GPUScheduler context manager pattern",
-      "where": "autopilot/analyze/gpu_scheduler.py scheduler.model(name) context manager",
-      "how": "Use `with scheduler.model('transnetv2') as model:` to load TransNetV2 with VRAM management. Same pattern as objects.py uses for YOLO and asr.py uses for Whisper."
+      "where": "autopilot/analyze/gpu_scheduler.py",
+      "how": "Use `with scheduler.model(config.face_model) as face_model:` exactly as objects.py uses `with scheduler.model(config.yolo_variant) as yolo_model:`. Handles VRAM budget, LRU eviction, reference counting."
     },
     {
-      "what": "Module structure pattern (exception, deferred imports, idempotency, validation, logging)",
-      "where": "autopilot/analyze/objects.py, asr.py, faces.py",
-      "how": "Mirror exact structure: from __future__ import annotations, TYPE_CHECKING block, __all__, custom exception, logger, path validation before heavy imports, with db: for transactional writes, error wrapping try/except pattern."
+      "what": "ModelConfig.face_model field",
+      "where": "autopilot/config.py line 72",
+      "how": "Already defined as `face_model: str = 'buffalo_l'` in ModelConfig dataclass. No config changes needed."
     },
     {
-      "what": "Test mock helpers (_make_mock_cv2, _make_mock_capture)",
-      "where": "tests/test_objects.py lines 83-132",
-      "how": "Replicate _make_mock_cv2 (with CAP_PROP constants) and _make_mock_capture (with configurable fps/total_frames/width/height, side_effect for get, read returning numpy frames) in test_scenes.py. Add TransNetV2-specific and PySceneDetect-specific mock helpers."
+      "what": "objects.py architectural pattern (detect_objects)",
+      "where": "autopilot/analyze/objects.py",
+      "how": "Follow same structure: lazy cv2 import after path validation, idempotency check, custom Exception subclass, 1fps sampling via max(1,int(fps)), scheduler context manager for GPU model, transactional batch inserts with `with db:`, try/finally with cap.release(), structured logging."
     },
     {
-      "what": "Test fixture catalog_db (in-memory CatalogDB with autocommit)",
-      "where": "tests/conftest.py lines 26-39",
-      "how": "Use shared fixture for all DB-dependent tests. Insert media row with catalog_db.insert_media() before boundary operations for FK constraints."
+      "what": "Test fixtures (catalog_db) and mock patterns",
+      "where": "tests/conftest.py + tests/test_objects.py",
+      "how": "Reuse catalog_db fixture (in-memory SQLite with autocommit). Mirror mock helpers from test_objects.py: _make_mock_capture for cv2.VideoCapture, _make_mock_cv2 for cv2 module, patch.dict(sys.modules, {'cv2': mock_cv2}) for lazy import mocking."
     },
     {
-      "what": "Deferred import test pattern (patch.dict sys.modules)",
-      "where": "tests/test_objects.py lines 473, 519",
-      "how": "Use `with patch.dict(sys.modules, {'cv2': mock_cv2}):` and `with patch.dict(sys.modules, {'scenedetect': mock_sd, 'scenedetect.detectors': mock_detectors}):` to mock deferred imports."
+      "what": "sklearn DBSCAN (already a project dependency)",
+      "where": "scikit-learn in pyproject.toml",
+      "how": "Lazy import inside cluster_faces: `from sklearn.cluster import DBSCAN`. Use DBSCAN(eps=math.sqrt(2*eps), min_samples=min_samples, metric='euclidean', algorithm='ball_tree').fit(embeddings)."
     },
     {
-      "what": "Mock scheduler with context manager protocol",
-      "where": "tests/test_objects.py (TestIdempotency, TestSparseMode)",
-      "how": "scheduler = MagicMock(); scheduler.model.return_value.__enter__ = MagicMock(return_value=mock_model); scheduler.model.return_value.__exit__ = MagicMock(return_value=False). Reuse this pattern for TransNetV2 model mocking."
+      "what": "CatalogDB __exit__ rollback semantics",
+      "where": "autopilot/db.py lines 44-53",
+      "how": "CatalogDB.__exit__ calls conn.rollback() on exception, conn.commit() on success. This is the atomicity primitive that makes the single-transaction fix work: if any insert_face_cluster or batch_update call fails within the `with db:` block, the entire clear+reset+inserts+updates is rolled back."
     },
     {
-      "what": "Test class organization by concern",
-      "where": "tests/test_objects.py, tests/test_asr.py",
-      "how": "Follow same class-per-concern structure: TestPublicAPI, TestIdempotency, TestInputValidation, TestFrameReading, TestTransNetV2Pipeline, TestPySceneDetectPipeline, TestFallbackBehavior, TestLogging, TestIntegration."
+      "what": "L2-normalized ArcFace embeddings enable cosine-to-euclidean equivalence",
+      "where": "Mathematical property of unit vectors",
+      "how": "For L2-normalized vectors a,b: cosine_distance(a,b) = 1 - dot(a,b) = 0.5 * ||a-b||^2. This allows converting eps_cosine to eps_euclidean = sqrt(2 * eps_cosine) and using DBSCAN with metric='euclidean' + algorithm='ball_tree' for O(n log n) instead of O(n^2) brute-force required by sklearn for non-Euclidean metrics."
     }
   ],
   "_schema_version": 1

@@ -212,6 +212,30 @@ class TestErrorHandling:
             with pytest.raises(FaceDetectionError, match="Failed to open"):
                 detect_faces("vid1", vid, catalog_db, scheduler, config)
 
+    def test_video_not_opened_releases_capture(self, catalog_db, tmp_path) -> None:
+        """When cap.isOpened() returns False, cap.release() is still called."""
+        from autopilot.analyze.faces import FaceDetectionError, detect_faces
+
+        vid = tmp_path / "bad.mp4"
+        vid.touch()
+        catalog_db.insert_media("vid1", str(vid))
+
+        mock_cv2 = _make_mock_cv2()
+        cap = MagicMock()
+        cap.isOpened.return_value = False
+        mock_cv2.VideoCapture.return_value = cap
+
+        scheduler = MagicMock()
+        config = MagicMock()
+        config.face_model = "buffalo_l"
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            with pytest.raises(FaceDetectionError, match="Failed to open"):
+                detect_faces("vid1", vid, catalog_db, scheduler, config)
+
+        # cap.release() must be called even for failed-open captures
+        cap.release.assert_called_once()
+
     def test_frame_read_failure_skipped(self, catalog_db, tmp_path) -> None:
         """Frame read failure skips that frame, other frames still processed."""
         from autopilot.analyze.faces import detect_faces
@@ -659,6 +683,72 @@ class TestClusterFaces:
 
         faces = catalog_db.get_faces_for_media("vid1")
         assert faces[0]["cluster_id"] is None
+
+    def test_atomic_rebuild_on_failure(self) -> None:
+        """Failed re-clustering rolls back destructive clear, preserving old state.
+
+        Uses a non-autocommit DB so that CatalogDB.__exit__ rollback actually
+        reverses the clear_face_clusters + reset_face_cluster_ids mutations.
+        """
+        from autopilot.analyze.faces import cluster_faces
+        from autopilot.db import CatalogDB
+
+        # Create non-autocommit DB for proper transaction semantics
+        db = CatalogDB(":memory:")
+        try:
+            db.insert_media("vid1", "/tmp/vid1.mp4")
+            db.conn.commit()
+
+            # Insert 2 clusters of 5 faces each
+            rng = np.random.default_rng(42)
+            rows = []
+            for c in range(2):
+                for i in range(5):
+                    emb = rng.normal(0, 0.01, 512).astype(np.float32)
+                    emb[c] = 1.0
+                    emb = emb / np.linalg.norm(emb)
+                    rows.append(("vid1", c * 5 + i, 0, "[]", emb.tobytes(), None))
+            with db:
+                db.batch_insert_faces(rows)
+
+            # First clustering succeeds
+            cluster_faces(db, eps=0.5, min_samples=3)
+
+            # Verify initial state: 2 clusters, all faces have cluster_id
+            clusters_before = db.get_face_clusters()
+            assert len(clusters_before) == 2
+            faces_before = db.get_faces_for_media("vid1")
+            assert all(f["cluster_id"] is not None for f in faces_before)
+            original_ids = [f["cluster_id"] for f in faces_before]
+
+            # Monkey-patch insert_face_cluster to fail on second call
+            call_count = [0]
+            orig_insert = db.insert_face_cluster
+
+            def failing_insert(*args, **kwargs):
+                call_count[0] += 1
+                if call_count[0] >= 2:
+                    raise RuntimeError("Simulated DB failure")
+                return orig_insert(*args, **kwargs)
+
+            db.insert_face_cluster = failing_insert  # type: ignore[assignment]
+
+            # Re-clustering should fail
+            with pytest.raises(RuntimeError, match="Simulated DB failure"):
+                cluster_faces(db, eps=0.5, min_samples=3)
+
+            # Original state must be preserved (rollback undid the clear)
+            clusters_after = db.get_face_clusters()
+            assert len(clusters_after) == 2, (
+                f"Expected 2 clusters preserved, got {len(clusters_after)}"
+            )
+            faces_after = db.get_faces_for_media("vid1")
+            assert all(f["cluster_id"] is not None for f in faces_after), (
+                "All faces should retain their original cluster_ids"
+            )
+            assert [f["cluster_id"] for f in faces_after] == original_ids
+        finally:
+            db.close()
 
     def test_reclustering_replaces_old(self, catalog_db) -> None:
         """Running cluster_faces twice replaces old clusters, not doubles them."""
