@@ -96,3 +96,16 @@ def transcribe_media(
         db.update_media_status(media_id, "analyzing")
 
     import whisperx  # type: ignore[import-untyped]
+
+    device_str = f"cuda:{scheduler.device}"
+    logger.info(
+        "Starting transcription for %s with model %s",
+        media_id,
+        config.whisper_size,
+    )
+
+    # Stage 1: Load audio and transcribe
+    audio = whisperx.load_audio(str(audio_path))
+    with scheduler.model(config.whisper_size) as model:
+        result = model.transcribe(audio, batch_size=batch_size)
+    language = result.get("language", "en")
