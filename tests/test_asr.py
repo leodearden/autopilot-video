@@ -288,7 +288,7 @@ class TestNormalizeSegments:
 
     def test_json_serializable(self):
         """json.dumps succeeds on output, no numpy types leak."""
-        import numpy as np
+        import numpy as np  # type: ignore[reportMissingImports]
 
         from autopilot.analyze.asr import _normalize_segments
 

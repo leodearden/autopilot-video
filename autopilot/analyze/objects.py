@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import numpy as np
+import numpy as np  # type: ignore[reportMissingImports]
 
 if TYPE_CHECKING:
     from autopilot.analyze.gpu_scheduler import GPUScheduler

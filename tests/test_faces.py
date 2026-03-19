@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import numpy as np
+import numpy as np  # type: ignore[reportMissingImports]
 import pytest
 
 # -- Mock helpers --------------------------------------------------------------

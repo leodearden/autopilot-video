@@ -909,7 +909,7 @@ class TestFacesCRUD:
 
     def _make_face_embedding(self, dim: int = 512) -> bytes:
         """Create a dummy face embedding BLOB (float32)."""
-        import numpy as np
+        import numpy as np  # type: ignore[reportMissingImports]
 
         return np.random.default_rng(42).random(dim).astype(np.float32).tobytes()
 
@@ -975,7 +975,7 @@ class TestFacesCRUD:
 
     def test_embedding_blob_roundtrip(self, catalog_db):
         """Verify face embedding binary data survives round-trip."""
-        import numpy as np
+        import numpy as np  # type: ignore[reportMissingImports]
 
         _insert_test_media(catalog_db)
         original = np.random.default_rng(99).random(512).astype(np.float32)
