@@ -340,3 +340,90 @@ class TestIdempotency:
                 )
 
         scheduler.model.assert_called_once()
+
+
+def _sys_modules_patch() -> dict[str, MagicMock]:
+    """Return dict of sys.modules patches for cv2/PIL (no torch needed)."""
+    mock_cv2 = _make_mock_cv2()
+    mock_pil = _make_mock_pil()
+    return {
+        "cv2": mock_cv2,
+        "PIL": mock_pil,
+        "PIL.Image": mock_pil.Image,
+    }
+
+
+class TestErrorHandling:
+    """Tests for compute_embeddings error handling."""
+
+    def test_video_not_found_raises(self, catalog_db) -> None:
+        """Nonexistent video path raises EmbeddingError matching 'not found'."""
+        from pathlib import Path
+
+        from autopilot.analyze.embeddings import EmbeddingError, compute_embeddings
+        from autopilot.config import ModelConfig
+
+        catalog_db.insert_media("m1", "/nonexistent/video.mp4")
+        scheduler = MagicMock()
+        config = ModelConfig()
+
+        with pytest.raises(EmbeddingError, match="not found"):
+            compute_embeddings(
+                "m1", Path("/nonexistent/video.mp4"), catalog_db, scheduler, config
+            )
+
+    def test_video_not_opened_raises(self, catalog_db) -> None:
+        """Mock cv2 with cap.isOpened()=False raises EmbeddingError."""
+        from pathlib import Path
+
+        from autopilot.analyze.embeddings import EmbeddingError, compute_embeddings
+        from autopilot.config import ModelConfig
+
+        catalog_db.insert_media("m1", "/fake/video.mp4")
+        scheduler = MagicMock()
+        config = ModelConfig()
+
+        mock_cv2 = _make_mock_cv2()
+        mock_cap = MagicMock()
+        mock_cap.isOpened.return_value = False
+        mock_cv2.VideoCapture.return_value = mock_cap
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            with patch.object(Path, "exists", return_value=True):
+                with pytest.raises(EmbeddingError, match="Failed to open"):
+                    compute_embeddings(
+                        "m1", Path("/fake/video.mp4"), catalog_db, scheduler, config
+                    )
+
+    def test_frame_read_failure_skipped(self, catalog_db) -> None:
+        """Frame read failure on one frame still produces embeddings for others."""
+        from pathlib import Path
+
+        from autopilot.analyze.embeddings import compute_embeddings
+        from autopilot.config import ModelConfig
+
+        catalog_db.insert_media("m1", "/fake/video.mp4")
+        mock_model, mock_processor = _make_mock_siglip()
+        scheduler = _make_scheduler_mock((mock_model, mock_processor))
+        config = ModelConfig()
+
+        # 120 frames at 30fps -> 2 sample indices: [0, 60]
+        mock_cap = _make_mock_capture(total_frames=120, fps=30.0)
+        frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        mock_cap.read.side_effect = [(False, None), (True, frame)]
+
+        mock_cv2 = _make_mock_cv2()
+        mock_cv2.VideoCapture.return_value = mock_cap
+        mock_pil = _make_mock_pil()
+
+        with patch.dict(sys.modules, {
+            "cv2": mock_cv2,
+            "PIL": mock_pil, "PIL.Image": mock_pil.Image,
+        }):
+            with patch.object(Path, "exists", return_value=True):
+                compute_embeddings(
+                    "m1", Path("/fake/video.mp4"), catalog_db, scheduler, config
+                )
+
+        rows = catalog_db.get_embeddings_for_media("m1")
+        assert len(rows) == 1

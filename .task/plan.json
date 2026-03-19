@@ -3,21 +3,19 @@
   "title": "Frame embeddings and search index",
   "files": [
     "autopilot/analyze/embeddings.py",
-    "autopilot/db.py",
     "tests/test_embeddings.py"
   ],
   "modules": [
     "autopilot/analyze",
-    "autopilot",
     "tests"
   ],
-  "analysis": "Implement autopilot/analyze/embeddings.py with four functions: compute_embeddings (SigLIP 2 vision encoder at 0.5 FPS, stores 768-d float32 BLOBs in clip_embeddings table), build_search_index (FAISS IVF), search_by_text (SigLIP text encoder + FAISS), and search_by_image (SigLIP vision encoder + FAISS). The codebase follows a consistent pattern across analyze modules (asr.py, objects.py, faces.py): lazy imports of heavy ML libs inside functions, TYPE_CHECKING guards for type hints, GPUScheduler context manager for model access, CatalogDB for storage with transactional context managers, custom error classes, structured logging, and idempotency checks. Tests use unittest.mock with sys.modules patching for heavy dependencies (cv2, transformers, etc.) and the catalog_db fixture from conftest.py. The DB already has clip_embeddings table (media_id, frame_number, embedding BLOB) with batch_insert_embeddings and get_embeddings_for_media methods. A new get_all_clip_embeddings() DB method is needed for build_search_index (follows get_all_face_embeddings pattern). The config already has clip_model='google/siglip2-so400m-patch14'. FAISS index needs a sidecar JSON mapping file to map vector indices back to (media_id, frame_number) tuples for search result resolution.",
+  "analysis": "Create autopilot/analyze/embeddings.py implementing four functions: compute_embeddings (SigLIP 2 ViT-SO400M/14 at 0.5 FPS), build_search_index (FAISS IVF), search_by_text, and search_by_image. The codebase has strong established patterns from objects.py, asr.py, and faces.py: TYPE_CHECKING imports for GPUScheduler/ModelConfig/CatalogDB, custom error class, idempotency checks, lazy heavy-module imports (cv2, transformers, faiss), structured logging, and transactional DB writes via context manager. CatalogDB already has batch_insert_embeddings(), get_embeddings_for_media(), get_all_clip_embeddings(), and the clip_embeddings table schema (media_id, frame_number, embedding BLOB). ModelConfig already has clip_model='google/siglip2-so400m-patch14'. tests/test_embeddings.py exists with 3 DB helper tests but they have bugs (wrong insert_media signature using nonexistent kwargs like filename, filepath, file_hash, width, height — actual signature is insert_media(id, file_path, **kwargs)). These must be fixed before extending the file. The mocking strategy follows test_objects.py: mock cv2.VideoCapture, mock the ML model (SigLIP via transformers instead of YOLO), use real in-memory CatalogDB. For FAISS, use faiss-cpu in tests for real index behavior. The index metadata mapping (FAISS index position -> media_id, frame_number) will be stored as a JSON sidecar file alongside the .faiss index file. autopilot/analyze/embeddings.py does NOT yet exist and must be created from scratch.",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Add get_all_clip_embeddings() method to CatalogDB that returns all rows from clip_embeddings with non-null embedding (media_id, frame_number, embedding BLOB). Pattern follows get_all_face_embeddings(). Write tests for it in test_embeddings.py::TestDBHelpers: test empty table returns [], test with inserted rows returns all, test multiple media IDs returned correctly.",
-      "status": "done",
-      "commit": "c8434dd",
+      "description": "Fix existing test_embeddings.py TestDBHelpers tests: replace incorrect insert_media kwargs (filename, filepath, file_hash, width, height) with correct call matching CatalogDB.insert_media(id, file_path, **optional_kwargs). E.g., catalog_db.insert_media('vid1', '/v1.mp4'). The get_all_clip_embeddings() method already exists in db.py. Verify all 3 DB helper tests pass.",
+      "status": "pending",
+      "commit": null,
       "tests": [
         "tests/test_embeddings.py::TestDBHelpers::test_get_all_clip_embeddings_empty",
         "tests/test_embeddings.py::TestDBHelpers::test_get_all_clip_embeddings_returns_all",
@@ -29,180 +27,176 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write TestPublicAPI class in test_embeddings.py: (1) test_embedding_error_importable - EmbeddingError importable and is Exception subclass; (2) test_compute_embeddings_signature - importable with positional params (media_id, video_path, db, scheduler, config) and keyword-only batch_size; (3) test_build_search_index_signature - importable with params (db, output_path); (4) test_search_by_text_signature - importable with params (query, index_path, model, top_k=10); (5) test_search_by_image_signature - importable with params (image, index_path, model, top_k=10). Verify all are in __all__.",
-      "status": "done",
-      "commit": "be3b8e3"
+      "description": "Write TestPublicAPI class in test_embeddings.py: (1) test_embedding_error_importable - EmbeddingError importable and is Exception subclass; (2) test_compute_embeddings_signature - importable with positional params (media_id, video_path, db, scheduler, config) and keyword-only sample_fps, batch_size; (3) test_build_search_index_signature - importable with params (db, output_path); (4) test_search_by_text_signature - importable with params (query, index_path, model, top_k=10); (5) test_search_by_image_signature - importable with params (image, index_path, model, top_k=10). Verify all are in __all__.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Create autopilot/analyze/embeddings.py with module skeleton: docstring, TYPE_CHECKING imports for GPUScheduler/ModelConfig/CatalogDB, EmbeddingError class, module-level logger, __all__ exports, function stubs with correct signatures. compute_embeddings and build_search_index raise NotImplementedError. search_by_text/search_by_image return empty lists. Follow objects.py module pattern.",
-      "status": "done",
-      "commit": "5ca9aeb"
+      "description": "Create autopilot/analyze/embeddings.py with module skeleton: docstring, from __future__ import annotations, TYPE_CHECKING imports for GPUScheduler/ModelConfig/CatalogDB, EmbeddingError class, module-level logger, __all__ exports ['EmbeddingError', 'compute_embeddings', 'build_search_index', 'search_by_text', 'search_by_image'], function stubs with correct signatures returning None/empty-list. Follow objects.py module pattern.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write TestComputeSampleIndices class for _compute_sample_indices helper: (1) test_half_fps_30fps - 300 frames at 30fps -> [0, 60, 120, 180, 240]; (2) test_half_fps_24fps - 240 frames at 24fps -> [0, 48, 96, 144, 192]; (3) test_empty_video - 0 frames -> []; (4) test_short_video - 30 frames at 30fps -> [0]; (5) test_low_fps - 10 frames at 1fps -> [0, 2, 4, 6, 8].",
+      "description": "Write TestComputeSampleIndices class for _compute_sample_indices helper: (1) test_half_fps_30fps - 300 frames at 30fps at 0.5 sample_fps -> [0, 60, 120, 180, 240]; (2) test_half_fps_24fps - 240 frames at 24fps -> [0, 48, 96, 144, 192]; (3) test_empty_video - 0 frames -> []; (4) test_short_video - 30 frames at 30fps -> [0]; (5) test_low_fps_video - 10 frames at 1fps at 0.5 sample_fps -> [0, 2, 4, 6, 8]; (6) test_custom_sample_fps - 300 frames at 30fps at 1.0 sample_fps -> [0, 30, 60, ..., 270].",
       "status": "pending",
       "commit": null
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement _compute_sample_indices(total_frames, fps, sample_fps=0.5) helper: interval = max(1, int(fps / sample_fps)), return list(range(0, total_frames, interval)). Handle total_frames <= 0 -> [].",
+      "description": "Implement _compute_sample_indices(total_frames, fps, sample_fps=0.5) -> list[int] helper: interval = max(1, int(fps / sample_fps)), return list(range(0, total_frames, interval)). Handle total_frames <= 0 -> [].",
       "status": "pending",
       "commit": null
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write TestIdempotency class: (1) test_existing_embeddings_skips - insert media + clip embeddings into DB, call compute_embeddings, verify scheduler.model not called; (2) test_no_existing_embeddings_proceeds - insert media only, call compute_embeddings with full mocks (cv2, model, scheduler), verify scheduler.model IS called. Follow pattern from test_objects.py::TestIdempotency.",
+      "description": "Write TestIdempotency class: (1) test_existing_embeddings_skips - insert media + clip embedding rows into DB, call compute_embeddings, verify scheduler.model not called; (2) test_no_existing_embeddings_proceeds - insert media only, call compute_embeddings with full mocks (cv2, SigLIP model, scheduler), verify scheduler.model IS called. Include mock helper functions _make_mock_cv2(), _make_mock_capture() following test_objects.py patterns, plus _make_mock_siglip() helper returning (model, processor) tuple where model.get_image_features() returns deterministic 768-d tensor.",
       "status": "pending",
       "commit": null
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Implement compute_embeddings idempotency check: call db.get_embeddings_for_media(media_id), return early if non-empty with INFO log. Add video path validation (path.exists() check, cap.isOpened check), lazy cv2 import. Enough to pass idempotency and basic structure tests.",
+      "description": "Implement compute_embeddings: idempotency check via db.get_embeddings_for_media(), video path validation (path.exists() raising EmbeddingError), cv2.VideoCapture open check (isOpened() raising EmbeddingError), basic structure with lazy cv2 import, try/finally with cap.release().",
       "status": "pending",
       "commit": null
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write TestErrorHandling class: (1) test_video_not_found_raises - nonexistent path raises EmbeddingError matching 'not found'; (2) test_video_not_opened_raises - cap.isOpened() False raises EmbeddingError matching 'Failed to open'; (3) test_frame_read_failure_skipped - one frame read fails, other frames still produce embeddings in DB.",
+      "description": "Write TestErrorHandling class: (1) test_video_not_found_raises - nonexistent path raises EmbeddingError matching 'not found'; (2) test_video_not_opened_raises - cap.isOpened() False raises EmbeddingError matching 'Failed to open'; (3) test_frame_read_failure_skipped - one frame read fails via cap.read()=(False,None), other frames still produce embeddings in DB.",
       "status": "pending",
       "commit": null
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Implement compute_embeddings error handling: path.exists() check before cv2 import raising EmbeddingError, cap.isOpened() check after VideoCapture raising EmbeddingError, frame read failure skip with warning log. Follow objects.py/faces.py error handling pattern.",
+      "description": "Wire up error handling paths in compute_embeddings to pass error tests. Ensure path.exists() check is before lazy cv2 import, cap.isOpened() checked after VideoCapture, frame read failures logged as WARNING and skipped.",
       "status": "pending",
       "commit": null
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write TestEmbeddingComputation class: (1) test_correct_embedding_count - 300 frames at 30fps stores 5 embeddings (0.5 FPS); (2) test_embedding_size_768d - each stored BLOB is 3072 bytes (768 * 4 bytes float32); (3) test_embedding_roundtrip - stored embedding recoverable via np.frombuffer dtype=float32 matches original; (4) test_model_called_per_frame - model encoder called once per sampled frame; (5) test_correct_frame_numbers - DB rows have frame_numbers matching sample indices [0, 60, 120, 180, 240]. Mock SigLIP model to return deterministic 768-d embeddings, mock cv2.VideoCapture.",
+      "description": "Write TestEmbeddingComputation class: (1) test_correct_embedding_count - 300 frames at 30fps stores 5 embeddings (0.5 FPS); (2) test_embedding_size_768d - each stored BLOB is 3072 bytes (768*4 float32); (3) test_embedding_roundtrip - stored embedding recoverable via np.frombuffer float32 matches original values; (4) test_model_called_with_clip_model - scheduler.model called with config.clip_model; (5) test_correct_frame_numbers - DB rows have frame_numbers [0, 60, 120, 180, 240]; (6) test_batch_size_parameter - different batch_size produces same correct result. Mock SigLIP as (model, processor) tuple: processor returns mock tensor dict, model.get_image_features returns mock 768-d output with .cpu().numpy() chain.",
       "status": "pending",
       "commit": null
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Implement compute_embeddings core loop: load SigLIP (model, processor) tuple via scheduler.model(config.clip_model), iterate sampled frames, read frame with cv2, convert BGR->RGB via PIL.Image, preprocess via processor(images=image, return_tensors='pt'), encode via model.get_image_features(), L2-normalize output, pack 768-d float32 to bytes, accumulate rows, batch_insert_embeddings in with-db block. Release cap in finally block.",
+      "description": "Implement compute_embeddings core loop: load (model, processor) via scheduler.model(config.clip_model), sample frames with _compute_sample_indices, read frames via cv2, convert BGR->RGB via PIL.Image.fromarray, preprocess via processor(images=pil_image, return_tensors='pt'), encode via model.get_image_features(**inputs), L2-normalize via F.normalize or manual norm, detach().cpu().numpy(), pack float32 to bytes via .tobytes(), accumulate rows, batch_insert_embeddings in with-db block. Use lazy imports for torch and PIL.",
       "status": "pending",
       "commit": null
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write TestLogging class: (1) test_log_contains_media_id_on_start - INFO log includes media_id and frame info; (2) test_log_contains_completion - log includes 'Completed' and embedding count; (3) test_log_skipping_on_idempotent - log mentions 'skipping' on idempotent skip; (4) test_log_contains_fps - log mentions fps info.",
+      "description": "Write TestLogging class: (1) test_log_contains_media_id_on_start - INFO log includes media_id; (2) test_log_contains_completion - INFO log includes 'Completed' and embedding count; (3) test_log_skipping_on_idempotent - INFO log mentions 'skipping' when embeddings already exist; (4) test_log_warning_on_frame_failure - WARNING logged when frame read fails.",
       "status": "pending",
       "commit": null
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Add structured logging to compute_embeddings: start message with media_id/total_frames/fps, completion message with embedding count, skip message on idempotent early return. Pattern: logger = logging.getLogger(__name__).",
+      "description": "Add structured logging to compute_embeddings: start message with media_id/total_frames/fps/model_name, completion message with embedding count, skip message on idempotent early return, warning on frame read failure. logger = logging.getLogger(__name__).",
       "status": "pending",
       "commit": null
     },
     {
       "id": "step-13",
       "type": "test",
-      "description": "Write TestBuildSearchIndex class: (1) test_empty_db_no_index - empty DB logs and returns, no files written; (2) test_small_dataset_creates_index - insert 10 mock 768-d embeddings, build index, output_path file exists; (3) test_id_mapping_written - sidecar .ids.json exists with correct [[media_id, frame_number], ...] entries matching inserted data; (4) test_index_vector_count - FAISS index ntotal matches embedding count; (5) test_index_dimension - FAISS index d equals 768. Use faiss-cpu for real index behavior in tests.",
+      "description": "Write TestBuildSearchIndex class: (1) test_empty_db_no_index - empty DB returns without creating files; (2) test_small_dataset_creates_index - insert 10 mock 768-d embeddings, build index, output_path file exists; (3) test_metadata_mapping_written - sidecar .ids.json exists with correct [[media_id, frame_number], ...] entries; (4) test_index_vector_count - loaded FAISS index.ntotal matches embedding count; (5) test_index_dimension - index.d equals 768; (6) test_large_dataset_uses_ivf - for n>=256 embeddings, index is IVF type. Use real faiss-cpu for these tests.",
       "status": "pending",
       "commit": null
     },
     {
       "id": "step-14",
       "type": "impl",
-      "description": "Implement build_search_index: load embeddings via db.get_all_clip_embeddings(), stack into float32 numpy matrix, L2-normalize. Choose index type: IndexFlatIP for n<256, IndexIVFFlat with nlist=max(1,int(sqrt(n))) for n>=256 (train on data, then add). Write index via faiss.write_index(). Write sidecar .ids.json with list of [media_id, frame_number] pairs. Handle empty DB with early return and log.",
+      "description": "Implement build_search_index: lazy import faiss/json. Load via db.get_all_clip_embeddings(), stack numpy float32 matrix, L2-normalize. If n<256: IndexFlatIP. If n>=256: IndexIVFFlat(quantizer=IndexFlatIP(768), 768, nlist=max(1,int(sqrt(n))), METRIC_INNER_PRODUCT) -> train -> add. faiss.write_index to output_path. Write .ids.json sidecar mapping. Empty DB -> INFO log + return.",
       "status": "pending",
       "commit": null
     },
     {
       "id": "step-15",
       "type": "test",
-      "description": "Write TestSearchByText class: (1) test_returns_correct_types - returns list of (str, int, float) tuples; (2) test_top_k_limits_results - top_k=3 returns at most 3 results; (3) test_text_encoder_called - model text features method invoked with query string; (4) test_results_contain_valid_media_ids - all media_ids in results are from the indexed data.",
+      "description": "Write TestSearchByText class: (1) test_returns_correct_tuple_types - each result is (str, int, float); (2) test_top_k_limits_results - top_k=3 returns at most 3; (3) test_text_encoder_called - model.get_text_features invoked; (4) test_results_contain_valid_media_ids - all media_ids from indexed data. Build small real FAISS index in tmp_path fixture, mock SigLIP text encoder.",
       "status": "pending",
       "commit": null
     },
     {
       "id": "step-16",
       "type": "impl",
-      "description": "Implement search_by_text: lazy import faiss. Load FAISS index via faiss.read_index(str(index_path)). Load .ids.json mapping. Extract (model, processor) from model param. Encode text: processor(text=[query], return_tensors='pt', padding=True) -> model.get_text_features() -> L2-normalize. Search index.search(query_vec, top_k). Map FAISS indices to (media_id, frame_number, distance) via mapping. Return results list.",
+      "description": "Implement search_by_text: lazy import faiss. Load FAISS index via faiss.read_index(str(index_path)). Load .ids.json mapping. Unpack (model, processor) from model param. Encode: processor(text=[query], return_tensors='pt', padding=True) -> model.get_text_features() -> L2-normalize -> numpy float32. index.search(query_vec, top_k). Map results through sidecar. Return list of (media_id, frame_number, distance) tuples.",
       "status": "pending",
       "commit": null
     },
     {
       "id": "step-17",
       "type": "test",
-      "description": "Write TestSearchByImage class: (1) test_returns_correct_types - returns list of (str, int, float) tuples; (2) test_top_k_limits_results - top_k=3 returns at most 3; (3) test_image_encoder_called - model vision features method invoked with image; (4) test_results_contain_valid_frame_numbers - all frame_numbers in results are from indexed data.",
+      "description": "Write TestSearchByImage class: (1) test_returns_correct_tuple_types - each result is (str, int, float); (2) test_top_k_limits_results - top_k=3 returns at most 3; (3) test_image_encoder_called - model.get_image_features invoked; (4) test_numpy_image_accepted - accepts np.ndarray. Build real FAISS index in tmp_path, mock SigLIP vision encoder.",
       "status": "pending",
       "commit": null
     },
     {
       "id": "step-18",
       "type": "impl",
-      "description": "Implement search_by_image: load FAISS index + mapping. Extract (model, processor) from model param. Convert np.ndarray image to PIL, encode via processor(images=image, return_tensors='pt') -> model.get_image_features() -> L2-normalize. Search index. Map results. Return tuples. Extract shared _load_index_and_mapping helper used by both search functions.",
+      "description": "Implement search_by_image: extract shared _load_index_and_mapping(index_path) helper. Convert np.ndarray to PIL Image (RGB). Encode via processor(images=pil_image, return_tensors='pt') -> model.get_image_features() -> L2-normalize -> numpy. Search + map. Return tuples. Refactor search_by_text to use same _load_index_and_mapping helper.",
       "status": "pending",
       "commit": null
     },
     {
       "id": "step-19",
       "type": "test",
-      "description": "Write TestIntegration class: test_compute_build_search_pipeline - (1) compute_embeddings on mock video with 5 sampled frames, verify 5 rows in DB; (2) build_search_index from DB, verify index file + mapping exist with 5 entries; (3) search_by_text returns results with valid media_id; (4) search_by_image returns results; (5) all frame_numbers in results are from the original sample indices.",
+      "description": "Write TestIntegration class: test_compute_build_search_pipeline - (1) compute_embeddings on mock video stores 5 rows in DB; (2) build_search_index creates index file + mapping with 5 entries; (3) search_by_text returns results with valid media_id/frame_number from original data; (4) search_by_image returns results; (5) frame_numbers in results match original sample indices. Use real CatalogDB + real faiss-cpu, mock cv2 and SigLIP model consistently throughout.",
       "status": "pending",
       "commit": null
     },
     {
       "id": "step-20",
       "type": "impl",
-      "description": "Final verification pass: run full test suite, fix any edge cases. Ensure cap.release() in finally block, proper error wrapping, clean docstrings and type hints. Verify __all__ exports are correct.",
+      "description": "Final verification: run full test suite, fix edge cases. Ensure cap.release() in finally, proper error wrapping, clean docstrings (Google-style Args/Returns), type hints, __all__ exports correct. Module follows all codebase conventions.",
       "status": "pending",
       "commit": null
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use inner product (IndexFlatIP) for FAISS similarity since SigLIP embeddings are L2-normalized",
+      "decision": "Use inner product (IndexFlatIP/IndexIVFFlat with METRIC_INNER_PRODUCT) for FAISS since SigLIP embeddings are L2-normalized",
       "rationale": "For L2-normalized vectors, inner product equals cosine similarity and is faster than L2 distance. SigLIP produces normalized embeddings, so IP gives correct semantic similarity ranking. Higher IP score = more similar."
     },
     {
-      "decision": "Store FAISS ID mapping as a JSON sidecar file (.ids.json) alongside the index",
+      "decision": "Store FAISS index metadata as a JSON sidecar file (.ids.json) alongside the index",
       "rationale": "FAISS indices only store integer IDs. A JSON file mapping FAISS row index -> [media_id, frame_number] is simple, human-readable, and avoids pickle security concerns. The mapping list is small (~90K entries for 50h at 0.5 FPS = ~3.6MB JSON)."
     },
     {
-      "decision": "Two-tier FAISS index strategy: IndexFlatIP (<256), IndexIVFFlat (>=256)",
-      "rationale": "Small datasets don't need IVF overhead - exact brute-force search is fast. Medium-to-large datasets benefit from IVF partitioning with nlist=sqrt(n). The PRD example (50h at 0.5 FPS = 90K) falls in the IVFFlat range. IndexIVFPQ can be added later if needed for >1M vectors."
+      "decision": "Two-tier FAISS index strategy: IndexFlatIP (<256 vectors), IndexIVFFlat (>=256 vectors)",
+      "rationale": "Small datasets don't need IVF overhead - exact brute-force search is fast. Medium-to-large datasets benefit from IVF partitioning with nlist=sqrt(n). The PRD example (50h at 0.5 FPS = 90K) falls in the IVFFlat range. IndexIVFPQ can be added later for >1M vectors."
     },
     {
-      "decision": "Frame sampling at 0.5 FPS via interval = max(1, int(fps / sample_fps))",
-      "rationale": "0.5 FPS = 1 frame every 2 seconds. For 30fps video: interval=60. Using fps/sample_fps is general. max(1,...) prevents zero interval for very low FPS. int() rounds down, slightly over-sampling rather than under-sampling to avoid missing content."
+      "decision": "Frame sampling at 0.5 FPS via _compute_sample_indices helper with interval = max(1, int(fps / sample_fps))",
+      "rationale": "Follows pattern of _compute_frame_indices in objects.py. Extractable helper makes it independently testable. 0.5 FPS = 1 frame every 2 seconds. max(1,...) prevents zero interval for very low FPS sources."
     },
     {
       "decision": "GPU scheduler model entry stores (model, processor) tuple for SigLIP",
       "rationale": "SigLIP requires both model and processor for inference. Storing them together in the scheduler means a single model() context manager call provides everything needed. The caller unpacks: with scheduler.model(name) as (model, processor)."
     },
     {
-      "decision": "search_by_text/search_by_image take pre-loaded model tuple rather than scheduler",
+      "decision": "search_by_text/search_by_image take pre-loaded (model, processor) tuple rather than scheduler",
       "rationale": "Per task spec, search functions accept a 'model' parameter directly. Search may be called interactively many times - the caller manages model lifecycle. This decouples search from the GPU scheduler's batch processing context."
     },
     {
-      "decision": "768-d embeddings stored as raw float32 BLOBs in SQLite",
-      "rationale": "768 * 4 bytes = 3072 bytes per embedding. Consistent with how face embeddings (512-d BLOBs) are stored. numpy tobytes/frombuffer provides zero-copy serialization. SQLite handles BLOBs efficiently."
+      "decision": "L2-normalize embeddings at compute time before storage and at search time for queries",
+      "rationale": "Pre-normalizing stored embeddings avoids redundant computation during index building. Query vectors are also normalized at search time. FAISS IndexFlatIP on normalized vectors gives cosine similarity directly."
     },
     {
-      "decision": "Add get_all_clip_embeddings() to CatalogDB rather than raw SQL in embeddings.py",
-      "rationale": "All SQL is encapsulated in CatalogDB methods following the get_all_face_embeddings pattern. Keeps embeddings.py focused on ML logic."
-    },
-    {
-      "decision": "L2-normalize embeddings at compute time before storage",
-      "rationale": "Pre-normalizing avoids redundant computation during index building and search. FAISS IndexFlatIP on normalized vectors gives cosine similarity directly. All downstream consumers get properly normalized embeddings."
+      "decision": "Expose sample_fps and batch_size as keyword-only parameters on compute_embeddings",
+      "rationale": "Follows the pattern from detect_objects (batch_size, sparse as keyword-only). Allows callers to override the 0.5 FPS default for different use cases while keeping the common case simple."
     }
   ],
   "reuse": [
@@ -217,39 +211,44 @@
       "how": "Use for idempotency check in compute_embeddings - if media already has embeddings, skip processing."
     },
     {
+      "what": "CatalogDB.get_all_clip_embeddings()",
+      "where": "autopilot/db.py line 465",
+      "how": "Already exists. Used by build_search_index to load all embeddings for FAISS index construction."
+    },
+    {
       "what": "clip_embeddings table schema",
       "where": "autopilot/db.py line 114-119",
-      "how": "Table already exists with (media_id, frame_number, embedding BLOB) PK. No schema changes needed."
-    },
-    {
-      "what": "catalog_db fixture",
-      "where": "tests/conftest.py line 26",
-      "how": "Reuse in-memory CatalogDB fixture with autocommit for all embedding tests."
-    },
-    {
-      "what": "cv2 mock helpers pattern",
-      "where": "tests/test_objects.py lines 83-132",
-      "how": "Replicate _make_mock_capture() and _make_mock_cv2() patterns for mocking cv2.VideoCapture with configurable fps, total_frames. Use patch.dict(sys.modules, {'cv2': mock_cv2})."
+      "how": "Table already exists with (media_id TEXT, frame_number INTEGER, embedding BLOB) PK. No schema changes needed."
     },
     {
       "what": "GPUScheduler.model() context manager",
       "where": "autopilot/analyze/gpu_scheduler.py line 136",
-      "how": "Use scheduler.model(config.clip_model) to load/unload SigLIP model, same as objects.py uses scheduler.model(config.yolo_variant)."
+      "how": "Use scheduler.model(config.clip_model) to load/unload SigLIP model with VRAM management, same pattern as objects.py/asr.py/faces.py."
     },
     {
       "what": "ModelConfig.clip_model",
       "where": "autopilot/config.py line 71",
-      "how": "Default value 'google/siglip2-so400m-patch14' already configured. Access via config.clip_model in compute_embeddings."
+      "how": "Default value 'google/siglip2-so400m-patch14' already configured. Access via config.clip_model."
     },
     {
-      "what": "Module structure pattern (docstring, TYPE_CHECKING, __all__, logger, error class)",
+      "what": "catalog_db fixture (in-memory CatalogDB with autocommit)",
+      "where": "tests/conftest.py line 26",
+      "how": "Reuse for all embedding tests. Fresh in-memory DB per test with full schema."
+    },
+    {
+      "what": "cv2 mock patterns (_make_mock_cv2, _make_mock_capture)",
+      "where": "tests/test_objects.py lines 83-132",
+      "how": "Replicate: mock CAP_PROP constants, configurable fps/total_frames, cap.read() returns (True, frame). Use patch.dict(sys.modules, {'cv2': mock_cv2})."
+    },
+    {
+      "what": "Scheduler mock pattern",
+      "where": "tests/test_objects.py lines 464-465, tests/test_asr.py lines 129-133",
+      "how": "MagicMock scheduler with model() returning context manager (__enter__=mock_model, __exit__=False). Access: scheduler.model.return_value.__enter__ = MagicMock(return_value=mock_model)."
+    },
+    {
+      "what": "Module structure pattern",
       "where": "autopilot/analyze/objects.py, asr.py, faces.py",
-      "how": "Follow identical module layout: future annotations import, TYPE_CHECKING guard for GPUScheduler/ModelConfig/CatalogDB, __all__ list, module-level logger, custom error class inheriting Exception, lazy heavy imports."
-    },
-    {
-      "what": "get_all_face_embeddings() query pattern",
-      "where": "autopilot/db.py line 380-386",
-      "how": "Model get_all_clip_embeddings() after this: SELECT media_id, frame_number, embedding FROM clip_embeddings WHERE embedding IS NOT NULL."
+      "how": "Follow identical layout: from __future__ import annotations, TYPE_CHECKING guard, __all__, logger, custom error class, lazy heavy imports inside functions, try/finally for resource cleanup."
     }
   ]
 }
