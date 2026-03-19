@@ -53,6 +53,30 @@ def _window_audio(
     return [audio[i * window_size : (i + 1) * window_size] for i in range(num_windows)]
 
 
+def _extract_top_k(
+    probabilities: np.ndarray,
+    labels: list[str],
+    k: int = 5,
+) -> list[dict[str, object]]:
+    """Extract top-k class predictions from a probability vector.
+
+    Args:
+        probabilities: 1D array of class probabilities.
+        labels: List of class label strings (same length as probabilities).
+        k: Number of top predictions to return.
+
+    Returns:
+        List of dicts with 'class' (str) and 'probability' (float),
+        sorted by probability descending.
+    """
+    k = min(k, len(labels))
+    top_indices = np.argsort(probabilities)[::-1][:k]
+    return [
+        {"class": str(labels[i]), "probability": float(probabilities[i])}
+        for i in top_indices
+    ]
+
+
 def classify_audio_events(
     media_id: str,
     audio_path: Path,
