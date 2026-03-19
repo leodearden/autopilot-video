@@ -431,3 +431,87 @@ class TestStatusUpdate:
         media = catalog_db.get_media("vid1")
         assert media is not None
         assert media["status"] == "analyzing"
+
+
+class TestTranscription:
+    """Tests for core transcription pipeline."""
+
+    def test_loads_audio_and_transcribes(self, catalog_db):
+        """Verify whisperx.load_audio and model.transcribe are called."""
+        from autopilot.analyze.asr import transcribe_media
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db,
+            "vid1",
+            [{"start": 0.0, "end": 1.0, "text": "Hello"}],
+        )
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                transcribe_media(
+                    "vid1",
+                    Path("/tmp/audio.wav"),
+                    catalog_db,
+                    scheduler,
+                    MagicMock(whisper_size="large-v3"),
+                )
+
+        # Verify load_audio called with string path
+        mock_wx.load_audio.assert_called_once_with(str(Path("/tmp/audio.wav")))
+
+        # Verify model.transcribe called with audio and batch_size
+        mock_model = scheduler.model.return_value.__enter__.return_value
+        mock_model.transcribe.assert_called_once()
+        call_args = mock_model.transcribe.call_args
+        assert call_args[0][0] == "mock_audio_array"
+        assert call_args[1]["batch_size"] == 24
+
+    def test_custom_batch_size(self, catalog_db):
+        """Custom batch_size passed through to model.transcribe."""
+        from autopilot.analyze.asr import transcribe_media
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db,
+            "vid1",
+            [{"start": 0.0, "end": 1.0, "text": "Hello"}],
+        )
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                transcribe_media(
+                    "vid1",
+                    Path("/tmp/audio.wav"),
+                    catalog_db,
+                    scheduler,
+                    MagicMock(whisper_size="large-v3"),
+                    batch_size=16,
+                )
+
+        mock_model = scheduler.model.return_value.__enter__.return_value
+        call_args = mock_model.transcribe.call_args
+        assert call_args[1]["batch_size"] == 16
+
+    def test_uses_config_whisper_size(self, catalog_db):
+        """scheduler.model called with config.whisper_size."""
+        from autopilot.analyze.asr import transcribe_media
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db,
+            "vid1",
+            [{"start": 0.0, "end": 1.0, "text": "Hello"}],
+        )
+
+        config = MagicMock()
+        config.whisper_size = "large-v3-turbo"
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                transcribe_media(
+                    "vid1",
+                    Path("/tmp/audio.wav"),
+                    catalog_db,
+                    scheduler,
+                    config,
+                )
+
+        scheduler.model.assert_called_once_with("large-v3-turbo")
