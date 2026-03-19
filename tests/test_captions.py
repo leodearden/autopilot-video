@@ -899,3 +899,121 @@ class TestIntegration:
         )
         assert result2 == expected_caption
         scheduler2.model.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# TestTransformersInference — prompt-token slicing in transformers path
+# ---------------------------------------------------------------------------
+
+
+class TestTransformersInference:
+    """Tests for prompt-token slicing in the transformers inference path."""
+
+    def test_output_tokens_sliced_before_decode(self, catalog_db):
+        """batch_decode should receive only generated tokens, not full sequence.
+
+        model.generate() returns full sequences including input prompt tokens.
+        The code must slice off prompt tokens before calling batch_decode.
+        """
+        from PIL import Image as PILImage
+
+        from autopilot.analyze.captions import caption_clip
+
+        catalog_db.insert_media(
+            id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
+        )
+
+        model = MagicMock()
+        processor = MagicMock()
+
+        prompt_len = 10
+        gen_len = 5
+        # input_ids shape [1, prompt_len]
+        input_ids = np.zeros((1, prompt_len), dtype=np.int64)
+        inputs_dict = {"input_ids": input_ids}
+        processor.return_value = inputs_dict
+
+        # generate returns full sequence [1, prompt_len + gen_len]
+        full_output = np.arange(prompt_len + gen_len, dtype=np.int64).reshape(1, -1)
+        model.generate.return_value = full_output
+
+        processor.batch_decode.return_value = ["caption text"]
+
+        scheduler = _make_mock_scheduler(
+            model_obj={"backend": "transformers", "model": model, "processor": processor}
+        )
+        config = _make_mock_config()
+
+        dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(8)]
+
+        with (
+            patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames),
+            patch.object(Path, "exists", return_value=True),
+        ):
+            caption_clip(
+                "m1", Path("/test/video.mp4"), 0.0, 30.0,
+                db=catalog_db, scheduler=scheduler, config=config,
+            )
+
+        # Verify batch_decode received only the generated tokens, not full sequence
+        bd_call_args = processor.batch_decode.call_args[0][0]
+        assert bd_call_args.shape == (1, gen_len), (
+            f"Expected batch_decode to receive shape (1, {gen_len}), "
+            f"got {bd_call_args.shape}. Output tokens must be sliced before decode."
+        )
+
+    def test_caption_excludes_prompt_text(self, catalog_db):
+        """Caption should contain only generated text, not prompt prefix.
+
+        Without slicing, batch_decode on the full sequence returns the prompt
+        text prepended to the actual caption. With slicing, only the caption is returned.
+        """
+        from PIL import Image as PILImage
+
+        from autopilot.analyze.captions import caption_clip
+
+        catalog_db.insert_media(
+            id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
+        )
+
+        model = MagicMock()
+        processor = MagicMock()
+
+        prompt_len = 10
+        gen_len = 5
+        input_ids = np.zeros((1, prompt_len), dtype=np.int64)
+        inputs_dict = {"input_ids": input_ids}
+        processor.return_value = inputs_dict
+
+        full_output = np.arange(prompt_len + gen_len, dtype=np.int64).reshape(1, -1)
+        model.generate.return_value = full_output
+
+        def batch_decode_side_effect(token_ids, **kwargs):
+            """Return different text based on whether tokens were sliced."""
+            if token_ids.shape[-1] > gen_len:
+                return ["SYSTEM PROMPT Describe the scene caption text"]
+            return ["caption text"]
+
+        processor.batch_decode.side_effect = batch_decode_side_effect
+
+        scheduler = _make_mock_scheduler(
+            model_obj={"backend": "transformers", "model": model, "processor": processor}
+        )
+        config = _make_mock_config()
+
+        dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(8)]
+
+        with (
+            patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames),
+            patch.object(Path, "exists", return_value=True),
+        ):
+            result = caption_clip(
+                "m1", Path("/test/video.mp4"), 0.0, 30.0,
+                db=catalog_db, scheduler=scheduler, config=config,
+            )
+
+        # Without slicing, result would be "SYSTEM PROMPT Describe the scene caption text"
+        assert result == "caption text", (
+            f"Expected 'caption text' but got '{result}'. "
+            "Output tokens must be sliced before decoding to exclude prompt."
+        )
