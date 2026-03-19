@@ -144,6 +144,8 @@ def _call_llm(
         raise ClassifyError(f"LLM API call failed: {e}") from e
 
     # Extract text from response
+    if not response.content:
+        raise ClassifyError("Empty response from LLM")
     text = response.content[0].text
 
     # Parse JSON from response
