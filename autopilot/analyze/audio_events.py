@@ -103,3 +103,7 @@ def classify_audio_events(
     # Validate audio path before importing heavy ML libraries
     if not audio_path.exists():
         raise AudioEventError(f"Audio file not found: {audio_path}")
+
+    # Update media status
+    with db:
+        db.update_media_status(media_id, "analyzing")
