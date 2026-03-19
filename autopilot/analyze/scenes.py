@@ -176,17 +176,32 @@ def detect_shots(
     if not video_path.exists():
         raise ShotDetectionError(f"Video file not found: {video_path}")
 
-    import cv2  # type: ignore[import-untyped]
+    # Try TransNetV2 (GPU primary)
+    try:
+        import cv2  # type: ignore[import-untyped]
 
-    # Read and downsample frames for TransNetV2
-    frames, fps, total_frames = _read_and_downsample_frames(video_path, cv2)
+        frames, fps, total_frames = _read_and_downsample_frames(video_path, cv2)
 
-    # Run TransNetV2 via GPU scheduler
-    with scheduler.model("transnetv2") as model:
-        predictions, _ = model.predict_frames(frames)
-        scenes = model.predictions_to_scenes(predictions)
+        with scheduler.model("transnetv2") as model:
+            predictions, _ = model.predict_frames(frames)
+            scenes = model.predictions_to_scenes(predictions)
 
-    boundaries = _transnetv2_to_boundaries(scenes)
+        boundaries = _transnetv2_to_boundaries(scenes)
 
-    with db:
-        db.upsert_boundaries(media_id, json.dumps(boundaries), "transnetv2")
+        with db:
+            db.upsert_boundaries(media_id, json.dumps(boundaries), "transnetv2")
+        return
+    except Exception:
+        logger.warning(
+            "TransNetV2 failed for %s, falling back to PySceneDetect",
+            media_id,
+            exc_info=True,
+        )
+
+    # Fallback to PySceneDetect (CPU)
+    try:
+        _run_pyscenedetect(media_id, video_path, db)
+    except Exception as exc:
+        raise ShotDetectionError(
+            f"Shot detection failed for {media_id}: {exc}"
+        ) from exc
