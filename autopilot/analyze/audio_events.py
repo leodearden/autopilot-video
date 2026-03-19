@@ -94,4 +94,8 @@ def classify_audio_events(
         scheduler: GPU scheduler for model loading.
         top_k: Number of top predictions per second window.
     """
-    pass
+    # Idempotency: skip if audio events already exist for this media
+    existing = db.get_audio_events_for_range(media_id, 0.0, 0.0)
+    if existing:
+        logger.info("Audio events already exist for %s, skipping", media_id)
+        return
