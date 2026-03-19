@@ -515,3 +515,67 @@ class TestTranscription:
                 )
 
         scheduler.model.assert_called_once_with("large-v3-turbo")
+
+
+class TestForcedAlignment:
+    """Tests for wav2vec2 forced alignment stage."""
+
+    def test_runs_alignment(self, catalog_db):
+        """Alignment model loaded and whisperx.align called."""
+        from autopilot.analyze.asr import transcribe_media
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db,
+            "vid1",
+            [{"start": 0.0, "end": 1.0, "text": "Hello world"}],
+        )
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                transcribe_media(
+                    "vid1",
+                    Path("/tmp/audio.wav"),
+                    catalog_db,
+                    scheduler,
+                    MagicMock(whisper_size="large-v3"),
+                )
+
+        # Verify load_align_model called with language and device
+        mock_wx.load_align_model.assert_called_once()
+        call_kwargs = mock_wx.load_align_model.call_args
+        assert call_kwargs[1]["language_code"] == "en"
+        assert "cuda" in call_kwargs[1]["device"]
+
+        # Verify align called
+        mock_wx.align.assert_called_once()
+
+    def test_alignment_failure_continues(self, catalog_db, caplog):
+        """Alignment failure logs warning but transcript still stored."""
+        from autopilot.analyze.asr import transcribe_media
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db,
+            "vid1",
+            [{"start": 0.0, "end": 1.0, "text": "Hello"}],
+        )
+        # Make alignment fail
+        mock_wx.align.side_effect = RuntimeError("alignment failed")
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                with caplog.at_level(logging.WARNING):
+                    transcribe_media(
+                        "vid1",
+                        Path("/tmp/audio.wav"),
+                        catalog_db,
+                        scheduler,
+                        MagicMock(whisper_size="large-v3"),
+                    )
+
+        # Should NOT raise, transcript should be stored
+        transcript = catalog_db.get_transcript("vid1")
+        assert transcript is not None
+
+        # Warning should be logged
+        assert any("align" in r.message.lower() for r in caplog.records
+                    if r.levelno >= logging.WARNING)
