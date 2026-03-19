@@ -1306,3 +1306,103 @@ class TestCommitRegression:
             "upsert_caption must be wrapped in 'with db:' for commit"
         )
         assert stored["caption"] == "A beautiful sunset"
+
+    def test_caption_clip_rollback_on_model_error(self, tmp_path):
+        """No partial caption row when model inference raises an exception.
+
+        Uses file-based CatalogDB to verify 'with db:' rollback on error.
+        """
+        from PIL import Image as PILImage
+
+        from autopilot.analyze.captions import CaptionError, caption_clip
+        from autopilot.db import CatalogDB
+
+        db_path = tmp_path / "test.db"
+        db = CatalogDB(str(db_path))
+
+        with db:
+            db.insert_media(
+                id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
+            )
+
+        # Model that raises during generation
+        model = MagicMock()
+        processor = MagicMock()
+        processor.return_value = {"input_ids": np.zeros((1, 5), dtype=np.int64)}
+        model.generate.side_effect = RuntimeError("CUDA error during generation")
+
+        scheduler = _make_mock_scheduler(
+            model_obj={"backend": "transformers", "model": model, "processor": processor}
+        )
+        config = _make_mock_config()
+
+        dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(4)]
+
+        with (
+            patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames),
+            patch.object(Path, "exists", return_value=True),
+        ):
+            with pytest.raises((RuntimeError, CaptionError)):
+                caption_clip(
+                    "m1", Path("/test/video.mp4"), 0.0, 60.0,
+                    db=db, scheduler=scheduler, config=config,
+                )
+
+        # Verify no partial caption exists
+        db2 = CatalogDB(str(db_path))
+        stored = db2.get_caption("m1", 0.0, 60.0)
+        db2.close()
+        db.close()
+
+        assert stored is None, "Partial caption should not be committed on model error"
+
+    def test_batch_caption_commits_each_clip(self, tmp_path):
+        """batch_caption commits each successful caption to disk."""
+        from autopilot.analyze.captions import batch_caption
+        from autopilot.db import CatalogDB
+
+        db_path = tmp_path / "test.db"
+        db = CatalogDB(str(db_path))
+
+        with db:
+            db.insert_media(
+                id="m0", file_path="/test/v0.mp4", fps=30.0, duration_seconds=60.0
+            )
+            db.insert_media(
+                id="m1", file_path="/test/v1.mp4", fps=30.0, duration_seconds=60.0
+            )
+
+        model, processor = _make_mock_model_and_processor()
+        input_ids = np.zeros((1, 5), dtype=np.int64)
+        processor.return_value = {"input_ids": input_ids}
+        full_output = np.arange(10, dtype=np.int64).reshape(1, -1)
+        model.generate.return_value = full_output
+        processor.batch_decode.return_value = ["A captioned scene"]
+
+        scheduler = _make_mock_scheduler(
+            model_obj={"backend": "transformers", "model": model, "processor": processor}
+        )
+        config = _make_mock_config()
+
+        with (
+            patch("autopilot.analyze.captions._extract_clip_frames") as mock_extract,
+            patch.object(Path, "exists", return_value=True),
+        ):
+            from PIL import Image as PILImage
+
+            mock_extract.return_value = [PILImage.new("RGB", (100, 100))]
+            batch_caption(
+                ["m0", "m1"],
+                db=db, scheduler=scheduler, config=config,
+                sample_rate=1.0,
+            )
+
+        # Verify from second connection
+        db2 = CatalogDB(str(db_path))
+        cap0 = db2.get_captions_for_media("m0")
+        cap1 = db2.get_captions_for_media("m1")
+        db2.close()
+        db.close()
+
+        assert len(cap0) >= 1, "Caption for m0 not committed to disk"
+        assert len(cap1) >= 1, "Caption for m1 not committed to disk"
