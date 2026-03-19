@@ -374,3 +374,56 @@ class TestCaptionClip:
         args = mock_extract.call_args
         assert args[0][1] == 5.0  # start_time
         assert args[0][2] == 25.0  # end_time
+
+
+# ---------------------------------------------------------------------------
+# TestIdempotency — caption_clip() skips when caption exists
+# ---------------------------------------------------------------------------
+
+
+class TestIdempotency:
+    """Tests for caption_clip() idempotency behavior."""
+
+    def test_existing_caption_skips(self, catalog_db):
+        """When caption already exists, return it without touching scheduler."""
+        from autopilot.analyze.captions import caption_clip
+
+        catalog_db.insert_media(
+            id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
+        )
+        catalog_db.upsert_caption("m1", 0.0, 30.0, "Existing caption", "old-model")
+
+        scheduler = _make_mock_scheduler()
+        config = _make_mock_config()
+
+        result = caption_clip(
+            "m1", Path("/test/video.mp4"), 0.0, 30.0,
+            db=catalog_db, scheduler=scheduler, config=config,
+        )
+
+        assert result == "Existing caption"
+        scheduler.model.assert_not_called()
+
+    def test_no_existing_caption_proceeds(self, catalog_db):
+        """When no caption exists, scheduler.model() is called."""
+        from PIL import Image as PILImage
+
+        from autopilot.analyze.captions import caption_clip
+
+        catalog_db.insert_media(
+            id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
+        )
+
+        model, processor = _make_mock_model_and_processor()
+        scheduler = _make_mock_scheduler(model_obj={"model": model, "processor": processor})
+        config = _make_mock_config()
+
+        dummy_frames = [PILImage.new("RGB", (100, 100)) for _ in range(8)]
+
+        with patch("autopilot.analyze.captions._extract_clip_frames", return_value=dummy_frames):
+            caption_clip(
+                "m1", Path("/test/video.mp4"), 0.0, 30.0,
+                db=catalog_db, scheduler=scheduler, config=config,
+            )
+
+        scheduler.model.assert_called_once()
