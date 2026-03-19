@@ -1064,3 +1064,96 @@ class TestCorruptClusterResilience:
         assert any("c2" in record.message for record in caplog.records), (
             f"Expected a log record mentioning 'c2', got: {[r.message for r in caplog.records]}"
         )
+
+
+# -- Step 19: Transactional insert and error wrapping tests --------------------
+
+
+class TestProposeNarrativesTransactional:
+    """propose_narratives() uses transactional inserts and wraps DB errors."""
+
+    def test_partial_insert_rolls_back(self, catalog_db):
+        """If insert fails mid-way, no narratives are persisted (atomic)."""
+        import sqlite3
+
+        from autopilot.config import AutopilotConfig
+        from autopilot.organize.narratives import NarrativeError, propose_narratives
+
+        config = AutopilotConfig(input_dir=Path("."), output_dir=Path("."))
+
+        two_narratives = [
+            {
+                "title": "Narrative A",
+                "activity_cluster_ids": ["c1"],
+                "proposed_duration_seconds": 300,
+                "arc": {},
+                "emotional_journey": "Joy",
+                "reasoning": "Good.",
+            },
+            {
+                "title": "Narrative B",
+                "activity_cluster_ids": ["c2"],
+                "proposed_duration_seconds": 600,
+                "arc": {},
+                "emotional_journey": "Wonder",
+                "reasoning": "Great.",
+            },
+        ]
+
+        mock_anthropic, _ = _setup_mock_narrative_anthropic(two_narratives)
+
+        # Make the second insert_narrative call fail
+        original_insert = catalog_db.insert_narrative
+        call_count = 0
+
+        def failing_insert(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:
+                raise sqlite3.IntegrityError("UNIQUE constraint failed")
+            return original_insert(*args, **kwargs)
+
+        with (
+            patch.dict(sys.modules, {"anthropic": mock_anthropic}),
+            patch.object(catalog_db, "insert_narrative", side_effect=failing_insert),
+        ):
+            with pytest.raises(NarrativeError):
+                propose_narratives("storyboard", catalog_db, config)
+
+        # No narratives should be in the DB (rolled back)
+        assert catalog_db.list_narratives() == []
+
+    def test_db_error_wrapped_as_narrative_error(self, catalog_db):
+        """DB errors are wrapped as NarrativeError with __cause__ chained."""
+        import sqlite3
+
+        from autopilot.config import AutopilotConfig
+        from autopilot.organize.narratives import NarrativeError, propose_narratives
+
+        config = AutopilotConfig(input_dir=Path("."), output_dir=Path("."))
+
+        one_narrative = [{
+            "title": "Narrative A",
+            "activity_cluster_ids": ["c1"],
+            "proposed_duration_seconds": 300,
+            "arc": {},
+            "emotional_journey": "",
+            "reasoning": "",
+        }]
+
+        mock_anthropic, _ = _setup_mock_narrative_anthropic(one_narrative)
+
+        with (
+            patch.dict(sys.modules, {"anthropic": mock_anthropic}),
+            patch.object(
+                catalog_db,
+                "insert_narrative",
+                side_effect=sqlite3.OperationalError("disk I/O error"),
+            ),
+        ):
+            with pytest.raises(NarrativeError) as exc_info:
+                propose_narratives("storyboard", catalog_db, config)
+
+        # The original DB exception should be chained
+        assert exc_info.value.__cause__ is not None
+        assert isinstance(exc_info.value.__cause__, sqlite3.OperationalError)
