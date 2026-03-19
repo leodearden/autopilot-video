@@ -363,6 +363,23 @@ class TestLLMLabeling:
             with pytest.raises(ClassifyError, match="missing required"):
                 _call_llm(summary, config)
 
+    def test_load_prompt_failure_raises_classify_error(self):
+        """Missing prompt file raises ClassifyError, not FileNotFoundError."""
+        from autopilot.config import LLMConfig
+        from autopilot.organize.classify import ClassifyError, _call_llm
+
+        config = LLMConfig()
+        summary = {"time_range": "test"}
+
+        mock_anthropic = MagicMock()
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            with patch(
+                "autopilot.organize.classify._load_prompt",
+                side_effect=FileNotFoundError("activity_label.md not found"),
+            ):
+                with pytest.raises(ClassifyError, match="[Pp]rompt"):
+                    _call_llm(summary, config)
+
     def test_empty_content_raises_classify_error(self):
         """Empty response.content list raises ClassifyError, not IndexError."""
         from autopilot.config import LLMConfig
