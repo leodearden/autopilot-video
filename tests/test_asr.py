@@ -403,3 +403,31 @@ class TestInputValidation:
 
         # Scheduler should NOT be called (failed before whisperx)
         scheduler.model.assert_not_called()
+
+
+class TestStatusUpdate:
+    """Tests for media status update."""
+
+    def test_sets_status_analyzing(self, catalog_db):
+        """Media status updated to 'analyzing' during transcription."""
+        from autopilot.analyze.asr import transcribe_media
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db,
+            "vid1",
+            [{"start": 0.0, "end": 1.0, "text": "Hello"}],
+        )
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                transcribe_media(
+                    "vid1",
+                    Path("/tmp/audio.wav"),
+                    catalog_db,
+                    scheduler,
+                    MagicMock(whisper_size="large-v3"),
+                )
+
+        media = catalog_db.get_media("vid1")
+        assert media is not None
+        assert media["status"] == "analyzing"
