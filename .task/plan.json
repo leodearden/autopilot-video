@@ -1,13 +1,20 @@
 {
   "task_id": "13",
   "title": "Selective video captioning",
-  "modules": [
-    "autopilot/analyze",
+  "files": [
+    "autopilot/analyze/captions.py",
     "autopilot/db.py",
     "autopilot/config.py",
+    "pyproject.toml",
+    "tests/test_captions.py",
+    "tests/test_db.py"
+  ],
+  "modules": [
+    "autopilot/analyze",
+    "autopilot",
     "tests"
   ],
-  "analysis": "Task 13 requires creating autopilot/analyze/captions.py with Qwen2.5-VL-7B for on-demand clip captioning. Two public functions: caption_clip() for single-clip captioning and batch_caption() for sampling/bulk captioning.\n\n**Codebase state:**\n- No captions table exists in db.py's 13-table schema — must add table #14 and CRUD methods.\n- ModelConfig has no caption_model field — must add with default 'Qwen/Qwen2.5-VL-7B-Instruct'.\n- `transformers` is already a pyproject.toml dependency; `vllm` is NOT — add as optional.\n- Frame extraction pattern is well-established in faces.py/objects.py via cv2.VideoCapture + cap.set(CAP_PROP_POS_FRAMES).\n- GPUScheduler API is stable: register ModelSpec, use `with scheduler.model(name) as model:`.\n\n**Architecture decisions:**\n- New `captions` table with composite PK (media_id, start_time, end_time) since captions are per-clip-segment, not per-whole-media.\n- Frame extraction reuses the cv2.VideoCapture pattern (no shared utility exists; consistent with faces.py/objects.py inline approach).\n- Model loading via GPUScheduler with ~14 GB VRAM FP16 budget.\n- vLLM detection at runtime via try/import; fallback to transformers for single inference.\n- Prompt engineering for scene description: system prompt asks for activities, setting, notable elements.\n\n**Test strategy:**\n- All tests mock cv2, transformers, and vllm (no real GPU/model needed).\n- Use catalog_db fixture (in-memory SQLite) from conftest.py.\n- Follow faces.py test patterns: mock helpers at top, class-based test grouping, sys.modules patching for cv2.\n- DB tests added to test_db.py following existing TestTranscriptsCRUD pattern.\n\n**Dependencies:** Task 3 (CatalogDB — done) and Task 6 (GPUScheduler — done).",
+  "analysis": "Task 13 requires creating autopilot/analyze/captions.py with Qwen2.5-VL-7B for on-demand clip captioning. Two public functions: caption_clip() for single-clip captioning and batch_caption() for sampling/bulk captioning.\n\n**Codebase state:**\n- No captions table exists in db.py's 13-table schema \u2014 must add table #14 and CRUD methods.\n- ModelConfig has no caption_model field \u2014 must add with default 'Qwen/Qwen2.5-VL-7B-Instruct'.\n- `transformers` is already a pyproject.toml dependency; `vllm` is NOT \u2014 add as optional.\n- Frame extraction pattern is well-established in faces.py/objects.py via cv2.VideoCapture + cap.set(CAP_PROP_POS_FRAMES).\n- GPUScheduler API is stable: register ModelSpec, use `with scheduler.model(name) as model:`.\n\n**Architecture decisions:**\n- New `captions` table with composite PK (media_id, start_time, end_time) since captions are per-clip-segment, not per-whole-media.\n- Frame extraction reuses the cv2.VideoCapture pattern (no shared utility exists; consistent with faces.py/objects.py inline approach).\n- Model loading via GPUScheduler with ~14 GB VRAM FP16 budget.\n- vLLM detection at runtime via try/import; fallback to transformers for single inference.\n- Prompt engineering for scene description: system prompt asks for activities, setting, notable elements.\n\n**Test strategy:**\n- All tests mock cv2, transformers, and vllm (no real GPU/model needed).\n- Use catalog_db fixture (in-memory SQLite) from conftest.py.\n- Follow faces.py test patterns: mock helpers at top, class-based test grouping, sys.modules patching for cv2.\n- DB tests added to test_db.py following existing TestTranscriptsCRUD pattern.\n\n**Dependencies:** Task 3 (CatalogDB \u2014 done) and Task 6 (GPUScheduler \u2014 done).\n\n**Review fixes (post step-22):**\nFour blocking issues identified across two review rounds:\n1. **api_contract_violation / data_loss_missing_commit**: caption_clip() calls db.upsert_caption() without 'with db:' context manager. CatalogDB's CRUD methods do NOT auto-commit; the write is buffered and lost on connection close. Tests mask this because catalog_db fixture uses autocommit. Fix: wrap in 'with db:', add regression test with non-autocommit DB.\n2. **broken_abstraction / failure_mode_uncaught_exception**: vLLM backend sets processor=None but caption_clip() unconditionally calls processor(), causing TypeError. Fix: add backend dispatch via _run_transformers_inference / _run_vllm_inference helpers.\n3. Output token slicing: model.generate() returns full sequences including input prompt tokens; batch_decode on unsliced output prepends prompt text to caption. Fix: slice off input tokens before decoding.\n4. Overbroad exception: except (ImportError, Exception) silently swallows CUDA OOM and config errors during vLLM init. Fix: catch only ImportError, let other errors propagate.",
   "prerequisites": [
     {
       "id": "pre-1",
@@ -49,7 +56,7 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing tests for captions DB CRUD in tests/test_db.py — new TestCaptionsCRUD class: (1) test_upsert_and_get_caption — insert caption, retrieve by PK, verify all fields. (2) test_upsert_overwrites — upsert same PK twice, verify latest caption wins. (3) test_get_caption_not_found — returns None for missing caption. (4) test_get_captions_for_media — insert 3 captions for same media_id, verify all returned ordered by start_time. (5) test_get_captions_for_media_empty — returns empty list for media with no captions. (6) test_caption_fk_enforcement — inserting caption with nonexistent media_id raises IntegrityError.",
+      "description": "Write failing tests for captions DB CRUD in tests/test_db.py \u2014 new TestCaptionsCRUD class: (1) test_upsert_and_get_caption \u2014 insert caption, retrieve by PK, verify all fields. (2) test_upsert_overwrites \u2014 upsert same PK twice, verify latest caption wins. (3) test_get_caption_not_found \u2014 returns None for missing caption. (4) test_get_captions_for_media \u2014 insert 3 captions for same media_id, verify all returned ordered by start_time. (5) test_get_captions_for_media_empty \u2014 returns empty list for media with no captions. (6) test_caption_fk_enforcement \u2014 inserting caption with nonexistent media_id raises IntegrityError.",
       "status": "done",
       "commit": "8b873b3"
     },
@@ -63,7 +70,7 @@
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write failing tests for captions.py public API and error class in TestPublicAPI class: (1) test_caption_error_importable — CaptionError importable from autopilot.analyze.captions. (2) test_caption_error_is_exception — subclass of Exception. (3) test_caption_clip_importable — caption_clip importable with params (media_id, video_path, start_time, end_time, db, scheduler). (4) test_batch_caption_importable — batch_caption importable with params (media_ids, db, scheduler, sample_rate). (5) test_extract_clip_frames_importable — _extract_clip_frames is a module-level helper.",
+      "description": "Write failing tests for captions.py public API and error class in TestPublicAPI class: (1) test_caption_error_importable \u2014 CaptionError importable from autopilot.analyze.captions. (2) test_caption_error_is_exception \u2014 subclass of Exception. (3) test_caption_clip_importable \u2014 caption_clip importable with params (media_id, video_path, start_time, end_time, db, scheduler). (4) test_batch_caption_importable \u2014 batch_caption importable with params (media_ids, db, scheduler, sample_rate). (5) test_extract_clip_frames_importable \u2014 _extract_clip_frames is a module-level helper.",
       "status": "done",
       "commit": "ef55d6b"
     },
@@ -77,7 +84,7 @@
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write failing tests for _extract_clip_frames() in TestExtractClipFrames class: (1) test_extracts_correct_number_of_frames — 8 frames requested from 30s clip returns 8 PIL Images. (2) test_frame_times_evenly_spaced — for start=10.0, end=40.0, num_frames=4, verify cap.set() called with frame indices corresponding to evenly-spaced timestamps. (3) test_handles_read_failure — when cap.read() returns (False, None) for some frames, returns only successful frames without error. (4) test_empty_range_returns_empty — start_time == end_time returns empty list. (5) test_converts_bgr_to_rgb — verify cv2 BGR frame is converted to RGB PIL Image.",
+      "description": "Write failing tests for _extract_clip_frames() in TestExtractClipFrames class: (1) test_extracts_correct_number_of_frames \u2014 8 frames requested from 30s clip returns 8 PIL Images. (2) test_frame_times_evenly_spaced \u2014 for start=10.0, end=40.0, num_frames=4, verify cap.set() called with frame indices corresponding to evenly-spaced timestamps. (3) test_handles_read_failure \u2014 when cap.read() returns (False, None) for some frames, returns only successful frames without error. (4) test_empty_range_returns_empty \u2014 start_time == end_time returns empty list. (5) test_converts_bgr_to_rgb \u2014 verify cv2 BGR frame is converted to RGB PIL Image.",
       "status": "done",
       "commit": "6efe5ab"
     },
@@ -91,7 +98,7 @@
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write failing tests for caption_clip() core path in TestCaptionClip class: (1) test_returns_caption_string — mock model processor+generate to return 'A person walking on a beach', verify caption_clip returns that string. (2) test_stores_caption_in_db — after caption_clip completes, db.get_caption() returns the generated caption with correct media_id/start_time/end_time. (3) test_uses_scheduler — verify scheduler.model() context manager called with config.caption_model name. (4) test_extracts_frames_from_clip_segment — verify cv2.VideoCapture.set() is called with frame positions within [start_time, end_time] range only.",
+      "description": "Write failing tests for caption_clip() core path in TestCaptionClip class: (1) test_returns_caption_string \u2014 mock model processor+generate to return 'A person walking on a beach', verify caption_clip returns that string. (2) test_stores_caption_in_db \u2014 after caption_clip completes, db.get_caption() returns the generated caption with correct media_id/start_time/end_time. (3) test_uses_scheduler \u2014 verify scheduler.model() context manager called with config.caption_model name. (4) test_extracts_frames_from_clip_segment \u2014 verify cv2.VideoCapture.set() is called with frame positions within [start_time, end_time] range only.",
       "status": "done",
       "commit": "65fe1a0"
     },
@@ -105,7 +112,7 @@
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write failing tests for caption_clip() idempotency in TestIdempotency class: (1) test_existing_caption_skips — when caption already exists for (media_id, start, end), return existing caption without touching scheduler. (2) test_no_existing_caption_proceeds — when no caption exists, scheduler.model() is called.",
+      "description": "Write failing tests for caption_clip() idempotency in TestIdempotency class: (1) test_existing_caption_skips \u2014 when caption already exists for (media_id, start, end), return existing caption without touching scheduler. (2) test_no_existing_caption_proceeds \u2014 when no caption exists, scheduler.model() is called.",
       "status": "done",
       "commit": "318d19f"
     },
@@ -119,7 +126,7 @@
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write failing tests for caption_clip() error handling in TestErrorHandling class: (1) test_video_not_found_raises — nonexistent video_path raises CaptionError matching 'not found'. (2) test_video_not_opened_raises — cap.isOpened()==False raises CaptionError. (3) test_no_frames_extracted_raises — when _extract_clip_frames returns empty list, raises CaptionError matching 'No frames'. (4) test_invalid_time_range_raises — start_time > end_time raises CaptionError matching 'Invalid time range'. (5) test_start_time_negative_raises — start_time < 0 raises CaptionError.",
+      "description": "Write failing tests for caption_clip() error handling in TestErrorHandling class: (1) test_video_not_found_raises \u2014 nonexistent video_path raises CaptionError matching 'not found'. (2) test_video_not_opened_raises \u2014 cap.isOpened()==False raises CaptionError. (3) test_no_frames_extracted_raises \u2014 when _extract_clip_frames returns empty list, raises CaptionError matching 'No frames'. (4) test_invalid_time_range_raises \u2014 start_time > end_time raises CaptionError matching 'Invalid time range'. (5) test_start_time_negative_raises \u2014 start_time < 0 raises CaptionError.",
       "status": "done",
       "commit": "007b9d1"
     },
@@ -133,7 +140,7 @@
     {
       "id": "step-13",
       "type": "test",
-      "description": "Write failing tests for batch_caption() in TestBatchCaption class: (1) test_samples_10_percent — given 100 media_ids with sample_rate=0.1, approximately 10 get captioned (allow ±3 tolerance for randomness). (2) test_custom_sample_rate — sample_rate=0.5 captions ~50% of clips. (3) test_specific_media_ids — when media_ids list has 3 items and sample_rate=1.0, all 3 get captioned. (4) test_skips_already_captioned — media_ids that already have captions in DB are skipped. (5) test_empty_media_ids_noop — empty list returns immediately without error.",
+      "description": "Write failing tests for batch_caption() in TestBatchCaption class: (1) test_samples_10_percent \u2014 given 100 media_ids with sample_rate=0.1, approximately 10 get captioned (allow \u00b13 tolerance for randomness). (2) test_custom_sample_rate \u2014 sample_rate=0.5 captions ~50% of clips. (3) test_specific_media_ids \u2014 when media_ids list has 3 items and sample_rate=1.0, all 3 get captioned. (4) test_skips_already_captioned \u2014 media_ids that already have captions in DB are skipped. (5) test_empty_media_ids_noop \u2014 empty list returns immediately without error.",
       "status": "done",
       "commit": "85077b8"
     },
@@ -147,7 +154,7 @@
     {
       "id": "step-15",
       "type": "test",
-      "description": "Write failing tests for vLLM/transformers backend selection in TestBackendSelection class: (1) test_vllm_used_when_available — when 'vllm' is importable (mock sys.modules), the vLLM inference path is taken. (2) test_transformers_fallback — when 'vllm' import fails, transformers inference path is taken. (3) test_model_registration_vram — verify ModelSpec registered with ~14GB vram_bytes for FP16.",
+      "description": "Write failing tests for vLLM/transformers backend selection in TestBackendSelection class: (1) test_vllm_used_when_available \u2014 when 'vllm' is importable (mock sys.modules), the vLLM inference path is taken. (2) test_transformers_fallback \u2014 when 'vllm' import fails, transformers inference path is taken. (3) test_model_registration_vram \u2014 verify ModelSpec registered with ~14GB vram_bytes for FP16.",
       "status": "done",
       "commit": "ad038b5"
     },
@@ -161,7 +168,7 @@
     {
       "id": "step-17",
       "type": "test",
-      "description": "Write failing tests for caption_clip() logging in TestLogging class: (1) test_log_contains_media_id — INFO log includes media_id on caption start. (2) test_log_caption_complete — INFO log on completion with media_id and caption length. (3) test_log_skipping_on_idempotent — INFO log with 'already exists' when caption exists. (4) test_log_batch_progress — batch_caption logs progress count.",
+      "description": "Write failing tests for caption_clip() logging in TestLogging class: (1) test_log_contains_media_id \u2014 INFO log includes media_id on caption start. (2) test_log_caption_complete \u2014 INFO log on completion with media_id and caption length. (3) test_log_skipping_on_idempotent \u2014 INFO log with 'already exists' when caption exists. (4) test_log_batch_progress \u2014 batch_caption logs progress count.",
       "status": "done",
       "commit": "a1dcfeb"
     },
@@ -175,7 +182,7 @@
     {
       "id": "step-19",
       "type": "test",
-      "description": "Write failing test for ModelConfig caption_model field in tests/test_config.py or test_captions.py: (1) test_model_config_has_caption_model — ModelConfig().caption_model == 'Qwen/Qwen2.5-VL-7B-Instruct'. (2) test_config_yaml_override — loading config YAML with models.caption_model set overrides default.",
+      "description": "Write failing test for ModelConfig caption_model field in tests/test_config.py or test_captions.py: (1) test_model_config_has_caption_model \u2014 ModelConfig().caption_model == 'Qwen/Qwen2.5-VL-7B-Instruct'. (2) test_config_yaml_override \u2014 loading config YAML with models.caption_model set overrides default.",
       "status": "done",
       "commit": "31dd3d3"
     },
@@ -189,7 +196,7 @@
     {
       "id": "step-21",
       "type": "test",
-      "description": "Write integration test in TestIntegration class: test_caption_clip_end_to_end — mock cv2 + mock transformers model, run caption_clip with real in-memory DB, verify caption stored and retrievable via db.get_caption(), verify returned string matches mock model output.",
+      "description": "Write integration test in TestIntegration class: test_caption_clip_end_to_end \u2014 mock cv2 + mock transformers model, run caption_clip with real in-memory DB, verify caption stored and retrievable via db.get_caption(), verify returned string matches mock model output.",
       "status": "done",
       "commit": "06e08cb"
     },
@@ -199,6 +206,76 @@
       "description": "Final polish: ensure all edge cases handled (zero-duration clips, clips beyond video duration clamped), add __all__ to captions.py with public exports, verify all tests pass with `pytest tests/test_captions.py tests/test_db.py -v`.",
       "status": "done",
       "commit": "28abb88"
+    },
+    {
+      "id": "step-23",
+      "type": "test",
+      "description": "Write failing tests for prompt-token slicing fix in TestTransformersInference class: (1) test_output_tokens_sliced_before_decode \u2014 mock model.generate() to return tensor with shape [1, prompt_len+gen_len], mock inputs['input_ids'] with shape [1, prompt_len], verify processor.batch_decode is called with only the generated tokens (output_ids[:, prompt_len:]), NOT the full sequence. (2) test_caption_excludes_prompt_text \u2014 set up processor.batch_decode to return different values depending on input: if called with full sequence returns 'SYSTEM PROMPT caption text', if called with sliced tokens returns 'caption text'. Verify caption_clip returns 'caption text' (the sliced decode), not the prompt-prepended version.",
+      "status": "done",
+      "commit": "1f304b7"
+    },
+    {
+      "id": "step-24",
+      "type": "impl",
+      "description": "Fix prompt-token slicing in caption_clip() inference path (captions.py ~line 206-209): After model.generate(**inputs, max_new_tokens=256), slice off input prompt tokens before decoding: `output_ids = output_ids[:, inputs['input_ids'].shape[-1]:]`. Then call processor.batch_decode(output_ids, skip_special_tokens=True). This ensures only generated tokens are decoded, not the prompt prefix.",
+      "status": "done",
+      "commit": "8d3d5fd"
+    },
+    {
+      "id": "step-25",
+      "type": "test",
+      "description": "Write failing tests for vLLM/transformers backend dispatch in TestBackendDispatch class: (1) test_vllm_backend_uses_llm_generate \u2014 when model_bundle['backend']=='vllm', verify the vLLM LLM.generate() API is called (with SamplingParams), NOT processor(). (2) test_transformers_backend_uses_processor \u2014 when model_bundle['backend']=='transformers', verify processor() and model.generate() are called. (3) test_vllm_backend_processor_none_no_error \u2014 when backend is 'vllm' and processor is None, caption_clip does NOT raise TypeError. (4) test_run_vllm_inference_importable \u2014 _run_vllm_inference is a callable module-level helper. (5) test_run_transformers_inference_importable \u2014 _run_transformers_inference is a callable module-level helper.",
+      "status": "done",
+      "commit": "a878921"
+    },
+    {
+      "id": "step-26",
+      "type": "impl",
+      "description": "Refactor caption_clip() inference into two dispatch helpers (captions.py lines 194-209): (1) Extract _run_transformers_inference(model_bundle, frames) that does processor(messages, return_tensors='pt') -> model.generate -> slice output_ids -> processor.batch_decode -> return caption string. (2) Add _run_vllm_inference(model_bundle, frames) that uses llm = model_bundle['model'], constructs prompt with image tokens, calls llm.generate(prompts, sampling_params=SamplingParams(max_tokens=256)) and returns output text. (3) In caption_clip(), dispatch based on model_bundle['backend']: if 'vllm' call _run_vllm_inference, elif 'transformers' call _run_transformers_inference. This prevents TypeError when processor is None for vLLM backend.",
+      "status": "done",
+      "commit": "3ab3cb8"
+    },
+    {
+      "id": "step-27",
+      "type": "test",
+      "description": "Write failing tests for narrow exception handling in TestExceptionHandling class: (1) test_load_fn_catches_import_error_only \u2014 when vllm import raises ImportError, load_fn falls back to transformers without error. (2) test_load_fn_propagates_runtime_error \u2014 when vllm import succeeds but vllm.LLM() raises RuntimeError (e.g., CUDA OOM), the error propagates up (is NOT caught). (3) test_load_fn_propagates_cuda_oom \u2014 when vllm.LLM() raises torch.cuda.OutOfMemoryError, the error propagates (is NOT silently caught and fallen back). (4) test_load_fn_logs_warning_on_import_fallback \u2014 when ImportError triggers fallback, a warning log is emitted mentioning 'vLLM unavailable'.",
+      "status": "done",
+      "commit": "9d9db44"
+    },
+    {
+      "id": "step-28",
+      "type": "impl",
+      "description": "Fix overbroad exception in _make_caption_model_spec() load_fn (captions.py line 48): Change `except (ImportError, Exception):` to `except ImportError:`. Add logger.warning('vLLM unavailable, falling back to transformers: %s', e) before the fallback path. This ensures only missing-vllm-package triggers fallback; CUDA OOM, config errors, and other runtime exceptions propagate to the caller for proper diagnosis.",
+      "status": "done",
+      "commit": "ad4a26f"
+    },
+    {
+      "id": "step-29",
+      "type": "test",
+      "description": "Write failing test for DB commit regression in TestCommitRegression class in tests/test_captions.py: test_caption_clip_commits_to_db \u2014 Create a file-based CatalogDB (tmp_path / 'test.db') with default isolation_level (NOT the autocommit fixture). Insert media via 'with db:', run caption_clip with mocked model, then open a SECOND independent CatalogDB connection to the same file and call get_caption() on it. The caption must be visible from the second connection, proving the write was committed to disk. The current code (bare db.upsert_caption without 'with db:') will FAIL this test because the write is buffered in SQLite's implicit transaction and never committed. This is the exact regression the autocommit fixture masks.",
+      "status": "done",
+      "commit": "b67ed28"
+    },
+    {
+      "id": "step-30",
+      "type": "impl",
+      "description": "Fix silent data loss in caption_clip() (captions.py line 212): Wrap the db.upsert_caption() call in a 'with db:' context manager block. Change from bare `db.upsert_caption(media_id, start_time, end_time, caption, config.caption_model)` to `with db:\\n        db.upsert_caption(media_id, start_time, end_time, caption, config.caption_model)`. This matches the pattern used by ALL other DB write callers in the codebase (asr.py:164, faces.py:104, objects.py:256, scripts/label_faces.py:38) and ensures automatic commit on success / rollback on failure per CatalogDB's documented contract.",
+      "status": "done",
+      "commit": "0feaaf5"
+    },
+    {
+      "id": "step-31",
+      "type": "test",
+      "description": "Write additional commit regression test: test_caption_clip_rollback_on_model_error \u2014 Using a file-based non-autocommit CatalogDB, mock model inference to raise an exception mid-caption (after frames extracted but during generate). Verify that no partial caption row exists in the DB. This confirms the 'with db:' rollback behavior on error. Also add test_batch_caption_commits_each_clip \u2014 run batch_caption with 2 media files using a file-based DB, verify both captions are committed and visible from a second connection.",
+      "status": "done",
+      "commit": "247213e"
+    },
+    {
+      "id": "step-32",
+      "type": "impl",
+      "description": "Final verification of all review fixes: run full test suite `pytest tests/test_captions.py tests/test_db.py -v` to confirm all tests pass. Audit captions.py for: (1) 'with db:' wraps upsert_caption on line ~212, (2) backend dispatch handles both vllm and transformers paths, (3) except clause is ImportError only, (4) output tokens are sliced before decode. Verify no other bare db write calls exist in the module.",
+      "status": "done",
+      "commit": "247213e"
     }
   ],
   "design_decisions": [
@@ -216,7 +293,7 @@
     },
     {
       "decision": "Runtime vLLM detection via try/import, not build-time flag",
-      "rationale": "vLLM is an optional heavyweight dependency (~2GB install). Runtime detection allows the same code to work on machines with or without vLLM. The load_fn in ModelSpec is the natural place for this branching — GPUScheduler doesn't need to know which backend is used."
+      "rationale": "vLLM is an optional heavyweight dependency (~2GB install). Runtime detection allows the same code to work on machines with or without vLLM. The load_fn in ModelSpec is the natural place for this branching \u2014 GPUScheduler doesn't need to know which backend is used."
     },
     {
       "decision": "caption_clip returns the caption string (not None)",
@@ -233,6 +310,22 @@
     {
       "decision": "~14 GB VRAM budget for Qwen2.5-VL-7B FP16",
       "rationale": "7B parameter model at FP16 (2 bytes/param) = ~14 GB. This matches the task spec and fits on RTX 3090 (24 GB) with room for other small models. Registered via ModelSpec.vram_bytes for scheduler eviction."
+    },
+    {
+      "decision": "Separate _run_vllm_inference and _run_transformers_inference helpers with backend dispatch",
+      "rationale": "Review identified that vLLM and transformers have fundamentally different inference APIs (vllm.LLM.generate with SamplingParams vs processor+model.generate+batch_decode). A single code path cannot serve both. Backend dispatch in caption_clip based on model_bundle['backend'] keeps each path clean and testable. The 'backend' key is already set by load_fn."
+    },
+    {
+      "decision": "Slice output_ids to remove input prompt tokens before batch_decode",
+      "rationale": "transformers model.generate() returns full sequences (input + generated). Without slicing, batch_decode returns the system prompt + user prompt prepended to the actual caption. Slicing via output_ids[:, inputs['input_ids'].shape[-1]:] is the standard HuggingFace pattern for causal LM decoding."
+    },
+    {
+      "decision": "Catch only ImportError in vLLM fallback, not broad Exception",
+      "rationale": "The fallback from vLLM to transformers should only trigger when vLLM is not installed (ImportError). CUDA OOM, misconfiguration, and other runtime errors during vLLM initialization are real failures that should propagate for diagnosis. Catching broad Exception obscures the root cause when the transformers fallback also fails."
+    },
+    {
+      "decision": "File-based DB regression test for commit verification instead of mocking __enter__/__exit__",
+      "rationale": "The autocommit catalog_db fixture masks missing-commit bugs because in-memory SQLite with isolation_level=None commits everything immediately. A file-based DB with default isolation level, verified by opening a second independent connection, proves the commit actually reached disk. This is a true end-to-end verification of the CatalogDB contract, not a mock-based assertion about context manager calls."
     }
   ],
   "reuse": [
@@ -274,7 +367,18 @@
     {
       "what": "Test class organization pattern",
       "where": "tests/test_faces.py",
-      "how": "Follow class-based grouping: TestPublicAPI, TestIdempotency, TestErrorHandling, TestDetectionLoop → TestCaptionClip, TestBatchCaption, TestLogging, TestIntegration."
+      "how": "Follow class-based grouping: TestPublicAPI, TestIdempotency, TestErrorHandling, TestDetectionLoop \u2192 TestCaptionClip, TestBatchCaption, TestLogging, TestIntegration."
+    },
+    {
+      "what": "HuggingFace output token slicing pattern",
+      "where": "transformers documentation / standard practice",
+      "how": "After model.generate(**inputs), slice output_ids[:, inputs['input_ids'].shape[-1]:] to remove prompt tokens before calling batch_decode. This is the standard pattern for all causal LM generation with HuggingFace transformers."
+    },
+    {
+      "what": "'with db:' transactional write pattern",
+      "where": "autopilot/analyze/asr.py:164, faces.py:104, objects.py:256, scripts/label_faces.py:38",
+      "how": "All DB write callers in the codebase wrap writes in 'with db:' for automatic commit/rollback per CatalogDB's documented contract. caption_clip() must follow this same pattern for upsert_caption()."
     }
-  ]
+  ],
+  "_schema_version": 1
 }
