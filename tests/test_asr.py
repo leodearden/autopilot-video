@@ -695,3 +695,115 @@ class TestDiarization:
         # Warning should be logged
         assert any("diariz" in r.message.lower() for r in caplog.records
                     if r.levelno >= logging.WARNING)
+
+
+class TestDBStorage:
+    """Tests for transcript DB storage."""
+
+    def test_stores_normalized_transcript(self, catalog_db):
+        """Stored transcript matches PRD schema."""
+        from autopilot.analyze.asr import transcribe_media
+
+        segments = [
+            {
+                "start": 0.0,
+                "end": 1.5,
+                "text": "Hello world",
+                "speaker": "SPEAKER_01",
+                "words": [
+                    {"word": "Hello", "start": 0.0, "end": 0.7, "score": 0.95},
+                    {"word": "world", "start": 0.8, "end": 1.5, "score": 0.88},
+                ],
+            },
+            {
+                "start": 2.0,
+                "end": 3.5,
+                "text": "How are you",
+                "speaker": "SPEAKER_02",
+                "words": [
+                    {"word": "How", "start": 2.0, "end": 2.3, "score": 0.9},
+                    {"word": "are", "start": 2.4, "end": 2.6, "score": 0.85},
+                    {"word": "you", "start": 2.7, "end": 3.5, "score": 0.92},
+                ],
+            },
+        ]
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db, "vid1", segments,
+        )
+        # Make assign_word_speakers return segments with speakers
+        mock_wx.assign_word_speakers.return_value = {"segments": segments}
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                transcribe_media(
+                    "vid1",
+                    Path("/tmp/audio.wav"),
+                    catalog_db,
+                    scheduler,
+                    MagicMock(whisper_size="large-v3"),
+                )
+
+        transcript = catalog_db.get_transcript("vid1")
+        assert transcript is not None
+        stored = json.loads(str(transcript["segments_json"]))
+        assert len(stored) == 2
+
+        # Verify PRD schema fields
+        seg0 = stored[0]
+        assert seg0["start"] == 0.0
+        assert seg0["end"] == 1.5
+        assert seg0["text"] == "Hello world"
+        assert seg0["speaker"] == "SPEAKER_01"
+        assert len(seg0["words"]) == 2
+        assert seg0["words"][0] == {
+            "word": "Hello", "start": 0.0, "end": 0.7, "score": 0.95,
+        }
+
+    def test_language_stored(self, catalog_db):
+        """Stored language matches whisperx detected language."""
+        from autopilot.analyze.asr import transcribe_media
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db,
+            "vid1",
+            [{"start": 0.0, "end": 1.0, "text": "Bonjour"}],
+            language="fr",
+        )
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                transcribe_media(
+                    "vid1",
+                    Path("/tmp/audio.wav"),
+                    catalog_db,
+                    scheduler,
+                    MagicMock(whisper_size="large-v3"),
+                )
+
+        transcript = catalog_db.get_transcript("vid1")
+        assert transcript is not None
+        assert transcript["language"] == "fr"
+
+    def test_empty_segments_stored(self, catalog_db):
+        """Empty segments list stored and retrievable."""
+        from autopilot.analyze.asr import transcribe_media
+
+        mock_wx, scheduler = _make_full_pipeline_mocks(
+            catalog_db, "vid1", [],
+        )
+
+        with patch.dict(sys.modules, {"whisperx": mock_wx}):
+            with patch.object(Path, "exists", return_value=True):
+                transcribe_media(
+                    "vid1",
+                    Path("/tmp/audio.wav"),
+                    catalog_db,
+                    scheduler,
+                    MagicMock(whisper_size="large-v3"),
+                )
+
+        transcript = catalog_db.get_transcript("vid1")
+        assert transcript is not None
+        stored = json.loads(str(transcript["segments_json"]))
+        assert stored == []
