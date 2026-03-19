@@ -556,3 +556,111 @@ class TestTransNetV2Pipeline:
         assert row is not None
         boundaries = json.loads(row["boundaries_json"])
         assert boundaries == []
+
+
+def _make_mock_scenedetect(scenes=None):
+    """Create mock scenedetect module and detectors submodule.
+
+    Args:
+        scenes: Optional scene list to return from detect(). Defaults to 2 scenes.
+    """
+    mock_sd = MagicMock()
+    mock_detectors = MagicMock()
+
+    if scenes is None:
+        scenes = [
+            (_make_mock_timecode(0), _make_mock_timecode(100)),
+            (_make_mock_timecode(100), _make_mock_timecode(300)),
+        ]
+    mock_sd.detect.return_value = scenes
+
+    return mock_sd, mock_detectors
+
+
+class TestPySceneDetectPipeline:
+    """Tests for the PySceneDetect detection path."""
+
+    def test_scenedetect_detect_called(self, catalog_db, tmp_path) -> None:
+        """scenedetect.detect called with str(video_path) and AdaptiveDetector."""
+        from autopilot.analyze.scenes import _run_pyscenedetect
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("vid-psd", str(video_file))
+
+        mock_sd, mock_detectors = _make_mock_scenedetect()
+
+        with patch.dict(sys.modules, {
+            "scenedetect": mock_sd,
+            "scenedetect.detectors": mock_detectors,
+        }):
+            _run_pyscenedetect("vid-psd", video_file, catalog_db)
+
+        mock_sd.detect.assert_called_once()
+        call_args = mock_sd.detect.call_args
+        assert call_args[0][0] == str(video_file)
+
+    def test_adaptive_detector_threshold(self, catalog_db, tmp_path) -> None:
+        """AdaptiveDetector created with adaptive_threshold=27.0."""
+        from autopilot.analyze.scenes import _run_pyscenedetect
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("vid-psd2", str(video_file))
+
+        mock_sd, mock_detectors = _make_mock_scenedetect()
+
+        with patch.dict(sys.modules, {
+            "scenedetect": mock_sd,
+            "scenedetect.detectors": mock_detectors,
+        }):
+            _run_pyscenedetect("vid-psd2", video_file, catalog_db)
+
+        mock_detectors.AdaptiveDetector.assert_called_once_with(
+            adaptive_threshold=27.0
+        )
+
+    def test_boundaries_stored_with_pyscenedetect_method(self, catalog_db, tmp_path) -> None:
+        """Stores results via db.upsert_boundaries with method='pyscenedetect'."""
+        from autopilot.analyze.scenes import _run_pyscenedetect
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("vid-psd3", str(video_file))
+
+        mock_sd, mock_detectors = _make_mock_scenedetect()
+
+        with patch.dict(sys.modules, {
+            "scenedetect": mock_sd,
+            "scenedetect.detectors": mock_detectors,
+        }):
+            _run_pyscenedetect("vid-psd3", video_file, catalog_db)
+
+        row = catalog_db.get_boundaries("vid-psd3", method="pyscenedetect")
+        assert row is not None
+        boundaries = json.loads(row["boundaries_json"])
+        assert isinstance(boundaries, list)
+
+    def test_stored_boundaries_are_valid_json(self, catalog_db, tmp_path) -> None:
+        """Stored boundaries_json is valid JSON."""
+        from autopilot.analyze.scenes import _run_pyscenedetect
+
+        video_file = tmp_path / "test.mp4"
+        video_file.write_bytes(b"fake")
+        catalog_db.insert_media("vid-psd4", str(video_file))
+
+        mock_sd, mock_detectors = _make_mock_scenedetect()
+
+        with patch.dict(sys.modules, {
+            "scenedetect": mock_sd,
+            "scenedetect.detectors": mock_detectors,
+        }):
+            _run_pyscenedetect("vid-psd4", video_file, catalog_db)
+
+        row = catalog_db.get_boundaries("vid-psd4", method="pyscenedetect")
+        boundaries = json.loads(row["boundaries_json"])
+        assert len(boundaries) == 2
+        for b in boundaries:
+            assert "start_frame" in b
+            assert "end_frame" in b
+            assert "transition_type" in b
