@@ -155,6 +155,8 @@ def _run_transformers_inference(
     messages = [{"role": "user", "content": content}]
 
     inputs = processor(messages, return_tensors="pt")
+    if hasattr(inputs, "to"):
+        inputs = inputs.to(model.device)
     output_ids = model.generate(**inputs, max_new_tokens=256)
     # Slice off input prompt tokens before decoding (standard HF pattern)
     output_ids = output_ids[:, inputs["input_ids"].shape[-1]:]
@@ -236,10 +238,11 @@ def caption_clip(
     if not video_path.exists():
         raise CaptionError(f"Video file not found: {video_path}")
 
-    # Get media metadata for fps
+    # Validate media exists before any GPU work
     media = db.get_media(media_id)
-    fps_val = media["fps"] if media and media.get("fps") else 30.0
-    fps = float(fps_val)  # type: ignore[arg-type]
+    if media is None:
+        raise CaptionError(f"Media not found: {media_id}")
+    fps = float(media.get("fps") or 30.0)
 
     # Extract frames from clip segment
     frames = _extract_clip_frames(video_path, start_time, end_time, fps)
