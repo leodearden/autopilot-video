@@ -176,6 +176,8 @@ def detect_shots(
     if not video_path.exists():
         raise ShotDetectionError(f"Video file not found: {video_path}")
 
+    logger.info("Starting shot detection for %s", media_id)
+
     # Try TransNetV2 (GPU primary)
     try:
         import cv2  # type: ignore[import-untyped]
@@ -190,6 +192,11 @@ def detect_shots(
 
         with db:
             db.upsert_boundaries(media_id, json.dumps(boundaries), "transnetv2")
+
+        logger.info(
+            "Completed shot detection for %s: %d boundaries via %s",
+            media_id, len(boundaries), "transnetv2",
+        )
         return
     except Exception:
         logger.warning(
@@ -201,6 +208,13 @@ def detect_shots(
     # Fallback to PySceneDetect (CPU)
     try:
         _run_pyscenedetect(media_id, video_path, db)
+        # Read back to log count
+        row = db.get_boundaries(media_id, method="pyscenedetect")
+        count = len(json.loads(row["boundaries_json"])) if row else 0
+        logger.info(
+            "Completed shot detection for %s: %d boundaries via %s",
+            media_id, count, "pyscenedetect",
+        )
     except Exception as exc:
         raise ShotDetectionError(
             f"Shot detection failed for {media_id}: {exc}"
