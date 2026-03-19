@@ -175,4 +175,39 @@ def batch_caption(
         config: Model configuration.
         sample_rate: Fraction of clips to caption (0.0 to 1.0).
     """
-    raise NotImplementedError
+    import random
+
+    if not media_ids:
+        return
+
+    # Build clip segments for each media file
+    clips: list[tuple[str, Path, float, float]] = []
+    for mid in media_ids:
+        media = db.get_media(mid)
+        if media is None:
+            logger.warning("Media %s not found in DB, skipping", mid)
+            continue
+        file_path = Path(str(media["file_path"]))
+        duration = float(media.get("duration_seconds") or 0.0)
+        if duration <= 0:
+            logger.warning("Media %s has no duration, skipping", mid)
+            continue
+        # Use full video as single clip (shot boundaries can be added later)
+        clips.append((mid, file_path, 0.0, duration))
+
+    # Apply sampling
+    if sample_rate < 1.0:
+        k = max(1, int(len(clips) * sample_rate))
+        clips = random.sample(clips, min(k, len(clips)))
+
+    # Caption each selected clip
+    completed = 0
+    total = len(clips)
+    for mid, file_path, start, end in clips:
+        try:
+            caption_clip(mid, file_path, start, end, db, scheduler, config)
+            completed += 1
+        except CaptionError as e:
+            logger.error("Failed to caption %s [%.1f-%.1f]: %s", mid, start, end, e)
+
+    logger.info("%d/%d clips captioned", completed, total)
