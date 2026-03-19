@@ -183,6 +183,55 @@ def build_search_index(db: CatalogDB, output_path: Path) -> None:
     logger.info("Search index written to %s (%d vectors)", output_path, n)
 
 
+def _load_index_and_mapping(
+    index_path: Path,
+) -> tuple[object, list[list]]:
+    """Load a FAISS index and its sidecar ID mapping.
+
+    Args:
+        index_path: Path to the FAISS index file.
+
+    Returns:
+        (faiss_index, mapping) where mapping is list of [media_id, frame_number].
+    """
+    import json
+
+    import faiss  # type: ignore[import-not-found]
+
+    index = faiss.read_index(str(index_path))
+    mapping_path = index_path.with_suffix(".ids.json")
+    with open(mapping_path) as f:
+        mapping = json.load(f)
+    return index, mapping
+
+
+def _search_index(
+    query_vec,
+    index: object,
+    mapping: list[list],
+    top_k: int,
+) -> list[tuple[str, int, float]]:
+    """Search FAISS index and map results to (media_id, frame_number, score).
+
+    Args:
+        query_vec: Query vector as float32 numpy array of shape (1, dim).
+        index: FAISS index object.
+        mapping: List of [media_id, frame_number] entries.
+        top_k: Maximum results.
+
+    Returns:
+        List of (media_id, frame_number, score) tuples.
+    """
+    distances, indices = index.search(query_vec, top_k)  # type: ignore[union-attr]
+    results: list[tuple[str, int, float]] = []
+    for dist, idx in zip(distances[0], indices[0]):
+        if idx < 0:
+            continue
+        media_id, frame_number = mapping[idx]
+        results.append((str(media_id), int(frame_number), float(dist)))
+    return results
+
+
 def search_by_text(
     query: str,
     index_path: Path,
@@ -201,7 +250,19 @@ def search_by_text(
     Returns:
         List of (media_id, frame_number, score) tuples.
     """
-    raise NotImplementedError
+    import numpy as _np  # local alias
+
+    model_obj, processor = model
+    index, mapping = _load_index_and_mapping(index_path)
+
+    inputs = processor(text=[query], return_tensors="pt", padding=True)
+    features = model_obj.get_text_features(**inputs)
+    vec = features.detach().cpu().numpy().astype(_np.float32)
+    norm = _np.linalg.norm(vec, axis=-1, keepdims=True)
+    if norm.item() > 0:
+        vec = vec / norm
+
+    return _search_index(vec, index, mapping, top_k)
 
 
 def search_by_image(
@@ -222,4 +283,16 @@ def search_by_image(
     Returns:
         List of (media_id, frame_number, score) tuples.
     """
-    raise NotImplementedError
+    import numpy as _np  # local alias
+
+    model_obj, processor = model
+    index, mapping = _load_index_and_mapping(index_path)
+
+    inputs = processor(images=image, return_tensors="pt")
+    features = model_obj.get_image_features(**inputs)
+    vec = features.detach().cpu().numpy().astype(_np.float32)
+    norm = _np.linalg.norm(vec, axis=-1, keepdims=True)
+    if norm.item() > 0:
+        vec = vec / norm
+
+    return _search_index(vec, index, mapping, top_k)

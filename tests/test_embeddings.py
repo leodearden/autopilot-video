@@ -659,3 +659,108 @@ class TestBuildSearchIndex:
             build_search_index(catalog_db, output)
 
         mock_faiss.IndexFlatIP.assert_called_once_with(768)
+
+
+def _build_test_index(tmp_path, count=10, dim=768):
+    """Build a mock FAISS index and ID mapping for search tests.
+
+    Returns (index_path, mock_faiss, id_mapping, vectors).
+    """
+    import json
+
+    # Generate random normalized vectors
+    rng = np.random.RandomState(99)
+    vectors = rng.randn(count, dim).astype(np.float32)
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    vectors = vectors / norms
+
+    # Build ID mapping
+    id_mapping = [[f"vid{i // 5}", i * 60] for i in range(count)]
+
+    # Write mapping file
+    index_path = tmp_path / "index.faiss"
+    mapping_path = tmp_path / "index.ids.json"
+    with open(mapping_path, "w") as f:
+        json.dump(id_mapping, f)
+
+    # Create mock faiss with search that returns top_k indices
+    mock_faiss = MagicMock()
+    mock_index = MagicMock()
+    mock_index.ntotal = count
+
+    def search_fn(query_vec, k):
+        # Return deterministic results: first k indices
+        actual_k = min(k, count)
+        distances = np.ones((1, actual_k), dtype=np.float32) * 0.9
+        indices = np.arange(actual_k, dtype=np.int64).reshape(1, -1)
+        return distances, indices
+
+    mock_index.search.side_effect = search_fn
+    mock_faiss.read_index.return_value = mock_index
+
+    return index_path, mock_faiss, id_mapping, vectors
+
+
+class TestSearchByText:
+    """Tests for search_by_text."""
+
+    def test_returns_list_of_tuples(self, tmp_path) -> None:
+        """Each result is (str, int, float)."""
+        from autopilot.analyze.embeddings import search_by_text
+
+        index_path, mock_faiss, _, _ = _build_test_index(tmp_path)
+        mock_model, mock_processor = _make_mock_siglip()
+
+        with patch.dict(sys.modules, {"faiss": mock_faiss}):
+            results = search_by_text(
+                "a cat", index_path, (mock_model, mock_processor), top_k=3
+            )
+
+        assert isinstance(results, list)
+        assert len(results) > 0
+        for media_id, frame_num, score in results:
+            assert isinstance(media_id, str)
+            assert isinstance(frame_num, int)
+            assert isinstance(score, float)
+
+    def test_top_k_limits_results(self, tmp_path) -> None:
+        """top_k=3 returns at most 3."""
+        from autopilot.analyze.embeddings import search_by_text
+
+        index_path, mock_faiss, _, _ = _build_test_index(tmp_path, count=10)
+        mock_model, mock_processor = _make_mock_siglip()
+
+        with patch.dict(sys.modules, {"faiss": mock_faiss}):
+            results = search_by_text(
+                "a cat", index_path, (mock_model, mock_processor), top_k=3
+            )
+
+        assert len(results) <= 3
+
+    def test_text_encoder_called(self, tmp_path) -> None:
+        """Model text features method called."""
+        from autopilot.analyze.embeddings import search_by_text
+
+        index_path, mock_faiss, _, _ = _build_test_index(tmp_path)
+        mock_model, mock_processor = _make_mock_siglip()
+
+        with patch.dict(sys.modules, {"faiss": mock_faiss}):
+            search_by_text("a cat", index_path, (mock_model, mock_processor))
+
+        mock_model.get_text_features.assert_called_once()
+
+    def test_results_contain_valid_media_ids(self, tmp_path) -> None:
+        """All media_ids match indexed data."""
+        from autopilot.analyze.embeddings import search_by_text
+
+        index_path, mock_faiss, id_mapping, _ = _build_test_index(tmp_path)
+        valid_ids = {entry[0] for entry in id_mapping}
+        mock_model, mock_processor = _make_mock_siglip()
+
+        with patch.dict(sys.modules, {"faiss": mock_faiss}):
+            results = search_by_text(
+                "a cat", index_path, (mock_model, mock_processor), top_k=5
+            )
+
+        for media_id, _, _ in results:
+            assert media_id in valid_ids
