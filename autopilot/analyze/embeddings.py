@@ -97,9 +97,7 @@ def compute_embeddings(
             media_id, total_frames, fps, len(sample_indices),
         )
 
-        import numpy as np
-        import torch
-        from PIL import Image
+        import numpy as _np  # local alias to avoid TYPE_CHECKING conflict
 
         with scheduler.model(config.clip_model) as (model_obj, processor):
             rows: list[tuple[str, int, bytes]] = []
@@ -113,17 +111,17 @@ def compute_embeddings(
                     )
                     continue
 
-                # BGR -> RGB -> PIL
+                # BGR -> RGB
                 rgb = frame[:, :, ::-1]
-                pil_image = Image.fromarray(rgb)
 
-                inputs = processor(images=pil_image, return_tensors="pt")
-                with torch.no_grad():
-                    features = model_obj.get_image_features(**inputs)
-                features = torch.nn.functional.normalize(features, dim=-1)
-                embedding_blob = (
-                    features.detach().cpu().numpy().astype(np.float32).tobytes()
-                )
+                inputs = processor(images=rgb, return_tensors="pt")
+                features = model_obj.get_image_features(**inputs)
+                # L2-normalize in numpy space
+                vec = features.detach().cpu().numpy().astype(_np.float32)
+                norm = _np.linalg.norm(vec, axis=-1, keepdims=True)
+                if norm.item() > 0:
+                    vec = vec / norm
+                embedding_blob = vec.tobytes()
                 rows.append((media_id, frame_idx, embedding_blob))
 
             with db:
