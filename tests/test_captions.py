@@ -1151,3 +1151,94 @@ class TestBackendDispatch:
         from autopilot.analyze.captions import _run_transformers_inference
 
         assert callable(_run_transformers_inference)
+
+
+# ---------------------------------------------------------------------------
+# TestExceptionHandling — narrow exception handling in load_fn
+# ---------------------------------------------------------------------------
+
+
+class TestExceptionHandling:
+    """Tests for exception handling in _make_caption_model_spec load_fn."""
+
+    def test_load_fn_catches_import_error_only(self):
+        """When vllm import raises ImportError, load_fn falls back to transformers."""
+        from autopilot.analyze.captions import _make_caption_model_spec
+
+        config = _make_mock_config()
+        spec = _make_caption_model_spec(config)
+
+        # Mock vllm to raise ImportError, and mock transformers
+        mock_torch = MagicMock()
+        mock_transformers = MagicMock()
+        mock_processor = MagicMock()
+        mock_model = MagicMock()
+        mock_transformers.AutoProcessor.from_pretrained.return_value = mock_processor
+        mock_transformers.AutoModelForVision2Seq.from_pretrained.return_value = mock_model
+
+        with patch.dict(sys.modules, {
+            "vllm": None,  # Triggers ImportError on import
+            "torch": mock_torch,
+            "transformers": mock_transformers,
+        }):
+            result = spec.load_fn()
+
+        # Should fall back to transformers successfully
+        assert result["backend"] == "transformers"
+        assert result["processor"] is mock_processor
+
+    def test_load_fn_propagates_runtime_error(self):
+        """When vllm.LLM() raises RuntimeError, it propagates (not caught)."""
+        from autopilot.analyze.captions import _make_caption_model_spec
+
+        config = _make_mock_config()
+        spec = _make_caption_model_spec(config)
+
+        # Mock vllm that imports fine but LLM() raises RuntimeError
+        mock_vllm = MagicMock()
+        mock_vllm.LLM.side_effect = RuntimeError("CUDA initialization failed")
+
+        with (
+            patch.dict(sys.modules, {"vllm": mock_vllm}),
+            pytest.raises(RuntimeError, match="CUDA initialization failed"),
+        ):
+            spec.load_fn()
+
+    def test_load_fn_propagates_cuda_oom(self):
+        """When vllm.LLM() raises MemoryError (simulating CUDA OOM), it propagates."""
+        from autopilot.analyze.captions import _make_caption_model_spec
+
+        config = _make_mock_config()
+        spec = _make_caption_model_spec(config)
+
+        # Mock vllm that imports fine but LLM() raises MemoryError
+        mock_vllm = MagicMock()
+        mock_vllm.LLM.side_effect = MemoryError("CUDA out of memory")
+
+        with (
+            patch.dict(sys.modules, {"vllm": mock_vllm}),
+            pytest.raises(MemoryError, match="CUDA out of memory"),
+        ):
+            spec.load_fn()
+
+    def test_load_fn_logs_warning_on_import_fallback(self, caplog):
+        """When ImportError triggers fallback, a warning log is emitted."""
+        from autopilot.analyze.captions import _make_caption_model_spec
+
+        config = _make_mock_config()
+        spec = _make_caption_model_spec(config)
+
+        mock_torch = MagicMock()
+        mock_transformers = MagicMock()
+
+        with (
+            caplog.at_level(logging.WARNING, logger="autopilot.analyze.captions"),
+            patch.dict(sys.modules, {
+                "vllm": None,
+                "torch": mock_torch,
+                "transformers": mock_transformers,
+            }),
+        ):
+            spec.load_fn()
+
+        assert any("vLLM unavailable" in msg or "vllm" in msg.lower() for msg in caplog.messages)
