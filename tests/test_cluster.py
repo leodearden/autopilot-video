@@ -269,3 +269,124 @@ class TestTemporalSpatialClustering:
 
         clusters = _temporal_spatial_cluster([])
         assert clusters == []
+
+
+# -- Step 3: Semantic refinement tests ----------------------------------------
+
+
+class TestSemanticRefinement:
+    """Tests for _semantic_refine() helper."""
+
+    def _make_embedding(self, values: list[float]) -> bytes:
+        """Create a bytes blob from a float32 list."""
+        import numpy as np
+        return np.array(values, dtype=np.float32).tobytes()
+
+    def test_no_split_when_embeddings_similar(self, catalog_db):
+        """Cluster with consistent embeddings should not be split."""
+        from autopilot.organize.cluster import _semantic_refine
+
+        # Create 3 clips with nearly identical embeddings
+        catalog_db.insert_media(
+            "v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00",
+        )
+        catalog_db.insert_media(
+            "v2", "/tmp/v2.mp4", created_at="2025-01-01T10:05:00",
+        )
+        catalog_db.insert_media(
+            "v3", "/tmp/v3.mp4", created_at="2025-01-01T10:10:00",
+        )
+
+        emb = self._make_embedding([1.0, 0.0, 0.0, 0.0])
+        catalog_db.batch_insert_embeddings([
+            ("v1", 0, emb),
+            ("v2", 0, emb),
+            ("v3", 0, emb),
+        ])
+
+        clip_ids = ["v1", "v2", "v3"]
+        clips_data = {
+            "v1": {"id": "v1", "created_at": "2025-01-01T10:00:00"},
+            "v2": {"id": "v2", "created_at": "2025-01-01T10:05:00"},
+            "v3": {"id": "v3", "created_at": "2025-01-01T10:10:00"},
+        }
+
+        result = _semantic_refine(clip_ids, clips_data, catalog_db)
+        assert len(result) == 1
+        assert set(result[0]) == {"v1", "v2", "v3"}
+
+    def test_split_on_discontinuity(self, catalog_db):
+        """Cluster with embedding discontinuity should be split."""
+        from autopilot.organize.cluster import _semantic_refine
+
+        catalog_db.insert_media(
+            "v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00",
+        )
+        catalog_db.insert_media(
+            "v2", "/tmp/v2.mp4", created_at="2025-01-01T10:05:00",
+        )
+        catalog_db.insert_media(
+            "v3", "/tmp/v3.mp4", created_at="2025-01-01T10:10:00",
+        )
+        catalog_db.insert_media(
+            "v4", "/tmp/v4.mp4", created_at="2025-01-01T10:15:00",
+        )
+
+        # First two clips: [1, 0, 0, 0], last two: [0, 0, 0, 1] - very different
+        emb_a = self._make_embedding([1.0, 0.0, 0.0, 0.0])
+        emb_b = self._make_embedding([0.0, 0.0, 0.0, 1.0])
+        catalog_db.batch_insert_embeddings([
+            ("v1", 0, emb_a),
+            ("v2", 0, emb_a),
+            ("v3", 0, emb_b),
+            ("v4", 0, emb_b),
+        ])
+
+        clip_ids = ["v1", "v2", "v3", "v4"]
+        clips_data = {
+            "v1": {"id": "v1", "created_at": "2025-01-01T10:00:00"},
+            "v2": {"id": "v2", "created_at": "2025-01-01T10:05:00"},
+            "v3": {"id": "v3", "created_at": "2025-01-01T10:10:00"},
+            "v4": {"id": "v4", "created_at": "2025-01-01T10:15:00"},
+        }
+
+        result = _semantic_refine(clip_ids, clips_data, catalog_db)
+        assert len(result) == 2
+
+    def test_no_embeddings_no_split(self, catalog_db):
+        """Cluster with no embeddings should not be split."""
+        from autopilot.organize.cluster import _semantic_refine
+
+        catalog_db.insert_media(
+            "v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00",
+        )
+        catalog_db.insert_media(
+            "v2", "/tmp/v2.mp4", created_at="2025-01-01T10:05:00",
+        )
+
+        clip_ids = ["v1", "v2"]
+        clips_data = {
+            "v1": {"id": "v1", "created_at": "2025-01-01T10:00:00"},
+            "v2": {"id": "v2", "created_at": "2025-01-01T10:05:00"},
+        }
+
+        result = _semantic_refine(clip_ids, clips_data, catalog_db)
+        assert len(result) == 1
+        assert set(result[0]) == {"v1", "v2"}
+
+    def test_single_clip_no_split(self, catalog_db):
+        """Single clip cluster is returned as-is."""
+        from autopilot.organize.cluster import _semantic_refine
+
+        catalog_db.insert_media(
+            "v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00",
+        )
+
+        clip_ids = ["v1"]
+        clips_data = {
+            "v1": {"id": "v1", "created_at": "2025-01-01T10:00:00"},
+        }
+
+        result = _semantic_refine(clip_ids, clips_data, catalog_db)
+        assert len(result) == 1
+        assert result[0] == ["v1"]
