@@ -1,17 +1,32 @@
 {
-  "task_id": "6",
-  "title": "GPU scheduler",
+  "task_id": "10",
+  "title": "Face detection and clustering",
   "modules": [
-    "autopilot/analyze",
-    "tests"
+    "autopilot/analyze/faces.py",
+    "tests/test_faces.py",
+    "scripts/label_faces.py"
   ],
-  "analysis": "Task 6 requires creating autopilot/analyze/gpu_scheduler.py \u2014 a VRAM-aware GPU model scheduler with context-manager API. The analyze/ directory exists with an empty __init__.py. No GPU-related code exists yet in the project.\n\n**Architecture:** GPUScheduler class manages a registry of ModelSpec entries (load_fn, unload_fn, vram_bytes, warmup_fn) and tracks loaded models with LRU ordering. The context manager `scheduler.model('name')` loads the requested model (evicting LRU models if VRAM is insufficient) and returns the loaded model object. Models stay resident after context exit (LRU cache behavior) \u2014 only evicted when VRAM is needed for a new model. A force_unload_all() method clears everything.\n\n**Key design constraints:**\n- Must work WITHOUT a real GPU in tests \u2014 all torch.cuda calls must be injectable/mockable\n- Thread safety via threading.Lock (pipeline may run audio + video analysis concurrently)\n- Device selection from config's processing.gpu_device field\n- LRU eviction: when loading a model that won't fit, unload least-recently-used models until there's enough VRAM\n- VRAM tracking via torch.cuda.mem_get_info() in production, but mockable for tests\n\n**Test strategy:** All unit tests use mock VRAM tracking (no GPU required). We inject a vram_query callable into GPUScheduler so tests can control reported free/total VRAM. Model load/unload functions are simple callables that tests can spy on with MagicMock.\n\n**Dependencies:** Only depends on task 2 (config.py, done). Uses ProcessingConfig.gpu_device for device selection. No other autopilot modules needed.\n\n**Existing patterns followed:**\n- Dataclasses for data containers (ModelSpec follows CreatorConfig/StageDefinition pattern)\n- __all__ exports in module\n- logging module for structured output\n- Tests use pytest with descriptive docstrings, follow test_config.py/test_orchestrator.py style\n\n**Post-review fixes (steps 25-28):** Three blocking issues identified in code review: (1) vacuous assertion `assert ... or True` on line 95 of tests that can never fail, (2) untested failure mode where load_fn returns None causing the LRU cache to break, (3) incorrect sentinel check using `is not None` instead of `name in self._loaded` for the cached-model guard. Steps 25-26 add a test for None-returning load_fn and fix the sentinel check in the implementation (TDD order). Steps 27-28 fix the vacuous test assertion and run a full validation pass.",
+  "analysis": "Task 10 implements face detection (InsightFace SCRFD + ArcFace 512-d embeddings) and DBSCAN clustering in autopilot/analyze/faces.py, plus an interactive labeling script in scripts/label_faces.py. The DB schema (faces + face_clusters tables) and all CRUD methods already exist in autopilot/db.py. The GPUScheduler and ModelConfig (with face_model='buffalo_l') are already implemented. The pattern closely mirrors autopilot/analyze/objects.py: lazy cv2 import, idempotency check, 1fps sampling via max(1, int(fps)), GPU model via scheduler context manager, transactional batch inserts, custom exception class. detect_faces iterates sampled frames, runs face_model.get(frame), extracts bbox and normed_embedding per face, stores as (media_id, frame_idx, face_index, bbox_json, embedding_blob, None). cluster_faces loads all embeddings, runs sklearn DBSCAN with cosine metric, computes L2-normalized centroids, populates face_clusters table with up to 5 sample paths per cluster, and batch-updates face cluster_ids. labels start NULL. scripts/label_faces.py provides get_unlabeled_clusters() and apply_label() helpers plus an interactive CLI main(). Tests follow existing conventions: mock cv2.VideoCapture, mock InsightFace model, use catalog_db fixture with in-memory SQLite autocommit.",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Create empty test file tests/test_gpu_scheduler.py with module docstring, standard imports (pytest, unittest.mock, threading), and no test functions yet. This is the test home for the GPU scheduler.",
+      "description": "Verify DB schema has faces and face_clusters tables with correct columns and CRUD methods (batch_insert_faces, get_faces_for_media, get_all_face_embeddings, clear_face_clusters, reset_face_cluster_ids, batch_update_face_cluster_ids, insert_face_cluster, update_face_label, get_face_clusters, get_face_cluster_by_id). All confirmed present in db.py.",
       "status": "done",
-      "commit": "4073dfa",
+      "commit": "62810a6",
+      "tests": []
+    },
+    {
+      "id": "pre-2",
+      "description": "Verify ModelConfig has face_model field (default 'buffalo_l') and GPUScheduler context manager interface exists. Both confirmed in config.py and gpu_scheduler.py.",
+      "status": "done",
+      "commit": "62810a6",
+      "tests": []
+    },
+    {
+      "id": "pre-3",
+      "description": "Create test mock helpers in tests/test_faces.py: _make_mock_capture (cv2.VideoCapture mock with configurable fps/frames), _make_mock_cv2 (module mock with CAP_PROP constants), _make_mock_face (InsightFace Face mock with bbox, det_score, normed_embedding).",
+      "status": "done",
+      "commit": "62810a6",
       "tests": []
     }
   ],
@@ -19,263 +34,339 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing tests for ModelSpec dataclass and public API imports. Tests: (1) test_model_spec_fields \u2014 instantiate ModelSpec with load_fn, unload_fn, vram_bytes, warmup_fn; verify all attributes stored correctly. (2) test_model_spec_warmup_fn_optional \u2014 instantiate ModelSpec without warmup_fn, verify it defaults to None. (3) test_public_api_importable \u2014 verify GPUScheduler, ModelSpec, SchedulerError are importable from autopilot.analyze.gpu_scheduler. (4) test_scheduler_error_is_exception \u2014 verify SchedulerError is an Exception subclass.",
+      "description": "Write TestPublicAPI: test FaceDetectionError is importable and is subclass of Exception, test detect_faces is importable with correct params (media_id, video_path, db, scheduler, config), test cluster_faces is importable with (db, *, eps, min_samples) signature.",
       "status": "done",
-      "commit": "c5f456a"
+      "commit": "62810a6"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Create autopilot/analyze/gpu_scheduler.py with ModelSpec dataclass (load_fn: Callable[[], Any], unload_fn: Callable[[Any], None], vram_bytes: int, warmup_fn: Callable[[Any], None] | None = None), SchedulerError exception class, and empty GPUScheduler class stub. Add __all__ exports. Make step-1 tests pass.",
+      "description": "Create autopilot/analyze/faces.py with module docstring, imports, __all__, FaceDetectionError class, and stub detect_faces(media_id, video_path, db, scheduler, config) -> None and cluster_faces(db, *, eps=0.5, min_samples=3) -> None functions.",
       "status": "done",
-      "commit": "acd4e6e"
+      "commit": "474b3ec"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write failing tests for GPUScheduler initialization and model registration. Tests: (1) test_init_default_device \u2014 GPUScheduler() defaults to device=0 and total_vram provided at init. (2) test_init_custom_device \u2014 GPUScheduler(device=1, total_vram=24*1024**3) stores device correctly. (3) test_register_model \u2014 call scheduler.register('whisperx', spec), verify model is in scheduler's registry. (4) test_register_duplicate_raises \u2014 registering same name twice raises SchedulerError. (5) test_unregister_model \u2014 register then unregister, verify model removed from registry.",
+      "description": "Write TestIdempotency: test that detect_faces returns early without calling scheduler.model when faces already exist for media_id; test that detect_faces proceeds (calls scheduler) when no faces exist.",
       "status": "done",
-      "commit": "5946c7d"
+      "commit": "00e3654"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement GPUScheduler.__init__(device, total_vram, vram_query) with model registry dict, loaded models dict, LRU ordering list, and threading.Lock. Implement register(name, spec) and unregister(name) methods. The vram_query parameter is a callable returning (free, total) bytes \u2014 defaults to None (will use torch.cuda in production). total_vram is the VRAM budget for scheduling decisions. Make step-3 tests pass.",
+      "description": "Implement idempotency guard in detect_faces: check db.get_faces_for_media(media_id), return early with logger.info if non-empty.",
       "status": "done",
-      "commit": "d24362e"
+      "commit": "0ae070d"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write failing tests for basic model loading via context manager. Tests: (1) test_context_manager_loads_model \u2014 register a model with MagicMock load_fn, use `with scheduler.model('test') as m:`, verify load_fn called once and m is the return value. (2) test_context_manager_model_stays_loaded \u2014 after exiting context, model remains in loaded set (LRU cache). (3) test_context_manager_reuses_loaded_model \u2014 enter context twice for same model, load_fn called only once. (4) test_context_manager_unknown_model_raises \u2014 using scheduler.model('nonexistent') raises SchedulerError.",
+      "description": "Write TestErrorHandling: test nonexistent video path raises FaceDetectionError matching 'not found'; test cap.isOpened() returning False raises FaceDetectionError matching 'Failed to open'.",
       "status": "done",
-      "commit": "de0fcd6"
+      "commit": "5b5ac47"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Implement GPUScheduler.model(name) as a context manager (using contextlib.contextmanager). On enter: check if model already loaded (return cached), otherwise call spec.load_fn(), add to loaded dict, update LRU order. On exit: model stays loaded (LRU cache). Track loaded models as dict[str, Any] mapping name -> loaded model object. Make step-5 tests pass.",
+      "description": "Implement path validation (raise FaceDetectionError if not exists), lazy cv2 import, VideoCapture open with isOpened check, try/finally with cap.release().",
       "status": "done",
-      "commit": "de0fcd6"
+      "commit": "5b5ac47"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write failing tests for LRU eviction when VRAM is insufficient. Use GPUScheduler with total_vram=10GB. Tests: (1) test_evicts_lru_when_vram_insufficient \u2014 register model_a (3GB) and model_b (8GB), load model_a, then load model_b (needs 8GB but only 7GB free), verify model_a's unload_fn called before model_b loads. (2) test_evicts_multiple_models_if_needed \u2014 register 3 small models (3GB each) and 1 large (9GB), load all 3 small, then load large, verify all 3 small unloaded. (3) test_no_eviction_when_vram_sufficient \u2014 register two small models (3GB each, total_vram=10GB), load both, verify neither unload_fn called. (4) test_eviction_order_is_lru \u2014 load A then B then C, request D that requires eviction, verify A (least recently used) is evicted first.",
+      "description": "Write TestDetectionLoop.test_samples_at_1fps: 300 frames at 30fps should call face_model.get() exactly 10 times (frames 0,30,60,...,270).",
       "status": "done",
-      "commit": "ce4bbcd"
+      "commit": "8729b3e"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Implement LRU eviction logic in the model() context manager. Before loading a new model: calculate currently used VRAM (sum of loaded models' vram_bytes), check if new model fits within total_vram. If not, unload models in LRU order (oldest first) until enough VRAM is free. Call spec.unload_fn(loaded_obj) for each evicted model. If even after unloading all models the new model doesn't fit, raise SchedulerError. Update LRU order on every model access (move to most-recently-used). Make step-7 tests pass.",
+      "description": "Implement 1fps sampling: read fps and total_frames from cap, compute interval=max(1,int(fps)), iterate frame_indices=range(0,total_frames,interval), load face model via scheduler.model(config.face_model), call face_model.get(frame) per sampled frame.",
       "status": "done",
-      "commit": "80add36"
+      "commit": "8729b3e"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write failing tests for LRU ordering updates on re-access. Tests: (1) test_lru_order_updated_on_reaccess \u2014 load A, B, C in order. Re-access A (now most recent). Request D that needs eviction. Verify B (now LRU) is evicted, not A. (2) test_model_too_large_for_total_vram_raises \u2014 register a model with vram_bytes > total_vram, attempting to load raises SchedulerError with descriptive message.",
+      "description": "Write TestDetectionLoop.test_stores_faces_with_embeddings: 2 faces per frame across 10 sampled frames = 20 rows in DB with correct frame_numbers (0,30,...,270) and face_index (0,1) per frame.",
       "status": "done",
-      "commit": "0f7e6eb"
+      "commit": "99bde5a"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Ensure LRU order is updated on every context manager entry (not just first load). When model is already loaded and re-accessed, move it to most-recently-used position. Add check: if model's vram_bytes exceeds total_vram, raise SchedulerError immediately without attempting eviction. Make step-9 tests pass.",
+      "description": "Implement face data extraction and storage: for each detected face with non-null normed_embedding, serialize bbox as JSON, embedding as float32 bytes, accumulate rows as (media_id, frame_idx, i, bbox_json, emb_bytes, None), batch_insert_faces within db context manager.",
       "status": "done",
-      "commit": "0f7e6eb"
+      "commit": "20301ed"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write failing tests for force_unload_all(). Tests: (1) test_force_unload_all_unloads_everything \u2014 load 3 models, call force_unload_all(), verify all 3 unload_fns called and loaded dict is empty. (2) test_force_unload_all_when_empty \u2014 call on empty scheduler, no error. (3) test_force_unload_all_clears_lru \u2014 after force_unload_all, LRU tracking is reset. (4) test_can_reload_after_force_unload \u2014 force_unload_all then load a model again, load_fn called again.",
+      "description": "Write TestDataFormat: test bbox_json is valid JSON list of 4 floats matching input; test embedding BLOB is exactly 2048 bytes (512x4); test embedding roundtrip via tobytes/frombuffer matches original; test cluster_id starts as None.",
       "status": "done",
-      "commit": "dcaff0b"
+      "commit": "99bde5a"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Implement force_unload_all() method. Iterates all loaded models, calls unload_fn for each, clears loaded dict and LRU list. Acquires the lock for thread safety. Make step-11 tests pass.",
+      "description": "Verify data format correctness (already implemented in step-10). This step confirms tests pass with bbox_json=json.dumps(face.bbox.tolist()), emb_bytes=face.normed_embedding.astype(np.float32).tobytes(), cluster_id=None.",
       "status": "done",
-      "commit": "3309c06"
+      "commit": "20301ed"
     },
     {
       "id": "step-13",
       "type": "test",
-      "description": "Write failing tests for warmup function support. Tests: (1) test_warmup_called_after_load \u2014 register model with warmup_fn, load it, verify warmup_fn called with the loaded model object after load_fn. (2) test_warmup_not_called_on_cached_access \u2014 re-access already-loaded model, warmup_fn not called again. (3) test_warmup_none_skipped \u2014 register model without warmup_fn (None), load it, no error.",
+      "description": "Write TestEdgeCases: test no faces detected stores 0 rows; test empty video (0 total_frames) returns without error and doesn't call scheduler; test frame read failure skips that frame but processes others.",
       "status": "done",
-      "commit": "e7696f4"
+      "commit": "99bde5a"
     },
     {
       "id": "step-14",
       "type": "impl",
-      "description": "Add warmup support to model loading path. After calling load_fn and storing the result, if spec.warmup_fn is not None, call warmup_fn(loaded_model). Only on first load, not on cached re-access. Make step-13 tests pass.",
+      "description": "Implement edge case handling: early return if total_frames<=0 (before scheduler.model), skip faces with normed_embedding=None, skip frames where cap.read() returns False with logger.warning, only call batch_insert_faces if rows non-empty.",
       "status": "done",
-      "commit": "b7cf85e"
+      "commit": "20301ed"
     },
     {
       "id": "step-15",
       "type": "test",
-      "description": "Write failing tests for thread safety. Tests: (1) test_concurrent_model_access \u2014 spawn 10 threads that each do `with scheduler.model('model_a')` 5 times, verify load_fn called exactly once (not multiple concurrent loads). (2) test_concurrent_different_models \u2014 spawn 2 threads loading different models concurrently, verify both load correctly without data corruption (check loaded count equals 2). (3) test_force_unload_during_active_context \u2014 thread A holds model context, thread B calls force_unload_all(), verify force_unload_all blocks until context exits OR raises SchedulerError (design decision: block is preferred).",
+      "description": "Write TestLogging: test INFO log contains media_id on detection start; test INFO log contains 'skipping' when idempotency triggers.",
       "status": "done",
-      "commit": "5fa8e76"
+      "commit": "69a6a54"
     },
     {
       "id": "step-16",
       "type": "impl",
-      "description": "Ensure thread safety with threading.Lock in all public methods: model(), force_unload_all(), register(), unregister(). The lock is acquired at the start of model() context manager (for the load/eviction logic) and released before yielding the model to the caller \u2014 but a re-entrant check is needed so the context body doesn't deadlock. Use a RLock or separate the lock acquisition from the yield. Design: acquire lock for load/eviction, release before yield, re-acquire for cleanup if needed. Make step-15 tests pass.",
+      "description": "Add structured logging: logger.info on start with media_id/frames/fps, logger.info on completion with face count and frame count, logger.info on idempotent skip, logger.warning on frame read failure.",
       "status": "done",
-      "commit": "5fa8e76"
+      "commit": "e1df36c"
     },
     {
       "id": "step-17",
       "type": "test",
-      "description": "Write failing tests for device selection and loaded_models property. Tests: (1) test_device_property \u2014 GPUScheduler(device=2).device returns 2. (2) test_loaded_models_returns_names \u2014 load 2 models, scheduler.loaded_models returns set of their names. (3) test_loaded_models_empty_initially \u2014 scheduler.loaded_models returns empty set. (4) test_vram_used_property \u2014 load 2 models (3GB + 8GB), scheduler.vram_used returns 11GB. (5) test_vram_free_property \u2014 total_vram=24GB, load 8GB model, scheduler.vram_free returns 16GB.",
+      "description": "Write TestClusterFaces.test_empty_db_no_error: cluster_faces with no face rows creates no clusters and raises no error.",
       "status": "done",
-      "commit": "591e621"
+      "commit": "69a6a54"
     },
     {
       "id": "step-18",
       "type": "impl",
-      "description": "Add read-only properties: device (int), loaded_models (set[str] \u2014 names of currently loaded models), vram_used (int \u2014 sum of loaded models' vram_bytes), vram_free (int \u2014 total_vram - vram_used). These provide introspection for pipeline stages and debugging. Make step-17 tests pass.",
+      "description": "Implement cluster_faces skeleton: fetch face_rows via db.get_all_face_embeddings(), return early with logger.info if empty.",
       "status": "done",
-      "commit": "591e621"
+      "commit": "e1df36c"
     },
     {
       "id": "step-19",
       "type": "test",
-      "description": "Write failing tests for logging integration. Tests: (1) test_load_logs_model_name_and_vram \u2014 capture log output, load a model, verify log contains model name and VRAM amount. (2) test_eviction_logs_evicted_model \u2014 trigger eviction, verify log mentions which model was evicted and why. (3) test_force_unload_logs \u2014 call force_unload_all with loaded models, verify log mentions clearing all models.",
+      "description": "Write TestClusterFaces.test_clusters_three_groups: insert 3 synthetic clusters of 5 faces each (unit vectors with dominant weight on different dimensions), verify cluster_faces produces 3 face_clusters rows, all faces have cluster_id assigned, faces within same synthetic group share same cluster_id.",
       "status": "done",
-      "commit": "bfd05cf"
+      "commit": "69a6a54"
     },
     {
       "id": "step-20",
       "type": "impl",
-      "description": "Add structured logging throughout GPUScheduler using logging.getLogger(__name__). Log on: model load (INFO with name, vram_bytes), model eviction (INFO with evicted name, reason), warmup (DEBUG), force_unload_all (INFO with count of unloaded models), errors (ERROR). Follow the logging pattern from orchestrator.py. Make step-19 tests pass.",
+      "description": "Implement DBSCAN clustering: unpack embeddings into numpy matrix via np.frombuffer, run DBSCAN(eps, min_samples, metric='cosine').fit(embeddings), group faces by label (excluding -1 noise), batch_update_face_cluster_ids.",
       "status": "done",
-      "commit": "80ea8df"
+      "commit": "e1df36c"
     },
     {
       "id": "step-21",
       "type": "test",
-      "description": "Write failing integration-style tests simulating the real pipeline VRAM budget. Tests: (1) test_prd_vram_budget_sequential \u2014 create scheduler with total_vram=24GB, register all 7 PRD models with their real VRAM sizes (whisperx 3GB, transnet 1GB, yolo 8GB, insightface 2GB, siglip 3GB, panns 1GB, qwen 14GB). Load them sequentially in pipeline order, verify correct evictions happen (e.g., loading qwen must evict enough to fit 14GB). (2) test_prd_largest_model_fits \u2014 verify the largest single model (qwen 14GB) can be loaded alone. (3) test_prd_concurrent_small_models \u2014 load whisperx (3GB) + panns (1GB) simultaneously (both fit), verify no eviction.",
+      "description": "Write TestClusterFaces.test_centroid_is_normalized_mean: verify representative_embedding BLOB decodes to 512 float32 values with L2 norm approximately 1.0.",
       "status": "done",
-      "commit": "557199b"
+      "commit": "69a6a54"
     },
     {
       "id": "step-22",
       "type": "impl",
-      "description": "Review and refine implementation to ensure all integration tests pass. This step may require no code changes if prior steps were implemented correctly \u2014 it serves as a validation checkpoint. Fix any edge cases revealed by the integration tests. Make step-21 tests pass.",
+      "description": "Implement centroid computation: for each cluster, compute mean of member embeddings, L2-normalize via centroid/np.linalg.norm(centroid), store as float32 bytes via insert_face_cluster.",
       "status": "done",
-      "commit": "557199b"
+      "commit": "e1df36c"
     },
     {
       "id": "step-23",
       "type": "test",
-      "description": "Write failing tests for error handling edge cases. Tests: (1) test_load_fn_exception_propagates \u2014 load_fn raises RuntimeError, verify SchedulerError raised and model NOT added to loaded set. (2) test_unload_fn_exception_logged_not_raised \u2014 unload_fn raises during eviction, verify error is logged but eviction continues (best-effort unload). (3) test_warmup_fn_exception_unloads_model \u2014 warmup_fn raises, verify model is unloaded (cleanup) and SchedulerError raised.",
+      "description": "Write TestClusterFaces.test_sample_paths_populated: verify sample_image_paths is JSON list of <=5 'media_id:frame_number' strings per cluster.",
       "status": "done",
-      "commit": "af07390"
+      "commit": "69a6a54"
     },
     {
       "id": "step-24",
       "type": "impl",
-      "description": "Add robust error handling: wrap load_fn calls in try/except, convert to SchedulerError, ensure partially-loaded models don't pollute state. Wrap unload_fn calls in try/except during eviction, log errors but continue evicting. If warmup_fn fails, call unload_fn to clean up, then raise SchedulerError. Make step-23 tests pass.",
+      "description": "Implement sample paths: collect up to 5 member indices per cluster, format as 'media_id:frame_number' strings, store as JSON via insert_face_cluster.",
       "status": "done",
-      "commit": "f231c3c"
+      "commit": "e1df36c"
     },
     {
       "id": "step-25",
       "type": "test",
-      "description": "Write failing test for load_fn returning None (addresses review issues: incorrect_sentinel_check and untested_failure_mode). Add test to TestContextManager class: test_load_fn_returning_none_cached_correctly \u2014 create a ModelSpec with load_fn=MagicMock(return_value=None), unload_fn=MagicMock(), vram_bytes=3*GB. Register and load it via context manager, assert the yielded value is None. Assert the model name is in scheduler.loaded_models after first load. Load it a second time via context manager and assert load_fn was called exactly once (proving the None result was cached, not re-loaded). This test will FAIL against the current implementation because `model_obj = self._loaded.get(name)` returns None for a stored None value, causing `if model_obj is not None` to take the else branch and re-invoke load_fn on every access.",
+      "description": "Write TestClusterFaces.test_label_starts_null: all face_clusters rows have label=None after clustering.",
       "status": "done",
-      "commit": "446d399"
+      "commit": "69a6a54"
     },
     {
       "id": "step-26",
       "type": "impl",
-      "description": "Fix the incorrect sentinel check in GPUScheduler.model() method (gpu_scheduler.py lines 133-138). Replace:\n  `model_obj = self._loaded.get(name)`\n  `if model_obj is not None:`\nwith:\n  `if name in self._loaded:`\n  `    model_obj = self._loaded[name]`\nand keep the else branch for the fresh-load case. This correctly distinguishes 'not loaded' (key absent) from 'loaded with None value' (key present, value is None), preventing double-counting VRAM and redundant load_fn calls when load_fn returns None. Make step-25 test pass. Verify all existing tests still pass.",
+      "description": "Verify label=None is passed to insert_face_cluster (already done in step-22/24). Tests should pass.",
       "status": "done",
-      "commit": "e3c311b"
+      "commit": "e1df36c"
     },
     {
       "id": "step-27",
       "type": "test",
-      "description": "Fix the vacuous assertion in TestRegistration.test_register_model (test_gpu_scheduler.py line 95). The assertion `assert \"whisperx\" in scheduler.loaded_models or True` is permanently True due to `or True` and can never fail. Replace that line with `assert \"whisperx\" in scheduler._registry` which directly verifies that the register() call stored the model spec in the internal registry. Keep the subsequent context-manager assertion (`with scheduler.model('whisperx') as m: assert m is not None`) as a secondary check. The test should pass since the implementation already stores specs correctly in _registry.",
+      "description": "Write TestClusterFaces.test_noise_excluded_from_clusters: insert 2 tight clusters + 2 random outliers, verify outlier faces have cluster_id=None and only 2 cluster rows created.",
       "status": "done",
-      "commit": "3daa110"
+      "commit": "69a6a54"
     },
     {
       "id": "step-28",
       "type": "impl",
-      "description": "Validation checkpoint: run the full test suite (`pytest tests/test_gpu_scheduler.py -v`) to confirm all tests pass after the fixes from steps 25-27. Verify: (1) test_load_fn_returning_none_cached_correctly passes with the sentinel fix from step-26, (2) test_register_model now has a meaningful non-vacuous assertion from step-27, (3) no regressions in any of the 30+ existing tests. No implementation code changes expected in this step \u2014 it is purely a validation pass.",
+      "description": "Verify noise handling: DBSCAN labels noise as -1, the cluster_map loop already skips label==-1 with noise_count increment. Noise faces keep cluster_id=None since only cluster members get updated.",
       "status": "done",
-      "commit": "3daa110"
+      "commit": "e1df36c"
+    },
+    {
+      "id": "step-29",
+      "type": "test",
+      "description": "Write TestClusterFaces.test_single_face_is_noise: one isolated face with min_samples=3 produces 0 clusters and keeps cluster_id=None.",
+      "status": "done",
+      "commit": "69a6a54"
+    },
+    {
+      "id": "step-30",
+      "type": "impl",
+      "description": "No additional impl needed — single face is noise by DBSCAN design. Test validates existing behavior.",
+      "status": "done",
+      "commit": "e1df36c"
+    },
+    {
+      "id": "step-31",
+      "type": "test",
+      "description": "Write TestClusterFaces.test_reclustering_replaces_old: run cluster_faces twice, verify same number of clusters (not doubled), all faces still have cluster_id assigned.",
+      "status": "done",
+      "commit": "69a6a54"
+    },
+    {
+      "id": "step-32",
+      "type": "impl",
+      "description": "Implement re-clustering cleanup: before creating new clusters, call db.clear_face_clusters() and db.reset_face_cluster_ids() within a db context manager.",
+      "status": "done",
+      "commit": "e1df36c"
+    },
+    {
+      "id": "step-33",
+      "type": "test",
+      "description": "Write TestClusterFacesLogging: test INFO log contains cluster count; test INFO log contains noise count; test log mentions 'No face embeddings' when DB is empty.",
+      "status": "done",
+      "commit": "69a6a54"
+    },
+    {
+      "id": "step-34",
+      "type": "impl",
+      "description": "Add cluster_faces logging: logger.info on start with embedding count, logger.info on completion with cluster count and noise count, logger.info on empty skip.",
+      "status": "done",
+      "commit": "e1df36c"
+    },
+    {
+      "id": "step-35",
+      "type": "test",
+      "description": "Write TestLabelFaces: test get_unlabeled_clusters returns only clusters with label IS NULL; test apply_label updates face_clusters.label in DB; test label roundtrip (label then retrieve verifies value); test all_labeled_returns_empty after labeling all clusters.",
+      "status": "done",
+      "commit": "69a6a54"
+    },
+    {
+      "id": "step-36",
+      "type": "impl",
+      "description": "Create scripts/label_faces.py with get_unlabeled_clusters(db) filtering clusters where label is None, apply_label(db, cluster_id, label) calling db.update_face_label within context manager, and main(db_path) interactive CLI loop with argparse.",
+      "status": "done",
+      "commit": "e1df36c"
+    },
+    {
+      "id": "step-37",
+      "type": "test",
+      "description": "Write TestIntegration.test_detect_then_cluster_pipeline: mock detect_faces on a 90-frame video with 2 distinct embedding groups per frame (3 sampled frames x 2 faces = 6 rows), then cluster_faces with min_samples=2 produces 2 clusters, all faces assigned, centroids normalized, sample_paths valid, labels null.",
+      "status": "done",
+      "commit": "69a6a54"
+    },
+    {
+      "id": "step-38",
+      "type": "impl",
+      "description": "Run full integration test to verify detect_faces -> cluster_faces pipeline end-to-end. Fix any remaining issues. Final cleanup and verification all tests pass.",
+      "status": "done",
+      "commit": "8621c58"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use total_vram constructor parameter instead of querying torch.cuda at runtime for VRAM capacity",
-      "rationale": "Makes the scheduler fully testable without a GPU. In production, the caller passes the real VRAM from torch.cuda.mem_get_info(). In tests, pass any value. This also allows VRAM budget to be set below physical VRAM as a safety margin."
+      "decision": "Use InsightFace buffalo_l model pack via GPUScheduler context manager, same as YOLO pattern in objects.py",
+      "rationale": "Consistent GPU model management across all analysis modules. The scheduler handles VRAM-aware loading/eviction with LRU, preventing OOM. buffalo_l includes both SCRFD (detection) and ArcFace (recognition/embedding) in a single model pack."
     },
     {
-      "decision": "Track VRAM usage by summing registered vram_bytes of loaded models, not by querying actual GPU memory",
-      "rationale": "Actual GPU memory can fluctuate due to CUDA contexts, fragmentation, and other processes. Using declared vram_bytes from ModelSpec gives deterministic, predictable scheduling. The real torch.cuda.mem_get_info() could be used as a secondary check but is not the primary scheduling mechanism."
+      "decision": "1fps sampling via interval=max(1,int(fps)), identical to objects.py sparse mode",
+      "rationale": "Face detection doesn't need every frame — faces change slowly. 1fps gives adequate coverage for 50h of footage (~180K frames) within the ~30min GPU budget at SCRFD's ~100 FPS throughput on RTX 3090."
     },
     {
-      "decision": "Models stay loaded after context manager exit (LRU cache) rather than eager unload",
-      "rationale": "Per task spec: 'Eager unloading: after context manager exits, model stays loaded (LRU cache) unless another model needs the VRAM.' This avoids expensive re-loads when the same model is used across multiple pipeline stages."
+      "decision": "Store 512-d ArcFace embeddings as float32 BLOB (2048 bytes) in faces table, not as JSON",
+      "rationale": "Binary BLOB is ~4x more space-efficient than JSON for float arrays and avoids float precision loss from string serialization. np.frombuffer/tobytes provides zero-copy roundtrip."
     },
     {
-      "decision": "Use threading.Lock (not asyncio) for thread safety",
-      "rationale": "Per task spec: 'Thread safety: use a threading.Lock since the pipeline may run audio analysis concurrently with video analysis.' The pipeline uses threads, not async/await."
+      "decision": "DBSCAN with cosine distance metric for face clustering instead of agglomerative",
+      "rationale": "DBSCAN naturally handles noise (unclustered faces) by labeling them -1, requires no predetermined cluster count, and cosine distance is the standard metric for ArcFace embeddings. eps=0.5 and min_samples=3 are sensible defaults for face re-identification."
     },
     {
-      "decision": "SchedulerError custom exception wraps all errors from load/unload/warmup functions",
-      "rationale": "Follows the project pattern where ConfigError wraps all config-related errors. Callers handle one exception type for all scheduler failures."
+      "decision": "Clear and rebuild clusters on each cluster_faces() call (not incremental)",
+      "rationale": "Ensures idempotency and correctness when new face data is added or parameters change. The clustering operation is fast (sklearn DBSCAN on 180K embeddings is seconds) so full rebuild is acceptable."
     },
     {
-      "decision": "Unload errors during eviction are logged but don't stop the eviction process",
-      "rationale": "If unload_fn fails (e.g., CUDA error), we should still attempt to continue loading the requested model. A hard failure here would block the pipeline. The VRAM tracking removes the model from the loaded set regardless."
+      "decision": "face_clusters.label starts NULL, assigned via separate scripts/label_faces.py",
+      "rationale": "Separation of concerns: automated clustering is decoupled from human labeling. The label_faces.py script provides an interactive CLI for assigning names to clusters after reviewing sample face crops."
     },
     {
-      "decision": "Use contextlib.contextmanager decorator for the model() method",
-      "rationale": "Simpler than implementing __enter__/__exit__ on a separate class. Follows Python idiom for resource managers. The generator pattern makes the load-yield-keep flow natural."
+      "decision": "Skip faces where normed_embedding is None rather than raising",
+      "rationale": "InsightFace may occasionally fail to extract embeddings for low-quality detections. Skipping gracefully preserves all other detections instead of failing the entire video."
     },
     {
-      "decision": "LRU tracking uses a simple list (append/remove/insert) rather than collections.OrderedDict",
-      "rationale": "The number of models is tiny (7 in the PRD). A list gives clear, debuggable LRU semantics with O(n) operations that are negligible at this scale. OrderedDict would be premature optimization."
-    },
-    {
-      "decision": "Use `name in self._loaded` instead of `self._loaded.get(name) is not None` for cached-model check",
-      "rationale": "dict.get() returns None for both missing keys and keys mapped to None. If load_fn legitimately returns None, the truthiness check treats it as 'not loaded', causing redundant load_fn calls and double-counting VRAM. Using `in` correctly distinguishes 'not loaded' from 'loaded with None value'. This was identified as a bug in code review (incorrect_sentinel_check / untested_failure_mode)."
+      "decision": "Sample paths stored as 'media_id:frame_number' strings (up to 5 per cluster)",
+      "rationale": "Lightweight reference format that can be resolved to actual image crops on demand. 5 samples provide enough visual diversity for human cluster identification during labeling."
     }
   ],
   "reuse": [
     {
-      "what": "ProcessingConfig.gpu_device",
-      "where": "autopilot/config.py",
-      "how": "The caller reads config.processing.gpu_device and passes it as the device parameter to GPUScheduler(). The scheduler itself doesn't depend on config.py directly \u2014 it receives device as a plain int."
+      "what": "CatalogDB face CRUD methods",
+      "where": "autopilot/db.py lines 346-444",
+      "how": "All 10 face/face_cluster methods already exist: batch_insert_faces, get_faces_for_frame, get_faces_for_media, get_all_face_embeddings, clear_face_clusters, reset_face_cluster_ids, batch_update_face_cluster_ids, insert_face_cluster, update_face_label, get_face_clusters, get_face_cluster_by_id. No DB changes needed."
     },
     {
-      "what": "Dataclass pattern for ModelSpec",
-      "where": "autopilot/config.py (CreatorConfig, etc.), autopilot/orchestrator.py (StageDefinition)",
-      "how": "Follow the same @dataclass pattern with typed fields, defaults, and __all__ exports."
+      "what": "DB schema (faces + face_clusters tables)",
+      "where": "autopilot/db.py lines 97-112",
+      "how": "Tables already defined in _create_schema() with correct columns, PKs, FKs, and indexes. faces: (media_id, frame_number, face_index, bbox_json, embedding BLOB, cluster_id). face_clusters: (cluster_id, label, representative_embedding BLOB, sample_image_paths)."
     },
     {
-      "what": "Logging pattern",
-      "where": "autopilot/orchestrator.py (logger = logging.getLogger(__name__))",
-      "how": "Use the same module-level logger pattern for structured log output."
+      "what": "GPUScheduler context manager pattern",
+      "where": "autopilot/analyze/gpu_scheduler.py",
+      "how": "Use `with scheduler.model(config.face_model) as face_model:` exactly as objects.py uses `with scheduler.model(config.yolo_variant) as yolo_model:`. The scheduler handles VRAM budget, LRU eviction, and reference counting."
     },
     {
-      "what": "Custom exception pattern",
-      "where": "autopilot/config.py (ConfigError)",
-      "how": "SchedulerError follows the same pattern: simple Exception subclass, used to wrap all internal errors."
+      "what": "ModelConfig.face_model field",
+      "where": "autopilot/config.py line 72",
+      "how": "Already defined as `face_model: str = 'buffalo_l'` in ModelConfig dataclass. No config changes needed."
     },
     {
-      "what": "Test style and fixtures",
-      "where": "tests/conftest.py, tests/test_orchestrator.py",
-      "how": "Follow pytest style with descriptive docstrings, MagicMock for callables, class-based test grouping for related tests."
+      "what": "objects.py architectural pattern",
+      "where": "autopilot/analyze/objects.py",
+      "how": "Follow same structure: lazy cv2 import after path validation, idempotency check on first line, custom Exception subclass, 1fps sampling via max(1,int(fps)), scheduler context manager for GPU model, transactional batch inserts with `with db:`, try/finally with cap.release(), structured logging."
+    },
+    {
+      "what": "Test fixtures and mock patterns",
+      "where": "tests/conftest.py + tests/test_objects.py",
+      "how": "Reuse catalog_db fixture (in-memory SQLite with autocommit). Mirror mock helpers from test_objects.py: _make_mock_capture for cv2.VideoCapture, _make_mock_cv2 for cv2 module with CAP_PROP constants, patch.dict(sys.modules, {'cv2': mock_cv2}) for lazy import mocking."
+    },
+    {
+      "what": "sklearn DBSCAN",
+      "where": "scikit-learn (already in pyproject.toml dependencies)",
+      "how": "Lazy import inside cluster_faces: `from sklearn.cluster import DBSCAN`. Use DBSCAN(eps=eps, min_samples=min_samples, metric='cosine').fit(embeddings)."
     }
   ]
 }
