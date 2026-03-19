@@ -133,3 +133,51 @@ def _make_full_pipeline_mocks(
     scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
 
     return mock_wx, scheduler
+
+
+# -- Test classes --------------------------------------------------------------
+
+
+class TestPublicAPI:
+    """Verify public API surface and type signatures."""
+
+    def test_exports_importable(self):
+        """TranscriptionError and transcribe_media are importable."""
+        from autopilot.analyze.asr import TranscriptionError, transcribe_media
+
+        assert TranscriptionError is not None
+        assert transcribe_media is not None
+
+    def test_transcription_error_is_exception(self):
+        """TranscriptionError is a subclass of Exception with message."""
+        from autopilot.analyze.asr import TranscriptionError
+
+        assert issubclass(TranscriptionError, Exception)
+        err = TranscriptionError("test message")
+        assert str(err) == "test message"
+
+    def test_transcribe_media_signature(self):
+        """transcribe_media has correct parameter signature."""
+        from autopilot.analyze.asr import transcribe_media
+
+        sig = inspect.signature(transcribe_media)
+        params = list(sig.parameters.keys())
+
+        # Positional parameters
+        assert "media_id" in params
+        assert "audio_path" in params
+        assert "db" in params
+        assert "scheduler" in params
+        assert "config" in params
+
+        # Keyword-only parameters with defaults
+        batch_size_param = sig.parameters["batch_size"]
+        assert batch_size_param.kind == inspect.Parameter.KEYWORD_ONLY
+        assert batch_size_param.default == 24
+
+        hf_token_param = sig.parameters["hf_token"]
+        assert hf_token_param.kind == inspect.Parameter.KEYWORD_ONLY
+        assert hf_token_param.default is None
+
+        # Return annotation
+        assert sig.return_annotation is None
