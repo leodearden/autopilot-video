@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import inspect
 import json
-import math
 import re
-import textwrap
 
 import pytest
 

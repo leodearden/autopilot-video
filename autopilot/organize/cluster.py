@@ -108,8 +108,6 @@ def _temporal_spatial_cluster(
     import numpy as np  # type: ignore[reportMissingImports]
     from sklearn.cluster import DBSCAN  # type: ignore[reportMissingImports]
 
-    n = len(clips)
-
     # Parse timestamps into array
     ts_arr = np.array(
         [_parse_iso(str(clip["created_at"])).timestamp() for clip in clips],
