@@ -26,6 +26,33 @@ class AudioEventError(Exception):
     """Raised for all audio event classification failures."""
 
 
+def _window_audio(
+    audio: np.ndarray,
+    sample_rate: int,
+    window_seconds: float = 1.0,
+) -> list[np.ndarray]:
+    """Split a 1D waveform into non-overlapping windows.
+
+    Args:
+        audio: 1D float waveform array.
+        sample_rate: Audio sample rate in Hz.
+        window_seconds: Duration of each window in seconds.
+
+    Returns:
+        List of 1D arrays, each of length sample_rate * window_seconds.
+        The final window is zero-padded if shorter than the window size.
+    """
+    if len(audio) == 0:
+        return []
+    window_size = int(sample_rate * window_seconds)
+    num_windows = -(-len(audio) // window_size)  # ceil division
+    # Pad to exact multiple of window_size
+    pad_length = num_windows * window_size - len(audio)
+    if pad_length > 0:
+        audio = np.pad(audio, (0, pad_length))
+    return [audio[i * window_size : (i + 1) * window_size] for i in range(num_windows)]
+
+
 def classify_audio_events(
     media_id: str,
     audio_path: Path,
