@@ -10,9 +10,9 @@ import json
 import logging
 import math
 import uuid
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from collections.abc import Mapping
+from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
