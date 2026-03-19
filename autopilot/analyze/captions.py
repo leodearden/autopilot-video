@@ -204,6 +204,8 @@ def caption_clip(
         # Process inputs and generate
         inputs = processor(messages, return_tensors="pt")
         output_ids = model.generate(**inputs, max_new_tokens=256)
+        # Slice off input prompt tokens before decoding (standard HF pattern)
+        output_ids = output_ids[:, inputs["input_ids"].shape[-1]:]
         caption = processor.batch_decode(
             output_ids, skip_special_tokens=True
         )[0]
