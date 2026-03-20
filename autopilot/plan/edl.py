@@ -211,4 +211,23 @@ def generate_edl(narrative_id: str, db: CatalogDB, config: LLMConfig) -> dict:
         "proposed_duration_seconds", 0,
     )
 
+    # Validate
+    from autopilot.plan.validator import validate_edl
+
+    validation = validate_edl(edl, db)
+
+    # Store in DB
+    validation_dict = {
+        "passed": validation.passed,
+        "errors": validation.errors,
+        "warnings": validation.warnings,
+    }
+    with db:
+        db.upsert_edit_plan(
+            narrative_id,
+            json.dumps(edl),
+            validation_json=json.dumps(validation_dict),
+        )
+        db.update_narrative_status(narrative_id, "planned")
+
     return edl
