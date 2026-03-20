@@ -481,3 +481,56 @@ class TestUploadVideoEdgeCases:
             url = upload_video("n1", video_file, catalog_db, config)
 
         assert url == "https://youtu.be/retry_ok"
+
+
+# ---------------------------------------------------------------------------
+# OAuth setup script tests
+# ---------------------------------------------------------------------------
+
+
+class TestSetupYoutubeOAuth:
+    """Verify scripts/setup_youtube_oauth.py."""
+
+    def test_oauth_flow_saves_credentials(self, tmp_path):
+        """OAuth flow serializes and writes credentials to output path."""
+        google_mods, _, _ = _setup_google_mocks()
+        google_mods["google_auth_oauthlib"] = MagicMock()
+        google_mods["google_auth_oauthlib.flow"] = MagicMock()
+
+        mock_flow = MagicMock()
+        mock_creds = MagicMock()
+        mock_creds.to_json.return_value = '{"token": "test"}'
+        mock_flow.run_local_server.return_value = mock_creds
+        google_mods[
+            "google_auth_oauthlib.flow"
+        ].InstalledAppFlow.from_client_secrets_file.return_value = (
+            mock_flow
+        )
+
+        output_path = tmp_path / "oauth.json"
+        client_secrets = tmp_path / "client_secrets.json"
+        client_secrets.write_text("{}")
+
+        with patch.dict(sys.modules, google_mods):
+            from scripts.setup_youtube_oauth import run_oauth_flow
+
+            run_oauth_flow(
+                client_secrets_path=client_secrets,
+                output_path=output_path,
+            )
+
+        assert output_path.exists()
+        assert output_path.read_text() == '{"token": "test"}'
+
+    def test_main_requires_client_secrets_arg(self):
+        """argparse requires --client-secrets argument."""
+        google_mods, _, _ = _setup_google_mocks()
+        google_mods["google_auth_oauthlib"] = MagicMock()
+        google_mods["google_auth_oauthlib.flow"] = MagicMock()
+
+        with patch.dict(sys.modules, google_mods):
+            from scripts.setup_youtube_oauth import build_parser
+
+            parser = build_parser()
+            with pytest.raises(SystemExit):
+                parser.parse_args([])
