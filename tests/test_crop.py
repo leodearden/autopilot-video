@@ -139,3 +139,56 @@ class TestSelectSubjectTrack:
 
         with pytest.raises(CropError, match="[Nn]o.*detect"):
             _select_subject_track([], {})
+
+
+class TestComputeRawCenter:
+    """Tests for _compute_raw_center single-subject rule-of-thirds framing."""
+
+    def test_subject_at_center_right_third(self) -> None:
+        """Subject at frame center with right-third -> crop shifts left so subject is at 2/3."""
+        from autopilot.render.crop import _compute_raw_center
+
+        # Subject centered at (2048, 2048), bbox 200x400
+        bbox = [2048.0, 2048.0, 200.0, 400.0]
+        crop_w, crop_h = 4096, 2304
+        cx, cy = _compute_raw_center(bbox, crop_w, crop_h, "right")
+        # Subject center should be at 2/3 of crop width from left
+        # So crop center_x = subject_cx - (2/3 - 1/2) * crop_w
+        #                   = 2048 - (1/6) * 4096 = 2048 - 682.67 = ~1365.3
+        expected_cx = bbox[0] - (2 / 3 - 0.5) * crop_w
+        assert cx == pytest.approx(expected_cx, abs=1.0)
+
+    def test_subject_at_center_left_third(self) -> None:
+        """Subject at center with left-third -> crop shifts right so subject is at 1/3."""
+        from autopilot.render.crop import _compute_raw_center
+
+        bbox = [2048.0, 2048.0, 200.0, 400.0]
+        crop_w, crop_h = 4096, 2304
+        cx, cy = _compute_raw_center(bbox, crop_w, crop_h, "left")
+        expected_cx = bbox[0] - (1 / 3 - 0.5) * crop_w
+        assert cx == pytest.approx(expected_cx, abs=1.0)
+
+    def test_vertical_eyes_at_top_third(self) -> None:
+        """Eyes (top 1/3 of bbox) should be positioned at 1/3 from crop top."""
+        from autopilot.render.crop import _compute_raw_center
+
+        # Subject at (2048, 2048), bbox 200x600
+        # Eye line is at subject_cy - bbox_h/3 = 2048 - 200 = 1848
+        bbox = [2048.0, 2048.0, 200.0, 600.0]
+        crop_w, crop_h = 4096, 2304
+        _, cy = _compute_raw_center(bbox, crop_w, crop_h, "right")
+        eye_y = bbox[1] - bbox[3] / 3.0
+        # Eye should be at 1/3 from top of crop: cy - crop_h/2 + crop_h/3 = eye_y
+        # So cy = eye_y + crop_h/2 - crop_h/3 = eye_y + crop_h/6
+        expected_cy = eye_y + crop_h / 6.0
+        assert cy == pytest.approx(expected_cy, abs=1.0)
+
+    def test_subject_near_edge(self) -> None:
+        """Subject near left edge -> raw center may be outside frame (pre-clamping)."""
+        from autopilot.render.crop import _compute_raw_center
+
+        bbox = [100.0, 2048.0, 50.0, 100.0]
+        crop_w, crop_h = 4096, 2304
+        cx, _ = _compute_raw_center(bbox, crop_w, crop_h, "right")
+        # cx can be negative (clamping happens later)
+        assert isinstance(cx, float)
