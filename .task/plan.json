@@ -14,7 +14,7 @@
     "scripts",
     "tests"
   ],
-  "analysis": "This task creates two new modules under autopilot/upload/ and one helper script.\n\nyoutube.py: Implements upload_video() using google-api-python-client (already in pyproject.toml dependencies). Needs OAuth 2.0 credential loading from YouTubeConfig.credentials_path, token refresh for unattended operation, YouTube Data API v3 upload with metadata from the narrative/script/activity-cluster data in CatalogDB, and storage of the YouTube URL/ID in the existing uploads table via db.insert_upload().\n\nthumbnail.py: Implements extract_best_thumbnail() that scores candidate frames from a video using three criteria: YOLO detection confidence (from detections table), rule-of-thirds composition score, and sharpness (Laplacian variance via cv2/numpy). Extracts the best frame as JPEG and uploads it via YouTube thumbnails.set API.\n\nscripts/setup_youtube_oauth.py: One-time interactive script that runs the OAuth 2.0 installed-app flow, opens a browser for consent, and saves the refresh token to credentials_path.\n\nExisting infrastructure to reuse:\n- CatalogDB.insert_upload() / get_upload() already exists with the uploads table schema\n- YouTubeConfig dataclass with privacy_status, default_category, credentials_path\n- Narrative/script/activity-cluster data already in DB\n- google-api-python-client already a project dependency\n- Test patterns: mock external deps via sys.modules patching, use catalog_db fixture, tmp_path for file I/O\n\nThe upload/__init__.py currently exists but is empty. It needs to export the public symbols from both new modules.",
+  "analysis": "This task creates two new modules under autopilot/upload/ and one helper script.\n\nyoutube.py: Implements upload_video() using google-api-python-client (already in pyproject.toml dependencies). Needs OAuth 2.0 credential loading from YouTubeConfig.credentials_path, token refresh for unattended operation, YouTube Data API v3 upload with metadata from the narrative/script/activity-cluster data in CatalogDB, and storage of the YouTube URL/ID in the existing uploads table via db.insert_upload().\n\nthumbnail.py: Implements extract_best_thumbnail() that scores candidate frames from a video using three criteria: YOLO detection confidence (from detections table), rule-of-thirds composition score, and sharpness (Laplacian variance via cv2/numpy). Extracts the best frame as JPEG and uploads it via YouTube thumbnails.set API.\n\nscripts/setup_youtube_oauth.py: One-time interactive script that runs the OAuth 2.0 installed-app flow, opens a browser for consent, and saves the refresh token to credentials_path.\n\nExisting infrastructure to reuse:\n- CatalogDB.insert_upload() / get_upload() already exists with the uploads table schema\n- YouTubeConfig dataclass with privacy_status, default_category, credentials_path\n- Narrative/script/activity-cluster data already in DB\n- google-api-python-client already a project dependency\n- Test patterns: mock external deps via sys.modules patching, use catalog_db fixture, tmp_path for file I/O\n\nThe upload/__init__.py currently exists but is empty. It needs to export the public symbols from both new modules.\n\nReview fixes (steps 21-26):\n- thumbnail.py _extract_best_frame: cv2.VideoCapture handle leaked on exception — need try/finally around scoring loop so cap.release() is unconditional\n- thumbnail.py _extract_best_frame: cv2.imwrite return value unchecked — silent failure returns path to non-existent file; must check and return None on False\n- youtube.py upload_video: missing break after successful upload in outer retry for-loop — runs redundant no-op iterations and obscures intent",
   "prerequisites": [
     {
       "id": "pre-1",
@@ -164,6 +164,48 @@
       "description": "Create scripts/setup_youtube_oauth.py: argparse with --client-secrets (required) and --output (default ~/.config/autopilot/youtube_oauth.json). Uses InstalledAppFlow.from_client_secrets_file with YOUTUBE_UPLOAD_SCOPE, calls flow.run_local_server(port=0), serializes credentials to JSON (creds.to_json()), writes to output path. Includes if __name__ == '__main__' block.",
       "status": "done",
       "commit": "aa53ec0"
+    },
+    {
+      "id": "step-21",
+      "type": "test",
+      "description": "Write failing test for VideoCapture resource cleanup: test_video_capture_released_on_scoring_exception in TestFrameExtraction. Mock cv2.VideoCapture to return a mock cap object, and mock cv2.Laplacian to raise RuntimeError('malformed frame') on the first call. Call _extract_best_frame(video_path, detections) and expect the RuntimeError to propagate. Assert that mock_cap.release() was called exactly once despite the exception, verifying the try/finally guard around the VideoCapture loop.",
+      "status": "done",
+      "commit": "907739f"
+    },
+    {
+      "id": "step-22",
+      "type": "impl",
+      "description": "Fix resource leak in thumbnail.py _extract_best_frame() (lines 145-168): wrap the frame sampling for-loop (lines 153-166) and the post-loop best_frame check in a try block, move cap.release() from line 168 into a finally clause. Structure: cap = cv2.VideoCapture(...); try: <get props, loop, find best> finally: cap.release(). This ensures the OS file handle is released regardless of exceptions from cv2.Laplacian, numpy ops, or array operations on malformed frames.",
+      "status": "done",
+      "commit": "b14badd"
+    },
+    {
+      "id": "step-23",
+      "type": "test",
+      "description": "Write failing test for cv2.imwrite failure handling: test_imwrite_failure_returns_none in TestFrameExtraction. Mock cv2.VideoCapture to return valid frames, mock cv2.Laplacian to return a valid array, but mock cv2.imwrite to return False (simulating disk full / permission denied). Call _extract_best_frame(video_path, []) and assert it returns None instead of a Path, verifying the imwrite return value is checked.",
+      "status": "done",
+      "commit": "5e9949f"
+    },
+    {
+      "id": "step-24",
+      "type": "impl",
+      "description": "Fix silent failure in thumbnail.py _extract_best_frame() (lines 173-175): replace unconditional 'cv2.imwrite(str(thumb_path), best_frame); return thumb_path' with 'ok = cv2.imwrite(str(thumb_path), best_frame); if not ok: logger.warning(\"Failed to write thumbnail: %s\", thumb_path); return None; return thumb_path'. The caller extract_best_thumbnail already handles None by raising ThumbnailError.",
+      "status": "done",
+      "commit": "8ef5bc5"
+    },
+    {
+      "id": "step-25",
+      "type": "test",
+      "description": "Write failing test for upload retry loop break-on-success: test_upload_breaks_after_first_success in TestUploadVideoFlow. Mock next_chunk() to return (None, {'id': 'ok123'}) on the first call. After upload_video returns, assert next_chunk was called exactly once (call_count == 1). If the outer for-loop doesn't break, next_chunk would be called additional times (as no-ops) on subsequent iterations. This verifies the break statement exists.",
+      "status": "done",
+      "commit": "38cece1"
+    },
+    {
+      "id": "step-26",
+      "type": "impl",
+      "description": "Fix retry logic in youtube.py upload_video() (lines 192-210): add 'break' immediately after the 'while response is None' block (after line 197) exits without raising an exception. This ensures the outer 'for attempt in range(max_retries)' loop terminates after the first successful upload instead of running redundant no-op iterations on attempts 1 and 2.",
+      "status": "done",
+      "commit": "01a88f0"
     }
   ],
   "design_decisions": [
@@ -198,6 +240,18 @@
     {
       "decision": "Tags sourced from activity cluster labels AND unique YOLO object class names from detections",
       "rationale": "Task specifies tags from 'activity labels + detected object classes'. Activity clusters have label fields. Detections JSON contains class_name strings. Combined and deduplicated, these provide semantic YouTube tags for discoverability."
+    },
+    {
+      "decision": "VideoCapture handle guarded by try/finally for unconditional release",
+      "rationale": "Review identified that cap.release() was only on the happy path. In a batch pipeline processing many videos, leaked file descriptors from exceptions in scoring functions (cv2.Laplacian, numpy ops) would exhaust OS limits. try/finally is the standard Python pattern for resource cleanup without context-manager support."
+    },
+    {
+      "decision": "cv2.imwrite return value checked, returning None on failure",
+      "rationale": "cv2.imwrite silently returns False on failure (disk full, permission denied, bad path) without raising. Returning the path unconditionally violates the function contract — callers would receive a path to a non-existent file. Returning None lets the existing error handling in extract_best_thumbnail raise ThumbnailError."
+    },
+    {
+      "decision": "Break out of retry loop after first successful upload",
+      "rationale": "Without the break, after a successful upload the outer for-loop runs remaining iterations as no-ops (inner while skips since response is not None). While not causing double uploads today, it wastes time and makes the retry logic fragile for future modifications."
     }
   ],
   "reuse": [
