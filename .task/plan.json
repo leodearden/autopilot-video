@@ -1,0 +1,270 @@
+{
+  "task_id": "22",
+  "title": "Post-render quality validation",
+  "files": [
+    "autopilot/render/validate.py",
+    "autopilot/render/__init__.py",
+    "tests/test_render_validate.py"
+  ],
+  "modules": ["autopilot/render", "tests"],
+  "analysis": "Implement autopilot/render/validate.py for post-render quality checks on rendered video files. The module needs validate_render(rendered_path, edl, config) -> ValidationReport which runs 6 checks: duration, loudness, black frames, silence, resolution/codec, and file size. All checks use ffprobe/ffmpeg subprocess calls. The existing codebase has strong patterns: (1) ValidationResult dataclass in plan/validator.py as a model (but we need a richer ValidationReport with severity levels and measurements), (2) _run_ffprobe in ingest/scanner.py for ffprobe JSON parsing, (3) subprocess.run mocking pattern from test_ffmpeg_render.py. The OutputConfig dataclass has resolution, codec, target_loudness_lufs fields we need. EDL dict has target_duration_seconds. Key design: ValidationReport should have pass/fail, list of issues with severity (error/warning), and a measurements dict. Each check is a private function that appends to issues list. ffprobe is called once for metadata (duration, resolution, codec, file size), ffmpeg loudnorm analysis for LUFS, ffmpeg blackdetect for black frames, ffmpeg silencedetect for silence gaps. All subprocess calls are mockable for unit testing.\n\nReview round: Three robustness issues identified — unguarded float() parsing in _check_black_frames and _check_silence, and unguarded report file writing in validate_render. Steps 21-26 address these with TDD pairs.",
+  "prerequisites": [
+    {
+      "id": "pre-1",
+      "description": "Create empty autopilot/render/validate.py with module docstring and __all__",
+      "status": "done",
+      "commit": "f51eb40",
+      "tests": []
+    }
+  ],
+  "steps": [
+    {
+      "id": "step-1",
+      "type": "test",
+      "description": "Write failing tests for public API surface: ValidationReport dataclass (passed, issues list with severity/message/measurement, measurements dict), ValidationError exception, validate_render function signature (rendered_path: Path, edl: dict, config: OutputConfig) -> ValidationReport, and __all__ exports",
+      "status": "done",
+      "commit": "77c7211"
+    },
+    {
+      "id": "step-2",
+      "type": "impl",
+      "description": "Implement ValidationReport dataclass with Issue(severity, check, message, measured_value) inner dataclass, ValidationError exception class, validate_render stub returning empty ValidationReport, and __all__ exports. Update render/__init__.py to export new symbols.",
+      "status": "done",
+      "commit": "3879c18"
+    },
+    {
+      "id": "step-3",
+      "type": "test",
+      "description": "Write failing tests for _run_ffprobe_json helper: mock subprocess.run to return ffprobe JSON with streams and format info; verify it extracts duration, resolution, codec, file size; test error handling when ffprobe fails (returns empty dict or raises)",
+      "status": "done",
+      "commit": "831f808"
+    },
+    {
+      "id": "step-4",
+      "type": "impl",
+      "description": "Implement _run_ffprobe_json(path) that calls ffprobe -v quiet -print_format json -show_format -show_streams, parses stdout JSON, returns dict with duration_seconds, resolution (w,h), video_codec, audio_codec, file_size_bytes. Handle subprocess errors gracefully.",
+      "status": "done",
+      "commit": "bdfd0b9"
+    },
+    {
+      "id": "step-5",
+      "type": "test",
+      "description": "Write failing tests for duration check: mock ffprobe to return duration. Test pass when within ±1s of EDL target_duration_seconds; test error when duration off by >1s; test warning/skip when edl has no target_duration_seconds",
+      "status": "done",
+      "commit": "b38ecac"
+    },
+    {
+      "id": "step-6",
+      "type": "impl",
+      "description": "Implement _check_duration(probe_data, edl, issues) comparing probe duration to edl['target_duration_seconds'] within ±1s tolerance, appending Issue with severity='error' when out of range. Wire into validate_render.",
+      "status": "done",
+      "commit": "bbe34aa"
+    },
+    {
+      "id": "step-7",
+      "type": "test",
+      "description": "Write failing tests for resolution and codec check: test pass when probe resolution matches config.resolution and codec matches config.codec; test error on resolution mismatch; test error on codec mismatch",
+      "status": "done",
+      "commit": "49f5af0"
+    },
+    {
+      "id": "step-8",
+      "type": "impl",
+      "description": "Implement _check_resolution_codec(probe_data, config, issues) comparing probe resolution/codec against OutputConfig values, appending error Issues on mismatch. Wire into validate_render.",
+      "status": "done",
+      "commit": "cd78e49"
+    },
+    {
+      "id": "step-9",
+      "type": "test",
+      "description": "Write failing tests for file size check: compute expected range as 8-15 MB per minute for 1080p h264. Test pass when file size within range; test warning when below 8 MB/min; test warning when above 15 MB/min; test that non-1080p or non-h264 skips the check",
+      "status": "done",
+      "commit": "ae5e247"
+    },
+    {
+      "id": "step-10",
+      "type": "impl",
+      "description": "Implement _check_file_size(probe_data, config, issues) computing per-minute bitrate and comparing to 8-15 MB/min threshold for 1080p h264, appending warning Issues when outside range. Wire into validate_render.",
+      "status": "done",
+      "commit": "0f4a4e5"
+    },
+    {
+      "id": "step-11",
+      "type": "test",
+      "description": "Write failing tests for loudness check: mock subprocess.run for ffmpeg loudnorm analysis pass (ffmpeg -i file -af loudnorm=print_format=json -f null -). Parse measured LUFS from stderr JSON. Test pass when within -16±1 LUFS; test error when outside range; test error when ffmpeg fails",
+      "status": "done",
+      "commit": "fe1cc19"
+    },
+    {
+      "id": "step-12",
+      "type": "impl",
+      "description": "Implement _check_loudness(rendered_path, config, issues) running ffmpeg loudnorm analysis pass, parsing measured integrated loudness from stderr JSON output, appending error Issue when outside target_loudness_lufs ± 1 LUFS. Wire into validate_render.",
+      "status": "done",
+      "commit": "5bc3ee8"
+    },
+    {
+      "id": "step-13",
+      "type": "test",
+      "description": "Write failing tests for black frame detection: mock subprocess.run for ffmpeg blackdetect filter. Test pass when no black frames detected; test warning when black frames found (stderr contains blackdetect output); test graceful handling when ffmpeg fails",
+      "status": "done",
+      "commit": "1ed32b8"
+    },
+    {
+      "id": "step-14",
+      "type": "impl",
+      "description": "Implement _check_black_frames(rendered_path, issues) running ffmpeg -i file -vf blackdetect=d=0.1:pix_th=5 -f null -, parsing blackdetect output from stderr for black_start/black_end/black_duration fields, appending warning Issues for each detected range. Wire into validate_render.",
+      "status": "done",
+      "commit": "294ff75"
+    },
+    {
+      "id": "step-15",
+      "type": "test",
+      "description": "Write failing tests for silence detection: mock subprocess.run for ffmpeg silencedetect filter. Test pass when no silence >2s detected; test warning when silence >2s found; test that intentional silence marked in EDL is excluded; test graceful handling when ffmpeg fails",
+      "status": "done",
+      "commit": "bb026a7"
+    },
+    {
+      "id": "step-16",
+      "type": "impl",
+      "description": "Implement _check_silence(rendered_path, edl, issues) running ffmpeg -i file -af silencedetect=n=-50dB:d=2 -f null -, parsing silence_start/silence_end/silence_duration from stderr, filtering out EDL-marked intentional silences, appending warning Issues. Wire into validate_render.",
+      "status": "done",
+      "commit": "9003d5c"
+    },
+    {
+      "id": "step-17",
+      "type": "test",
+      "description": "Write failing tests for validate_render end-to-end: mock all subprocess calls. Test full pass scenario returns passed=True with measurements dict populated. Test mixed issues scenario returns passed=False with correct error/warning counts. Test report JSON serialization.",
+      "status": "done",
+      "commit": "b26b5c6"
+    },
+    {
+      "id": "step-18",
+      "type": "impl",
+      "description": "Complete validate_render orchestration: call ffprobe once, run all checks, populate measurements dict (duration, loudness_lufs, file_size_mb, resolution, codec), set passed=True only if no error-severity issues, return ValidationReport. Add to_dict() method for JSON serialization.",
+      "status": "done",
+      "commit": "f33daed"
+    },
+    {
+      "id": "step-19",
+      "type": "test",
+      "description": "Write failing tests for validation_report.json writing: validate_render should write validation_report.json to output/{narrative_title}/ directory. Test file is created with correct content. Test handles missing output directory by creating it.",
+      "status": "done",
+      "commit": "401d760"
+    },
+    {
+      "id": "step-20",
+      "type": "impl",
+      "description": "Add report writing to validate_render: derive output directory from rendered_path parent, write validation_report.json with JSON-serialized ValidationReport. Create directory if needed.",
+      "status": "done",
+      "commit": "77c51e1"
+    },
+    {
+      "id": "step-21",
+      "type": "test",
+      "description": "Write failing test for _check_black_frames ValueError guard: mock subprocess.run to return blackdetect stderr containing a non-numeric value like 'N/A' for black_start/black_end/black_duration (e.g. 'black_start:N/A black_end:2.5 black_duration:N/A'). Verify that _check_black_frames does NOT raise ValueError, and instead appends a warning Issue with check='black_frames' and a message indicating parse failure. Also test that valid numeric entries in the same stderr are still parsed correctly (mixed valid/invalid lines).",
+      "status": "done",
+      "commit": "e41f73d"
+    },
+    {
+      "id": "step-22",
+      "type": "impl",
+      "description": "Guard float() calls in _check_black_frames (lines 356-370): wrap the float(start), float(end), float(duration) calls and the issues.append in a try/except ValueError block. On ValueError, append a warning Issue with check='black_frames' and message=f'Could not parse blackdetect values: {match.group()}' and continue to the next regex match.",
+      "status": "done",
+      "commit": "0c1d4d5"
+    },
+    {
+      "id": "step-23",
+      "type": "test",
+      "description": "Write failing test for _check_silence ValueError guard: mock subprocess.run to return silencedetect stderr containing non-numeric values (e.g. 'silence_start: N/A ... silence_end: N/A | silence_duration: N/A'). Verify that _check_silence does NOT raise ValueError, and instead appends a warning Issue with check='silence' and a message indicating parse failure. Also test mixed valid/invalid matches to ensure good entries still get parsed.",
+      "status": "done",
+      "commit": "5f459a8"
+    },
+    {
+      "id": "step-24",
+      "type": "impl",
+      "description": "Guard float() calls in _check_silence (lines 414-416): wrap the float(match.group(1)), float(match.group(2)), float(match.group(3)) calls and subsequent logic in a try/except ValueError block. On ValueError, append a warning Issue with check='silence' and message=f'Could not parse silencedetect values: {match.group()}' and continue to the next regex match.",
+      "status": "done",
+      "commit": "fcc79aa"
+    },
+    {
+      "id": "step-25",
+      "type": "test",
+      "description": "Write failing test for validate_render report writing OSError guard: mock the Path.write_text method (or Path.mkdir) to raise OSError('Permission denied'). Verify that validate_render does NOT raise OSError, still returns a valid ValidationReport with correct passed/issues/measurements, and logs a warning. Test both mkdir failure and write_text failure scenarios.",
+      "status": "done",
+      "commit": "4e873be"
+    },
+    {
+      "id": "step-26",
+      "type": "impl",
+      "description": "Guard report file writing in validate_render (lines 496-499): wrap the output_dir.mkdir(...) and report_path.write_text(...) calls in a try/except OSError block. On OSError, log a warning via logger.warning('Could not write validation report to %s: %s', report_path, exc). Then unconditionally return report regardless of write success/failure.",
+      "status": "done",
+      "commit": "882b1c8"
+    }
+  ],
+  "design_decisions": [
+    {
+      "decision": "Use a richer Issue dataclass instead of plain strings for issues list",
+      "rationale": "Task spec requires severity (error/warning) per issue plus measurements. A structured Issue(severity, check, message, measured_value) enables filtering by severity and programmatic consumption. The existing plan/validator.py uses plain strings but this module needs more structured output."
+    },
+    {
+      "decision": "Run ffprobe once and pass probe_data dict to check functions, but run ffmpeg analysis filters as separate subprocess calls",
+      "rationale": "ffprobe gives us duration/resolution/codec/size in one call. Loudness, black frames, and silence detection each need separate ffmpeg filter passes. This minimizes subprocess calls while keeping each filter's output separate and parseable."
+    },
+    {
+      "decision": "Use severity='error' for hard failures (duration, loudness, resolution, codec) and severity='warning' for soft failures (black frames, silence, file size)",
+      "rationale": "Task spec says file size is a 'warn if outside range' check. Black frames and silence are quality warnings, not rendering failures. Duration and codec mismatches indicate a broken render. passed=True only when no error-severity issues exist."
+    },
+    {
+      "decision": "Write validation_report.json to rendered_path.parent (same directory as the rendered file)",
+      "rationale": "Task spec says 'output/{narrative_title}/'. The router already places final.mp4 in output/{narrative_title}/, so rendered_path.parent is the correct location. This avoids needing narrative_title as a separate parameter."
+    },
+    {
+      "decision": "Name the module validate.py (not validator.py) to avoid confusion with plan/validator.py",
+      "rationale": "Task spec explicitly says 'validate.py'. This also provides clear naming distinction: plan/validator.py validates EDL structure pre-render; render/validate.py validates the rendered output post-render."
+    },
+    {
+      "decision": "Parse loudnorm output from ffmpeg stderr using regex rather than JSON",
+      "rationale": "ffmpeg loudnorm with print_format=json outputs JSON embedded in stderr alongside other log lines. Extracting the JSON block via regex is more robust than trying to parse the entire stderr as JSON."
+    },
+    {
+      "decision": "Guard all float() parsing of ffmpeg filter output with try/except ValueError",
+      "rationale": "The \\S+ regex groups in blackdetect and silencedetect parsing can capture non-numeric values (N/A, locale-formatted numbers, version-skewed output). Unguarded float() would crash the entire validation call. Instead, emit a warning Issue and continue to the next match so other valid detections are still reported."
+    },
+    {
+      "decision": "Guard report file I/O with try/except OSError, returning ValidationReport unconditionally",
+      "rationale": "Report writing is a non-critical side effect. An OSError (permissions, disk full, read-only mount) should not prevent the caller from receiving the ValidationReport that all checks have already produced. Log a warning and return the report regardless."
+    }
+  ],
+  "reuse": [
+    {
+      "what": "OutputConfig dataclass (resolution, codec, target_loudness_lufs fields)",
+      "where": "autopilot/config.py",
+      "how": "Type hint for config parameter; access config.resolution, config.codec, config.target_loudness_lufs for validation checks"
+    },
+    {
+      "what": "ffprobe invocation pattern (subprocess.run with JSON output parsing)",
+      "where": "autopilot/ingest/scanner.py _run_ffprobe()",
+      "how": "Follow same pattern: ffprobe -v quiet -print_format json -show_format -show_streams, capture_output=True, text=True, check=True, parse stdout JSON"
+    },
+    {
+      "what": "subprocess.run mocking pattern for tests",
+      "where": "tests/test_ffmpeg_render.py",
+      "how": "Use unittest.mock.patch('subprocess.run') to mock ffmpeg/ffprobe calls, verify command arguments, simulate success/failure"
+    },
+    {
+      "what": "ValidationResult pattern (dataclass with passed, errors, warnings)",
+      "where": "autopilot/plan/validator.py",
+      "how": "Model ValidationReport similarly but with structured Issue objects instead of plain strings, and add measurements dict"
+    },
+    {
+      "what": "Test class organization pattern (TestPublicAPI, then per-feature test classes)",
+      "where": "tests/test_validator.py, tests/test_ffmpeg_render.py",
+      "how": "Follow same test organization: TestPublicAPI for imports/signatures, then TestDurationCheck, TestLoudnessCheck, etc."
+    },
+    {
+      "what": "render/__init__.py export pattern",
+      "where": "autopilot/render/__init__.py",
+      "how": "Add ValidationError and validate_render to __init__.py imports and __all__"
+    }
+  ]
+}
