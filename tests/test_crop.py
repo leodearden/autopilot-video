@@ -681,3 +681,55 @@ class TestAutoSubjectMode:
         stored = catalog_db.get_crop_path("track4", "16:9", 1)
         assert stored is not None
         assert stored["path_data"] is not None
+
+
+class TestTauOverride:
+    """Tests for EDL smoothing_tau override."""
+
+    def test_edl_tau_override_produces_different_smoothing(self, catalog_db) -> None:
+        """When edl_entry has smoothing_tau, it overrides config.crop_smoothing_tau."""
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import compute_crop_path
+
+        _seed_tracking_media(catalog_db, "tau1")
+        _seed_tracking_media(catalog_db, "tau2")
+        config = CameraConfig(source_resolution=(4096, 4096), crop_smoothing_tau=0.5)
+
+        # Use 9:16 (crop_w=2304) to have horizontal freedom for path variation
+        edl_default = {
+            "mode": "auto_subject",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:10.000",
+        }
+        edl_override = {
+            "mode": "auto_subject",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:10.000",
+            "smoothing_tau": 2.0,  # much more smoothing
+        }
+        result_default = compute_crop_path("tau1", "9:16", catalog_db, config, edl_default)
+        result_override = compute_crop_path("tau2", "9:16", catalog_db, config, edl_override)
+        # Both should have same shape
+        assert result_default.shape == result_override.shape
+        # Different tau should produce different paths (more smoothed = less variance)
+        var_default = np.var(result_default[:, 0])
+        var_override = np.var(result_override[:, 0])
+        # Higher tau = more smoothing = less variance in the path
+        assert var_override < var_default
+
+    def test_stored_tau_matches_edl(self, catalog_db) -> None:
+        """Stored crop_path should have the overridden tau value."""
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import compute_crop_path
+
+        _seed_tracking_media(catalog_db, "tau3")
+        config = CameraConfig(source_resolution=(4096, 4096), crop_smoothing_tau=0.5)
+        edl_entry = {
+            "mode": "auto_subject",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:10.000",
+            "smoothing_tau": 1.5,
+        }
+        compute_crop_path("tau3", "16:9", catalog_db, config, edl_entry)
+        stored = catalog_db.get_crop_path("tau3", "16:9", 1)
+        assert stored["smoothing_tau"] == pytest.approx(1.5)
