@@ -178,7 +178,7 @@ def route_and_render(
     # Audio mixing filter
     if audio_inputs:
         # Mix source audio with additional tracks
-        all_audio = [f"[0:a]"] + audio_inputs
+        all_audio = ["[0:a]"] + audio_inputs
         mix_filter = "".join(all_audio) + f"amix=inputs={len(all_audio)}:duration=longest"
         cmd.extend(["-filter_complex", mix_filter])
     else:

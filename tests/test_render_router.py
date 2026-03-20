@@ -5,11 +5,13 @@ from __future__ import annotations
 import inspect
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 
+if TYPE_CHECKING:
+    from autopilot.config import OutputConfig
 
 # ---------------------------------------------------------------------------
 # Public API surface
@@ -115,7 +117,7 @@ def _make_config(
     quality_crf: int = 18,
     audio_bitrate: str = "256k",
     target_loudness_lufs: int = -16,
-) -> object:
+) -> OutputConfig:
     """Create an OutputConfig for testing."""
     from autopilot.config import OutputConfig
 
