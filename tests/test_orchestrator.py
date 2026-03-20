@@ -974,6 +974,25 @@ class TestEdlStage:
         # Second narrative should still be processed
         assert mock_edl.generate_edl.call_count == 2
 
+    @patch("autopilot.orchestrator.otio_export")
+    @patch("autopilot.orchestrator.validator")
+    @patch("autopilot.orchestrator.edl_mod")
+    def test_edl_raises_if_all_narratives_fail(
+        self, mock_edl, mock_validator, mock_otio, minimal_config
+    ):
+        """If every narrative fails EDL, stage raises RuntimeError."""
+        from autopilot.orchestrator import _run_edl
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        db.get_narrative_script.return_value = {"scenes": []}
+        mock_edl.generate_edl.side_effect = RuntimeError("fail")
+
+        with pytest.raises(RuntimeError, match="All narratives failed"):
+            _run_edl(config=minimal_config, db=db)
+
 
 class TestSourceStage:
     """Tests for the real _run_source_assets stage function."""
@@ -998,6 +1017,26 @@ class TestSourceStage:
         mock_resolve.resolve_edl_assets.assert_called_once()
         call_kwargs = mock_resolve.resolve_edl_assets.call_args
         assert call_kwargs[1]["narrative_id"] == "n1"
+
+    @patch("autopilot.orchestrator.resolve")
+    def test_source_raises_if_all_narratives_fail(
+        self, mock_resolve, minimal_config
+    ):
+        """If every narrative fails source resolution, stage raises RuntimeError."""
+        from autopilot.orchestrator import _run_source_assets
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        db.get_edit_plan.return_value = {
+            "narrative_id": "n1",
+            "edl_json": '{"timeline": []}',
+        }
+        mock_resolve.resolve_edl_assets.side_effect = RuntimeError("fail")
+
+        with pytest.raises(RuntimeError, match="All narratives failed"):
+            _run_source_assets(config=minimal_config, db=db)
 
 
 class TestRenderStage:
@@ -1079,6 +1118,26 @@ class TestRenderStage:
 
         assert mock_router.route_and_render.call_count == 2
 
+    @patch("autopilot.orchestrator.render_validate")
+    @patch("autopilot.orchestrator.router")
+    def test_render_raises_if_all_narratives_fail(
+        self, mock_router, mock_validate, minimal_config
+    ):
+        """If every narrative fails render, stage raises RuntimeError."""
+        from autopilot.orchestrator import _run_render
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        db.get_edit_plan.return_value = {
+            "narrative_id": "n1", "edl_json": '{"timeline": []}',
+        }
+        mock_router.route_and_render.side_effect = RuntimeError("fail")
+
+        with pytest.raises(RuntimeError, match="All narratives failed"):
+            _run_render(config=minimal_config, db=db)
+
 
 class TestUploadStage:
     """Tests for the real _run_upload stage function."""
@@ -1139,6 +1198,30 @@ class TestUploadStage:
         _run_upload(config=minimal_config, db=db)
 
         assert mock_youtube.upload_video.call_count == 2
+
+    @patch("autopilot.orchestrator.thumbnail")
+    @patch("autopilot.orchestrator.youtube")
+    def test_upload_raises_if_all_narratives_fail(
+        self, mock_youtube, mock_thumbnail, minimal_config
+    ):
+        """If every narrative fails upload, stage raises RuntimeError."""
+        from autopilot.orchestrator import _run_upload
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        db.get_edit_plan.return_value = {"edl_json": '{}'}
+
+        for nid in ["n1", "n2"]:
+            render_dir = minimal_config.output_dir / "renders" / nid
+            render_dir.mkdir(parents=True)
+            (render_dir / "output.mp4").write_text("fake")
+
+        mock_youtube.upload_video.side_effect = RuntimeError("fail")
+
+        with pytest.raises(RuntimeError, match="All narratives failed"):
+            _run_upload(config=minimal_config, db=db)
 
 
 class TestRealStageRegistration:
