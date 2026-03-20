@@ -93,6 +93,7 @@ def _search_pexels(
                 "per_page": 3,
                 "orientation": "landscape",
             },
+            timeout=(10, 120),
         )
         response.raise_for_status()
         data = response.json()
@@ -114,12 +115,16 @@ def _search_pexels(
             if not best or not best.get("link"):
                 continue
 
-            dl_response = _requests.get(best["link"])
+            dl_response = _requests.get(
+                best["link"], stream=True, timeout=(10, 300)
+            )
             dl_response.raise_for_status()
 
             filename = f"pexels_{video['id']}.mp4"
             output_path = output_dir / filename
-            output_path.write_bytes(dl_response.content)
+            with open(output_path, "wb") as f:
+                for chunk in dl_response.iter_content(chunk_size=8192):
+                    f.write(chunk)
             downloaded.append(output_path)
 
             logger.info("Downloaded Pexels video %s to %s", video["id"], output_path)
@@ -165,6 +170,7 @@ def _search_pixabay(
                 "video_type": "film",
                 "per_page": 3,
             },
+            timeout=(10, 120),
         )
         response.raise_for_status()
         data = response.json()
@@ -183,12 +189,14 @@ def _search_pixabay(
             if not url:
                 continue
 
-            dl_response = _requests.get(url)
+            dl_response = _requests.get(url, stream=True, timeout=(10, 300))
             dl_response.raise_for_status()
 
             filename = f"pixabay_{hit['id']}.mp4"
             output_path = output_dir / filename
-            output_path.write_bytes(dl_response.content)
+            with open(output_path, "wb") as f:
+                for chunk in dl_response.iter_content(chunk_size=8192):
+                    f.write(chunk)
             downloaded.append(output_path)
 
             logger.info("Downloaded Pixabay video %s to %s", hit["id"], output_path)
