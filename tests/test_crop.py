@@ -192,3 +192,32 @@ class TestComputeRawCenter:
         cx, _ = _compute_raw_center(bbox, crop_w, crop_h, "right")
         # cx can be negative (clamping happens later)
         assert isinstance(cx, float)
+
+
+class TestComputeMultiSubjectCenter:
+    """Tests for _compute_multi_subject_center helper."""
+
+    def test_two_subjects_centered(self) -> None:
+        """Two subjects at known positions -> center crop on bounding box."""
+        from autopilot.render.crop import _compute_multi_subject_center
+
+        # Subject A at (1000, 1000, 200, 200), Subject B at (3000, 3000, 200, 200)
+        bboxes = [
+            [1000.0, 1000.0, 200.0, 200.0],
+            [3000.0, 3000.0, 200.0, 200.0],
+        ]
+        crop_w, crop_h = 4096, 2304
+        cx, cy = _compute_multi_subject_center(bboxes, crop_w, crop_h)
+        # Center of bounding box containing both subjects: (2000, 2000)
+        assert cx == pytest.approx(2000.0, abs=1.0)
+        assert cy == pytest.approx(2000.0, abs=1.0)
+
+    def test_single_subject_centers_on_it(self) -> None:
+        """Single subject in multi-subject path -> center on that subject."""
+        from autopilot.render.crop import _compute_multi_subject_center
+
+        bboxes = [[2048.0, 2048.0, 300.0, 400.0]]
+        crop_w, crop_h = 4096, 2304
+        cx, cy = _compute_multi_subject_center(bboxes, crop_w, crop_h)
+        assert cx == pytest.approx(2048.0, abs=1.0)
+        assert cy == pytest.approx(2048.0, abs=1.0)
