@@ -182,6 +182,48 @@ def _compute_multi_subject_center(
     return (group_cx, group_cy)
 
 
+def _build_raw_path(
+    all_detections: list[list[dict]],
+    track_id: int,
+    crop_w: int,
+    crop_h: int,
+    thirds_horizontal: str = "right",
+) -> np.ndarray:
+    """Build per-frame raw crop center path from detections.
+
+    For each frame, finds the specified track and computes a rule-of-thirds
+    crop center. Frames where the track is absent get NaN markers.
+
+    Args:
+        all_detections: Per-frame list of detection dicts.
+        track_id: Track ID to follow.
+        crop_w: Crop window width.
+        crop_h: Crop window height.
+        thirds_horizontal: 'left' or 'right' for rule-of-thirds side.
+
+    Returns:
+        Array of shape (N, 2) with (crop_center_x, crop_center_y) per frame.
+        NaN for frames where the track is not detected.
+    """
+    n_frames = len(all_detections)
+    path = np.full((n_frames, 2), np.nan, dtype=np.float64)
+
+    for i, frame_dets in enumerate(all_detections):
+        # Find the target track in this frame
+        subject_bbox = None
+        for det in frame_dets:
+            if det.get("track_id") == track_id:
+                subject_bbox = det["bbox_xywh"]
+                break
+
+        if subject_bbox is not None:
+            cx, cy = _compute_raw_center(subject_bbox, crop_w, crop_h, thirds_horizontal)
+            path[i, 0] = cx
+            path[i, 1] = cy
+
+    return path
+
+
 def compute_crop_path(
     media_id: str,
     target_aspect: str,
