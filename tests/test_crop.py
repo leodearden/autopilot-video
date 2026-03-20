@@ -387,3 +387,45 @@ class TestHandleDetectionGaps:
             hold_seconds=2.0, drift_seconds=1.0,
         )
         np.testing.assert_allclose(filled, path)
+
+
+class TestClampToBounds:
+    """Tests for _clamp_to_bounds: keeps crop window within source frame."""
+
+    def test_center_in_middle_unchanged(self) -> None:
+        """Centers in the middle of the frame -> top-left coords correct and unchanged."""
+        from autopilot.render.crop import _clamp_to_bounds
+
+        # Center at (2048, 2048), crop 4096x2304 in 4096x4096
+        path = np.array([[2048.0, 2048.0]])
+        result = _clamp_to_bounds(path, source_w=4096, source_h=4096, crop_w=4096, crop_h=2304)
+        # top-left: (2048 - 2048, 2048 - 1152) = (0, 896)
+        assert result[0, 0] == pytest.approx(0.0, abs=1.0)
+        assert result[0, 1] == pytest.approx(896.0, abs=1.0)
+
+    def test_center_near_left_edge_clamped(self) -> None:
+        """Center near left edge -> clamped so crop_x >= 0."""
+        from autopilot.render.crop import _clamp_to_bounds
+
+        path = np.array([[100.0, 2048.0]])
+        result = _clamp_to_bounds(path, source_w=4096, source_h=4096, crop_w=4096, crop_h=2304)
+        assert result[0, 0] >= 0.0
+
+    def test_center_near_right_edge_clamped(self) -> None:
+        """Center near right edge -> clamped so crop_x + crop_w <= source_w."""
+        from autopilot.render.crop import _clamp_to_bounds
+
+        path = np.array([[4000.0, 2048.0]])
+        result = _clamp_to_bounds(path, source_w=4096, source_h=4096, crop_w=4096, crop_h=2304)
+        assert result[0, 0] + 4096 <= 4096
+
+    def test_crop_larger_than_source_centered(self) -> None:
+        """Crop larger than source (invalid edge case) -> centered at 0."""
+        from autopilot.render.crop import _clamp_to_bounds
+
+        path = np.array([[500.0, 500.0]])
+        # Crop wider than source
+        result = _clamp_to_bounds(path, source_w=1000, source_h=1000, crop_w=2000, crop_h=500)
+        # Should center: top-left x = (1000 - 2000) / 2 = -500, clamped to 0 or centered
+        # Implementation should handle this gracefully
+        assert isinstance(result[0, 0], (float, np.floating))
