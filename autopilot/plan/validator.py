@@ -108,6 +108,21 @@ def _check_duration(
         )
 
 
+def _check_clip_ids(
+    clips: list[dict], db: CatalogDB, errors: list[str],
+) -> None:
+    """Check that all referenced clip_ids exist in the catalog."""
+    seen: set[str] = set()
+    for clip in clips:
+        clip_id = clip.get("clip_id", "")
+        if clip_id in seen:
+            continue
+        seen.add(clip_id)
+        media = db.get_media(clip_id)
+        if media is None:
+            errors.append(f"Clip not found in catalog: {clip_id}")
+
+
 def validate_edl(edl: dict, db: CatalogDB) -> ValidationResult:
     """Validate an EDL structure against all constraints.
 
@@ -135,6 +150,9 @@ def validate_edl(edl: dict, db: CatalogDB) -> ValidationResult:
 
     # Check total duration
     _check_duration(clips, edl, errors)
+
+    # Check clip_id existence
+    _check_clip_ids(clips, db, errors)
 
     passed = len(errors) == 0
     return ValidationResult(passed=passed, errors=errors, warnings=warnings)
