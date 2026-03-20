@@ -224,6 +224,42 @@ def _build_raw_path(
     return path
 
 
+def _smooth_path(raw_path: np.ndarray, fps: float, tau: float) -> np.ndarray:
+    """Apply EMA smoothing to a crop center path.
+
+    Uses exponential moving average with alpha = 1 - exp(-1/(tau*fps)).
+    NaN entries are skipped (the smoothed value holds from the last valid frame).
+
+    Args:
+        raw_path: Array of shape (N, 2) with per-frame crop centers.
+        fps: Video frame rate in frames per second.
+        tau: Time constant in seconds (higher = more smoothing).
+
+    Returns:
+        Smoothed array of shape (N, 2).
+    """
+    alpha = 1.0 - np.exp(-1.0 / (tau * fps))
+    n = raw_path.shape[0]
+    smoothed = np.empty_like(raw_path)
+
+    # Initialize with first valid frame
+    initialized = False
+    prev = np.zeros(2)
+    for i in range(n):
+        if np.any(np.isnan(raw_path[i])):
+            # Hold previous value
+            smoothed[i] = prev
+        elif not initialized:
+            prev = raw_path[i].copy()
+            smoothed[i] = prev
+            initialized = True
+        else:
+            prev = prev + alpha * (raw_path[i] - prev)
+            smoothed[i] = prev
+
+    return smoothed
+
+
 def compute_crop_path(
     media_id: str,
     target_aspect: str,

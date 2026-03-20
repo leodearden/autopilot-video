@@ -296,8 +296,8 @@ class TestSmoothPath:
         # Right after step (frame 30), should start moving toward 2000
         assert smoothed[30, 0] > 1000.0
         assert smoothed[30, 0] < 2000.0
-        # After several tau periods (frame 59, ~1s after step), should be close to 2000
-        assert smoothed[59, 0] > 1900.0
+        # After ~1s (frame 59, ~2 tau periods), should be well past midpoint
+        assert smoothed[59, 0] > 1800.0
 
     def test_different_tau_different_smoothing(self) -> None:
         """Larger tau should produce more smoothing (slower convergence)."""
