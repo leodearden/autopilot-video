@@ -83,6 +83,31 @@ def _check_overlaps(clips: list[dict], errors: list[str]) -> None:
                 )
 
 
+def _check_duration(
+    clips: list[dict], edl: dict, errors: list[str],
+) -> None:
+    """Check that total duration of track-1 clips is within ±10% of target."""
+    target = edl.get("target_duration_seconds")
+    if target is None or target <= 0:
+        return
+
+    # Sum durations of clips on track 1
+    total = 0.0
+    for clip in clips:
+        if clip.get("track", 1) == 1:
+            in_s = timecode_to_seconds(clip["in_timecode"])
+            out_s = timecode_to_seconds(clip["out_timecode"])
+            total += out_s - in_s
+
+    lower = target * 0.9
+    upper = target * 1.1
+    if total < lower or total > upper:
+        errors.append(
+            f"Total duration {total:.1f}s is outside ±10% of "
+            f"target {target:.1f}s (allowed: {lower:.1f}–{upper:.1f}s)"
+        )
+
+
 def validate_edl(edl: dict, db: CatalogDB) -> ValidationResult:
     """Validate an EDL structure against all constraints.
 
@@ -107,6 +132,9 @@ def validate_edl(edl: dict, db: CatalogDB) -> ValidationResult:
 
     # Check overlaps
     _check_overlaps(clips, errors)
+
+    # Check total duration
+    _check_duration(clips, edl, errors)
 
     passed = len(errors) == 0
     return ValidationResult(passed=passed, errors=errors, warnings=warnings)
