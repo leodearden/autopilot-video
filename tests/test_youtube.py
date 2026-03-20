@@ -389,3 +389,95 @@ class TestUploadVideoFlow:
         with patch.dict(sys.modules, mods):
             with pytest.raises(UploadError, match="quota exceeded"):
                 upload_video("n1", video_file, catalog_db, config)
+
+
+# ---------------------------------------------------------------------------
+# Edge case tests
+# ---------------------------------------------------------------------------
+
+
+class TestUploadVideoEdgeCases:
+    """Verify upload_video edge cases."""
+
+    def _make_config(self, tmp_path):
+        creds_file = tmp_path / "creds.json"
+        creds_file.write_text("{}")
+        config = MagicMock()
+        config.credentials_path = creds_file
+        config.privacy_status = "unlisted"
+        config.default_category = "22"
+        return config
+
+    def test_narrative_not_found_raises_upload_error(
+        self, catalog_db, tmp_path
+    ):
+        """Raises UploadError when narrative_id not in DB."""
+        from autopilot.upload.youtube import UploadError, upload_video
+
+        video_file = tmp_path / "video.mp4"
+        video_file.write_bytes(b"\x00" * 100)
+        config = self._make_config(tmp_path)
+
+        mods, _, _ = _setup_google_mocks()
+        mock_creds = MagicMock()
+        mock_creds.expired = False
+        mods["google.oauth2.credentials"].Credentials \
+            .from_authorized_user_file.return_value = mock_creds
+
+        with patch.dict(sys.modules, mods):
+            with pytest.raises(UploadError, match="[Nn]arrative.*not found"):
+                upload_video(
+                    "nonexistent", video_file, catalog_db, config
+                )
+
+    def test_video_file_not_found_raises_upload_error(
+        self, catalog_db, tmp_path
+    ):
+        """Raises UploadError when video_path doesn't exist."""
+        from autopilot.upload.youtube import UploadError, upload_video
+
+        catalog_db.insert_narrative("n1", title="Test", description="desc")
+        missing_video = tmp_path / "nonexistent.mp4"
+        config = self._make_config(tmp_path)
+
+        mods, _, _ = _setup_google_mocks()
+        mock_creds = MagicMock()
+        mock_creds.expired = False
+        mods["google.oauth2.credentials"].Credentials \
+            .from_authorized_user_file.return_value = mock_creds
+
+        with patch.dict(sys.modules, mods):
+            with pytest.raises(UploadError, match="[Vv]ideo.*not found"):
+                upload_video("n1", missing_video, catalog_db, config)
+
+    def test_resumable_upload_retry(self, catalog_db, tmp_path):
+        """Retries on transient error then succeeds."""
+        from autopilot.upload.youtube import upload_video
+
+        catalog_db.insert_narrative("n1", title="Test", description="desc")
+        video_file = tmp_path / "video.mp4"
+        video_file.write_bytes(b"\x00" * 100)
+        config = self._make_config(tmp_path)
+
+        mods, _, _ = _setup_google_mocks()
+        mock_creds = MagicMock()
+        mock_creds.expired = False
+        mods["google.oauth2.credentials"].Credentials \
+            .from_authorized_user_file.return_value = mock_creds
+
+        mock_youtube = MagicMock()
+        mock_insert_req = MagicMock()
+        # First call raises, second succeeds
+        mock_insert_req.next_chunk.side_effect = [
+            Exception("transient error"),
+            (None, {"id": "retry_ok"}),
+        ]
+        mock_youtube.videos.return_value.insert.return_value = (
+            mock_insert_req
+        )
+        mods["googleapiclient.discovery"].build.return_value = mock_youtube
+
+        with patch.dict(sys.modules, mods):
+            url = upload_video("n1", video_file, catalog_db, config)
+
+        assert url == "https://youtu.be/retry_ok"
