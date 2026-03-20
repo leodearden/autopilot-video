@@ -854,9 +854,7 @@ class TestSourceStage:
 
         mock_resolve.resolve_edl_assets.assert_called_once()
         call_kwargs = mock_resolve.resolve_edl_assets.call_args
-        assert call_kwargs[1].get("narrative_id") == "n1" or (
-            len(call_kwargs[0]) >= 1  # positional args present
-        )
+        assert call_kwargs[1]["narrative_id"] == "n1"
 
 
 class TestRenderStage:
