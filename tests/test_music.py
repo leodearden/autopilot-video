@@ -28,11 +28,8 @@ def _make_mock_audiocraft() -> tuple[MagicMock, MagicMock]:
 
     mock_model = MagicMock()
     mock_model.set_generation_params = MagicMock()
-    # generate returns a tensor-like object
-    import numpy as np
+    # generate returns a tensor-like mock; wav[0].cpu() must return a MagicMock
     mock_tensor = MagicMock()
-    mock_tensor.cpu.return_value = mock_tensor
-    mock_tensor.__getitem__ = MagicMock(return_value=np.zeros((1, 32000), dtype=np.float32))
     mock_model.generate.return_value = mock_tensor
     mock_model.sample_rate = 32000
     mock_audiocraft_models.MusicGen.get_pretrained.return_value = mock_model
