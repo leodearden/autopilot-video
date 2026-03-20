@@ -837,3 +837,127 @@ class TestIntegration:
         assert "Temple visit" in call_kwargs["messages"][0]["content"]
         # System prompt was script_writer.md
         assert "Script Writer" in call_kwargs["system"]
+
+
+# -- Step 17: NULL field resilience tests --------------------------------------
+
+
+def _seed_null_resilience_base(db):
+    """Seed minimal DB data for NULL resilience tests."""
+    db.insert_media("v1", "/tmp/v1.mp4", duration_seconds=60.0, fps=30.0)
+    db.upsert_boundaries(
+        "v1",
+        json.dumps([
+            {"start_frame": 0, "end_frame": 1800, "start_time": 0.0, "end_time": 60.0},
+        ]),
+        "transnetv2",
+    )
+    db.insert_activity_cluster(
+        "c1", label="Test",
+        clip_ids_json=json.dumps(["v1"]),
+    )
+    db.insert_narrative(
+        "n1", title="Test",
+        activity_cluster_ids_json=json.dumps(["c1"]),
+    )
+
+
+class TestNullFieldResilience:
+    """Tests for NULL primary key field handling in storyboard assembly.
+
+    SQLite allows NULL in composite primary key columns. These tests verify
+    that rows with NULL in key numeric fields are silently skipped rather
+    than causing TypeError when float()/int() is called on None.
+    """
+
+    def test_captions_with_null_start_or_end_time_skipped(self, catalog_db):
+        """Caption rows with NULL start_time or end_time are skipped, valid ones kept."""
+        from autopilot.plan.script import build_narrative_storyboard
+
+        _seed_null_resilience_base(catalog_db)
+
+        # Insert a valid caption
+        catalog_db.upsert_caption("v1", 0.0, 30.0, "Valid caption text", "qwen-vl")
+        # Insert captions with NULL start_time and end_time via raw SQL
+        catalog_db.conn.execute(
+            "INSERT INTO captions (media_id, start_time, end_time, caption, model_name) "
+            "VALUES (?, NULL, ?, ?, ?)",
+            ("v1", 30.0, "Null start caption", "qwen-vl"),
+        )
+        catalog_db.conn.execute(
+            "INSERT INTO captions (media_id, start_time, end_time, caption, model_name) "
+            "VALUES (?, ?, NULL, ?, ?)",
+            ("v1", 31.0, "Null end caption", "qwen-vl"),
+        )
+
+        # Should NOT raise TypeError; valid caption appears in output
+        result = build_narrative_storyboard("n1", catalog_db)
+        assert "Valid caption text" in result
+        assert "Null start caption" not in result
+        assert "Null end caption" not in result
+
+    def test_detections_with_null_frame_number_skipped(self, catalog_db):
+        """Detection rows with NULL frame_number are skipped, valid ones kept."""
+        from autopilot.plan.script import build_narrative_storyboard
+
+        _seed_null_resilience_base(catalog_db)
+
+        # Insert valid detection
+        catalog_db.batch_insert_detections([
+            ("v1", 0, json.dumps([{"class": "car", "confidence": 0.9}])),
+        ])
+        # Insert detection with NULL frame_number via raw SQL
+        catalog_db.conn.execute(
+            "INSERT INTO detections (media_id, frame_number, detections_json) "
+            "VALUES (?, NULL, ?)",
+            ("v1", json.dumps([{"class": "ghost_object", "confidence": 0.5}])),
+        )
+
+        result = build_narrative_storyboard("n1", catalog_db)
+        assert "car" in result
+        assert "ghost_object" not in result
+
+    def test_faces_with_null_frame_number_skipped(self, catalog_db):
+        """Face rows with NULL frame_number are skipped, valid ones kept."""
+        from autopilot.plan.script import build_narrative_storyboard
+
+        _seed_null_resilience_base(catalog_db)
+
+        emb = np.zeros(512, dtype=np.float32).tobytes()
+        # Insert valid face
+        catalog_db.batch_insert_faces([
+            ("v1", 0, 0, json.dumps({"x": 10, "y": 10, "w": 50, "h": 50}), emb, 1),
+        ])
+        catalog_db.insert_face_cluster(1, label="ValidPerson")
+        # Insert face with NULL frame_number via raw SQL
+        catalog_db.conn.execute(
+            "INSERT INTO faces (media_id, frame_number, face_index, bbox_json, embedding, cluster_id) "
+            "VALUES (?, NULL, ?, ?, ?, ?)",
+            ("v1", 0, json.dumps({"x": 0, "y": 0, "w": 1, "h": 1}), emb, 2),
+        )
+        catalog_db.insert_face_cluster(2, label="GhostPerson")
+
+        result = build_narrative_storyboard("n1", catalog_db)
+        assert "ValidPerson" in result
+        assert "GhostPerson" not in result
+
+    def test_audio_events_with_null_timestamp_skipped(self, catalog_db):
+        """Audio event rows with NULL timestamp_seconds are skipped, valid ones kept."""
+        from autopilot.plan.script import build_narrative_storyboard
+
+        _seed_null_resilience_base(catalog_db)
+
+        # Insert valid audio event
+        catalog_db.batch_insert_audio_events([
+            ("v1", 5.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
+        ])
+        # Insert audio event with NULL timestamp_seconds via raw SQL
+        catalog_db.conn.execute(
+            "INSERT INTO audio_events (media_id, timestamp_seconds, events_json) "
+            "VALUES (?, NULL, ?)",
+            ("v1", json.dumps([{"class": "GhostSound", "probability": 0.8}])),
+        )
+
+        result = build_narrative_storyboard("n1", catalog_db)
+        assert "Speech" in result
+        assert "GhostSound" not in result
