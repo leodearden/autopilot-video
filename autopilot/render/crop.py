@@ -423,4 +423,14 @@ def compute_crop_path(
         path = np.full((num_frames, 2), [clamped_x, clamped_y])
         return path
 
+    if mode == "stabilize_only":
+        logger.warning(
+            "stabilize_only mode is a placeholder; falling back to center crop "
+            "(gyro-based stabilization not yet implemented)"
+        )
+        center_x = (source_w - crop_w) / 2.0
+        center_y = (source_h - crop_h) / 2.0
+        path = np.full((num_frames, 2), [center_x, center_y])
+        return path
+
     raise NotImplementedError(f"Mode {mode!r} not yet implemented")
