@@ -184,3 +184,80 @@ class TestOverlapDetection:
         result = validate_edl(edl, _mock_db())
         overlap_errors = [e for e in result.errors if "overlap" in e.lower()]
         assert len(overlap_errors) == 0
+
+
+# -- Step 5: Duration check tests ---------------------------------------------
+
+
+def _make_edl_with_duration(clip_out: str, target: float) -> dict:
+    """Helper to make a simple EDL with one clip and a target duration."""
+    return {
+        "target_duration_seconds": target,
+        "clips": [
+            {
+                "clip_id": "v1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": clip_out,
+                "track": 1,
+            },
+        ],
+        "transitions": [],
+        "audio_settings": [],
+        "crop_modes": [],
+        "titles": [],
+        "music": [],
+        "voiceovers": [],
+        "broll_requests": [],
+    }
+
+
+class TestDurationCheck:
+    """Tests for validate_edl total duration check within ±10%."""
+
+    def test_within_tolerance_passes(self):
+        """Duration within ±10% of target produces no errors."""
+        from autopilot.plan.validator import validate_edl
+
+        # 10s clip, target 10s -> exactly on target
+        edl = _make_edl_with_duration("00:00:10.000", 10.0)
+        result = validate_edl(edl, _mock_db())
+        duration_errors = [e for e in result.errors if "duration" in e.lower()]
+        assert len(duration_errors) == 0
+
+    def test_over_10_percent_above_fails(self):
+        """Duration more than 10% above target produces an error."""
+        from autopilot.plan.validator import validate_edl
+
+        # 12s clip, target 10s -> 20% over
+        edl = _make_edl_with_duration("00:00:12.000", 10.0)
+        result = validate_edl(edl, _mock_db())
+        assert result.passed is False
+        duration_errors = [e for e in result.errors if "duration" in e.lower()]
+        assert len(duration_errors) >= 1
+
+    def test_over_10_percent_below_fails(self):
+        """Duration more than 10% below target produces an error."""
+        from autopilot.plan.validator import validate_edl
+
+        # 8s clip, target 10s -> 20% under
+        edl = _make_edl_with_duration("00:00:08.000", 10.0)
+        result = validate_edl(edl, _mock_db())
+        assert result.passed is False
+        duration_errors = [e for e in result.errors if "duration" in e.lower()]
+        assert len(duration_errors) >= 1
+
+    def test_exactly_at_boundary_passes(self):
+        """Duration exactly at ±10% boundary passes."""
+        from autopilot.plan.validator import validate_edl
+
+        # 11s clip, target 10s -> exactly 10% over (boundary)
+        edl = _make_edl_with_duration("00:00:11.000", 10.0)
+        result = validate_edl(edl, _mock_db())
+        duration_errors = [e for e in result.errors if "duration" in e.lower()]
+        assert len(duration_errors) == 0
+
+        # 9s clip, target 10s -> exactly 10% under (boundary)
+        edl = _make_edl_with_duration("00:00:09.000", 10.0)
+        result = validate_edl(edl, _mock_db())
+        duration_errors = [e for e in result.errors if "duration" in e.lower()]
+        assert len(duration_errors) == 0
