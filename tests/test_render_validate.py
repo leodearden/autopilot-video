@@ -539,3 +539,86 @@ class TestBlackFrameCheck:
         # Should add a warning, not crash
         assert len(issues) == 1
         assert issues[0].severity == "warning"
+
+
+# ---------------------------------------------------------------------------
+# TestSilenceCheck — _check_silence
+# ---------------------------------------------------------------------------
+
+SILENCE_STDERR_FOUND = """\
+[silencedetect @ 0x5555] silence_start: 10.5
+[silencedetect @ 0x5555] silence_end: 15.2 | silence_duration: 4.7
+[silencedetect @ 0x5555] silence_start: 45.0
+[silencedetect @ 0x5555] silence_end: 48.5 | silence_duration: 3.5
+"""
+
+SILENCE_STDERR_NONE = """\
+frame=  200 fps=0.0 q=0.0 size=N/A time=00:00:08.00 bitrate=N/A
+"""
+
+
+class TestSilenceCheck:
+    """Tests for _check_silence internal helper."""
+
+    def test_pass_when_no_silence_detected(self) -> None:
+        from autopilot.render.validate import Issue, _check_silence
+
+        mock = MagicMock()
+        mock.stderr = SILENCE_STDERR_NONE
+        mock.returncode = 0
+
+        issues: list[Issue] = []
+
+        with patch("subprocess.run", return_value=mock):
+            _check_silence(Path("/fake/video.mp4"), {}, issues)
+
+        assert len(issues) == 0
+
+    def test_warning_when_silence_found(self) -> None:
+        from autopilot.render.validate import Issue, _check_silence
+
+        mock = MagicMock()
+        mock.stderr = SILENCE_STDERR_FOUND
+        mock.returncode = 0
+
+        issues: list[Issue] = []
+
+        with patch("subprocess.run", return_value=mock):
+            _check_silence(Path("/fake/video.mp4"), {}, issues)
+
+        assert len(issues) == 2
+        assert all(i.severity == "warning" for i in issues)
+        assert all(i.check == "silence" for i in issues)
+
+    def test_intentional_silence_excluded(self) -> None:
+        from autopilot.render.validate import Issue, _check_silence
+
+        mock = MagicMock()
+        mock.stderr = SILENCE_STDERR_FOUND
+        mock.returncode = 0
+
+        # Mark the first silence as intentional
+        edl = {
+            "intentional_silences": [
+                {"start": 10.0, "end": 16.0},
+            ],
+        }
+        issues: list[Issue] = []
+
+        with patch("subprocess.run", return_value=mock):
+            _check_silence(Path("/fake/video.mp4"), edl, issues)
+
+        # Only the second silence (45-48.5) should be reported
+        assert len(issues) == 1
+        assert issues[0].measured_value["start"] == pytest.approx(45.0)
+
+    def test_graceful_handling_on_ffmpeg_failure(self) -> None:
+        from autopilot.render.validate import Issue, _check_silence
+
+        issues: list[Issue] = []
+
+        with patch("subprocess.run", side_effect=subprocess.CalledProcessError(1, "ffmpeg")):
+            _check_silence(Path("/fake/video.mp4"), {}, issues)
+
+        assert len(issues) == 1
+        assert issues[0].severity == "warning"
