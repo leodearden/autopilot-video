@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -57,6 +58,88 @@ def _load_credentials(credentials_path: Path) -> _Credentials:
             raise UploadError(msg) from exc
 
     return creds
+
+
+def _build_upload_metadata(
+    narrative_id: str,
+    db: CatalogDB,
+    config: YouTubeConfig,
+) -> dict:
+    """Build YouTube API upload metadata from catalog data.
+
+    Args:
+        narrative_id: Identifier for the narrative.
+        db: CatalogDB instance for metadata lookup.
+        config: YouTubeConfig with privacy and category settings.
+
+    Returns:
+        Dict with 'snippet' and 'status' keys for YouTube API body.
+    """
+    narrative = db.get_narrative(narrative_id)
+    title = narrative["title"] if narrative else narrative_id
+    description = str(narrative.get("description", "")) if narrative else ""
+
+    # Enrich description with script content if available
+    script_row = db.get_narrative_script(narrative_id)
+    if script_row and script_row.get("script_json"):
+        try:
+            script_data = json.loads(script_row["script_json"])
+            scenes = script_data.get("scenes", [])
+            narrations = [
+                s.get("narration", "")
+                for s in scenes
+                if s.get("narration")
+            ]
+            if narrations:
+                description += "\n\n" + " ".join(narrations)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # Build tags from activity cluster labels
+    tags: list[str] = []
+    if narrative and narrative.get("activity_cluster_ids_json"):
+        try:
+            cluster_ids = json.loads(
+                str(narrative["activity_cluster_ids_json"])
+            )
+        except (json.JSONDecodeError, TypeError):
+            cluster_ids = []
+        clusters = db.get_activity_clusters()
+        cluster_map = {c["cluster_id"]: c for c in clusters}
+        for cid in cluster_ids:
+            cluster = cluster_map.get(cid)
+            if cluster and cluster.get("label"):
+                tags.append(str(cluster["label"]))
+
+    # Add unique object class names from detections
+    class_names: set[str] = set()
+    # Get all media files to collect detections across the project
+    media_files = db.list_all_media()
+    for mf in media_files:
+        detections = db.get_detections_for_media(mf["id"])
+        for det_row in detections:
+            det_json = det_row.get("detections_json")
+            if det_json:
+                try:
+                    dets = json.loads(det_json)
+                    for d in dets:
+                        if d.get("class_name"):
+                            class_names.add(d["class_name"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+    tags.extend(sorted(class_names))
+
+    return {
+        "snippet": {
+            "title": title,
+            "description": description,
+            "tags": tags,
+            "categoryId": config.default_category,
+        },
+        "status": {
+            "privacyStatus": config.privacy_status,
+        },
+    }
 
 
 def upload_video(
