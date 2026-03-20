@@ -507,6 +507,71 @@ class TestTransitionMapping:
         assert len(transitions) == 0
 
 
+# -- Step 20: Multi-track transition isolation tests ---------------------------
+
+
+class TestMultiTrackTransitionIsolation:
+    """Verify transitions only apply to their designated track."""
+
+    def test_transition_only_on_target_track(self, tmp_path):
+        """Crossfade on track 1 does not bleed into track 2."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 2,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "crossfade",
+                    "duration": 0.5,
+                    "position": 0,
+                    "track": 1,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [
+            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
+        ]
+        assert len(video_tracks) == 2
+
+        # Track 1 (V1) should have exactly 1 transition between its 2 clips
+        t1_transitions = [
+            item for item in video_tracks[0]
+            if isinstance(item, otio.schema.Transition)
+        ]
+        assert len(t1_transitions) == 1
+
+        # Track 2 (V2) should have 0 transitions
+        t2_transitions = [
+            item for item in video_tracks[1]
+            if isinstance(item, otio.schema.Transition)
+        ]
+        assert len(t2_transitions) == 0
+
+
 # -- Step 11: Metadata preservation tests -------------------------------------
 
 
