@@ -520,9 +520,15 @@ def validate_render(
     report = ValidationReport(passed=passed, issues=issues, measurements=measurements)
 
     # Write validation_report.json alongside the rendered file
-    output_dir = rendered_path.parent
-    output_dir.mkdir(parents=True, exist_ok=True)
-    report_path = output_dir / "validation_report.json"
-    report_path.write_text(json.dumps(report.to_dict(), indent=2, default=str))
+    report_path = rendered_path.parent / "validation_report.json"
+    try:
+        rendered_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(report.to_dict(), indent=2, default=str))
+    except OSError as exc:
+        logger.warning(
+            "Could not write validation report to %s: %s",
+            report_path,
+            exc,
+        )
 
     return report
