@@ -427,3 +427,73 @@ class TestOutputDirCreation:
         )
         assert marker.exists(), "Existing marker file should not be removed"
         assert marker.read_text() == "keep me"
+
+
+class TestCLIRealStageWiring:
+    """Tests for CLI using real stage functions via the orchestrator."""
+
+    def test_cli_run_uses_real_orchestrator(self, tmp_path: Path) -> None:
+        """'run' subcommand creates a PipelineOrchestrator with real stages."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+            mock_orch = MagicMock()
+            mock_orch_cls.return_value = mock_orch
+            result = runner.invoke(
+                main,
+                ["--config", str(config_file), "run"],
+            )
+            assert result.exit_code == 0, result.output
+            # Verify run() was called on the orchestrator
+            mock_orch.run.assert_called_once()
+
+    def test_cli_ingest_calls_real_stage(self, tmp_path: Path) -> None:
+        """'ingest' subcommand invokes the INGEST stage function."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+            mock_orch = MagicMock()
+            mock_orch_cls.return_value = mock_orch
+            result = runner.invoke(
+                main,
+                ["--config", str(config_file), "ingest"],
+            )
+            assert result.exit_code == 0, result.output
+            # Verify the INGEST stage func was called
+            mock_orch._stage_map.__getitem__.assert_called_with("INGEST")
+
+    def test_cli_individual_subcommands_call_correct_stages(
+        self, tmp_path: Path
+    ) -> None:
+        """Each subcommand exercises the right stage functions."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        expected_stages = {
+            "ingest": ["INGEST"],
+            "analyze": ["ANALYZE", "CLASSIFY"],
+            "plan": ["NARRATE", "SCRIPT"],
+            "edit": ["EDL", "SOURCE_ASSETS"],
+            "render": ["RENDER"],
+            "upload": ["UPLOAD"],
+        }
+
+        for cmd_name, stage_names in expected_stages.items():
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch = MagicMock()
+                mock_orch_cls.return_value = mock_orch
+                result = runner.invoke(
+                    main,
+                    ["--config", str(config_file), cmd_name],
+                )
+                assert result.exit_code == 0, (
+                    f"{cmd_name} failed: {result.output}"
+                )
+                # Verify correct stages were accessed
+                calls = mock_orch._stage_map.__getitem__.call_args_list
+                accessed = [c[0][0] for c in calls]
+                assert accessed == stage_names, (
+                    f"{cmd_name}: expected {stage_names}, got {accessed}"
+                )

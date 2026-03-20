@@ -39,6 +39,41 @@ def catalog_db() -> Generator:
     db.close()
 
 
+@pytest.fixture
+def minimal_config(tmp_path: Path):
+    """Create an AutopilotConfig with tmp_path-based directories."""
+    from autopilot.config import AutopilotConfig
+
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    return AutopilotConfig(input_dir=input_dir, output_dir=output_dir)
+
+
+@pytest.fixture
+def mock_gpu_scheduler():
+    """Provide a no-op GPUScheduler-like context manager.
+
+    Returns a MagicMock that supports the GPUScheduler interface:
+    - .model(name) returns a context manager yielding a MagicMock
+    - .register(name, spec) is a no-op
+    - .device returns 0
+    """
+    from contextlib import contextmanager
+    from unittest.mock import MagicMock
+
+    scheduler = MagicMock()
+    scheduler.device = 0
+
+    @contextmanager
+    def _model(name: str):
+        yield MagicMock()
+
+    scheduler.model = _model
+    return scheduler
+
+
 def extract_json_blocks(text: str) -> list:
     """Extract and parse all fenced ```json code blocks from markdown text.
 
