@@ -852,3 +852,83 @@ class TestSourceStage:
         assert call_kwargs[1].get("narrative_id") == "n1" or (
             len(call_kwargs[0]) >= 1  # positional args present
         )
+
+
+class TestRenderStage:
+    """Tests for the real _run_render stage function."""
+
+    @patch("autopilot.orchestrator.render_validate")
+    @patch("autopilot.orchestrator.router")
+    def test_render_routes_and_validates_per_narrative(
+        self, mock_router, mock_validate, minimal_config
+    ):
+        """_run_render calls route_and_render and validate_render per narrative."""
+        from autopilot.orchestrator import _run_render
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_edit_plan.return_value = {
+            "narrative_id": "n1", "edl_json": '{"timeline": []}',
+        }
+        mock_router.route_and_render.return_value = Path("/out/video.mp4")
+        mock_validate.validate_render.return_value = MagicMock(
+            passed=True, issues=[]
+        )
+
+        _run_render(config=minimal_config, db=db)
+
+        mock_router.route_and_render.assert_called_once()
+        mock_validate.validate_render.assert_called_once()
+
+    @patch("autopilot.orchestrator.render_validate")
+    @patch("autopilot.orchestrator.router")
+    def test_render_logs_validation_warnings(
+        self, mock_router, mock_validate, minimal_config, caplog
+    ):
+        """Validation issues are logged."""
+        from autopilot.orchestrator import _run_render
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_edit_plan.return_value = {
+            "narrative_id": "n1", "edl_json": '{"timeline": []}',
+        }
+        mock_router.route_and_render.return_value = Path("/out/video.mp4")
+        issue = MagicMock()
+        issue.severity = "warning"
+        issue.message = "Low bitrate"
+        mock_validate.validate_render.return_value = MagicMock(
+            passed=True, issues=[issue]
+        )
+
+        with caplog.at_level(logging.WARNING, logger="autopilot.orchestrator"):
+            _run_render(config=minimal_config, db=db)
+
+        assert any("Low bitrate" in r.message for r in caplog.records)
+
+    @patch("autopilot.orchestrator.render_validate")
+    @patch("autopilot.orchestrator.router")
+    def test_render_continues_on_failure(
+        self, mock_router, mock_validate, minimal_config
+    ):
+        """One narrative's render fails, others still processed."""
+        from autopilot.orchestrator import _run_render
+        from autopilot.render.router import RoutingError
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        db.get_edit_plan.return_value = {
+            "narrative_id": "n1", "edl_json": '{"timeline": []}',
+        }
+        mock_router.route_and_render.side_effect = [
+            RoutingError("fail"), Path("/out/video.mp4"),
+        ]
+        mock_validate.validate_render.return_value = MagicMock(
+            passed=True, issues=[]
+        )
+
+        _run_render(config=minimal_config, db=db)
+
+        assert mock_router.route_and_render.call_count == 2
