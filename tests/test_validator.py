@@ -261,3 +261,35 @@ class TestDurationCheck:
         result = validate_edl(edl, _mock_db())
         duration_errors = [e for e in result.errors if "duration" in e.lower()]
         assert len(duration_errors) == 0
+
+
+# -- Step 7: Clip ID existence tests ------------------------------------------
+
+
+class TestClipIdExistence:
+    """Tests for validate_edl clip_id existence check."""
+
+    def test_all_valid_clip_ids_pass(self):
+        """All valid clip_ids produce no clip-existence errors."""
+        from autopilot.plan.validator import validate_edl
+
+        db = MagicMock()
+        db.get_media.return_value = {"id": "v1", "duration_seconds": 120.0}
+
+        edl = _make_edl_with_duration("00:00:10.000", 10.0)
+        result = validate_edl(edl, db)
+        clip_errors = [e for e in result.errors if "clip" in e.lower() and "not found" in e.lower()]
+        assert len(clip_errors) == 0
+
+    def test_unknown_clip_id_fails(self):
+        """Unknown clip_id produces an error listing the missing ID."""
+        from autopilot.plan.validator import validate_edl
+
+        db = MagicMock()
+        db.get_media.return_value = None  # clip doesn't exist
+
+        edl = _make_edl_with_duration("00:00:10.000", 10.0)
+        result = validate_edl(edl, db)
+        assert result.passed is False
+        clip_errors = [e for e in result.errors if "v1" in e]
+        assert len(clip_errors) >= 1
