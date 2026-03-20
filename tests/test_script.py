@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 
 import pytest
@@ -45,3 +46,53 @@ class TestDBNarrativeScripts:
         result = catalog_db.get_narrative_script("n1")
         assert result is not None
         assert result["script_json"] == script_v2
+
+
+# -- Step 1: Public API surface tests -----------------------------------------
+
+
+class TestPublicAPI:
+    """Verify ScriptError and public API surface."""
+
+    def test_script_error_importable(self):
+        """ScriptError is importable from script module."""
+        from autopilot.plan.script import ScriptError
+
+        assert ScriptError is not None
+
+    def test_script_error_is_exception(self):
+        """ScriptError is a subclass of Exception with message."""
+        from autopilot.plan.script import ScriptError
+
+        assert issubclass(ScriptError, Exception)
+        err = ScriptError("test message")
+        assert str(err) == "test message"
+
+    def test_build_narrative_storyboard_signature(self):
+        """build_narrative_storyboard has narrative_id and db params, returns str."""
+        from autopilot.plan.script import build_narrative_storyboard
+
+        sig = inspect.signature(build_narrative_storyboard)
+        params = list(sig.parameters.keys())
+        assert "narrative_id" in params
+        assert "db" in params
+        assert sig.return_annotation in (str, "str")
+
+    def test_generate_script_signature(self):
+        """generate_script has narrative_id, db, config params, returns dict."""
+        from autopilot.plan.script import generate_script
+
+        sig = inspect.signature(generate_script)
+        params = list(sig.parameters.keys())
+        assert "narrative_id" in params
+        assert "db" in params
+        assert "config" in params
+        assert sig.return_annotation in (dict, "dict")
+
+    def test_all_exports(self):
+        """__all__ includes ScriptError, build_narrative_storyboard, generate_script."""
+        from autopilot.plan import script
+
+        assert "ScriptError" in script.__all__
+        assert "build_narrative_storyboard" in script.__all__
+        assert "generate_script" in script.__all__
