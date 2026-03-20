@@ -593,3 +593,91 @@ class TestStabilizeOnlyMode:
         with caplog.at_level(logging.WARNING, logger="autopilot.render.crop"):
             compute_crop_path("vid7", "16:9", catalog_db, config, edl_entry)
         assert any("stabilize" in r.message.lower() for r in caplog.records)
+
+
+def _seed_tracking_media(catalog_db, media_id: str = "track1") -> None:
+    """Seed a 4096x4096, 30fps, 10s media with person track moving across frames."""
+    import json
+
+    catalog_db.insert_media(
+        media_id, "/fake.mp4",
+        resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=10.0,
+    )
+    # Person track_id=1 moves from left (1000,2048) to right (3000,2048) over 300 frames
+    rows = []
+    for f in range(300):
+        cx = 1000.0 + (3000.0 - 1000.0) * f / 299.0
+        cy = 2048.0
+        det = [{"track_id": 1, "class": "person", "bbox_xywh": [cx, cy, 200.0, 400.0], "confidence": 0.95}]
+        rows.append((media_id, f, json.dumps(det)))
+    catalog_db.batch_insert_detections(rows)
+
+
+class TestAutoSubjectMode:
+    """Integration tests for compute_crop_path with mode='auto_subject'."""
+
+    def test_auto_subject_returns_correct_shape(self, catalog_db) -> None:
+        """auto_subject returns ndarray shape (300, 2) for 10s @ 30fps."""
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import compute_crop_path
+
+        _seed_tracking_media(catalog_db)
+        config = CameraConfig(source_resolution=(4096, 4096))
+        edl_entry = {
+            "mode": "auto_subject",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:10.000",
+        }
+        result = compute_crop_path("track1", "16:9", catalog_db, config, edl_entry)
+        assert result.shape == (300, 2)
+
+    def test_auto_subject_within_bounds(self, catalog_db) -> None:
+        """All coordinates stay within source frame bounds."""
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import compute_crop_path
+
+        _seed_tracking_media(catalog_db, "track2")
+        config = CameraConfig(source_resolution=(4096, 4096))
+        edl_entry = {
+            "mode": "auto_subject",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:10.000",
+        }
+        result = compute_crop_path("track2", "16:9", catalog_db, config, edl_entry)
+        assert np.all(result[:, 0] >= 0)
+        assert np.all(result[:, 1] >= 0)
+        assert np.all(result[:, 0] + 4096 <= 4096)  # crop_w = 4096 for 16:9
+        assert np.all(result[:, 1] + 2304 <= 4096)  # crop_h = 2304
+
+    def test_auto_subject_smooth_path(self, catalog_db) -> None:
+        """Path is smooth: no frame-to-frame jump > 50px in either axis."""
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import compute_crop_path
+
+        _seed_tracking_media(catalog_db, "track3")
+        config = CameraConfig(source_resolution=(4096, 4096))
+        edl_entry = {
+            "mode": "auto_subject",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:10.000",
+        }
+        result = compute_crop_path("track3", "16:9", catalog_db, config, edl_entry)
+        diffs = np.abs(np.diff(result, axis=0))
+        assert np.all(diffs < 50.0)
+
+    def test_auto_subject_stores_in_db(self, catalog_db) -> None:
+        """auto_subject stores result in crop_paths table."""
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import compute_crop_path
+
+        _seed_tracking_media(catalog_db, "track4")
+        config = CameraConfig(source_resolution=(4096, 4096))
+        edl_entry = {
+            "mode": "auto_subject",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:10.000",
+        }
+        compute_crop_path("track4", "16:9", catalog_db, config, edl_entry)
+        stored = catalog_db.get_crop_path("track4", "16:9", 1)
+        assert stored is not None
+        assert stored["path_data"] is not None
