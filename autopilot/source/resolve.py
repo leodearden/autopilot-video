@@ -144,13 +144,17 @@ def resolve_edl_assets(
     # --- Generate fetch list for unresolved ---
     fetch_list_path = None
     if unresolved:
-        fetch_list_path = output_dir / "fetch_list.md"
-        generate_fetch_list(unresolved, fetch_list_path)
-        logger.info(
-            "Generated fetch list with %d unresolved items at %s",
-            len(unresolved),
-            fetch_list_path,
-        )
+        try:
+            fetch_list_path = output_dir / "fetch_list.md"
+            generate_fetch_list(unresolved, fetch_list_path)
+            logger.info(
+                "Generated fetch list with %d unresolved items at %s",
+                len(unresolved),
+                fetch_list_path,
+            )
+        except Exception as e:
+            logger.warning("Failed to generate fetch list: %s", e)
+            fetch_list_path = None
 
     # --- Persist updated EDL ---
     if narrative_id is not None:
