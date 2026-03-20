@@ -99,6 +99,7 @@ def render_complex(
     if VideoFileClip is None:
         raise ComplexRenderError("moviepy is not installed")
 
+    clip = None
     try:
         # Open source video
         clip = VideoFileClip(source_path)
@@ -128,12 +129,14 @@ def render_complex(
             audio_codec="aac",
             audio_bitrate=config.audio_bitrate,
         )
-
     except ComplexRenderError:
         raise
     except Exception as e:
         raise ComplexRenderError(
             f"MoviePy render failed for clip {edl_entry.get('clip_id', '?')}: {e}"
         ) from e
+    finally:
+        if clip is not None:
+            clip.close()
 
     return output_path
