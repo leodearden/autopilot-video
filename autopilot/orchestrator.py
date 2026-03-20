@@ -19,6 +19,7 @@ from autopilot.plan import otio_export, script, validator
 from autopilot.render import router
 from autopilot.render import validate as render_validate
 from autopilot.source import resolve
+from autopilot.upload import thumbnail, youtube
 
 logger = logging.getLogger(__name__)
 
@@ -288,6 +289,28 @@ def _run_render(*, config: Any, db: Any) -> None:
             logger.exception("Render failed for narrative %s", nid)
 
     logger.info("Render complete: %d/%d succeeded", successes, len(approved))
+
+
+def _run_upload(*, config: Any, db: Any) -> None:
+    """UPLOAD stage: upload video and extract thumbnail per narrative."""
+    approved = db.list_narratives("approved")
+    successes = 0
+    for narr in approved:
+        nid = narr["narrative_id"]
+        # Find rendered video
+        render_dir = config.output_dir / "renders" / nid
+        video_path = render_dir / "output.mp4"
+        if not video_path.exists():
+            logger.warning("Skipping upload for %s: no rendered video", nid)
+            continue
+        try:
+            youtube.upload_video(nid, video_path, db, config.youtube)
+            thumbnail.extract_best_thumbnail(nid, video_path, db)
+            successes += 1
+        except Exception:
+            logger.exception("Upload failed for narrative %s", nid)
+
+    logger.info("Upload complete: %d/%d succeeded", successes, len(approved))
 
 
 class PipelineOrchestrator:
