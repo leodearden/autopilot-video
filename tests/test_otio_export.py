@@ -718,3 +718,68 @@ class TestDetectOtioChanges:
 
         tl = otio.adapters.read_from_file(str(output))
         assert "edl_hash" in tl.metadata.get("autopilot", {})
+
+
+# -- Step 15: Error handling tests ---------------------------------------------
+
+
+class TestErrorHandling:
+    """Verify proper error handling for edge cases."""
+
+    def test_empty_clips_raises_otio_export_error(self, tmp_path):
+        """export_otio raises OtioExportError for empty clips list."""
+        from autopilot.plan.otio_export import OtioExportError, export_otio
+
+        edl = _minimal_edl(clips=[])
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+
+        with pytest.raises(OtioExportError, match="[Nn]o clips"):
+            export_otio(edl, output, db)
+
+    def test_missing_media_uses_fallback(self, tmp_path):
+        """Clip not in catalog uses clip_id as fallback target_url."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(clips=[{
+            "clip_id": "unknown_clip",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:05.000",
+            "track": 1,
+        }])
+        output = tmp_path / "test.otio"
+        db = MagicMock()
+        db.get_media.return_value = None  # not found
+
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [
+            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
+        ]
+        clips = [c for c in video_tracks[0] if isinstance(c, otio.schema.Clip)]
+        assert clips[0].media_reference.target_url == "unknown_clip"
+
+    def test_detect_otio_changes_nonexistent_file(self, tmp_path):
+        """detect_otio_changes raises OtioExportError for nonexistent file."""
+        from autopilot.plan.otio_export import OtioExportError, detect_otio_changes
+
+        with pytest.raises(OtioExportError, match="not found"):
+            detect_otio_changes(tmp_path / "nonexistent.otio", {})
+
+    def test_unwritable_output_raises_otio_export_error(self, tmp_path):
+        """export_otio raises OtioExportError for unwritable directory."""
+        from autopilot.plan.otio_export import OtioExportError, export_otio
+
+        edl = _minimal_edl(clips=[{
+            "clip_id": "v1",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:10.000",
+            "track": 1,
+        }])
+        # Use a path that should not be writable
+        output = Path("/nonexistent_dir/test.otio")
+        db = _mock_db_for_clips()
+
+        with pytest.raises(OtioExportError):
+            export_otio(edl, output, db)
