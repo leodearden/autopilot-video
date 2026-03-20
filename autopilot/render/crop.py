@@ -104,7 +104,9 @@ def _select_subject_track(
             tid = det.get("track_id")
             if tid is None:
                 continue
-            bbox = det.get("bbox_xywh", [0, 0, 0, 0])
+            bbox = det.get("bbox_xywh")
+            if not isinstance(bbox, (list, tuple)) or len(bbox) < 4:
+                continue
             area = bbox[2] * bbox[3]  # width * height
             track_areas[tid] = track_areas.get(tid, 0.0) + area
 
@@ -135,6 +137,8 @@ def _compute_raw_center(
     Returns:
         (crop_center_x, crop_center_y) in source pixel coordinates.
     """
+    if not isinstance(subject_bbox, (list, tuple)) or len(subject_bbox) < 4:
+        raise CropError(f"Malformed bbox_xywh: {subject_bbox}")
     subj_cx, subj_cy, _, bbox_h = subject_bbox
 
     # Horizontal: place subject at target fraction of crop width
@@ -445,12 +449,18 @@ def compute_crop_path(
         for row in det_rows:
             fn = int(cast(int, row["frame_number"]))
             try:
-                det_by_frame[fn] = json.loads(cast(str, row["detections_json"]))
+                parsed = json.loads(cast(str, row["detections_json"]))
             except (json.JSONDecodeError, TypeError) as e:
                 raise CropError(
                     f"Malformed detections_json for media={media_id!r} "
                     f"frame={fn}: {e}"
                 ) from e
+            if not isinstance(parsed, list):
+                raise CropError(
+                    f"detections_json for media={media_id!r} frame={fn} "
+                    f"is not a list: {type(parsed).__name__}"
+                )
+            det_by_frame[fn] = parsed
 
         all_detections = [
             det_by_frame.get(frame_start + i, []) for i in range(num_frames)
