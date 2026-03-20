@@ -1,0 +1,340 @@
+{
+  "task_id": "19",
+  "title": "Auto-crop viewport computation",
+  "files": [
+    "autopilot/render/crop.py",
+    "autopilot/render/__init__.py",
+    "tests/test_crop.py"
+  ],
+  "modules": ["autopilot/render", "tests"],
+  "analysis": "Implement autopilot/render/crop.py for intelligent auto-crop viewport computation. The module computes per-frame crop coordinates to reframe 4K square source footage (4096x4096) into 16:9 or 9:16 targets. It reads object detection/tracking data from the detections table (JSON format with track_id, class, bbox_xywh [cx,cy,w,h], confidence), applies rule-of-thirds framing, EMA smoothing with activity-aware tau, gap handling, and frame boundary clamping. Results are stored as packed binary (np.ndarray.tobytes()) in the existing crop_paths table via db.upsert_crop_path(). The EDL entry dict provides mode ('auto_subject', 'center', 'manual_offset', 'stabilize_only'), subject_track_id, optional smoothing_tau override, and frame range via in/out timecodes. Existing patterns show: (1) helper functions prefixed with underscore, (2) custom exception classes per module, (3) TYPE_CHECKING imports for type hints, (4) catalog_db fixture for in-memory DB tests, (5) test classes grouped by functionality with descriptive docstrings.",
+  "prerequisites": [],
+  "steps": [
+    {
+      "id": "step-1",
+      "type": "test",
+      "description": "Write failing tests for public API surface: CropError importable and is Exception subclass, compute_crop_path importable and has correct signature (media_id, target_aspect, db, config, edl_entry returning np.ndarray), __all__ exports CropError and compute_crop_path.",
+      "status": "done",
+      "commit": "b42585f"
+    },
+    {
+      "id": "step-2",
+      "type": "impl",
+      "description": "Create autopilot/render/crop.py with CropError exception, compute_crop_path stub that raises NotImplementedError, and __all__ exports. Update autopilot/render/__init__.py if needed.",
+      "status": "done",
+      "commit": "757d842"
+    },
+    {
+      "id": "step-3",
+      "type": "test",
+      "description": "Write failing tests for _compute_crop_dimensions: (1) 4096x4096 source with '16:9' target -> crop_w=1920-scaled from source (approx 1920/1080*source proportional), actually crop_w ~ 4096*0.47 and crop_h=crop_w*9/16; (2) '9:16' target -> crop_h=4096 (full height), crop_w=crop_h*9/16; (3) unknown aspect string raises CropError.",
+      "status": "done",
+      "commit": "c3f8b21"
+    },
+    {
+      "id": "step-4",
+      "type": "impl",
+      "description": "Implement _compute_crop_dimensions(source_w, source_h, target_aspect) -> (crop_w, crop_h). For '16:9': maximize crop to fit the aspect within source. For '9:16': same logic inverted. Parse aspect string 'W:H', compute dimensions, return integer tuple.",
+      "status": "done",
+      "commit": "a0e5bbb"
+    },
+    {
+      "id": "step-5",
+      "type": "test",
+      "description": "Write failing tests for _select_subject_track: (1) EDL specifies explicit subject_track_id=5 -> returns 5; (2) EDL specifies 'auto' or None -> selects track with highest cumulative (bbox_area * frame_count) from detections list; (3) empty detections raises CropError.",
+      "status": "done",
+      "commit": "f4683f9"
+    },
+    {
+      "id": "step-6",
+      "type": "impl",
+      "description": "Implement _select_subject_track(all_detections: list[list[dict]], edl_entry: dict) -> int. If edl_entry has integer subject_track_id, return it. Otherwise iterate detections to find track with max cumulative bbox area * frame count.",
+      "status": "done",
+      "commit": "f49271e"
+    },
+    {
+      "id": "step-7",
+      "type": "test",
+      "description": "Write failing tests for _compute_raw_center (single subject): (1) Subject at center of frame -> crop places subject at 1/3 or 2/3 horizontally; (2) Subject at known position -> verify rule-of-thirds offset applied to crop center; (3) Subject near edge -> raw center positions correctly before clamping.",
+      "status": "done",
+      "commit": "af8b6a1"
+    },
+    {
+      "id": "step-8",
+      "type": "impl",
+      "description": "Implement _compute_raw_center(subject_bbox: list[float], crop_w: int, crop_h: int, thirds_horizontal: str) -> tuple[float, float]. Applies rule-of-thirds: places subject center at 1/3 or 2/3 of crop width horizontally, eyes (top 1/3 of bbox) at 1/3 from top of crop vertically. Returns (crop_center_x, crop_center_y).",
+      "status": "done",
+      "commit": "aca8ca7"
+    },
+    {
+      "id": "step-9",
+      "type": "test",
+      "description": "Write failing tests for _compute_raw_center with multiple subjects: (1) Two subjects at known positions -> compute bounding box of all, center crop on that bounding box; (2) Single subject falls back to single-subject path.",
+      "status": "done",
+      "commit": "9c471db"
+    },
+    {
+      "id": "step-10",
+      "type": "impl",
+      "description": "Implement _compute_multi_subject_center(subject_bboxes: list[list[float]], crop_w: int, crop_h: int) -> tuple[float, float]. Computes bounding box containing all subjects and centers crop on it.",
+      "status": "done",
+      "commit": "bb28321"
+    },
+    {
+      "id": "step-11",
+      "type": "test",
+      "description": "Write failing tests for _build_raw_path: given frame-indexed detections and a selected track_id, produce per-frame raw centers array. (1) Track present on all frames -> valid centers; (2) Track missing on some frames -> NaN markers for gaps; (3) Correct array shape (N, 2).",
+      "status": "done",
+      "commit": "a1cd0b3"
+    },
+    {
+      "id": "step-12",
+      "type": "impl",
+      "description": "Implement _build_raw_path(all_detections: list[list[dict]], track_id: int, crop_w: int, crop_h: int) -> np.ndarray of shape (N, 2). Iterates frames, finds track_id bbox, computes raw center via rule-of-thirds. NaN for missing frames.",
+      "status": "done",
+      "commit": "dab792c"
+    },
+    {
+      "id": "step-13",
+      "type": "test",
+      "description": "Write failing tests for _smooth_path (EMA): (1) Constant input -> output equals input; (2) Step function input with tau=0.5s at 30fps -> exponential convergence (verify specific frames); (3) Different tau values produce different smoothing amounts; (4) NaN values in input are skipped (held from last valid).",
+      "status": "done",
+      "commit": "8b30596"
+    },
+    {
+      "id": "step-14",
+      "type": "impl",
+      "description": "Implement _smooth_path(raw_path: np.ndarray, fps: float, tau: float) -> np.ndarray. EMA with alpha = 1 - exp(-1/(tau*fps)). Skips NaN entries (holds last smoothed value). Returns smoothed (N, 2) array.",
+      "status": "done",
+      "commit": "e0e1794"
+    },
+    {
+      "id": "step-15",
+      "type": "test",
+      "description": "Write failing tests for _handle_detection_gaps: (1) Gap < 2s -> hold last position unchanged; (2) Gap 2-3s -> drift toward frame center during third second; (3) Gap > 3s -> position at frame center; (4) Subject reappears after gap -> smooth transition back (not instant jump); (5) No gaps -> no change.",
+      "status": "done",
+      "commit": "27c588d"
+    },
+    {
+      "id": "step-16",
+      "type": "impl",
+      "description": "Implement _handle_detection_gaps(raw_path: np.ndarray, fps: float, source_w: int, source_h: int, hold_seconds: float, drift_seconds: float) -> np.ndarray. Replaces NaN entries: hold for hold_seconds, then linear drift to center over drift_seconds. On reappear, smooth transition from current position.",
+      "status": "done",
+      "commit": "93ba47e"
+    },
+    {
+      "id": "step-17",
+      "type": "test",
+      "description": "Write failing tests for _clamp_to_bounds: (1) Center in middle of frame -> unchanged; (2) Center near left edge -> clamped so crop_x >= 0; (3) Center near right edge -> clamped so crop_x + crop_w <= source_w; (4) Corner case: crop larger than source (invalid) -> centered.",
+      "status": "done",
+      "commit": "efac6b7"
+    },
+    {
+      "id": "step-18",
+      "type": "impl",
+      "description": "Implement _clamp_to_bounds(path: np.ndarray, source_w: int, source_h: int, crop_w: int, crop_h: int) -> np.ndarray. Clamps centers so the crop window stays within [0, source_w] x [0, source_h]. Returns (N, 2) array of top-left (crop_x, crop_y) coordinates.",
+      "status": "done",
+      "commit": "8f4ae70"
+    },
+    {
+      "id": "step-19",
+      "type": "test",
+      "description": "Write failing tests for fallback mode 'center': (1) compute_crop_path with mode='center' returns constant center crop for all frames; (2) Output shape is (num_frames, 2); (3) All coordinates are identical and center the crop window.",
+      "status": "done",
+      "commit": "97664b0"
+    },
+    {
+      "id": "step-20",
+      "type": "impl",
+      "description": "Wire 'center' fallback mode in compute_crop_path: return np.ndarray with constant ((source_w - crop_w) / 2, (source_h - crop_h) / 2) for all frames.",
+      "status": "done",
+      "commit": "d6a05ff"
+    },
+    {
+      "id": "step-21",
+      "type": "test",
+      "description": "Write failing tests for fallback mode 'manual_offset': (1) compute_crop_path with mode='manual_offset' and offset_x=-200, offset_y=100 -> constant shifted crop; (2) Offset is clamped to frame bounds; (3) Default offset (0,0) equals center crop.",
+      "status": "done",
+      "commit": "0768292"
+    },
+    {
+      "id": "step-22",
+      "type": "impl",
+      "description": "Wire 'manual_offset' fallback mode in compute_crop_path: constant crop at center + offset, clamped to bounds.",
+      "status": "done",
+      "commit": "4738cba"
+    },
+    {
+      "id": "step-23",
+      "type": "test",
+      "description": "Write failing tests for 'stabilize_only' mode: returns center crop with a logged warning (placeholder until gyro data integration is implemented).",
+      "status": "done",
+      "commit": "cf49321"
+    },
+    {
+      "id": "step-24",
+      "type": "impl",
+      "description": "Wire 'stabilize_only' mode as a stub that logs a warning and falls back to center crop.",
+      "status": "done",
+      "commit": "c1997bd"
+    },
+    {
+      "id": "step-25",
+      "type": "test",
+      "description": "Write failing integration test for compute_crop_path 'auto_subject' mode end-to-end: seed catalog_db with media (4096x4096, 30fps, 10s) and detection rows for a person track moving across frames. Verify: (1) returns ndarray shape (300, 2); (2) coordinates are within bounds; (3) path is smooth (no frame-to-frame jumps > threshold); (4) stores result in crop_paths table via db.",
+      "status": "done",
+      "commit": "fa5cea3"
+    },
+    {
+      "id": "step-26",
+      "type": "impl",
+      "description": "Wire the full compute_crop_path 'auto_subject' pipeline: load detections from DB for frame range, select subject, build raw path, handle gaps, smooth, clamp, convert centers to top-left coordinates, pack as binary (tobytes), store via db.upsert_crop_path. Return the ndarray.",
+      "status": "done",
+      "commit": "b8acefe"
+    },
+    {
+      "id": "step-27",
+      "type": "test",
+      "description": "Write failing test for EDL tau override: when edl_entry contains 'smoothing_tau', it overrides config.crop_smoothing_tau. Verify different smoothing applied compared to default tau.",
+      "status": "done",
+      "commit": "feb9a85"
+    },
+    {
+      "id": "step-28",
+      "type": "impl",
+      "description": "Add tau override logic: check edl_entry for 'smoothing_tau' key, use it if present, otherwise fall back to config.crop_smoothing_tau.",
+      "status": "done",
+      "commit": "b8acefe"
+    },
+    {
+      "id": "step-29",
+      "type": "test",
+      "description": "Write failing test for error handling: (1) media_id not found in DB raises CropError; (2) No detections for media raises CropError; (3) Invalid target_aspect raises CropError.",
+      "status": "done",
+      "commit": "94b65aa"
+    },
+    {
+      "id": "step-30",
+      "type": "impl",
+      "description": "Add error handling to compute_crop_path: validate media exists, detections exist, aspect is valid. Raise CropError with descriptive messages.",
+      "status": "done",
+      "commit": "b8acefe"
+    },
+    {
+      "id": "step-31",
+      "type": "test",
+      "description": "Write failing test for tau validation (division_by_zero fix): (1) edl_entry with smoothing_tau=0 raises CropError with descriptive message about positive tau; (2) edl_entry with smoothing_tau=-1.0 raises CropError; (3) config.crop_smoothing_tau=0 (no edl override) also raises CropError. All must be CropError, not ZeroDivisionError, to maintain the documented Raises contract.",
+      "status": "done",
+      "commit": "698c05e"
+    },
+    {
+      "id": "step-32",
+      "type": "impl",
+      "description": "Add tau validation in compute_crop_path after line 466 (where tau is resolved from edl_entry or config): if tau is falsy or tau <= 0, raise CropError(f'smoothing_tau must be positive, got {tau!r}'). This guards _smooth_path from the ZeroDivisionError in alpha = 1.0 - exp(-1/(tau*fps)).",
+      "status": "done",
+      "commit": "9cf338e"
+    },
+    {
+      "id": "step-33",
+      "type": "test",
+      "description": "Write failing test for safe bbox access in _build_raw_path (unguarded_key_access fix): (1) detection has matching track_id but is missing 'bbox_xywh' key -> frame treated as gap (NaN), not KeyError; (2) detection has track_id and bbox_xywh=None -> frame treated as gap; (3) normal detection with bbox_xywh present -> works as before. Verify no KeyError escapes and result contains NaN for malformed detections.",
+      "status": "done",
+      "commit": "c6a436c"
+    },
+    {
+      "id": "step-34",
+      "type": "impl",
+      "description": "In _build_raw_path at line 220, change det['bbox_xywh'] to det.get('bbox_xywh'). The existing guard on line 223 (if subject_bbox is not None) already handles the None case, so frames with missing bbox_xywh will correctly produce NaN entries instead of raising KeyError.",
+      "status": "done",
+      "commit": "baeb508"
+    },
+    {
+      "id": "step-35",
+      "type": "test",
+      "description": "Write failing test for malformed detections_json handling (unhandled_exception_at_boundary fix): (1) DB row with detections_json=None (NULL) raises CropError, not TypeError; (2) DB row with detections_json containing invalid JSON (e.g. '{bad') raises CropError, not json.JSONDecodeError; (3) Valid detections_json works as before. All errors must be CropError to maintain the documented Raises contract.",
+      "status": "done",
+      "commit": "37eebfa"
+    },
+    {
+      "id": "step-36",
+      "type": "impl",
+      "description": "In compute_crop_path around line 447, wrap json.loads(cast(str, row['detections_json'])) in a try/except block: catch (json.JSONDecodeError, TypeError) and re-raise as CropError with descriptive message including media_id and frame_number. This ensures malformed/NULL detection JSON produces a typed CropError rather than an untyped exception escaping the boundary.",
+      "status": "done",
+      "commit": "fd4fe3a"
+    }
+  ],
+  "design_decisions": [
+    {
+      "decision": "Use EMA (exponential moving average) rather than Kalman filter for smoothing",
+      "rationale": "The task description says 'Kalman filter (or EMA with configurable tau)'. EMA is simpler, has no external dependencies beyond numpy, is well-understood, and the tau parameter maps directly to the activity-speed tiers. A Kalman filter adds complexity (state matrices, process/measurement noise tuning) without clear benefit for this 2D position-smoothing use case."
+    },
+    {
+      "decision": "Store crop path as top-left (crop_x, crop_y) coordinates, not centers",
+      "rationale": "The PRD specifies 'per-frame (crop_x, crop_y) array for the top-left corner of the crop window', and FFmpeg crop filter expects top-left. Internal computation uses centers for rule-of-thirds math, converted to top-left before storage."
+    },
+    {
+      "decision": "Use NaN as sentinel for detection gaps in the raw path array",
+      "rationale": "NaN is the standard sentinel for missing data in numpy arrays. It allows gap detection via np.isnan() and doesn't conflict with valid coordinate values. The gap handling step replaces NaN entries with interpolated/held values."
+    },
+    {
+      "decision": "Pack path_data as raw np.ndarray.tobytes() with float64 dtype",
+      "rationale": "The DB schema uses BLOB for path_data. Raw bytes is the simplest serialization — just np.frombuffer() to decode. Float64 avoids precision loss for large frame counts. Shape can be inferred from byte count: (len(data) / 16) frames × 2 coords."
+    },
+    {
+      "decision": "Compute crop dimensions from source resolution and target aspect ratio",
+      "rationale": "For 4096x4096 source to 16:9: maximize crop width to source_w (4096), compute crop_h = 4096 * 9/16 = 2304. For 9:16: maximize crop height to source_h (4096), crop_w = 4096 * 9/16 = 2304. This uses ~100% of one source dimension, giving 47-56% crop coverage as the PRD specifies."
+    },
+    {
+      "decision": "Rule-of-thirds positioning uses right-third (2/3) by default for horizontal",
+      "rationale": "The PRD says 'horizontally: subject center at 1/3 or 2/3 of frame width'. Without scene context to choose, default to 2/3 (right third). The function accepts a parameter to override. For multiple subjects, centering on the bounding box is more appropriate."
+    },
+    {
+      "decision": "Separate detection gap handling from smoothing",
+      "rationale": "Gap handling (hold position, drift to center) is logically distinct from temporal smoothing. Running gap fill before smoothing means the smoother sees continuous data. This avoids EMA artifacts at gap boundaries."
+    },
+    {
+      "decision": "Validate tau > 0 in compute_crop_path rather than inside _smooth_path",
+      "rationale": "Raising CropError at the public API boundary (compute_crop_path) keeps the documented Raises contract intact. Validating in _smooth_path would require it to know about CropError or return a sentinel, which is less clean. The reviewer suggested either location; validating at the caller is more consistent with the existing pattern where compute_crop_path validates all inputs before delegating to helpers."
+    },
+    {
+      "decision": "Treat missing bbox_xywh as a detection gap (NaN) rather than raising CropError",
+      "rationale": "A single malformed detection record should not abort the entire crop computation. Using .get() and letting the existing None guard produce NaN is graceful degradation — the gap handler will fill it in. This matches the existing pattern where missing detections on a frame produce NaN."
+    },
+    {
+      "decision": "Wrap json.loads with try/except at the DB boundary and re-raise as CropError",
+      "rationale": "NULL or malformed detections_json in the DB is a data integrity issue that should produce a clear, typed CropError rather than an untyped TypeError or JSONDecodeError. Including media_id and frame_number in the error message aids debugging."
+    }
+  ],
+  "reuse": [
+    {
+      "what": "CatalogDB and catalog_db fixture",
+      "where": "autopilot/db.py, tests/conftest.py",
+      "how": "Use existing crop_paths CRUD (upsert_crop_path, get_crop_path), detections CRUD (get_detections_for_range, get_detections_for_media), and media lookup (get_media). Test fixture provides in-memory DB with autocommit."
+    },
+    {
+      "what": "CameraConfig dataclass",
+      "where": "autopilot/config.py",
+      "how": "Use source_resolution, default_crop_target, crop_smoothing_tau fields directly. No modifications needed."
+    },
+    {
+      "what": "Detection JSON format",
+      "where": "autopilot/analyze/objects.py",
+      "how": "Detections are stored as JSON array of {track_id, class, bbox_xywh: [cx,cy,w,h], confidence}. Parse with json.loads from detections_json column."
+    },
+    {
+      "what": "Test patterns from test_objects.py and test_validator.py",
+      "where": "tests/test_objects.py, tests/test_validator.py",
+      "how": "Follow same structure: TestPublicAPI class for imports/signature, helper functions for test setup, pytest.approx for float comparison, catalog_db fixture for DB tests, class-based test organization."
+    },
+    {
+      "what": "Module patterns (logging, TYPE_CHECKING, __all__)",
+      "where": "autopilot/analyze/objects.py, autopilot/plan/validator.py",
+      "how": "Use same code structure: __future__ annotations, TYPE_CHECKING for CatalogDB/CameraConfig, logger = logging.getLogger(__name__), __all__ list, custom XxxError exception."
+    },
+    {
+      "what": "timecode_to_seconds utility",
+      "where": "autopilot/plan/validator.py",
+      "how": "Import and use for parsing in_timecode/out_timecode from edl_entry to determine frame ranges for detection loading."
+    }
+  ]
+}
