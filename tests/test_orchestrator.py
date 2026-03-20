@@ -1179,12 +1179,8 @@ class TestUploadStage:
         db.get_edit_plan.return_value = {
             "narrative_id": "n1",
             "edl_json": '{}',
+            "render_path": "/out/renders/n1/output.mp4",
         }
-        # Simulate a render output path convention
-        render_dir = minimal_config.output_dir / "renders" / "n1"
-        render_dir.mkdir(parents=True)
-        video_file = render_dir / "output.mp4"
-        video_file.write_text("fake")
 
         mock_youtube.upload_video.return_value = "https://youtu.be/abc"
         mock_thumbnail.extract_best_thumbnail.return_value = Path("/thumb.jpg")
@@ -1207,12 +1203,10 @@ class TestUploadStage:
         db.list_narratives.return_value = [
             {"narrative_id": "n1"}, {"narrative_id": "n2"},
         ]
-        db.get_edit_plan.return_value = {"edl_json": '{}'}
-
-        for nid in ["n1", "n2"]:
-            render_dir = minimal_config.output_dir / "renders" / nid
-            render_dir.mkdir(parents=True)
-            (render_dir / "output.mp4").write_text("fake")
+        db.get_edit_plan.return_value = {
+            "edl_json": '{}',
+            "render_path": "/out/renders/output.mp4",
+        }
 
         mock_youtube.upload_video.side_effect = [
             UploadError("fail"), "https://youtu.be/def",
@@ -1263,7 +1257,8 @@ class TestUploadStage:
         }
 
         with caplog.at_level(logging.WARNING, logger="autopilot.orchestrator"):
-            _run_upload(config=minimal_config, db=db)
+            with pytest.raises(RuntimeError, match="All narratives failed"):
+                _run_upload(config=minimal_config, db=db)
 
         mock_youtube.upload_video.assert_not_called()
         assert any("n1" in r.message for r in caplog.records)
@@ -1280,12 +1275,10 @@ class TestUploadStage:
         db.list_narratives.return_value = [
             {"narrative_id": "n1"}, {"narrative_id": "n2"},
         ]
-        db.get_edit_plan.return_value = {"edl_json": '{}'}
-
-        for nid in ["n1", "n2"]:
-            render_dir = minimal_config.output_dir / "renders" / nid
-            render_dir.mkdir(parents=True)
-            (render_dir / "output.mp4").write_text("fake")
+        db.get_edit_plan.return_value = {
+            "edl_json": '{}',
+            "render_path": "/out/renders/output.mp4",
+        }
 
         mock_youtube.upload_video.side_effect = RuntimeError("fail")
 

@@ -153,6 +153,7 @@ class CatalogDB:
                 edl_json TEXT,
                 otio_path TEXT,
                 validation_json TEXT,
+                render_path TEXT,
                 PRIMARY KEY (narrative_id)
             );
 
@@ -647,17 +648,39 @@ class CatalogDB:
     def upsert_edit_plan(
         self,
         narrative_id: str,
-        edl_json: str,
+        edl_json: str | None = None,
         *,
         otio_path: str | None = None,
         validation_json: str | None = None,
+        render_path: str | None = None,
     ) -> None:
-        """Insert or replace an edit plan for a narrative."""
+        """Insert or replace an edit plan for a narrative.
+
+        When updating an existing plan (e.g. adding render_path after render),
+        only the provided non-None fields are updated. If no plan exists yet,
+        a new row is inserted.
+        """
+        existing = self.get_edit_plan(narrative_id)
+        if existing is not None:
+            # Merge: keep existing values for fields not explicitly provided
+            edl_json = edl_json if edl_json is not None else existing.get("edl_json")
+            otio_path = otio_path if otio_path is not None else existing.get("otio_path")
+            validation_json = (
+                validation_json
+                if validation_json is not None
+                else existing.get("validation_json")
+            )
+            render_path = (
+                render_path
+                if render_path is not None
+                else existing.get("render_path")
+            )
+
         self.conn.execute(
             "INSERT OR REPLACE INTO edit_plans "
-            "(narrative_id, edl_json, otio_path, validation_json) "
-            "VALUES (?, ?, ?, ?)",
-            (narrative_id, edl_json, otio_path, validation_json),
+            "(narrative_id, edl_json, otio_path, validation_json, render_path) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (narrative_id, edl_json, otio_path, validation_json, render_path),
         )
 
     def get_edit_plan(self, narrative_id: str) -> dict[str, object] | None:

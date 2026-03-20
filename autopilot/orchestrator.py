@@ -314,12 +314,15 @@ def _run_upload(*, config: Any, db: Any) -> None:
     successes = 0
     for narr in approved:
         nid = narr["narrative_id"]
-        # Find rendered video
-        render_dir = config.output_dir / "renders" / nid
-        video_path = render_dir / "output.mp4"
-        if not video_path.exists():
-            logger.warning("Skipping upload for %s: no rendered video", nid)
+        plan = db.get_edit_plan(nid)
+        if plan is None:
+            logger.warning("Skipping upload for %s: no edit plan", nid)
             continue
+        render_path = plan.get("render_path")
+        if not render_path:
+            logger.warning("Skipping upload for %s: no render_path in edit plan", nid)
+            continue
+        video_path = Path(render_path)
         try:
             youtube.upload_video(nid, video_path, db, config.youtube)
             thumbnail.extract_best_thumbnail(nid, video_path, db)
