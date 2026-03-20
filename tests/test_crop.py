@@ -547,3 +547,49 @@ class TestManualOffsetMode:
         r_center = compute_crop_path("vid5", "16:9", catalog_db, config, edl_center)
         r_offset = compute_crop_path("vid5", "16:9", catalog_db, config, edl_offset)
         np.testing.assert_allclose(r_center, r_offset)
+
+
+class TestStabilizeOnlyMode:
+    """Tests for compute_crop_path with mode='stabilize_only'."""
+
+    def test_stabilize_only_returns_center_crop(self, catalog_db) -> None:
+        """stabilize_only falls back to center crop (placeholder)."""
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import compute_crop_path
+
+        catalog_db.insert_media(
+            "vid6", "/fake.mp4",
+            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+        )
+        config = CameraConfig(source_resolution=(4096, 4096))
+        edl_entry = {
+            "mode": "stabilize_only",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:01.000",
+        }
+        result = compute_crop_path("vid6", "16:9", catalog_db, config, edl_entry)
+        assert result.shape == (30, 2)
+        # Should be center crop
+        assert result[0, 0] == pytest.approx(0.0, abs=1.0)
+        assert result[0, 1] == pytest.approx(896.0, abs=1.0)
+
+    def test_stabilize_only_logs_warning(self, catalog_db, caplog) -> None:
+        """stabilize_only should log a warning about being a placeholder."""
+        import logging
+
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import compute_crop_path
+
+        catalog_db.insert_media(
+            "vid7", "/fake.mp4",
+            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+        )
+        config = CameraConfig(source_resolution=(4096, 4096))
+        edl_entry = {
+            "mode": "stabilize_only",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:01.000",
+        }
+        with caplog.at_level(logging.WARNING, logger="autopilot.render.crop"):
+            compute_crop_path("vid7", "16:9", catalog_db, config, edl_entry)
+        assert any("stabilize" in r.message.lower() for r in caplog.records)
