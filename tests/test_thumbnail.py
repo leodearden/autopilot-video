@@ -143,3 +143,94 @@ class TestScoringFunctions:
             sharpness=0.5, thirds=0.5, confidence=0.5
         )
         assert score2 == pytest.approx(0.5)
+
+
+# ---------------------------------------------------------------------------
+# Frame extraction tests
+# ---------------------------------------------------------------------------
+
+
+class TestFrameExtraction:
+    """Verify frame extraction and best-frame selection."""
+
+    def _make_mock_cap(self, num_frames=30, fps=30.0):
+        """Create a mock cv2.VideoCapture with N frames."""
+        mock_cap = MagicMock()
+        mock_cap.get.side_effect = lambda prop: {
+            7: float(num_frames),  # CAP_PROP_FRAME_COUNT
+            5: fps,  # CAP_PROP_FPS
+        }.get(prop, 0.0)
+        mock_cap.isOpened.return_value = True
+        # Return frames: each read returns (True, numpy array)
+        frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        mock_cap.read.return_value = (True, frame)
+        return mock_cap
+
+    def test_extracts_best_frame_as_jpeg(self, tmp_path):
+        """Highest-scoring frame is saved as JPEG."""
+        mock_cv2 = _setup_cv2_mock()
+        mock_cap = self._make_mock_cap(num_frames=90, fps=30.0)
+        mock_cv2.VideoCapture.return_value = mock_cap
+
+        laplacian_result = np.random.randn(100, 100)
+        mock_cv2.Laplacian.return_value = laplacian_result
+        mock_cv2.imwrite.return_value = True
+
+        video_path = tmp_path / "test.mp4"
+        video_path.write_bytes(b"\x00" * 100)
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            from autopilot.upload.thumbnail import _extract_best_frame
+
+            result = _extract_best_frame(video_path, [])
+
+        assert result is not None
+        mock_cv2.imwrite.assert_called_once()
+        # Verify saved as JPEG
+        save_path = mock_cv2.imwrite.call_args[0][0]
+        assert save_path.endswith(".jpg")
+
+    def test_samples_frames_at_intervals(self, tmp_path):
+        """Frames are sampled at ~1fps intervals, not every frame."""
+        mock_cv2 = _setup_cv2_mock()
+        mock_cap = self._make_mock_cap(num_frames=300, fps=30.0)
+        mock_cv2.VideoCapture.return_value = mock_cap
+        mock_cv2.Laplacian.return_value = np.zeros((10, 10))
+        mock_cv2.imwrite.return_value = True
+
+        video_path = tmp_path / "test.mp4"
+        video_path.write_bytes(b"\x00" * 100)
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            from autopilot.upload.thumbnail import _extract_best_frame
+
+            _extract_best_frame(video_path, [])
+
+        # Should sample ~10 frames (300 frames / 30 fps = 10 seconds)
+        # not all 300 frames
+        set_calls = [
+            c
+            for c in mock_cap.set.call_args_list
+            if c[0][0] == 1  # CAP_PROP_POS_FRAMES
+        ]
+        assert 5 <= len(set_calls) <= 15
+
+    def test_returns_thumbnail_path(self, tmp_path):
+        """Returns Path to the saved JPEG in video_path.parent."""
+        mock_cv2 = _setup_cv2_mock()
+        mock_cap = self._make_mock_cap(num_frames=30, fps=30.0)
+        mock_cv2.VideoCapture.return_value = mock_cap
+        mock_cv2.Laplacian.return_value = np.zeros((10, 10))
+        mock_cv2.imwrite.return_value = True
+
+        video_path = tmp_path / "test.mp4"
+        video_path.write_bytes(b"\x00" * 100)
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            from autopilot.upload.thumbnail import _extract_best_frame
+
+            result = _extract_best_frame(video_path, [])
+
+        assert result is not None
+        assert isinstance(result, Path)
+        assert result.parent == tmp_path
