@@ -440,3 +440,143 @@ class TestBuildStoryboardResilience:
         result = build_narrative_storyboard("n1", catalog_db)
         assert isinstance(result, str)
         assert "Shot 1" in result
+
+
+# -- Helpers for generate_script tests -----------------------------------------
+
+
+_SAMPLE_SCRIPT_JSON = {
+    "scenes": [
+        {
+            "scene_number": 1,
+            "description": "Opening shot of the temple",
+            "estimated_duration_seconds": 8,
+            "source_clips": [
+                {"clip_id": "v1", "in_timecode": "00:00:00.000", "out_timecode": "00:00:08.000"}
+            ],
+            "voiceover_text": "The morning light paints the ancient walls...",
+            "titles": [],
+            "music_mood": "ambient, contemplative",
+        },
+    ],
+    "broll_needs": [
+        {
+            "description": "Wide aerial of temple at sunrise",
+            "duration_seconds": 5,
+            "placement_after_scene": 1,
+        },
+    ],
+    "quality_flags": [
+        {
+            "scene_number": 1,
+            "issue": "Slight camera shake",
+            "severity": "low",
+            "suggestion": "Apply stabilization",
+        },
+    ],
+}
+
+
+def _make_script_llm_response(script_json=None):
+    """Create a mock Anthropic API response for script generation."""
+    if script_json is None:
+        script_json = json.dumps(_SAMPLE_SCRIPT_JSON)
+    mock_response = MagicMock()
+    mock_content = MagicMock()
+    mock_content.text = script_json
+    mock_response.content = [mock_content]
+    return mock_response
+
+
+def _setup_mock_script_anthropic(script_data=None):
+    """Create mock anthropic module and client for script tests."""
+    mock_response = _make_script_llm_response(
+        json.dumps(script_data) if script_data is not None else None
+    )
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = mock_response
+    mock_anthropic = MagicMock()
+    mock_anthropic.Anthropic.return_value = mock_client
+    return mock_anthropic, mock_client
+
+
+def _seed_minimal_narrative(db):
+    """Seed DB with minimal data for generate_script tests."""
+    db.insert_media("v1", "/tmp/v1.mp4", duration_seconds=60.0, fps=30.0)
+    db.insert_activity_cluster(
+        "c1", label="Test Activity",
+        clip_ids_json=json.dumps(["v1"]),
+    )
+    db.insert_narrative(
+        "n1",
+        title="Test Narrative",
+        description="A test narrative for scripting",
+        activity_cluster_ids_json=json.dumps(["c1"]),
+    )
+
+
+# -- Step 9: generate_script LLM call tests -----------------------------------
+
+
+class TestGenerateScriptLLM:
+    """Tests for generate_script LLM interaction."""
+
+    def test_uses_planning_model(self, catalog_db):
+        """generate_script calls Anthropic API with planning_model."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.script import generate_script
+
+        config = LLMConfig()
+        _seed_minimal_narrative(catalog_db)
+
+        mock_anthropic, mock_client = _setup_mock_script_anthropic()
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            generate_script("n1", catalog_db, config)
+
+        call_kwargs = mock_client.messages.create.call_args[1]
+        assert call_kwargs["model"] == config.planning_model
+
+    def test_uses_script_writer_prompt(self, catalog_db):
+        """System prompt is loaded from script_writer.md."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.script import generate_script
+
+        config = LLMConfig()
+        _seed_minimal_narrative(catalog_db)
+
+        mock_anthropic, mock_client = _setup_mock_script_anthropic()
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            generate_script("n1", catalog_db, config)
+
+        call_kwargs = mock_client.messages.create.call_args[1]
+        # script_writer.md starts with "# Professional Video Script Writer"
+        assert "Script Writer" in call_kwargs["system"]
+
+    def test_storyboard_and_description_in_user_message(self, catalog_db):
+        """User message contains both storyboard and narrative description."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.script import generate_script
+
+        config = LLMConfig()
+        _seed_minimal_narrative(catalog_db)
+
+        mock_anthropic, mock_client = _setup_mock_script_anthropic()
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            generate_script("n1", catalog_db, config)
+
+        call_kwargs = mock_client.messages.create.call_args[1]
+        user_content = call_kwargs["messages"][0]["content"]
+        # Should contain storyboard content
+        assert "L-Storyboard" in user_content or "Test Activity" in user_content
+        # Should contain narrative description
+        assert "test narrative" in user_content.lower()
+
+    def test_narrative_not_found_raises_script_error(self, catalog_db):
+        """generate_script raises ScriptError for missing narrative."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.script import ScriptError, generate_script
+
+        config = LLMConfig()
+
+        with pytest.raises(ScriptError, match="[Nn]arrative.*not found"):
+            generate_script("nonexistent", catalog_db, config)

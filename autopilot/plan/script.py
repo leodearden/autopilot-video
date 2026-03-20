@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -16,6 +17,8 @@ if TYPE_CHECKING:
     from autopilot.db import CatalogDB
 
 logger = logging.getLogger(__name__)
+
+_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "script_writer.md"
 
 __all__ = [
     "ScriptError",
@@ -346,4 +349,111 @@ def generate_script(narrative_id: str, db: CatalogDB, config: LLMConfig) -> dict
     Raises:
         ScriptError: If narrative not found, LLM call fails, or response is malformed.
     """
-    raise NotImplementedError
+    # Load narrative
+    narrative = db.get_narrative(narrative_id)
+    if narrative is None:
+        raise ScriptError(f"Narrative not found: {narrative_id}")
+
+    # Build storyboard
+    storyboard = build_narrative_storyboard(narrative_id, db)
+
+    # Load prompt
+    try:
+        system_prompt = _PROMPT_PATH.read_text()
+    except OSError as e:
+        raise ScriptError(f"Failed to load script_writer prompt: {e}") from e
+
+    # Build user message with narrative description + storyboard
+    description = str(narrative.get("description") or "")
+    title = str(narrative.get("title") or "")
+    arc_notes = str(narrative.get("arc_notes") or "")
+    emotional_journey = str(narrative.get("emotional_journey") or "")
+    duration = narrative.get("proposed_duration_seconds", 0)
+
+    user_message = (
+        f"## Approved Narrative\n\n"
+        f"**Title**: {title}\n"
+        f"**Description**: {description}\n"
+        f"**Proposed duration**: {duration} seconds\n"
+        f"**Arc**: {arc_notes}\n"
+        f"**Emotional journey**: {emotional_journey}\n\n"
+        f"## Full L-Storyboard\n\n{storyboard}"
+    )
+
+    # Call LLM
+    response_text = _call_llm(user_message, system_prompt, config)
+
+    # Parse response
+    script_data = _parse_script_response(response_text)
+
+    # Store in DB
+    with db:
+        db.upsert_narrative_script(narrative_id, json.dumps(script_data))
+        db.update_narrative_status(narrative_id, "scripted")
+
+    return script_data
+
+
+def _call_llm(user_message: str, system_prompt: str, config: LLMConfig) -> str:
+    """Call Claude Opus for script generation.
+
+    Args:
+        user_message: User message with storyboard and narrative info.
+        system_prompt: System prompt from script_writer.md.
+        config: LLM config with planning_model.
+
+    Returns:
+        Raw response text from the LLM.
+
+    Raises:
+        ScriptError: If the API call fails or response is empty.
+    """
+    import anthropic  # type: ignore[reportMissingImports]
+
+    try:
+        client = anthropic.Anthropic()
+        response = client.messages.create(
+            model=config.planning_model,
+            max_tokens=8192,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}],
+        )
+    except Exception as e:
+        raise ScriptError(f"LLM API call failed: {e}") from e
+
+    if not response.content:
+        raise ScriptError("Empty response from LLM")
+
+    return response.content[0].text
+
+
+def _parse_script_response(text: str) -> dict:
+    """Parse LLM response text into a script dict.
+
+    Args:
+        text: Raw LLM response (possibly wrapped in code blocks).
+
+    Returns:
+        Dict with scenes, broll_needs, quality_flags.
+
+    Raises:
+        ScriptError: If JSON parsing fails or structure is invalid.
+    """
+    try:
+        if "```json" in text:
+            json_str = text.split("```json")[1].split("```")[0].strip()
+        elif "```" in text:
+            json_str = text.split("```")[1].split("```")[0].strip()
+        else:
+            json_str = text.strip()
+        data = json.loads(json_str)
+    except (json.JSONDecodeError, IndexError) as e:
+        raise ScriptError(f"Failed to parse script response as JSON: {e}") from e
+
+    if not isinstance(data, dict):
+        raise ScriptError(f"Expected JSON object, got {type(data).__name__}")
+
+    if "scenes" not in data:
+        raise ScriptError("Script response missing 'scenes' field")
+
+    return data
