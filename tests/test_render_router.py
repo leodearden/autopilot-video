@@ -535,6 +535,50 @@ class TestSubtitleSupport:
 
 
 # ---------------------------------------------------------------------------
+# Subtitles + audio mixing in single filter_complex
+# ---------------------------------------------------------------------------
+
+
+class TestSubtitlesWithAudioMixing:
+    """Verify subtitles are merged into filter_complex when audio mixing is active."""
+
+    def test_subtitles_in_filter_complex_with_audio_mixing(self) -> None:
+        """When both amix and subtitles active, single filter_complex, no -vf."""
+        from autopilot.render.router import route_and_render
+
+        segments = [{"start": 0.0, "end": 2.0, "text": "Hello"}]
+        edl = _make_edl(music=[{"path": "/tmp/music.mp3", "level": -6}])
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = {"segments_json": json.dumps(segments)}
+        config = _make_config()
+
+        with patch("autopilot.render.router.render_simple") as mock_rs, \
+             patch("subprocess.run") as mock_run:
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config)
+
+        concat_cmd = mock_run.call_args[0][0]
+
+        # 1. Only ONE -filter_complex (no standalone -vf)
+        assert concat_cmd.count("-filter_complex") == 1
+        assert "-vf" not in concat_cmd
+
+        # 2. filter_complex contains video node with subtitles
+        fc_idx = concat_cmd.index("-filter_complex")
+        fc_val = concat_cmd[fc_idx + 1]
+        assert "subtitles=" in fc_val
+        assert "[vout]" in fc_val
+        assert "[aout]" in fc_val
+
+        # 3. -map references both [vout] and [aout]
+        cmd_str = " ".join(concat_cmd)
+        assert "[vout]" in cmd_str
+        assert "[aout]" in cmd_str
+
+
+# ---------------------------------------------------------------------------
 # Stream copy vs filter conflict
 # ---------------------------------------------------------------------------
 
