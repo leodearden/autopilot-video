@@ -318,3 +318,125 @@ class TestBuildStoryboardFull:
 
         # Should contain timecodes or time references
         assert "0.0" in result or "00:00" in result or "0s" in result
+
+
+# -- Step 7: Resilience tests for build_narrative_storyboard -------------------
+
+
+class TestBuildStoryboardResilience:
+    """Tests for error handling in build_narrative_storyboard."""
+
+    def test_corrupt_shot_boundaries_handled(self, catalog_db):
+        """Corrupt shot boundaries JSON is handled gracefully."""
+        from autopilot.plan.script import build_narrative_storyboard
+
+        catalog_db.insert_media("v1", "/tmp/v1.mp4", duration_seconds=60.0, fps=30.0)
+        catalog_db.conn.execute(
+            "INSERT INTO shot_boundaries (media_id, boundaries_json, method) "
+            "VALUES (?, ?, ?)",
+            ("v1", "NOT_VALID_JSON", "transnetv2"),
+        )
+        catalog_db.insert_activity_cluster(
+            "c1", label="Test",
+            clip_ids_json=json.dumps(["v1"]),
+        )
+        catalog_db.insert_narrative(
+            "n1", title="Test",
+            activity_cluster_ids_json=json.dumps(["c1"]),
+        )
+
+        # Should not crash; clip treated as single shot
+        result = build_narrative_storyboard("n1", catalog_db)
+        assert isinstance(result, str)
+        assert "Shot 1" in result
+
+    def test_corrupt_transcript_handled(self, catalog_db):
+        """Corrupt transcript JSON is skipped without crashing."""
+        from autopilot.plan.script import build_narrative_storyboard
+
+        catalog_db.insert_media("v1", "/tmp/v1.mp4", duration_seconds=60.0, fps=30.0)
+        catalog_db.conn.execute(
+            "INSERT INTO transcripts (media_id, segments_json, language) "
+            "VALUES (?, ?, ?)",
+            ("v1", "CORRUPT", "en"),
+        )
+        catalog_db.insert_activity_cluster(
+            "c1", label="Test",
+            clip_ids_json=json.dumps(["v1"]),
+        )
+        catalog_db.insert_narrative(
+            "n1", title="Test",
+            activity_cluster_ids_json=json.dumps(["c1"]),
+        )
+
+        result = build_narrative_storyboard("n1", catalog_db)
+        assert isinstance(result, str)
+        # Should still have the shot, just no transcript
+        assert "Shot 1" in result
+
+    def test_corrupt_detections_handled(self, catalog_db):
+        """Corrupt detection JSON rows are skipped."""
+        from autopilot.plan.script import build_narrative_storyboard
+
+        catalog_db.insert_media("v1", "/tmp/v1.mp4", duration_seconds=60.0, fps=30.0)
+        catalog_db.conn.execute(
+            "INSERT INTO detections (media_id, frame_number, detections_json) "
+            "VALUES (?, ?, ?)",
+            ("v1", 0, "BAD_JSON"),
+        )
+        catalog_db.insert_activity_cluster(
+            "c1", label="Test",
+            clip_ids_json=json.dumps(["v1"]),
+        )
+        catalog_db.insert_narrative(
+            "n1", title="Test",
+            activity_cluster_ids_json=json.dumps(["c1"]),
+        )
+
+        result = build_narrative_storyboard("n1", catalog_db)
+        assert isinstance(result, str)
+        assert "Shot 1" in result
+
+    def test_clip_without_shot_boundaries_treated_as_single_shot(self, catalog_db):
+        """Clips with no shot boundary data are treated as a single shot."""
+        from autopilot.plan.script import build_narrative_storyboard
+
+        catalog_db.insert_media("v1", "/tmp/v1.mp4", duration_seconds=45.0, fps=30.0)
+        # No shot boundaries inserted
+        catalog_db.insert_activity_cluster(
+            "c1", label="Test",
+            clip_ids_json=json.dumps(["v1"]),
+        )
+        catalog_db.insert_narrative(
+            "n1", title="Test",
+            activity_cluster_ids_json=json.dumps(["c1"]),
+        )
+
+        result = build_narrative_storyboard("n1", catalog_db)
+        assert isinstance(result, str)
+        assert "Shot 1" in result
+        # Duration should be full clip duration
+        assert "45.0" in result
+
+    def test_corrupt_audio_events_handled(self, catalog_db):
+        """Corrupt audio events JSON is skipped."""
+        from autopilot.plan.script import build_narrative_storyboard
+
+        catalog_db.insert_media("v1", "/tmp/v1.mp4", duration_seconds=60.0, fps=30.0)
+        catalog_db.conn.execute(
+            "INSERT INTO audio_events (media_id, timestamp_seconds, events_json) "
+            "VALUES (?, ?, ?)",
+            ("v1", 5.0, "INVALID"),
+        )
+        catalog_db.insert_activity_cluster(
+            "c1", label="Test",
+            clip_ids_json=json.dumps(["v1"]),
+        )
+        catalog_db.insert_narrative(
+            "n1", title="Test",
+            activity_cluster_ids_json=json.dumps(["c1"]),
+        )
+
+        result = build_narrative_storyboard("n1", catalog_db)
+        assert isinstance(result, str)
+        assert "Shot 1" in result
