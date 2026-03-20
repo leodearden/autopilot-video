@@ -904,3 +904,57 @@ class TestReportWriting:
 
         report_file = rendered.parent / "validation_report.json"
         assert report_file.exists()
+
+    def test_oserror_on_mkdir_does_not_crash(self, tmp_path: Path) -> None:
+        """OSError during mkdir should not prevent returning ValidationReport."""
+        from autopilot.render.validate import validate_render
+
+        config = OutputConfig()
+        edl: dict = {}
+        rendered = tmp_path / "readonly_dir" / "final.mp4"
+
+        side_effect = _make_subprocess_side_effect(
+            ffprobe_data=SAMPLE_FFPROBE_JSON,
+            loudnorm_stderr=LOUDNORM_STDERR_OK,
+            blackdetect_stderr=BLACKDETECT_STDERR_NONE,
+            silence_stderr=SILENCE_STDERR_NONE,
+        )
+
+        with (
+            patch("subprocess.run", side_effect=side_effect),
+            patch.object(Path, "mkdir", side_effect=OSError("Permission denied")),
+        ):
+            report = validate_render(rendered, edl, config)
+
+        # Should still return a valid report
+        assert report is not None
+        assert isinstance(report.passed, bool)
+        assert isinstance(report.issues, list)
+        assert isinstance(report.measurements, dict)
+
+    def test_oserror_on_write_text_does_not_crash(self, tmp_path: Path) -> None:
+        """OSError during write_text should not prevent returning ValidationReport."""
+        from autopilot.render.validate import validate_render
+
+        config = OutputConfig()
+        edl: dict = {}
+        rendered = tmp_path / "output" / "final.mp4"
+        rendered.parent.mkdir(parents=True)
+        rendered.touch()
+
+        side_effect = _make_subprocess_side_effect(
+            ffprobe_data=SAMPLE_FFPROBE_JSON,
+            loudnorm_stderr=LOUDNORM_STDERR_OK,
+            blackdetect_stderr=BLACKDETECT_STDERR_NONE,
+            silence_stderr=SILENCE_STDERR_NONE,
+        )
+
+        with (
+            patch("subprocess.run", side_effect=side_effect),
+            patch.object(Path, "write_text", side_effect=OSError("Disk full")),
+        ):
+            report = validate_render(rendered, edl, config)
+
+        # Should still return a valid report with measurements
+        assert report is not None
+        assert "duration" in report.measurements
