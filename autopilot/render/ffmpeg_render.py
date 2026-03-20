@@ -57,7 +57,12 @@ def render_simple(
     Raises:
         RenderError: If rendering fails.
     """
-    source_path = edl_entry["source_path"]
+    try:
+        source_path = edl_entry["source_path"]
+    except KeyError as e:
+        raise RenderError(
+            f"EDL entry missing source_path for clip {edl_entry.get('clip_id', '?')}"
+        ) from e
     in_tc = edl_entry.get("in_timecode", "00:00:00.000")
     out_tc = edl_entry.get("out_timecode")
 
@@ -125,7 +130,7 @@ def render_simple(
 
     try:
         subprocess.run(cmd, check=True)
-    except subprocess.CalledProcessError as e:
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError) as e:
         raise RenderError(
             f"FFmpeg render failed for clip {edl_entry.get('clip_id', '?')}: {e}"
         ) from e

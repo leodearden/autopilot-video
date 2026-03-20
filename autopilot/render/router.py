@@ -155,8 +155,11 @@ def route_and_render(
                         f"No crop data for slow-path clip {clip_id}"
                     )
                 path_data = crop_record.get("path_data")
-                if path_data is not None:
-                    crop_path = np.array(path_data, dtype=np.float64)
+                if not path_data:
+                    raise RoutingError(
+                        f"crop_record has empty/null path_data for clip {clip_id}"
+                    )
+                crop_path = np.array(path_data, dtype=np.float64)
             elif crop_modes.get(clip_id):
                 # Fast-path clips may have optional static crop
                 subject_track_id = cm_entry.get("subject_track_id", 0)
@@ -288,7 +291,7 @@ def route_and_render(
 
         try:
             subprocess.run(cmd, check=True)
-        except subprocess.CalledProcessError as e:
+        except (subprocess.CalledProcessError, FileNotFoundError, OSError) as e:
             raise RoutingError(
                 f"Final concatenation failed: {e}"
             ) from e
