@@ -7,6 +7,7 @@ framing, EMA smoothing, detection gap handling, and boundary clamping.
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 from typing import TYPE_CHECKING
@@ -433,4 +434,48 @@ def compute_crop_path(
         path = np.full((num_frames, 2), [center_x, center_y])
         return path
 
-    raise NotImplementedError(f"Mode {mode!r} not yet implemented")
+    if mode == "auto_subject":
+        # Load detections for frame range
+        frame_start = int(start_sec * fps)
+        frame_end = frame_start + num_frames - 1
+        det_rows = db.get_detections_for_range(media_id, frame_start, frame_end)
+
+        # Build per-frame detection lists
+        det_by_frame: dict[int, list[dict]] = {}
+        for row in det_rows:
+            fn = int(row["frame_number"])
+            det_by_frame[fn] = json.loads(row["detections_json"])
+
+        all_detections = [
+            det_by_frame.get(frame_start + i, []) for i in range(num_frames)
+        ]
+
+        # Select subject track
+        track_id = _select_subject_track(all_detections, edl_entry)
+
+        # Build raw path
+        raw_path = _build_raw_path(all_detections, track_id, crop_w, crop_h)
+
+        # Handle detection gaps
+        filled_path = _handle_detection_gaps(
+            raw_path, fps, source_w, source_h,
+            hold_seconds=2.0, drift_seconds=1.0,
+        )
+
+        # Smooth
+        tau = edl_entry.get("smoothing_tau", config.crop_smoothing_tau)
+        smoothed_path = _smooth_path(filled_path, fps, tau)
+
+        # Clamp to bounds (converts centers to top-left)
+        result = _clamp_to_bounds(smoothed_path, source_w, source_h, crop_w, crop_h)
+
+        # Store in DB
+        path_data = result.astype(np.float64).tobytes()
+        db.upsert_crop_path(
+            media_id, target_aspect, track_id,
+            smoothing_tau=tau, path_data=path_data,
+        )
+
+        return result
+
+    raise CropError(f"Unknown crop mode: {mode!r}")
