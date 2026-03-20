@@ -444,7 +444,13 @@ def compute_crop_path(
         det_by_frame: dict[int, list[dict]] = {}
         for row in det_rows:
             fn = int(cast(int, row["frame_number"]))
-            det_by_frame[fn] = json.loads(cast(str, row["detections_json"]))
+            try:
+                det_by_frame[fn] = json.loads(cast(str, row["detections_json"]))
+            except (json.JSONDecodeError, TypeError) as e:
+                raise CropError(
+                    f"Malformed detections_json for media={media_id!r} "
+                    f"frame={fn}: {e}"
+                ) from e
 
         all_detections = [
             det_by_frame.get(frame_start + i, []) for i in range(num_frames)
