@@ -370,7 +370,7 @@ class TestTransitionMapping:
     """Verify EDL transitions map to OTIO Transition objects."""
 
     def test_crossfade_creates_smpte_dissolve(self, tmp_path):
-        """EDL transition type 'crossfade' creates SMPTE_Dissolve."""
+        """EDL transition type 'crossfade' creates SMPTE_Dissolve between clips."""
         from autopilot.plan.otio_export import export_otio
 
         edl = _minimal_edl(
@@ -392,7 +392,7 @@ class TestTransitionMapping:
                 {
                     "type": "crossfade",
                     "duration": 1.0,
-                    "position": 1,
+                    "position": 0,
                 },
             ],
         )
@@ -410,6 +410,12 @@ class TestTransitionMapping:
         ]
         assert len(transitions) == 1
         assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
+
+        # Verify transition is positioned BETWEEN the two clips
+        track_items = list(video_tracks[0])
+        assert isinstance(track_items[0], otio.schema.Clip)
+        assert isinstance(track_items[1], otio.schema.Transition)
+        assert isinstance(track_items[2], otio.schema.Clip)
 
     def test_crossfade_duration_correct(self, tmp_path):
         """Transition duration matches EDL duration (1.0 second)."""
@@ -434,7 +440,7 @@ class TestTransitionMapping:
                 {
                     "type": "crossfade",
                     "duration": 1.0,
-                    "position": 1,
+                    "position": 0,
                 },
             ],
         )
@@ -446,14 +452,16 @@ class TestTransitionMapping:
         video_tracks = [
             t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
         ]
-        transitions = [
-            item for item in video_tracks[0]
-            if isinstance(item, otio.schema.Transition)
-        ]
+
+        # Verify transition is positioned between clips
+        track_items = list(video_tracks[0])
+        assert isinstance(track_items[1], otio.schema.Transition)
+
         # Transition has in_offset + out_offset = total duration
+        trans = track_items[1]
         total_dur_sec = (
-            otio.opentime.to_seconds(transitions[0].in_offset)
-            + otio.opentime.to_seconds(transitions[0].out_offset)
+            otio.opentime.to_seconds(trans.in_offset)
+            + otio.opentime.to_seconds(trans.out_offset)
         )
         assert abs(total_dur_sec - 1.0) < 0.01
 
