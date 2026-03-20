@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from google.oauth2.credentials import Credentials as _Credentials
+
     from autopilot.config import YouTubeConfig
     from autopilot.db import CatalogDB
 
@@ -20,6 +22,41 @@ logger = logging.getLogger(__name__)
 
 class UploadError(Exception):
     """Raised for any YouTube upload error."""
+
+
+def _load_credentials(credentials_path: Path) -> _Credentials:
+    """Load and optionally refresh OAuth2 credentials from file.
+
+    Args:
+        credentials_path: Path to the OAuth2 credentials JSON file.
+
+    Returns:
+        Valid Credentials instance.
+
+    Raises:
+        UploadError: If the file is missing or credentials cannot be loaded.
+    """
+    if not credentials_path.exists():
+        msg = f"YouTube credentials file not found: {credentials_path}"
+        raise UploadError(msg)
+
+    from google.auth.transport.requests import Request  # lazy import
+    from google.oauth2.credentials import Credentials  # lazy import
+
+    try:
+        creds = Credentials.from_authorized_user_file(str(credentials_path))
+    except Exception as exc:
+        msg = f"Failed to load YouTube credentials: {exc}"
+        raise UploadError(msg) from exc
+
+    if creds.expired and creds.refresh_token:
+        try:
+            creds.refresh(Request())
+        except Exception as exc:
+            msg = f"Failed to refresh YouTube credentials: {exc}"
+            raise UploadError(msg) from exc
+
+    return creds
 
 
 def upload_video(

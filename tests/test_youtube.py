@@ -57,6 +57,30 @@ class TestYouTubePublicAPI:
 # ---------------------------------------------------------------------------
 
 
+def _setup_google_mocks():
+    """Install mock google.* modules in sys.modules for testing."""
+    mock_google = MagicMock()
+    mock_google_auth = MagicMock()
+    mock_google_auth_transport = MagicMock()
+    mock_google_auth_transport_requests = MagicMock()
+    mock_google_oauth2 = MagicMock()
+    mock_google_oauth2_credentials = MagicMock()
+
+    mods = {
+        "google": mock_google,
+        "google.auth": mock_google_auth,
+        "google.auth.transport": mock_google_auth_transport,
+        "google.auth.transport.requests": mock_google_auth_transport_requests,
+        "google.oauth2": mock_google_oauth2,
+        "google.oauth2.credentials": mock_google_oauth2_credentials,
+        "googleapiclient": MagicMock(),
+        "googleapiclient.discovery": MagicMock(),
+        "googleapiclient.errors": MagicMock(),
+        "googleapiclient.http": MagicMock(),
+    }
+    return mods, mock_google_oauth2_credentials, mock_google_auth_transport_requests
+
+
 class TestLoadCredentials:
     """Verify _load_credentials helper."""
 
@@ -69,10 +93,12 @@ class TestLoadCredentials:
         mock_creds.valid = True
         mock_creds.expired = False
 
-        with patch(
-            "autopilot.upload.youtube.Credentials"
-        ) as mock_creds_cls:
-            mock_creds_cls.from_authorized_user_file.return_value = mock_creds
+        mods, mock_oauth2_creds, _ = _setup_google_mocks()
+        mock_creds_cls = MagicMock()
+        mock_creds_cls.from_authorized_user_file.return_value = mock_creds
+        mods["google.oauth2.credentials"].Credentials = mock_creds_cls
+
+        with patch.dict(sys.modules, mods):
             from autopilot.upload.youtube import _load_credentials
 
             result = _load_credentials(creds_file)
@@ -100,18 +126,19 @@ class TestLoadCredentials:
         mock_creds.expired = True
         mock_creds.refresh_token = "some-refresh-token"
 
-        with (
-            patch(
-                "autopilot.upload.youtube.Credentials"
-            ) as mock_creds_cls,
-            patch(
-                "autopilot.upload.youtube.Request"
-            ) as mock_request_cls,
-        ):
-            mock_creds_cls.from_authorized_user_file.return_value = mock_creds
+        mods, _, mock_transport_req = _setup_google_mocks()
+        mock_creds_cls = MagicMock()
+        mock_creds_cls.from_authorized_user_file.return_value = mock_creds
+        mods["google.oauth2.credentials"].Credentials = mock_creds_cls
+        mock_request_instance = MagicMock()
+        mods["google.auth.transport.requests"].Request.return_value = (
+            mock_request_instance
+        )
+
+        with patch.dict(sys.modules, mods):
             from autopilot.upload.youtube import _load_credentials
 
             result = _load_credentials(creds_file)
 
-        mock_creds.refresh.assert_called_once_with(mock_request_cls())
+        mock_creds.refresh.assert_called_once_with(mock_request_instance)
         assert result is mock_creds
