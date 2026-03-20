@@ -7,11 +7,16 @@ resolution/codec verification, and file size analysis.
 
 from __future__ import annotations
 
+import json
+import logging
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from autopilot.config import OutputConfig
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "Issue",
@@ -42,6 +47,75 @@ class ValidationReport:
     passed: bool
     issues: list[Issue] = field(default_factory=list)
     measurements: dict[str, Any] = field(default_factory=dict)
+
+
+def _run_ffprobe_json(path: Path) -> dict:
+    """Run ffprobe and return extracted metadata dict.
+
+    Keys on success: duration_seconds, resolution (w,h), video_codec,
+    audio_codec, file_size_bytes.
+
+    Returns an empty dict on any error.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
+                "-show_format",
+                "-show_streams",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, OSError):
+        logger.warning("ffprobe failed for %s", path)
+        return {}
+
+    try:
+        data = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError):
+        logger.warning("ffprobe returned invalid JSON for %s", path)
+        return {}
+
+    streams = data.get("streams", [])
+    fmt = data.get("format", {})
+
+    video_stream = next((s for s in streams if s.get("codec_type") == "video"), None)
+    audio_stream = next((s for s in streams if s.get("codec_type") == "audio"), None)
+
+    out: dict[str, Any] = {}
+
+    if video_stream:
+        out["video_codec"] = video_stream.get("codec_name")
+        w = video_stream.get("width")
+        h = video_stream.get("height")
+        if w is not None and h is not None:
+            out["resolution"] = (int(w), int(h))
+
+    if audio_stream:
+        out["audio_codec"] = audio_stream.get("codec_name")
+
+    dur = fmt.get("duration")
+    if dur is not None:
+        try:
+            out["duration_seconds"] = float(dur)
+        except (ValueError, TypeError):
+            pass
+
+    size = fmt.get("size")
+    if size is not None:
+        try:
+            out["file_size_bytes"] = int(size)
+        except (ValueError, TypeError):
+            pass
+
+    return out
 
 
 def validate_render(
