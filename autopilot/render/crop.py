@@ -8,9 +8,12 @@ framing, EMA smoothing, detection gap handling, and boundary clamping.
 from __future__ import annotations
 
 import logging
+import math
 from typing import TYPE_CHECKING
 
 import numpy as np  # type: ignore[reportMissingImports]
+
+from autopilot.plan.validator import timecode_to_seconds
 
 if TYPE_CHECKING:
     from autopilot.config import CameraConfig
@@ -378,4 +381,33 @@ def compute_crop_path(
     Raises:
         CropError: For any crop computation failure.
     """
-    raise NotImplementedError("compute_crop_path not yet implemented")
+    # -- Common setup ----------------------------------------------------------
+    source_w, source_h = config.source_resolution
+    crop_w, crop_h = _compute_crop_dimensions(source_w, source_h, target_aspect)
+
+    # Determine frame range from timecodes
+    media = db.get_media(media_id)
+    if media is None:
+        raise CropError(f"Media not found: {media_id!r}")
+
+    fps = float(media["fps"]) if media.get("fps") else 30.0
+    in_tc = edl_entry.get("in_timecode", "00:00:00.000")
+    out_tc = edl_entry.get("out_timecode")
+    start_sec = timecode_to_seconds(in_tc)
+    if out_tc:
+        end_sec = timecode_to_seconds(out_tc)
+    else:
+        end_sec = float(media.get("duration_seconds") or 0.0)
+
+    num_frames = max(1, int(math.ceil((end_sec - start_sec) * fps)))
+
+    mode = edl_entry.get("mode", "center")
+
+    # -- Mode dispatch --------------------------------------------------------
+    if mode == "center":
+        center_x = (source_w - crop_w) / 2.0
+        center_y = (source_h - crop_h) / 2.0
+        path = np.full((num_frames, 2), [center_x, center_y])
+        return path
+
+    raise NotImplementedError(f"Mode {mode!r} not yet implemented")
