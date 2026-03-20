@@ -70,12 +70,20 @@ def render_simple(
     # Input file
     cmd.extend(["-i", source_path])
 
-    # End time
+    # Compute clip duration and use -t instead of -to (seek-position-independent)
+    in_sec = _timecode_to_seconds(in_tc)
     if out_tc:
-        cmd.extend(["-to", out_tc])
+        out_sec = _timecode_to_seconds(out_tc)
+        clip_dur = out_sec - in_sec
+        cmd.extend(["-t", str(clip_dur)])
+    else:
+        clip_dur = None
 
     # Build video filter chain
     vf_parts: list[str] = []
+
+    # Reset PTS to zero-based after fast seek (-ss before -i)
+    vf_parts.append("setpts=PTS-STARTPTS")
 
     # Static crop if crop_path provided and static
     if crop_path is not None and _is_static_crop(crop_path):
@@ -89,11 +97,8 @@ def render_simple(
     if transition and isinstance(transition, dict):
         duration = transition.get("duration", 0.5)
         vf_parts.append(f"fade=t=in:st=0:duration={duration}")
-        # Compute clip duration for fade-out placement
-        in_sec = _timecode_to_seconds(in_tc)
-        if out_tc:
-            out_sec = _timecode_to_seconds(out_tc)
-            clip_dur = out_sec - in_sec
+        # Compute clip duration for fade-out placement (zero-based from setpts)
+        if clip_dur is not None:
             fade_out_start = max(0.0, clip_dur - duration)
             vf_parts.append(
                 f"fade=t=out:st={fade_out_start}:duration={duration}"

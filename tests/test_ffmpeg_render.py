@@ -248,7 +248,7 @@ class TestRenderSimpleCommand:
         assert result == output
 
     def test_timecode_seek(self, tmp_path: Path) -> None:
-        """render_simple should use -ss and -to for timecode trimming."""
+        """render_simple should use -ss for seek and -t for duration."""
         config = _make_config()
         edl_entry = _make_edl_entry(
             in_timecode="00:01:30.000",
@@ -265,9 +265,10 @@ class TestRenderSimpleCommand:
         assert "-ss" in cmd
         ss_idx = cmd.index("-ss")
         assert cmd[ss_idx + 1] == "00:01:30.000"
-        assert "-to" in cmd
-        to_idx = cmd.index("-to")
-        assert cmd[to_idx + 1] == "00:02:00.000"
+        # Uses -t (duration) instead of -to (absolute time)
+        assert "-t" in cmd
+        t_idx = cmd.index("-t")
+        assert float(cmd[t_idx + 1]) == pytest.approx(30.0)
 
     def test_check_true(self, tmp_path: Path) -> None:
         """render_simple should call subprocess.run with check=True."""
