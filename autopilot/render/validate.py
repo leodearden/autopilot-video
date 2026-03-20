@@ -426,9 +426,21 @@ def _check_silence(
         stderr,
         re.DOTALL,
     ):
-        start = float(match.group(1))
-        end = float(match.group(2))
-        duration = float(match.group(3))
+        try:
+            start = float(match.group(1))
+            end = float(match.group(2))
+            duration = float(match.group(3))
+        except ValueError:
+            issues.append(
+                Issue(
+                    severity="warning",
+                    check="silence",
+                    message=(
+                        f"Could not parse silencedetect values: {match.group()}"
+                    ),
+                )
+            )
+            continue
 
         # Skip if covered by an intentional silence range
         is_intentional = any(
