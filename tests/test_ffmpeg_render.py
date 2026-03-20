@@ -459,3 +459,47 @@ class TestRenderSimpleTransitions:
         # Either no -vf at all, or if present, no fade filter
         if vf is not None:
             assert "fade" not in vf.lower()
+
+
+# ---------------------------------------------------------------------------
+# PTS reset and duration-based timing
+# ---------------------------------------------------------------------------
+
+
+class TestRenderSimpleTiming:
+    """Verify PTS reset and -t duration instead of -to."""
+
+    def test_fade_out_uses_zero_based_pts(self, tmp_path: Path) -> None:
+        """For clip with in_tc='00:01:00.000', out_tc='00:01:30.000' and 0.5s crossfade:
+        1. -vf chain includes setpts=PTS-STARTPTS
+        2. fade-out st=29.5 (zero-based, not 89.5)
+        3. -t 30.0 instead of -to 00:01:30.000
+        """
+        config = _make_config()
+        edl_entry = _make_edl_entry(
+            in_timecode="00:01:00.000",
+            out_timecode="00:01:30.000",
+            transition={"type": "crossfade", "duration": 0.5},
+        )
+        output = tmp_path / "out.mp4"
+
+        with patch("subprocess.run") as mock_run:
+            from autopilot.render.ffmpeg_render import render_simple
+
+            render_simple(edl_entry, None, output, config)
+
+        cmd = mock_run.call_args[0][0]
+
+        # 1. -vf chain includes setpts=PTS-STARTPTS
+        vf_idx = cmd.index("-vf")
+        vf_val = cmd[vf_idx + 1]
+        assert "setpts=PTS-STARTPTS" in vf_val
+
+        # 2. fade-out st=29.5 (zero-based: 30.0 - 0.5)
+        assert "st=29.5" in vf_val
+
+        # 3. Uses -t (duration) instead of -to (absolute time)
+        assert "-t" in cmd
+        t_idx = cmd.index("-t")
+        assert float(cmd[t_idx + 1]) == pytest.approx(30.0)
+        assert "-to" not in cmd
