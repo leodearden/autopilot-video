@@ -6,10 +6,9 @@ import inspect
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
-
 import pytest
 
 if TYPE_CHECKING:
@@ -354,7 +353,7 @@ class TestCropPathLoading:
         db.get_crop_path.return_value = {"path_data": crop_data.tolist()}
         config = _make_config()
 
-        with patch("autopilot.render.router.render_simple") as mock_rs, \
+        with patch("autopilot.render.router.render_simple"), \
              patch("autopilot.render.router.render_complex") as mock_rc, \
              patch("subprocess.run"):
             mock_rc.return_value = Path("/tmp/seg.mp4")
