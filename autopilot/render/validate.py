@@ -490,4 +490,12 @@ def validate_render(
     _check_silence(rendered_path, edl, issues)
 
     passed = not any(i.severity == "error" for i in issues)
-    return ValidationReport(passed=passed, issues=issues, measurements=measurements)
+    report = ValidationReport(passed=passed, issues=issues, measurements=measurements)
+
+    # Write validation_report.json alongside the rendered file
+    output_dir = rendered_path.parent
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report_path = output_dir / "validation_report.json"
+    report_path.write_text(json.dumps(report.to_dict(), indent=2, default=str))
+
+    return report

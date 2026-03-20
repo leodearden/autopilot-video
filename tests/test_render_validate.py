@@ -72,12 +72,14 @@ class TestPublicAPI:
 
         assert issubclass(ValidationError, Exception)
 
-    def test_validate_render_returns_validation_report(self) -> None:
+    def test_validate_render_returns_validation_report(self, tmp_path: Path) -> None:
         """validate_render(rendered_path, edl, config) -> ValidationReport."""
         from autopilot.render.validate import ValidationReport, validate_render
 
         config = OutputConfig()
         edl: dict = {"target_duration_seconds": 60}
+        rendered = tmp_path / "video.mp4"
+        rendered.touch()
 
         # Mock all subprocess calls with proper return values
         def _side_effect(*args, **kwargs):
@@ -88,7 +90,7 @@ class TestPublicAPI:
             return mock
 
         with patch("subprocess.run", side_effect=_side_effect):
-            result = validate_render(Path("/fake/video.mp4"), edl, config)
+            result = validate_render(rendered, edl, config)
 
         assert isinstance(result, ValidationReport)
 
@@ -672,7 +674,7 @@ def _make_subprocess_side_effect(
 class TestValidateRenderE2E:
     """End-to-end tests for validate_render orchestration."""
 
-    def test_full_pass_scenario(self) -> None:
+    def test_full_pass_scenario(self, tmp_path: Path) -> None:
         from autopilot.render.validate import validate_render
 
         config = OutputConfig(
@@ -681,6 +683,8 @@ class TestValidateRenderE2E:
             target_loudness_lufs=-16,
         )
         edl = {"target_duration_seconds": 120}
+        rendered = tmp_path / "video.mp4"
+        rendered.touch()
 
         side_effect = _make_subprocess_side_effect(
             ffprobe_data=SAMPLE_FFPROBE_JSON,
@@ -690,7 +694,7 @@ class TestValidateRenderE2E:
         )
 
         with patch("subprocess.run", side_effect=side_effect):
-            report = validate_render(Path("/fake/video.mp4"), edl, config)
+            report = validate_render(rendered, edl, config)
 
         assert report.passed is True
         assert len([i for i in report.issues if i.severity == "error"]) == 0
@@ -699,7 +703,7 @@ class TestValidateRenderE2E:
         assert "resolution" in report.measurements
         assert "codec" in report.measurements
 
-    def test_mixed_issues_scenario(self) -> None:
+    def test_mixed_issues_scenario(self, tmp_path: Path) -> None:
         from autopilot.render.validate import validate_render
 
         config = OutputConfig(
@@ -709,6 +713,8 @@ class TestValidateRenderE2E:
         )
         # Duration doesn't match (probe says 120.5, target 60)
         edl = {"target_duration_seconds": 60}
+        rendered = tmp_path / "video.mp4"
+        rendered.touch()
 
         side_effect = _make_subprocess_side_effect(
             ffprobe_data=SAMPLE_FFPROBE_JSON,
@@ -718,7 +724,7 @@ class TestValidateRenderE2E:
         )
 
         with patch("subprocess.run", side_effect=side_effect):
-            report = validate_render(Path("/fake/video.mp4"), edl, config)
+            report = validate_render(rendered, edl, config)
 
         assert report.passed is False
         errors = [i for i in report.issues if i.severity == "error"]
@@ -726,11 +732,13 @@ class TestValidateRenderE2E:
         assert len(errors) >= 2  # duration + loudness
         assert len(warnings) >= 2  # black frames
 
-    def test_report_to_dict(self) -> None:
+    def test_report_to_dict(self, tmp_path: Path) -> None:
         from autopilot.render.validate import validate_render
 
         config = OutputConfig()
         edl: dict = {}
+        rendered = tmp_path / "video.mp4"
+        rendered.touch()
 
         side_effect = _make_subprocess_side_effect(
             ffprobe_data=SAMPLE_FFPROBE_JSON,
@@ -740,7 +748,7 @@ class TestValidateRenderE2E:
         )
 
         with patch("subprocess.run", side_effect=side_effect):
-            report = validate_render(Path("/fake/video.mp4"), edl, config)
+            report = validate_render(rendered, edl, config)
 
         report_dict = report.to_dict()
         assert isinstance(report_dict, dict)
