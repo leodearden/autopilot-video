@@ -67,7 +67,10 @@ def _get_media_info(clip_id: str, db: CatalogDB) -> tuple[str, float]:
         (file_path, fps) tuple. Falls back to clip_id and _DEFAULT_FPS
         when the media is not in the catalog.
     """
-    media = db.get_media(clip_id)
+    try:
+        media = db.get_media(clip_id)
+    except Exception as e:
+        raise OtioExportError(f"DB lookup failed for {clip_id}: {e}") from e
     if media is None:
         logger.warning("Media not found for clip_id=%s, using fallback", clip_id)
         return clip_id, _DEFAULT_FPS
