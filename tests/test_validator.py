@@ -423,3 +423,126 @@ class TestAudioLevelCheck:
         assert result.passed is False
         audio_errors = [e for e in result.errors if "audio" in e.lower() or "level" in e.lower()]
         assert len(audio_errors) >= 1
+
+
+# -- Step 25: Malformed timecodes and missing keys tests ----------------------
+
+
+def _make_edl_with_clips(clips: list[dict]) -> dict:
+    """Create a full EDL structure with given clips list."""
+    return {
+        "target_duration_seconds": 1000,
+        "clips": clips,
+        "transitions": [],
+        "audio_settings": [],
+        "crop_modes": [],
+        "titles": [],
+        "music": [],
+        "voiceovers": [],
+        "broll_requests": [],
+    }
+
+
+class TestMalformedTimecodes:
+    """Tests that validate_edl handles malformed timecodes and missing keys
+    gracefully — always returning ValidationResult, never raising."""
+
+    def test_malformed_timecode_string_returns_error_not_raises(self):
+        """Clip with malformed timecode (e.g. 'not-a-timecode') returns
+        ValidationResult with passed=False and descriptive error, never raises."""
+        from autopilot.plan.validator import validate_edl
+
+        edl = _make_edl_with_clips([
+            {
+                "clip_id": "v1",
+                "in_timecode": "not-a-timecode",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            },
+        ])
+        # Must NOT raise ValueError
+        result = validate_edl(edl, _mock_db())
+        assert result.passed is False
+        assert any("timecode" in e.lower() or "invalid" in e.lower() for e in result.errors)
+
+    def test_missing_in_timecode_key_returns_error_not_raises(self):
+        """Clip with missing in_timecode key returns ValidationResult with
+        error, never raises KeyError."""
+        from autopilot.plan.validator import validate_edl
+
+        edl = _make_edl_with_clips([
+            {
+                "clip_id": "v1",
+                # no in_timecode key
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            },
+        ])
+        # Must NOT raise KeyError
+        result = validate_edl(edl, _mock_db())
+        assert result.passed is False
+        assert any("timecode" in e.lower() or "missing" in e.lower() for e in result.errors)
+
+    def test_missing_out_timecode_key_returns_error_not_raises(self):
+        """Clip with missing out_timecode key returns ValidationResult with
+        error, never raises KeyError."""
+        from autopilot.plan.validator import validate_edl
+
+        edl = _make_edl_with_clips([
+            {
+                "clip_id": "v1",
+                "in_timecode": "00:00:00.000",
+                # no out_timecode key
+                "track": 1,
+            },
+        ])
+        # Must NOT raise KeyError
+        result = validate_edl(edl, _mock_db())
+        assert result.passed is False
+        assert any("timecode" in e.lower() or "missing" in e.lower() for e in result.errors)
+
+    def test_non_standard_timecode_format_returns_error(self):
+        """Clip with non-standard format (e.g. '10s') returns error in result."""
+        from autopilot.plan.validator import validate_edl
+
+        edl = _make_edl_with_clips([
+            {
+                "clip_id": "v1",
+                "in_timecode": "10s",
+                "out_timecode": "20s",
+                "track": 1,
+            },
+        ])
+        # Must NOT raise
+        result = validate_edl(edl, _mock_db())
+        assert result.passed is False
+        assert len(result.errors) >= 1
+
+    def test_mix_of_valid_and_malformed_clips(self):
+        """EDL with mix of valid and malformed clips collects errors for bad
+        clips but still validates the good ones."""
+        from autopilot.plan.validator import validate_edl
+
+        edl = _make_edl_with_clips([
+            {
+                "clip_id": "v1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            },
+            {
+                "clip_id": "v2",
+                "in_timecode": "garbage",
+                "out_timecode": "00:00:20.000",
+                "track": 1,
+            },
+        ])
+        # Must NOT raise
+        result = validate_edl(edl, _mock_db())
+        assert result.passed is False
+        # Should have error about v2's bad timecode
+        malformed_errors = [
+            e for e in result.errors
+            if "v2" in e or "timecode" in e.lower() or "invalid" in e.lower()
+        ]
+        assert len(malformed_errors) >= 1
