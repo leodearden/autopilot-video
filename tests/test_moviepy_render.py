@@ -258,6 +258,64 @@ class TestRenderComplex:
 # ---------------------------------------------------------------------------
 
 
+class TestRenderComplexResourceCleanup:
+    """Verify VideoFileClip.close() is called on success and error paths."""
+
+    def test_clip_closed_on_success(self, tmp_path: Path) -> None:
+        """After render_complex completes normally, clip.close() must be called."""
+        config = _make_config()
+        edl_entry = _make_edl_entry()
+        output = tmp_path / "out.mp4"
+        crop_path = np.full((30, 2), [100, 50], dtype=np.float64)
+
+        mock_clip = MagicMock()
+        mock_clip.subclipped.return_value = mock_clip
+        mock_clip.with_effects.return_value = mock_clip
+        mock_clip.transform.return_value = mock_clip
+        mock_clip.duration = 10.0
+        mock_clip.fps = 30
+        mock_clip.size = (1920, 1080)
+
+        with patch(
+            "autopilot.render.moviepy_render.VideoFileClip",
+            return_value=mock_clip,
+        ):
+            from autopilot.render.moviepy_render import render_complex
+
+            render_complex(edl_entry, crop_path, output, config)
+
+        mock_clip.close.assert_called_once()
+
+    def test_clip_closed_on_error(self, tmp_path: Path) -> None:
+        """When write_videofile raises, clip.close() must still be called."""
+        from autopilot.render.moviepy_render import ComplexRenderError
+
+        config = _make_config()
+        edl_entry = _make_edl_entry()
+        output = tmp_path / "out.mp4"
+        crop_path = np.full((30, 2), [100, 50], dtype=np.float64)
+
+        mock_clip = MagicMock()
+        mock_clip.subclipped.return_value = mock_clip
+        mock_clip.with_effects.return_value = mock_clip
+        mock_clip.transform.return_value = mock_clip
+        mock_clip.duration = 10.0
+        mock_clip.fps = 30
+        mock_clip.size = (1920, 1080)
+        mock_clip.write_videofile.side_effect = RuntimeError("write failed")
+
+        with patch(
+            "autopilot.render.moviepy_render.VideoFileClip",
+            return_value=mock_clip,
+        ):
+            from autopilot.render.moviepy_render import render_complex
+
+            with pytest.raises(ComplexRenderError):
+                render_complex(edl_entry, crop_path, output, config)
+
+        mock_clip.close.assert_called_once()
+
+
 class TestRenderComplexEdgeCases:
     """Verify render_complex handles edge cases correctly."""
 
