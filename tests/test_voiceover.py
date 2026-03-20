@@ -90,16 +90,13 @@ class TestKokoroEngine:
         import numpy as np
         audio_chunk = np.zeros(24000, dtype=np.float32)
         pipeline_instance = MagicMock()
-        pipeline_instance.__call__ = MagicMock(
-            return_value=iter([("hello", "h@loU", audio_chunk)])
-        )
+        pipeline_instance.return_value = iter([("hello", "h@loU", audio_chunk)])
         mock_kokoro.KPipeline.return_value = pipeline_instance
 
         output_path = tmp_path / "voice.wav"
         config = _make_model_config("kokoro")
 
         with patch.dict(sys.modules, {"kokoro": mock_kokoro, "soundfile": mock_sf}):
-            # Need to reload the module to pick up mocked imports
             if "autopilot.source.voiceover" in sys.modules:
                 del sys.modules["autopilot.source.voiceover"]
             from autopilot.source.voiceover import generate_voiceover
@@ -117,9 +114,7 @@ class TestKokoroEngine:
         import numpy as np
         audio_chunk = np.zeros(24000, dtype=np.float32)
         pipeline_instance = MagicMock()
-        pipeline_instance.__call__ = MagicMock(
-            return_value=iter([("hello", "h@loU", audio_chunk)])
-        )
+        pipeline_instance.return_value = iter([("hello", "h@loU", audio_chunk)])
         mock_kokoro.KPipeline.return_value = pipeline_instance
 
         output_path = tmp_path / "voice.wav"
@@ -149,20 +144,20 @@ class TestElevenLabsEngine:
         output_path = tmp_path / "voice.wav"
         config = _make_model_config("elevenlabs")
 
+        mock_requests = MagicMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.iter_content = MagicMock(return_value=iter([b"fake_audio_data"]))
         mock_response.raise_for_status = MagicMock()
+        mock_requests.post.return_value = mock_response
 
-        with patch.dict(sys.modules):
+        with patch.dict(sys.modules, {"requests": mock_requests}):
             if "autopilot.source.voiceover" in sys.modules:
                 del sys.modules["autopilot.source.voiceover"]
             from autopilot.source.voiceover import generate_voiceover
 
-            with patch("autopilot.source.voiceover.requests") as mock_requests:
-                mock_requests.post.return_value = mock_response
-                with patch.dict("os.environ", {"ELEVENLABS_API_KEY": "test-key"}):
-                    result = generate_voiceover("Hello world", output_path, config)
+            with patch.dict("os.environ", {"ELEVENLABS_API_KEY": "test-key"}):
+                result = generate_voiceover("Hello world", output_path, config)
 
         assert result == output_path
         mock_requests.post.assert_called_once()
@@ -172,24 +167,23 @@ class TestElevenLabsEngine:
         output_path = tmp_path / "voice.wav"
         config = _make_model_config("elevenlabs")
 
+        mock_requests = MagicMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.iter_content = MagicMock(return_value=iter([b"audio_data"]))
         mock_response.raise_for_status = MagicMock()
+        mock_requests.post.return_value = mock_response
 
-        with patch.dict(sys.modules):
+        with patch.dict(sys.modules, {"requests": mock_requests}):
             if "autopilot.source.voiceover" in sys.modules:
                 del sys.modules["autopilot.source.voiceover"]
             from autopilot.source.voiceover import generate_voiceover
 
-            with patch("autopilot.source.voiceover.requests") as mock_requests:
-                mock_requests.post.return_value = mock_response
-                with patch.dict("os.environ", {"ELEVENLABS_API_KEY": "my-secret-key"}):
-                    generate_voiceover("Test text", output_path, config)
+            with patch.dict("os.environ", {"ELEVENLABS_API_KEY": "my-secret-key"}):
+                generate_voiceover("Test text", output_path, config)
 
         # Verify the API key was passed in headers
         call_kwargs = mock_requests.post.call_args
-        headers = call_kwargs[1].get("headers", call_kwargs.kwargs.get("headers", {}))
         assert "my-secret-key" in str(call_kwargs)
 
     def test_elevenlabs_missing_api_key_raises(self, tmp_path):
@@ -197,17 +191,15 @@ class TestElevenLabsEngine:
         output_path = tmp_path / "voice.wav"
         config = _make_model_config("elevenlabs")
 
-        with patch.dict(sys.modules):
-            if "autopilot.source.voiceover" in sys.modules:
-                del sys.modules["autopilot.source.voiceover"]
-            from autopilot.source.voiceover import generate_voiceover, VoiceoverError
+        if "autopilot.source.voiceover" in sys.modules:
+            del sys.modules["autopilot.source.voiceover"]
+        from autopilot.source.voiceover import generate_voiceover, VoiceoverError
 
-            with patch.dict("os.environ", {}, clear=True):
-                # Remove the key if set
-                import os
-                os.environ.pop("ELEVENLABS_API_KEY", None)
-                with pytest.raises(VoiceoverError, match="ELEVENLABS_API_KEY"):
-                    generate_voiceover("Hello", output_path, config)
+        with patch.dict("os.environ", {}, clear=True):
+            import os
+            os.environ.pop("ELEVENLABS_API_KEY", None)
+            with pytest.raises(VoiceoverError, match="ELEVENLABS_API_KEY"):
+                generate_voiceover("Hello", output_path, config)
 
 
 # ---------------------------------------------------------------------------
