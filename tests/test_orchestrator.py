@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from unittest.mock import MagicMock
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -392,3 +393,81 @@ class TestBudgetTracking:
             orch.run(config=MagicMock(), db=MagicMock())
 
         assert any("exceeded budget" in r.message for r in caplog.records)
+
+
+class TestIngestStage:
+    """Tests for the real _run_ingest stage function."""
+
+    @patch("autopilot.orchestrator.dedup")
+    @patch("autopilot.orchestrator.normalizer")
+    @patch("autopilot.orchestrator.scanner")
+    def test_ingest_calls_scan_directory(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config
+    ):
+        """_run_ingest calls scanner.scan_directory with config.input_dir."""
+        from autopilot.orchestrator import _run_ingest
+
+        mock_file = MagicMock()
+        mock_file.file_path = Path("/fake/video.mp4")
+        mock_scanner.scan_directory.return_value = [mock_file]
+        db = MagicMock()
+
+        _run_ingest(config=minimal_config, db=db)
+
+        mock_scanner.scan_directory.assert_called_once_with(
+            minimal_config.input_dir, max_workers=None
+        )
+
+    @patch("autopilot.orchestrator.dedup")
+    @patch("autopilot.orchestrator.normalizer")
+    @patch("autopilot.orchestrator.scanner")
+    def test_ingest_inserts_media_into_db(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config
+    ):
+        """_run_ingest calls db.insert_media for each scanned file."""
+        from autopilot.orchestrator import _run_ingest
+
+        mock_file1 = MagicMock()
+        mock_file1.file_path = Path("/fake/v1.mp4")
+        mock_file2 = MagicMock()
+        mock_file2.file_path = Path("/fake/v2.mp4")
+        mock_scanner.scan_directory.return_value = [mock_file1, mock_file2]
+        db = MagicMock()
+
+        _run_ingest(config=minimal_config, db=db)
+
+        assert db.insert_media.call_count == 2
+
+    @patch("autopilot.orchestrator.dedup")
+    @patch("autopilot.orchestrator.normalizer")
+    @patch("autopilot.orchestrator.scanner")
+    def test_ingest_normalizes_audio(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config
+    ):
+        """_run_ingest calls normalize_audio for each media file."""
+        from autopilot.orchestrator import _run_ingest
+
+        mock_file = MagicMock()
+        mock_file.file_path = Path("/fake/video.mp4")
+        mock_scanner.scan_directory.return_value = [mock_file]
+        db = MagicMock()
+
+        _run_ingest(config=minimal_config, db=db)
+
+        mock_normalizer.normalize_audio.assert_called_once()
+
+    @patch("autopilot.orchestrator.dedup")
+    @patch("autopilot.orchestrator.normalizer")
+    @patch("autopilot.orchestrator.scanner")
+    def test_ingest_marks_duplicates(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config
+    ):
+        """_run_ingest calls dedup.mark_duplicates with db."""
+        from autopilot.orchestrator import _run_ingest
+
+        mock_scanner.scan_directory.return_value = []
+        db = MagicMock()
+
+        _run_ingest(config=minimal_config, db=db)
+
+        mock_dedup.mark_duplicates.assert_called_once_with(db)
