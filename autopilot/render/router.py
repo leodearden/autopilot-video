@@ -102,7 +102,7 @@ def route_and_render(
 
     clips = edl.get("clips", [])
     crop_modes = edl.get("crop_modes", {})
-    audio_settings = edl.get("audio_settings", {})
+    _audio_settings = edl.get("audio_settings", {})
     music_tracks = edl.get("music", [])
     voiceovers = edl.get("voiceovers", [])
 
