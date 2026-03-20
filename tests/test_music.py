@@ -146,6 +146,54 @@ class TestMusicGenEngine:
         call_args = model.generate.call_args
         assert "gentle piano" in str(call_args)
 
+    def test_musicgen_model_cached_across_calls(self, tmp_path):
+        """MusicGen model is loaded once and cached across multiple calls."""
+        mock_ac, mock_ac_models, mock_ta, mock_torch = _make_mock_audiocraft()
+        request1 = _make_music_request(mood="upbeat acoustic")
+        request2 = _make_music_request(mood="gentle piano")
+        config = _make_model_config("musicgen")
+
+        with patch.dict(sys.modules, {
+            "audiocraft": mock_ac,
+            "audiocraft.models": mock_ac_models,
+            "torchaudio": mock_ta,
+            "torch": mock_torch,
+        }):
+            if "autopilot.source.music" in sys.modules:
+                del sys.modules["autopilot.source.music"]
+            from autopilot.source.music import source_music, _musicgen_cache
+
+            # Clear cache to start fresh
+            _musicgen_cache.clear()
+
+            source_music(request1, config, tmp_path)
+            source_music(request2, config, tmp_path)
+
+        # get_pretrained should be called only ONCE (cached on second call)
+        assert mock_ac_models.MusicGen.get_pretrained.call_count == 1, (
+            "MusicGen.get_pretrained should be called once and cached, "
+            f"but was called {mock_ac_models.MusicGen.get_pretrained.call_count} times"
+        )
+
+    def test_musicgen_cache_clearable(self, tmp_path):
+        """_musicgen_cache can be cleared for test isolation."""
+        mock_ac, mock_ac_models, mock_ta, mock_torch = _make_mock_audiocraft()
+
+        with patch.dict(sys.modules, {
+            "audiocraft": mock_ac,
+            "audiocraft.models": mock_ac_models,
+            "torchaudio": mock_ta,
+            "torch": mock_torch,
+        }):
+            if "autopilot.source.music" in sys.modules:
+                del sys.modules["autopilot.source.music"]
+            from autopilot.source.music import _musicgen_cache
+
+            _musicgen_cache["test"] = "value"
+            assert len(_musicgen_cache) == 1
+            _musicgen_cache.clear()
+            assert len(_musicgen_cache) == 0
+
     def test_musicgen_saves_to_output_dir(self, tmp_path):
         """MusicGen saves file within the provided output_dir."""
         mock_ac, mock_ac_models, mock_ta, mock_torch = _make_mock_audiocraft()
