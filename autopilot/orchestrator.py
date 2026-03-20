@@ -297,6 +297,7 @@ def _run_render(*, config: Any, db: Any) -> None:
                     "Render validation [%s] %s: %s",
                     nid, issue.severity, issue.message,
                 )
+            db.upsert_edit_plan(nid, render_path=str(output_path))
             successes += 1
         except Exception:
             logger.exception("Render failed for narrative %s", nid)
