@@ -12,7 +12,9 @@ import logging
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+import numpy as np
 
 from autopilot.render.ffmpeg_render import RenderError, render_simple
 from autopilot.render.moviepy_render import ComplexRenderError, render_complex
@@ -101,10 +103,23 @@ def route_and_render(
         ) from e
 
     clips = edl.get("clips", [])
-    crop_modes = edl.get("crop_modes", {})
     _audio_settings = edl.get("audio_settings", {})
     music_tracks = edl.get("music", [])
     voiceovers = edl.get("voiceovers", [])
+
+    # Convert crop_modes list-of-dicts to lookup dicts
+    # (following otio_export.py pattern: cm["clip_id"] -> cm["mode"])
+    raw_crop_modes = edl.get("crop_modes", [])
+    crop_modes: dict[str, str] = {}
+    crop_meta: dict[str, dict[str, Any]] = {}
+    if isinstance(raw_crop_modes, list):
+        for cm in raw_crop_modes:
+            cid = cm.get("clip_id", "")
+            crop_modes[cid] = cm.get("mode", "")
+            crop_meta[cid] = cm
+    elif isinstance(raw_crop_modes, dict):
+        # Legacy format: already a flat dict of clip_id -> mode
+        crop_modes = raw_crop_modes
 
     # Get narrative metadata for output directory
     narrative = db.get_narrative(narrative_id)
@@ -123,9 +138,35 @@ def route_and_render(
             classification = _classify_clip(clip, crop_modes)
             segment_path = work_dir / f"segment_{i:04d}.mp4"
 
-            # Get crop path if applicable
+            # Load crop_path from DB when applicable
             crop_path = None
-            # TODO: Load crop_path from DB when available
+            media_id = clip_id  # clip_id in EDL == media_id in DB
+            cm_entry = crop_meta.get(clip_id, {})
+            target_aspect = getattr(config, "primary_aspect", "16:9")
+
+            if classification == "slow":
+                # Slow-path clips require crop data
+                subject_track_id = cm_entry.get("subject_track_id", 0)
+                crop_record = db.get_crop_path(
+                    media_id, target_aspect, subject_track_id,
+                )
+                if crop_record is None:
+                    raise RoutingError(
+                        f"No crop data for slow-path clip {clip_id}"
+                    )
+                path_data = crop_record.get("path_data")
+                if path_data is not None:
+                    crop_path = np.array(path_data, dtype=np.float64)
+            elif crop_modes.get(clip_id):
+                # Fast-path clips may have optional static crop
+                subject_track_id = cm_entry.get("subject_track_id", 0)
+                crop_record = db.get_crop_path(
+                    media_id, target_aspect, subject_track_id,
+                )
+                if crop_record is not None:
+                    path_data = crop_record.get("path_data")
+                    if path_data is not None:
+                        crop_path = np.array(path_data, dtype=np.float64)
 
             try:
                 if classification == "fast":
