@@ -656,3 +656,62 @@ class TestGenerateScriptParsing:
         with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
             with pytest.raises(ScriptError, match="[Ee]mpty"):
                 generate_script("n1", catalog_db, config)
+
+
+# -- Step 13: DB persistence and error wrapping tests -------------------------
+
+
+class TestGenerateScriptPersistence:
+    """Tests for generate_script DB storage and status updates."""
+
+    def test_script_stored_in_narrative_scripts(self, catalog_db):
+        """Script JSON is stored in narrative_scripts table."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.script import generate_script
+
+        config = LLMConfig()
+        _seed_minimal_narrative(catalog_db)
+
+        mock_anthropic, _ = _setup_mock_script_anthropic()
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            generate_script("n1", catalog_db, config)
+
+        stored = catalog_db.get_narrative_script("n1")
+        assert stored is not None
+        parsed = json.loads(stored["script_json"])
+        assert "scenes" in parsed
+        assert parsed["scenes"][0]["scene_number"] == 1
+
+    def test_narrative_status_updated_to_scripted(self, catalog_db):
+        """Narrative status is updated to 'scripted' after script generation."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.script import generate_script
+
+        config = LLMConfig()
+        _seed_minimal_narrative(catalog_db)
+
+        mock_anthropic, _ = _setup_mock_script_anthropic()
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            generate_script("n1", catalog_db, config)
+
+        narrative = catalog_db.get_narrative("n1")
+        assert narrative is not None
+        assert narrative["status"] == "scripted"
+
+    def test_api_error_wrapped_as_script_error(self, catalog_db):
+        """API errors are wrapped as ScriptError with chained cause."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.script import ScriptError, generate_script
+
+        config = LLMConfig()
+        _seed_minimal_narrative(catalog_db)
+
+        mock_anthropic, mock_client = _setup_mock_script_anthropic()
+        mock_client.messages.create.side_effect = RuntimeError("Connection timeout")
+
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            with pytest.raises(ScriptError, match="API.*failed") as exc_info:
+                generate_script("n1", catalog_db, config)
+
+        assert exc_info.value.__cause__ is not None
+        assert isinstance(exc_info.value.__cause__, RuntimeError)
