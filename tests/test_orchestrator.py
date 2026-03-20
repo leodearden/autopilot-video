@@ -932,3 +932,64 @@ class TestRenderStage:
         _run_render(config=minimal_config, db=db)
 
         assert mock_router.route_and_render.call_count == 2
+
+
+class TestUploadStage:
+    """Tests for the real _run_upload stage function."""
+
+    @patch("autopilot.orchestrator.thumbnail")
+    @patch("autopilot.orchestrator.youtube")
+    def test_upload_uploads_and_thumbnails_per_narrative(
+        self, mock_youtube, mock_thumbnail, minimal_config
+    ):
+        """_run_upload calls upload_video and extract_best_thumbnail per narrative."""
+        from autopilot.orchestrator import _run_upload
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_edit_plan.return_value = {
+            "narrative_id": "n1",
+            "edl_json": '{}',
+        }
+        # Simulate a render output path convention
+        render_dir = minimal_config.output_dir / "renders" / "n1"
+        render_dir.mkdir(parents=True)
+        video_file = render_dir / "output.mp4"
+        video_file.write_text("fake")
+
+        mock_youtube.upload_video.return_value = "https://youtu.be/abc"
+        mock_thumbnail.extract_best_thumbnail.return_value = Path("/thumb.jpg")
+
+        _run_upload(config=minimal_config, db=db)
+
+        mock_youtube.upload_video.assert_called_once()
+        mock_thumbnail.extract_best_thumbnail.assert_called_once()
+
+    @patch("autopilot.orchestrator.thumbnail")
+    @patch("autopilot.orchestrator.youtube")
+    def test_upload_continues_on_failure(
+        self, mock_youtube, mock_thumbnail, minimal_config
+    ):
+        """One narrative fails upload, others still uploaded."""
+        from autopilot.orchestrator import _run_upload
+        from autopilot.upload.youtube import UploadError
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        db.get_edit_plan.return_value = {"edl_json": '{}'}
+
+        for nid in ["n1", "n2"]:
+            render_dir = minimal_config.output_dir / "renders" / nid
+            render_dir.mkdir(parents=True)
+            (render_dir / "output.mp4").write_text("fake")
+
+        mock_youtube.upload_video.side_effect = [
+            UploadError("fail"), "https://youtu.be/def",
+        ]
+        mock_thumbnail.extract_best_thumbnail.return_value = Path("/thumb.jpg")
+
+        _run_upload(config=minimal_config, db=db)
+
+        assert mock_youtube.upload_video.call_count == 2
