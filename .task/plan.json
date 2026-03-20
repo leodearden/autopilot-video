@@ -13,7 +13,7 @@
     "autopilot",
     "tests"
   ],
-  "analysis": "The orchestrator.py currently registers all 9 stages as stubs (_stage_stub) that log 'not yet implemented'. The CLI wires 7 subcommands (ingest, analyze, plan, edit, render, upload, run) that delegate to these stubs via orch._stage_map[NAME].func(). All downstream module implementations are complete with well-defined public APIs.\n\nThe task requires: (1) Replace each stub with a real stage function that calls the actual module APIs, (2) Implement progress reporting with stage timings and wall-clock budget tracking, (3) Handle human-review checkpoint in NARRATE stage, (4) Per-narrative error isolation in multi-narrative stages (SCRIPT, EDL, SOURCE, RENDER, UPLOAD), (5) Wire CLI subcommands to use the real stage functions, (6) Create an e2e test.\n\nKey function signatures to wire:\n- INGEST: scanner.scan_directory(input_dir, max_workers=None) -> list[MediaFile], normalizer.normalize_audio(media_path, output_dir, root_dir=None) -> Path, dedup.mark_duplicates(catalog_db) -> int\n- ANALYZE: asr.transcribe_media(media_id, audio_path, db, scheduler, config, batch_size=24), scenes.detect_shots(media_id, video_path, db, scheduler), objects.detect_objects(media_id, video_path, db, scheduler, config, sparse=False), faces.detect_faces(media_id, video_path, db, scheduler, config), embeddings.compute_embeddings(media_id, video_path, db, scheduler, config), audio_events.classify_audio_events(media_id, audio_path, db, scheduler), faces.cluster_faces(db, eps=0.5, min_samples=3)\n- CLASSIFY: cluster.cluster_activities(db) -> list[ActivityCluster], classify.label_activities(db, config: LLMConfig)\n- NARRATE: narratives.build_master_storyboard(db) -> str, narratives.propose_narratives(storyboard, db, config: AutopilotConfig) -> list[Narrative], narratives.format_for_review(narratives) -> str\n- SCRIPT: script.generate_script(narrative_id, db, config: LLMConfig) -> dict\n- EDL: edl.generate_edl(narrative_id, db, config: LLMConfig) -> dict, validator.validate_edl(edl, db) -> ValidationResult, otio_export.export_otio(edl, output_path, db) -> Path\n- SOURCE: resolve.resolve_edl_assets(edl, config: ModelConfig, output_dir, db, narrative_id=None) -> dict\n- RENDER: router.route_and_render(narrative_id, db, config: OutputConfig) -> Path, validate.validate_render(rendered_path, edl, config: OutputConfig) -> ValidationReport\n- UPLOAD: youtube.upload_video(narrative_id, video_path, db, config: YouTubeConfig) -> str, thumbnail.extract_best_thumbnail(narrative_id, video_path, db) -> Path\n\nThe existing test_orchestrator.py (395 lines, 12 test classes) and test_cli.py (430 lines) have comprehensive tests for the current stub-based behavior. New tests must extend these without breaking existing ones.",
+  "analysis": "The orchestrator.py currently registers all 9 stages as stubs (_stage_stub) that log 'not yet implemented'. The CLI wires 7 subcommands (ingest, analyze, plan, edit, render, upload, run) that delegate to these stubs via orch._stage_map[NAME].func(). All downstream module implementations are complete with well-defined public APIs.\n\nThe task requires: (1) Replace each stub with a real stage function that calls the actual module APIs, (2) Implement progress reporting with stage timings and wall-clock budget tracking, (3) Handle human-review checkpoint in NARRATE stage, (4) Per-narrative error isolation in multi-narrative stages (SCRIPT, EDL, SOURCE, RENDER, UPLOAD), (5) Wire CLI subcommands to use the real stage functions, (6) Create an e2e test.\n\nPost-review fixes (steps 27-37): Five blocking issues identified:\n1. RENDER→UPLOAD inter-stage data flow: render output_path not persisted to DB; upload reconstructs path from filesystem convention. Fix: persist render_path in edit_plan DB, read it back in upload.\n2. GPUScheduler resource leak: created in _run_analyze but never cleaned up with force_unload_all(). Fix: wrap in try/finally.\n3. Incorrect test assertion: test_source_resolves_assets_per_narrative has vacuously true `or` branch. Fix: remove escape hatch.\n4. Missing error isolation in _run_analyze: no per-media try/except, one bad file aborts all remaining. Fix: add per-media error isolation consistent with other stages.\n5. Silent total failure in _run_edl, _run_source_assets, _run_render, _run_upload: all return normally even when 0/N succeed. Fix: add all-failure RuntimeError guard consistent with _run_script.",
   "prerequisites": [
     {
       "id": "pre-1",
@@ -205,6 +205,83 @@
       "description": "Fix any integration issues discovered during e2e test execution. Adjust stage function data flow, argument passing, or error handling as needed to ensure the full pipeline runs end-to-end with mocks. Ensure all existing tests in test_orchestrator.py and test_cli.py still pass.",
       "status": "done",
       "commit": "dcbd70c"
+    },
+    {
+      "id": "step-27",
+      "type": "test",
+      "description": "Fix incorrect assertion in test_source_resolves_assets_per_narrative (reviewer: test_analyst, issue: incorrect_assertion). Remove the vacuously true `or (len(call_kwargs[0]) >= 1)` escape hatch from line 857-859. Replace with a strict assertion: `assert call_kwargs[1]['narrative_id'] == 'n1'`. This ensures the test actually verifies that narrative_id='n1' is correctly passed as a keyword argument to resolve_edl_assets, rather than silently passing whenever any positional arg exists.",
+      "status": "done",
+      "commit": "5cd22f6"
+    },
+    {
+      "id": "step-28",
+      "type": "test",
+      "description": "Write failing tests in test_orchestrator.py TestAnalyzeStage for GPUScheduler resource cleanup (reviewer: performance, issue: resource_leak). Add test_analyze_calls_force_unload_all_on_success: mock GPUScheduler and all analysis functions, run _run_analyze, verify scheduler.force_unload_all() is called once after all analysis completes. Add test_analyze_calls_force_unload_all_on_error: mock one analysis function to raise, verify scheduler.force_unload_all() is still called (cleanup happens even on error path).",
+      "status": "done",
+      "commit": "23b3b4a"
+    },
+    {
+      "id": "step-29",
+      "type": "impl",
+      "description": "Fix GPUScheduler resource leak in _run_analyze (reviewer: performance, issue: resource_leak). Wrap the analysis loop and cluster_faces call in a try/finally block: `scheduler = GPUScheduler(...); try: <per-media loop + cluster_faces>; finally: scheduler.force_unload_all()`. This ensures all GPU models are unloaded after ANALYZE completes, freeing VRAM for downstream stages.",
+      "status": "done",
+      "commit": "2218676"
+    },
+    {
+      "id": "step-30",
+      "type": "test",
+      "description": "Write failing tests in test_orchestrator.py TestAnalyzeStage for per-media error isolation (reviewer: robustness, issue: missing_error_isolation). Add test_analyze_continues_on_per_media_error: mock 3 media in DB, make asr.transcribe_media raise for the first media, verify scenes.detect_shots (and other analysis) is still called for media 2 and 3. Add test_analyze_logs_per_media_error: verify the exception for the failed media is logged. Add test_analyze_counts_failures: verify the log message reports correct success/failure counts (e.g., '2/3 media processed').",
+      "status": "done",
+      "commit": "b9ef8ac"
+    },
+    {
+      "id": "step-31",
+      "type": "impl",
+      "description": "Add per-media error isolation in _run_analyze (reviewer: robustness, issue: missing_error_isolation). Wrap the per-media analysis block (lines 135-150) in a try/except that logs the exception via logger.exception('Analysis failed for media %s', media_id) and increments a failure counter, then continues to next media. After the loop, log success/failure counts. This is consistent with the error isolation pattern in _run_script, _run_edl, and other multi-item stages.",
+      "status": "done",
+      "commit": "c4b0bcc"
+    },
+    {
+      "id": "step-32",
+      "type": "test",
+      "description": "Write failing tests in test_orchestrator.py for all-failure RuntimeError guard (reviewer: robustness, issue: silent_total_failure). Add test_edl_raises_if_all_narratives_fail in TestEdlStage: mock 2 narratives with scripts, make generate_edl raise for both, verify _run_edl raises RuntimeError('All narratives failed'). Add test_source_raises_if_all_narratives_fail in TestSourceStage: mock 2 narratives with edit plans, make resolve_edl_assets raise for both, verify _run_source_assets raises RuntimeError. Add test_render_raises_if_all_narratives_fail in TestRenderStage: mock 2 narratives with edit plans, make route_and_render raise for both, verify _run_render raises RuntimeError. Add test_upload_raises_if_all_narratives_fail in TestUploadStage: mock 2 narratives with rendered videos, make upload_video raise for both, verify _run_upload raises RuntimeError.",
+      "status": "done",
+      "commit": "579634f"
+    },
+    {
+      "id": "step-33",
+      "type": "impl",
+      "description": "Add all-failure RuntimeError guard to _run_edl, _run_source_assets, _run_render, and _run_upload (reviewer: robustness, issue: silent_total_failure). After each stage's narrative loop, add: `if approved and successes == 0: raise RuntimeError('All narratives failed <stage_name>')`. For _run_edl add after line 238, for _run_source_assets after line 262, for _run_render after line 288, for _run_upload after line 310. This is consistent with _run_script:202-203 and ensures the orchestrator records ERROR status (not DONE) when a stage produces zero output, which triggers downstream stage skipping.",
+      "status": "done",
+      "commit": "6c6600a"
+    },
+    {
+      "id": "step-34",
+      "type": "test",
+      "description": "Write failing test in test_orchestrator.py TestRenderStage for persisting render output path (reviewer: architect_reviewer, issue: inter_stage_data_flow). Add test_render_persists_render_path_to_db: mock route_and_render to return Path('/out/renders/n1/output.mp4'), verify db.upsert_edit_plan is called with render_path=str(output_path) for the narrative. This makes the RENDER→UPLOAD data contract explicit and DB-mediated.",
+      "status": "done",
+      "commit": "168fed3"
+    },
+    {
+      "id": "step-35",
+      "type": "impl",
+      "description": "Update _run_render to persist render output path to DB (reviewer: architect_reviewer, issue: inter_stage_data_flow). After a successful route_and_render call, call db.upsert_edit_plan(nid, render_path=str(output_path)) to store the actual render output path. This replaces the implicit path convention with an explicit DB-mediated data contract between RENDER and UPLOAD.",
+      "status": "done",
+      "commit": "190ca37"
+    },
+    {
+      "id": "step-36",
+      "type": "test",
+      "description": "Write failing test in test_orchestrator.py TestUploadStage for reading render_path from DB (reviewer: architect_reviewer, issue: inter_stage_data_flow). Add test_upload_reads_render_path_from_db: mock db.get_edit_plan to return {'render_path': '/db/stored/path.mp4', 'edl_json': '{}'}, verify upload_video is called with video_path=Path('/db/stored/path.mp4') instead of the old convention path. Add test_upload_skips_narrative_when_no_render_path: mock db.get_edit_plan to return {'edl_json': '{}'} with no render_path key, verify the narrative is skipped with a warning log.",
+      "status": "done",
+      "commit": "4666093"
+    },
+    {
+      "id": "step-37",
+      "type": "impl",
+      "description": "Update _run_upload to read render_path from DB instead of filesystem convention (reviewer: architect_reviewer, issue: inter_stage_data_flow). Replace the path reconstruction logic (lines 298-300: config.output_dir/'renders'/nid/'output.mp4') with: load edit_plan from db.get_edit_plan(nid), read plan.get('render_path'). If render_path is None or missing, log warning and skip narrative. Use Path(render_path) as video_path for upload_video and extract_best_thumbnail. Remove the filesystem existence check since the path is now authoritative from the DB.",
+      "status": "done",
+      "commit": "d8246a9"
     }
   ],
   "design_decisions": [
@@ -239,6 +316,18 @@
     {
       "decision": "Individual CLI subcommands continue using orch._stage_map pattern",
       "rationale": "The CLI subcommands (ingest, analyze, etc.) already access stage functions via orch._stage_map[NAME].func(). Since the orchestrator now registers real functions instead of stubs, these calls automatically use real implementations. Minimal CLI changes are needed \u2014 just ensure the orchestrator constructor receives appropriate parameters."
+    },
+    {
+      "decision": "DB-mediated RENDER→UPLOAD data contract via render_path field in edit_plan",
+      "rationale": "Instead of UPLOAD independently reconstructing the render output path from a filesystem convention (config.output_dir/'renders'/nid/'output.mp4'), RENDER persists the actual output_path returned by route_and_render to the DB via db.upsert_edit_plan(nid, render_path=str(output_path)). UPLOAD then reads render_path from the edit_plan. This eliminates the fragile implicit path coupling: if route_and_render changes its naming scheme, UPLOAD automatically follows. Consistent with EDL→SOURCE_ASSETS which already passes data through DB."
+    },
+    {
+      "decision": "GPUScheduler cleanup via try/finally, not context manager",
+      "rationale": "Using try/finally with explicit force_unload_all() call rather than a context manager (with statement) because GPUScheduler's __exit__ support is not guaranteed. The try/finally pattern ensures cleanup happens on both success and error paths, freeing GPU VRAM before downstream stages (CLASSIFY through UPLOAD) begin."
+    },
+    {
+      "decision": "All multi-item stages raise RuntimeError on total failure",
+      "rationale": "All stages that iterate over multiple items (media in ANALYZE, narratives in SCRIPT/EDL/SOURCE_ASSETS/RENDER/UPLOAD) raise RuntimeError when 0/N items succeed. This ensures the orchestrator records ERROR status, populates errored_stages, and skips downstream stages — rather than silently marking the stage DONE with zero output and letting the pipeline produce nothing."
     }
   ],
   "reuse": [
@@ -286,6 +375,11 @@
       "what": "build_master_storyboard and format_for_review helpers",
       "where": "autopilot/organize/narratives.py",
       "how": "The NARRATE stage calls build_master_storyboard(db) to create the storyboard text, and format_for_review(narratives) to create human-readable review text for the callback."
+    },
+    {
+      "what": "_run_script all-failure guard pattern",
+      "where": "autopilot/orchestrator.py lines 202-203",
+      "how": "The pattern `if approved and successes == 0: raise RuntimeError('All narratives failed ...')` from _run_script is reused identically in _run_edl, _run_source_assets, _run_render, and _run_upload to ensure consistent total-failure signaling."
     }
   ]
 }
