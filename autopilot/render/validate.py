@@ -118,6 +118,32 @@ def _run_ffprobe_json(path: Path) -> dict:
     return out
 
 
+def _check_duration(
+    probe_data: dict, edl: dict, issues: list[Issue],
+) -> None:
+    """Check rendered duration against EDL target within ±1s tolerance."""
+    target = edl.get("target_duration_seconds")
+    if target is None:
+        return
+
+    actual = probe_data.get("duration_seconds")
+    if actual is None:
+        return
+
+    if abs(actual - target) > 1.0:
+        issues.append(
+            Issue(
+                severity="error",
+                check="duration",
+                message=(
+                    f"Duration {actual:.1f}s differs from target "
+                    f"{target:.1f}s by more than 1s"
+                ),
+                measured_value=actual,
+            )
+        )
+
+
 def validate_render(
     rendered_path: Path,
     edl: dict,
