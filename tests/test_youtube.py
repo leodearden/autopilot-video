@@ -244,3 +244,148 @@ class TestBuildUploadMetadata:
         meta = _build_upload_metadata("n1", catalog_db, config)
         assert meta["snippet"]["categoryId"] == "19"
         assert meta["status"]["privacyStatus"] == "private"
+
+
+# ---------------------------------------------------------------------------
+# Full upload_video flow tests
+# ---------------------------------------------------------------------------
+
+
+class TestUploadVideoFlow:
+    """Verify full upload_video function."""
+
+    def _make_config(self, tmp_path):
+        """Create a mock YouTubeConfig with a credentials file."""
+        creds_file = tmp_path / "creds.json"
+        creds_file.write_text("{}")
+        config = MagicMock()
+        config.credentials_path = creds_file
+        config.privacy_status = "unlisted"
+        config.default_category = "22"
+        return config
+
+    def test_upload_calls_youtube_api_insert(
+        self, catalog_db, tmp_path
+    ):
+        """Calls YouTube videos().insert() with MediaFileUpload."""
+        from autopilot.upload.youtube import upload_video
+
+        catalog_db.insert_narrative("n1", title="Test", description="desc")
+        video_file = tmp_path / "video.mp4"
+        video_file.write_bytes(b"\x00" * 100)
+        config = self._make_config(tmp_path)
+
+        mods, mock_oauth2_creds, _ = _setup_google_mocks()
+        mock_creds = MagicMock()
+        mock_creds.expired = False
+        mods["google.oauth2.credentials"].Credentials \
+            .from_authorized_user_file.return_value = mock_creds
+
+        mock_youtube = MagicMock()
+        mock_insert_req = MagicMock()
+        mock_insert_req.next_chunk.return_value = (
+            None,
+            {"id": "abc123"},
+        )
+        mock_youtube.videos.return_value.insert.return_value = (
+            mock_insert_req
+        )
+        mods["googleapiclient.discovery"].build.return_value = mock_youtube
+
+        with patch.dict(sys.modules, mods):
+            result = upload_video("n1", video_file, catalog_db, config)
+
+        mock_youtube.videos.return_value.insert.assert_called_once()
+        assert result == "https://youtu.be/abc123"
+
+    def test_upload_stores_result_in_db(self, catalog_db, tmp_path):
+        """Stores upload record in catalog DB after upload."""
+        from autopilot.upload.youtube import upload_video
+
+        catalog_db.insert_narrative("n1", title="Test", description="desc")
+        video_file = tmp_path / "video.mp4"
+        video_file.write_bytes(b"\x00" * 100)
+        config = self._make_config(tmp_path)
+
+        mods, _, _ = _setup_google_mocks()
+        mock_creds = MagicMock()
+        mock_creds.expired = False
+        mods["google.oauth2.credentials"].Credentials \
+            .from_authorized_user_file.return_value = mock_creds
+
+        mock_youtube = MagicMock()
+        mock_insert_req = MagicMock()
+        mock_insert_req.next_chunk.return_value = (
+            None,
+            {"id": "xyz789"},
+        )
+        mock_youtube.videos.return_value.insert.return_value = (
+            mock_insert_req
+        )
+        mods["googleapiclient.discovery"].build.return_value = mock_youtube
+
+        with patch.dict(sys.modules, mods):
+            upload_video("n1", video_file, catalog_db, config)
+
+        upload_rec = catalog_db.get_upload("n1")
+        assert upload_rec is not None
+        assert upload_rec["youtube_video_id"] == "xyz789"
+        assert upload_rec["youtube_url"] == "https://youtu.be/xyz789"
+
+    def test_upload_returns_youtube_url(self, catalog_db, tmp_path):
+        """Returns the YouTube URL for the uploaded video."""
+        from autopilot.upload.youtube import upload_video
+
+        catalog_db.insert_narrative("n1", title="Test", description="desc")
+        video_file = tmp_path / "video.mp4"
+        video_file.write_bytes(b"\x00" * 100)
+        config = self._make_config(tmp_path)
+
+        mods, _, _ = _setup_google_mocks()
+        mock_creds = MagicMock()
+        mock_creds.expired = False
+        mods["google.oauth2.credentials"].Credentials \
+            .from_authorized_user_file.return_value = mock_creds
+
+        mock_youtube = MagicMock()
+        mock_insert_req = MagicMock()
+        mock_insert_req.next_chunk.return_value = (
+            None,
+            {"id": "vid_001"},
+        )
+        mock_youtube.videos.return_value.insert.return_value = (
+            mock_insert_req
+        )
+        mods["googleapiclient.discovery"].build.return_value = mock_youtube
+
+        with patch.dict(sys.modules, mods):
+            url = upload_video("n1", video_file, catalog_db, config)
+
+        assert url == "https://youtu.be/vid_001"
+
+    def test_upload_raises_on_api_error(self, catalog_db, tmp_path):
+        """Wraps API HttpError as UploadError."""
+        from autopilot.upload.youtube import UploadError, upload_video
+
+        catalog_db.insert_narrative("n1", title="Test", description="desc")
+        video_file = tmp_path / "video.mp4"
+        video_file.write_bytes(b"\x00" * 100)
+        config = self._make_config(tmp_path)
+
+        mods, _, _ = _setup_google_mocks()
+        mock_creds = MagicMock()
+        mock_creds.expired = False
+        mods["google.oauth2.credentials"].Credentials \
+            .from_authorized_user_file.return_value = mock_creds
+
+        mock_youtube = MagicMock()
+        mock_insert_req = MagicMock()
+        mock_insert_req.next_chunk.side_effect = Exception("API quota exceeded")
+        mock_youtube.videos.return_value.insert.return_value = (
+            mock_insert_req
+        )
+        mods["googleapiclient.discovery"].build.return_value = mock_youtube
+
+        with patch.dict(sys.modules, mods):
+            with pytest.raises(UploadError, match="quota exceeded"):
+                upload_video("n1", video_file, catalog_db, config)
