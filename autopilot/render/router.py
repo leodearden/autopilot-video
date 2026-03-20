@@ -7,9 +7,15 @@ concatenates all rendered segments into the final output.
 
 from __future__ import annotations
 
+import json
 import logging
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from autopilot.render.ffmpeg_render import RenderError, render_simple
+from autopilot.render.moviepy_render import ComplexRenderError, render_complex
 
 if TYPE_CHECKING:
     from autopilot.config import OutputConfig
@@ -74,4 +80,159 @@ def route_and_render(
     Raises:
         RoutingError: If routing or rendering fails.
     """
-    raise NotImplementedError("route_and_render not yet implemented")
+    # -- Load EDL from database -------------------------------------------------
+    edit_plan = db.get_edit_plan(narrative_id)
+    if edit_plan is None:
+        raise RoutingError(
+            f"No edit plan found for narrative {narrative_id!r}"
+        )
+
+    edl_json_str = edit_plan.get("edl_json")
+    if not edl_json_str:
+        raise RoutingError(
+            f"Edit plan for narrative {narrative_id!r} has no edl_json"
+        )
+
+    try:
+        edl = json.loads(str(edl_json_str))
+    except json.JSONDecodeError as e:
+        raise RoutingError(
+            f"Corrupt edl_json for narrative {narrative_id!r}: {e}"
+        ) from e
+
+    clips = edl.get("clips", [])
+    crop_modes = edl.get("crop_modes", {})
+    audio_settings = edl.get("audio_settings", {})
+    music_tracks = edl.get("music", [])
+    voiceovers = edl.get("voiceovers", [])
+
+    # Get narrative metadata for output directory
+    narrative = db.get_narrative(narrative_id)
+    narrative_title = "untitled"
+    if narrative:
+        narrative_title = str(narrative.get("title", "untitled"))
+
+    # -- Render each clip ------------------------------------------------------
+    segments: list[Path] = []
+    work_dir = Path(tempfile.mkdtemp(prefix="render_"))
+
+    for i, clip in enumerate(clips):
+        clip_id = clip.get("clip_id", f"clip_{i}")
+        classification = _classify_clip(clip, crop_modes)
+        segment_path = work_dir / f"segment_{i:04d}.mp4"
+
+        # Get crop path if applicable
+        crop_path = None
+        # TODO: Load crop_path from DB when available
+
+        try:
+            if classification == "fast":
+                render_simple(clip, crop_path, segment_path, config)
+            else:
+                render_complex(clip, crop_path, segment_path, config)
+            segments.append(segment_path)
+        except RenderError as e:
+            raise RoutingError(
+                f"Fast-path render failed for clip {clip_id}: {e}"
+            ) from e
+        except ComplexRenderError as e:
+            raise RoutingError(
+                f"Complex render failed for clip {clip_id}: {e}"
+            ) from e
+
+    if not segments:
+        raise RoutingError("No clips to render")
+
+    # -- Concatenate segments --------------------------------------------------
+    output_dir = Path("output") / narrative_title
+    output_dir.mkdir(parents=True, exist_ok=True)
+    final_output = output_dir / "final.mp4"
+
+    # Build concat file list
+    concat_list = work_dir / "concat.txt"
+    with open(concat_list, "w") as f:
+        for seg in segments:
+            f.write(f"file '{seg}'\n")
+
+    # Build final ffmpeg command for concatenation + audio mixing
+    cmd: list[str] = ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                       "-i", str(concat_list)]
+
+    # Add music and voiceover inputs
+    audio_inputs: list[str] = []
+    input_idx = 1  # 0 is the concat input
+    for music in music_tracks:
+        music_path = music.get("path", "")
+        if music_path:
+            cmd.extend(["-i", music_path])
+            audio_inputs.append(f"[{input_idx}:a]")
+            input_idx += 1
+
+    for vo in voiceovers:
+        vo_path = vo.get("path", "")
+        if vo_path:
+            cmd.extend(["-i", vo_path])
+            audio_inputs.append(f"[{input_idx}:a]")
+            input_idx += 1
+
+    # Audio mixing filter
+    if audio_inputs:
+        # Mix source audio with additional tracks
+        all_audio = [f"[0:a]"] + audio_inputs
+        mix_filter = "".join(all_audio) + f"amix=inputs={len(all_audio)}:duration=longest"
+        cmd.extend(["-filter_complex", mix_filter])
+    else:
+        cmd.extend(["-c", "copy"])
+
+    # Subtitle support: generate SRT from ASR transcript if available
+    transcript = db.get_transcript(narrative_id) if hasattr(db, "get_transcript") else None
+    if transcript and transcript.get("segments_json"):
+        try:
+            segments_data = json.loads(str(transcript["segments_json"]))
+            srt_path = work_dir / "subtitles.srt"
+            _generate_srt(segments_data, srt_path)
+            cmd.extend(["-vf", f"subtitles={srt_path}"])
+        except (json.JSONDecodeError, KeyError, OSError):
+            logger.warning("Failed to generate subtitles, skipping")
+
+    cmd.append(str(final_output))
+
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        raise RoutingError(
+            f"Final concatenation failed: {e}"
+        ) from e
+
+    return final_output
+
+
+def _generate_srt(segments: list[dict], srt_path: Path) -> None:
+    """Generate an SRT subtitle file from ASR transcript segments.
+
+    Args:
+        segments: List of dicts with 'start', 'end', 'text' keys.
+        srt_path: Path to write the SRT file.
+    """
+    with open(srt_path, "w") as f:
+        for i, seg in enumerate(segments, start=1):
+            start = _seconds_to_srt_time(seg.get("start", 0.0))
+            end = _seconds_to_srt_time(seg.get("end", 0.0))
+            text = seg.get("text", "")
+            f.write(f"{i}\n{start} --> {end}\n{text}\n\n")
+
+
+def _seconds_to_srt_time(seconds: float) -> str:
+    """Convert seconds to SRT timestamp format (HH:MM:SS,mmm).
+
+    Args:
+        seconds: Time in seconds.
+
+    Returns:
+        SRT timestamp string.
+    """
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    millis = int((seconds % 1) * 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
