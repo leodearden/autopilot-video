@@ -1,0 +1,224 @@
+{
+  "task_id": "16",
+  "title": "Script generation",
+  "files": [
+    "autopilot/plan/script.py",
+    "autopilot/plan/__init__.py",
+    "autopilot/db.py",
+    "tests/test_script.py"
+  ],
+  "modules": [
+    "autopilot/plan",
+    "autopilot/db",
+    "tests"
+  ],
+  "analysis": "Task 16 implements script.py in the plan module for narrative storyboard assembly and Claude Opus scene-by-scene scripting. The codebase has clear patterns from narratives.py and classify.py: a custom error class, a prompt loader, an LLM caller with anthropic import, JSON parser with code-block extraction, DB storage, and status updates. The script_writer.md prompt already exists with the expected JSON output format (scenes, broll_needs, quality_flags). The DB currently lacks a narrative_scripts table — one must be added along with CRUD methods. build_narrative_storyboard assembles per-shot data from the narrative's activity clusters: for each clip in each cluster, it gathers shot boundaries, transcripts, captions (visual descriptions), YOLO detections, faces, and audio events, formatted into structured text. generate_script takes this storyboard plus the narrative description, calls Claude Opus, parses the JSON response, stores it, and updates narrative status to 'scripted'.\n\nREVIEW UPDATE: Robustness reviewer identified 4 unguarded type casts where float()/int() is called on values that can be NULL (SQLite allows NULL in composite primary key columns). These are at: (1) caption filtering float(c['start_time'])/float(c['end_time']) at line 169, (2) int(det_row['frame_number']) in _get_detections_in_range at line 271, (3) int(face['frame_number']) in _get_faces_in_range at line 297, (4) float(ev_row['timestamp_seconds']) in _get_audio_in_range at line 321. All need NULL guards consistent with the existing try/except pattern used for JSON parsing in the same functions.",
+  "prerequisites": [
+    {
+      "id": "pre-1",
+      "description": "Add narrative_scripts table to CatalogDB schema (narrative_id TEXT PK FK, script_json TEXT, created_at TEXT) and add upsert_narrative_script() and get_narrative_script() CRUD methods to db.py",
+      "status": "done",
+      "commit": "dbf9993",
+      "tests": [
+        "tests/test_script.py::TestDBNarrativeScripts::test_upsert_and_get_narrative_script",
+        "tests/test_script.py::TestDBNarrativeScripts::test_get_nonexistent_returns_none",
+        "tests/test_script.py::TestDBNarrativeScripts::test_upsert_overwrites"
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "id": "step-1",
+      "type": "test",
+      "description": "Write failing tests for ScriptError import, subclass of Exception, and public API surface (build_narrative_storyboard and generate_script signatures with correct parameters and return annotations)",
+      "status": "done",
+      "commit": "6442c32"
+    },
+    {
+      "id": "step-2",
+      "type": "impl",
+      "description": "Create autopilot/plan/script.py with ScriptError class and stub build_narrative_storyboard(narrative_id, db) -> str and generate_script(narrative_id, db, config) -> dict with __all__ exports",
+      "status": "done",
+      "commit": "6442c32"
+    },
+    {
+      "id": "step-3",
+      "type": "test",
+      "description": "Write failing tests for build_narrative_storyboard: narrative not found raises ScriptError, empty cluster list returns minimal storyboard text",
+      "status": "done",
+      "commit": "58033cb"
+    },
+    {
+      "id": "step-4",
+      "type": "impl",
+      "description": "Implement narrative lookup and cluster iteration in build_narrative_storyboard — get narrative from DB, parse activity_cluster_ids_json, get each cluster, handle missing narrative error",
+      "status": "done",
+      "commit": "58033cb"
+    },
+    {
+      "id": "step-5",
+      "type": "test",
+      "description": "Write failing tests for build_narrative_storyboard with fully seeded data: verify output contains per-shot transcript text, detected objects, people labels, audio events, duration, and timestamps for both source clip and narrative timeline",
+      "status": "done",
+      "commit": "6394aaa"
+    },
+    {
+      "id": "step-6",
+      "type": "impl",
+      "description": "Implement full L-Storyboard assembly: for each clip in each cluster, get shot boundaries to segment into shots, then gather transcript segments, captions (visual descriptions), YOLO detections, faces, audio events per shot; format as structured text with dual timestamps",
+      "status": "done",
+      "commit": "6394aaa"
+    },
+    {
+      "id": "step-7",
+      "type": "test",
+      "description": "Write failing tests for build_narrative_storyboard resilience: corrupt JSON in shot boundaries/transcripts/detections is handled gracefully (logged, skipped), clips with no shot boundaries treated as single shot",
+      "status": "done",
+      "commit": "d97382e"
+    },
+    {
+      "id": "step-8",
+      "type": "impl",
+      "description": "Add error handling and resilience to build_narrative_storyboard: try/except around JSON parsing with logging, fallback for missing shot boundaries",
+      "status": "done",
+      "commit": "d97382e"
+    },
+    {
+      "id": "step-9",
+      "type": "test",
+      "description": "Write failing tests for generate_script: verifies LLM is called with planning_model, script_writer.md is used as system prompt, storyboard + narrative description are in user message, narrative not found raises ScriptError",
+      "status": "done",
+      "commit": "473c830"
+    },
+    {
+      "id": "step-10",
+      "type": "impl",
+      "description": "Implement generate_script LLM call: load narrative, call build_narrative_storyboard, load and use script_writer.md prompt, call Claude Opus with planning_model, pass storyboard + narrative description as user content",
+      "status": "done",
+      "commit": "473c830"
+    },
+    {
+      "id": "step-11",
+      "type": "test",
+      "description": "Write failing tests for generate_script response parsing: valid JSON response returns dict with scenes/broll_needs/quality_flags, JSON in code block extracted correctly, malformed JSON raises ScriptError, empty LLM response raises ScriptError",
+      "status": "done",
+      "commit": "0dee1da"
+    },
+    {
+      "id": "step-12",
+      "type": "impl",
+      "description": "Implement JSON response parsing in generate_script: extract from code blocks, parse JSON, validate top-level structure, wrap errors as ScriptError",
+      "status": "done",
+      "commit": "0dee1da"
+    },
+    {
+      "id": "step-13",
+      "type": "test",
+      "description": "Write failing tests for generate_script DB persistence: script JSON stored in narrative_scripts table, narrative status updated to 'scripted', API errors wrapped as ScriptError with chained cause",
+      "status": "done",
+      "commit": "e18a85b"
+    },
+    {
+      "id": "step-14",
+      "type": "impl",
+      "description": "Implement DB storage and status update in generate_script: upsert_narrative_script with script JSON, update_narrative_status to 'scripted', wrap all errors as ScriptError",
+      "status": "done",
+      "commit": "e18a85b"
+    },
+    {
+      "id": "step-15",
+      "type": "test",
+      "description": "Write integration test: seed DB with full data (media, transcripts, detections, faces, audio events, shot boundaries, captions, activity clusters, narrative) -> build_narrative_storyboard -> generate_script (mocked LLM) -> verify DB state (script stored, narrative status 'scripted')",
+      "status": "done",
+      "commit": "cdcafae"
+    },
+    {
+      "id": "step-16",
+      "type": "impl",
+      "description": "Fix any remaining issues surfaced by integration test; finalize module exports and docstrings",
+      "status": "done",
+      "commit": "cdcafae"
+    },
+    {
+      "id": "step-17",
+      "type": "test",
+      "description": "Write failing tests for NULL field resilience in storyboard assembly — 4 cases matching reviewer findings: (1) caption rows with NULL start_time or end_time should be skipped without raising TypeError in the list comprehension at line 169; (2) detection rows with NULL frame_number should be skipped with a warning log in _get_detections_in_range (line 271); (3) face rows with NULL frame_number should be skipped with a warning log in _get_faces_in_range (line 297); (4) audio_event rows with NULL timestamp_seconds should be skipped with a warning log in _get_audio_in_range (line 321). Each test seeds the DB with a mix of valid rows and rows containing NULL in the relevant primary key column, calls build_narrative_storyboard, and asserts: no TypeError is raised, valid rows still appear in the output, and NULL rows are silently excluded.",
+      "status": "done",
+      "commit": "6ea3151"
+    },
+    {
+      "id": "step-18",
+      "type": "impl",
+      "description": "Fix all 4 unguarded type casts to handle NULL values: (1) In caption filtering (line 169), pre-filter rows where start_time or end_time is None before calling float(), using the pattern: `c['start_time'] is not None and c['end_time'] is not None and float(c['start_time']) < shot_end and float(c['end_time']) > shot_start`. (2) In _get_detections_in_range (line 271), wrap `int(det_row['frame_number'])` in try/except (TypeError, ValueError) with logger.warning and continue. (3) In _get_faces_in_range (line 297), wrap `int(face['frame_number'])` in try/except (TypeError, ValueError) with logger.warning and continue. (4) In _get_audio_in_range (line 321), wrap `float(ev_row['timestamp_seconds'])` in try/except (TypeError, ValueError) with logger.warning and continue. All fixes follow the existing error-handling pattern (try/except + continue) already used for JSON parsing in the same functions.",
+      "status": "done",
+      "commit": "5f03750"
+    }
+  ],
+  "design_decisions": [
+    {
+      "decision": "Add a separate narrative_scripts table rather than a column on narratives",
+      "rationale": "Script JSON can be very large (many scenes with detailed fields). A separate table keeps the narratives table lightweight for status queries and avoids loading script data when listing narratives."
+    },
+    {
+      "decision": "Use LLMConfig (not AutopilotConfig) for generate_script",
+      "rationale": "The script_writer.md prompt has no creator profile placeholders (unlike narrative_planner.md which needs CreatorConfig). LLMConfig provides the planning_model needed for Claude Opus. This keeps the API surface minimal."
+    },
+    {
+      "decision": "Treat clips without shot boundaries as a single shot",
+      "rationale": "Not all clips will have shot boundary data (e.g., if TransNetV2/PySceneDetect wasn't run). Treating the entire clip as one shot ensures the storyboard includes all footage rather than silently dropping clips."
+    },
+    {
+      "decision": "Follow the narratives.py/classify.py error pattern with ScriptError wrapping all failures",
+      "rationale": "Consistent with existing codebase convention. Every module has its own error class (NarrativeError, ClassifyError, CaptionError, etc.) that wraps underlying exceptions with descriptive messages."
+    },
+    {
+      "decision": "build_narrative_storyboard returns str (structured text), not a dict",
+      "rationale": "Matches the pattern of build_master_storyboard() in narratives.py which returns formatted text for LLM consumption. The LLM needs human-readable structured text, not raw JSON."
+    },
+    {
+      "decision": "Load script_writer.md prompt without placeholder substitution",
+      "rationale": "Unlike narrative_planner.md which has {creator_name} etc. placeholders, script_writer.md is a generic prompt with no variable substitution needed. Direct file read is sufficient."
+    },
+    {
+      "decision": "Guard NULL fields with pre-filter (captions) or try/except+continue (helper functions) rather than a blanket pre-filter query",
+      "rationale": "SQLite allows NULL in composite primary key columns, which is a known quirk. The caption list comprehension uses a pre-filter (is not None check) because it's inline and adding try/except would require restructuring. The three helper functions (_get_detections_in_range, _get_faces_in_range, _get_audio_in_range) use try/except (TypeError, ValueError) with continue and a warning log, matching the existing pattern already used for json.JSONDecodeError in those same loops. This provides consistency within each function's error-handling approach."
+    }
+  ],
+  "reuse": [
+    {
+      "what": "CatalogDB pattern for table schema + CRUD",
+      "where": "autopilot/db.py",
+      "how": "Follow existing pattern: add table in _create_schema(), add upsert/get methods mirroring edit_plans CRUD (same FK pattern to narratives table)"
+    },
+    {
+      "what": "LLM call pattern from narratives.py _call_llm",
+      "where": "autopilot/organize/narratives.py lines 250-289",
+      "how": "Same pattern: import anthropic inside function, create client, call messages.create with system prompt + user message, extract text from response.content[0].text, wrap errors as ScriptError"
+    },
+    {
+      "what": "JSON parsing from code blocks",
+      "where": "autopilot/organize/narratives.py _parse_narratives and classify.py _call_llm",
+      "how": "Same extraction logic: check for ```json blocks, fall back to ```blocks, then raw text; json.loads; wrap JSONDecodeError as ScriptError"
+    },
+    {
+      "what": "DB data gathering pattern from _build_cluster_summary",
+      "where": "autopilot/organize/narratives.py lines 54-218",
+      "how": "Same approach for gathering signals per clip: iterate clip_ids, call db.get_transcript/get_detections_for_media/get_faces_for_media/get_audio_events_for_media, parse JSON fields, handle corrupt data"
+    },
+    {
+      "what": "Test fixtures and mocking pattern",
+      "where": "tests/test_narratives.py and tests/conftest.py",
+      "how": "Use catalog_db fixture (in-memory), _seed helper functions for test data, MagicMock for anthropic client, patch.dict(sys.modules) for anthropic import mocking"
+    },
+    {
+      "what": "Prompt path resolution pattern",
+      "where": "autopilot/organize/narratives.py line 32",
+      "how": "_PROMPT_PATH = Path(__file__).parent.parent / 'prompts' / 'script_writer.md' — same relative path pattern from module to prompts directory"
+    },
+    {
+      "what": "try/except (TypeError, ValueError) + continue pattern for corrupt DB field casts",
+      "where": "autopilot/plan/script.py _get_faces_in_range line 302-304 (existing cluster_id cast)",
+      "how": "The same try/except pattern already used for int(cid) on cluster_id in _get_faces_in_range will be applied to frame_number and timestamp_seconds casts in the three helper functions"
+    }
+  ]
+}
