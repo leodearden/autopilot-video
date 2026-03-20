@@ -106,6 +106,7 @@ class TestRenderComplex:
         mock_clip = MagicMock()
         mock_clip.subclipped.return_value = mock_clip
         mock_clip.with_effects.return_value = mock_clip
+        mock_clip.transform.return_value = mock_clip
         mock_clip.duration = 10.0
         mock_clip.fps = 30
         mock_clip.size = (1920, 1080)
@@ -133,6 +134,7 @@ class TestRenderComplex:
         mock_clip = MagicMock()
         mock_clip.subclipped.return_value = mock_clip
         mock_clip.with_effects.return_value = mock_clip
+        mock_clip.transform.return_value = mock_clip
         mock_clip.duration = 10.0
         mock_clip.fps = 30
         mock_clip.size = (1920, 1080)
@@ -157,6 +159,7 @@ class TestRenderComplex:
         mock_clip = MagicMock()
         mock_clip.subclipped.return_value = mock_clip
         mock_clip.with_effects.return_value = mock_clip
+        mock_clip.transform.return_value = mock_clip
         mock_clip.duration = 10.0
         mock_clip.fps = 30
         mock_clip.size = (1920, 1080)
@@ -184,6 +187,7 @@ class TestRenderComplex:
         mock_clip = MagicMock()
         mock_clip.subclipped.return_value = mock_clip
         mock_clip.with_effects.return_value = mock_clip
+        mock_clip.transform.return_value = mock_clip
         mock_clip.duration = 10.0
         mock_clip.fps = 30
         mock_clip.size = (1920, 1080)
