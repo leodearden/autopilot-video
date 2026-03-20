@@ -13,6 +13,7 @@ from typing import Any
 from autopilot.analyze import asr, audio_events, embeddings, faces, objects, scenes
 from autopilot.analyze.gpu_scheduler import GPUScheduler
 from autopilot.ingest import dedup, normalizer, scanner
+from autopilot.organize import classify, cluster
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +143,13 @@ def _run_analyze(*, config: Any, db: Any) -> None:
 
     faces.cluster_faces(db, eps=0.5, min_samples=3)
     logger.info("Analyze complete: %d media processed", len(media_list))
+
+
+def _run_classify(*, config: Any, db: Any) -> None:
+    """CLASSIFY stage: cluster and label activities."""
+    cluster.cluster_activities(db)
+    classify.label_activities(db, config.llm)
+    logger.info("Classify complete")
 
 
 class PipelineOrchestrator:
