@@ -886,3 +886,82 @@ class TestTauValidation:
         }
         with pytest.raises(CropError, match="positive"):
             compute_crop_path("tau_cfg0", "16:9", catalog_db, config, edl_entry)
+
+
+class TestMalformedDetectionsJson:
+    """Tests for malformed/NULL detections_json handling at DB boundary."""
+
+    def test_null_detections_json_raises_crop_error(self, catalog_db) -> None:
+        """DB row with detections_json=NULL raises CropError, not TypeError."""
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import CropError, compute_crop_path
+
+        catalog_db.insert_media(
+            "null_det", "/fake.mp4",
+            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+        )
+        # Insert a row with NULL detections_json via raw SQL
+        catalog_db.conn.execute(
+            "INSERT INTO detections (media_id, frame_number, detections_json) "
+            "VALUES (?, ?, ?)",
+            ("null_det", 0, None),
+        )
+        config = CameraConfig(source_resolution=(4096, 4096))
+        edl_entry = {
+            "mode": "auto_subject",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:01.000",
+        }
+        with pytest.raises(CropError):
+            compute_crop_path("null_det", "16:9", catalog_db, config, edl_entry)
+
+    def test_invalid_json_raises_crop_error(self, catalog_db) -> None:
+        """DB row with invalid JSON raises CropError, not JSONDecodeError."""
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import CropError, compute_crop_path
+
+        catalog_db.insert_media(
+            "bad_json", "/fake.mp4",
+            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+        )
+        catalog_db.conn.execute(
+            "INSERT INTO detections (media_id, frame_number, detections_json) "
+            "VALUES (?, ?, ?)",
+            ("bad_json", 0, "{bad"),
+        )
+        config = CameraConfig(source_resolution=(4096, 4096))
+        edl_entry = {
+            "mode": "auto_subject",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:01.000",
+        }
+        with pytest.raises(CropError):
+            compute_crop_path("bad_json", "16:9", catalog_db, config, edl_entry)
+
+    def test_valid_json_still_works(self, catalog_db) -> None:
+        """Valid detections_json processes normally (regression check)."""
+        import json
+
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import compute_crop_path
+
+        catalog_db.insert_media(
+            "good_json", "/fake.mp4",
+            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+        )
+        det = [{"track_id": 1, "class": "person",
+                "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0], "confidence": 0.9}]
+        for f in range(30):
+            catalog_db.conn.execute(
+                "INSERT INTO detections (media_id, frame_number, detections_json) "
+                "VALUES (?, ?, ?)",
+                ("good_json", f, json.dumps(det)),
+            )
+        config = CameraConfig(source_resolution=(4096, 4096))
+        edl_entry = {
+            "mode": "auto_subject",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:01.000",
+        }
+        result = compute_crop_path("good_json", "16:9", catalog_db, config, edl_entry)
+        assert result.shape == (30, 2)
