@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -89,3 +92,104 @@ class TestPublicAPI:
 
     def test_render_init_exports_validate_render(self) -> None:
         from autopilot.render import validate_render  # noqa: F401
+
+
+# ---------------------------------------------------------------------------
+# Helpers — sample ffprobe JSON
+# ---------------------------------------------------------------------------
+
+SAMPLE_FFPROBE_JSON = {
+    "streams": [
+        {
+            "codec_type": "video",
+            "codec_name": "h264",
+            "width": 1920,
+            "height": 1080,
+        },
+        {
+            "codec_type": "audio",
+            "codec_name": "aac",
+        },
+    ],
+    "format": {
+        "duration": "120.5",
+        "size": "15000000",
+    },
+}
+
+
+def _mock_ffprobe_result(data: dict) -> MagicMock:
+    """Create a mock subprocess.CompletedProcess for ffprobe."""
+    mock = MagicMock()
+    mock.stdout = json.dumps(data)
+    mock.returncode = 0
+    return mock
+
+
+# ---------------------------------------------------------------------------
+# TestRunFfprobeJson — _run_ffprobe_json helper
+# ---------------------------------------------------------------------------
+
+
+class TestRunFfprobeJson:
+    """Tests for _run_ffprobe_json internal helper."""
+
+    def test_extracts_duration(self) -> None:
+        from autopilot.render.validate import _run_ffprobe_json
+
+        with patch("subprocess.run", return_value=_mock_ffprobe_result(SAMPLE_FFPROBE_JSON)):
+            result = _run_ffprobe_json(Path("/fake/video.mp4"))
+
+        assert result["duration_seconds"] == pytest.approx(120.5)
+
+    def test_extracts_resolution(self) -> None:
+        from autopilot.render.validate import _run_ffprobe_json
+
+        with patch("subprocess.run", return_value=_mock_ffprobe_result(SAMPLE_FFPROBE_JSON)):
+            result = _run_ffprobe_json(Path("/fake/video.mp4"))
+
+        assert result["resolution"] == (1920, 1080)
+
+    def test_extracts_video_codec(self) -> None:
+        from autopilot.render.validate import _run_ffprobe_json
+
+        with patch("subprocess.run", return_value=_mock_ffprobe_result(SAMPLE_FFPROBE_JSON)):
+            result = _run_ffprobe_json(Path("/fake/video.mp4"))
+
+        assert result["video_codec"] == "h264"
+
+    def test_extracts_audio_codec(self) -> None:
+        from autopilot.render.validate import _run_ffprobe_json
+
+        with patch("subprocess.run", return_value=_mock_ffprobe_result(SAMPLE_FFPROBE_JSON)):
+            result = _run_ffprobe_json(Path("/fake/video.mp4"))
+
+        assert result["audio_codec"] == "aac"
+
+    def test_extracts_file_size(self) -> None:
+        from autopilot.render.validate import _run_ffprobe_json
+
+        with patch("subprocess.run", return_value=_mock_ffprobe_result(SAMPLE_FFPROBE_JSON)):
+            result = _run_ffprobe_json(Path("/fake/video.mp4"))
+
+        assert result["file_size_bytes"] == 15000000
+
+    def test_returns_empty_dict_on_subprocess_error(self) -> None:
+        from autopilot.render.validate import _run_ffprobe_json
+
+        with patch("subprocess.run", side_effect=subprocess.CalledProcessError(1, "ffprobe")):
+            result = _run_ffprobe_json(Path("/fake/video.mp4"))
+
+        assert result == {}
+
+    def test_returns_empty_dict_on_bad_json(self) -> None:
+        from autopilot.render.validate import _run_ffprobe_json
+
+        mock = MagicMock()
+        mock.stdout = "not json"
+        mock.returncode = 0
+
+        with patch("subprocess.run", return_value=mock):
+            result = _run_ffprobe_json(Path("/fake/video.mp4"))
+
+        assert result == {}
