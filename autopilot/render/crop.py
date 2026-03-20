@@ -410,4 +410,17 @@ def compute_crop_path(
         path = np.full((num_frames, 2), [center_x, center_y])
         return path
 
+    if mode == "manual_offset":
+        offset_x = float(edl_entry.get("offset_x", 0))
+        offset_y = float(edl_entry.get("offset_y", 0))
+        raw_x = (source_w - crop_w) / 2.0 + offset_x
+        raw_y = (source_h - crop_h) / 2.0 + offset_y
+        # Clamp to bounds
+        max_x = max(0.0, float(source_w - crop_w))
+        max_y = max(0.0, float(source_h - crop_h))
+        clamped_x = float(np.clip(raw_x, 0.0, max_x))
+        clamped_y = float(np.clip(raw_y, 0.0, max_y))
+        path = np.full((num_frames, 2), [clamped_x, clamped_y])
+        return path
+
     raise NotImplementedError(f"Mode {mode!r} not yet implemented")
