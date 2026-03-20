@@ -275,6 +275,46 @@ class TestBuildRawPath:
         result = _build_raw_path(detections, track_id=1, crop_w=4096, crop_h=2304)
         assert result.shape == (n_frames, 2)
 
+    def test_missing_bbox_key_treated_as_gap(self) -> None:
+        """Detection with matching track_id but no 'bbox_xywh' key -> NaN gap."""
+        from autopilot.render.crop import _build_raw_path
+
+        good = {"track_id": 1, "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0],
+                "class": "person", "confidence": 0.9}
+        bad_no_key = {"track_id": 1, "class": "person", "confidence": 0.9}
+        detections = [[good], [bad_no_key], [good]]
+        result = _build_raw_path(detections, track_id=1, crop_w=4096, crop_h=2304)
+        assert result.shape == (3, 2)
+        # Frame 1 should be NaN (missing bbox)
+        assert np.all(np.isnan(result[1]))
+        # Other frames should be valid
+        assert not np.any(np.isnan(result[0]))
+        assert not np.any(np.isnan(result[2]))
+
+    def test_bbox_key_none_treated_as_gap(self) -> None:
+        """Detection with bbox_xywh=None -> NaN gap."""
+        from autopilot.render.crop import _build_raw_path
+
+        good = {"track_id": 1, "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0],
+                "class": "person", "confidence": 0.9}
+        bad_none = {"track_id": 1, "bbox_xywh": None,
+                    "class": "person", "confidence": 0.9}
+        detections = [[good], [bad_none], [good]]
+        result = _build_raw_path(detections, track_id=1, crop_w=4096, crop_h=2304)
+        assert result.shape == (3, 2)
+        assert np.all(np.isnan(result[1]))
+        assert not np.any(np.isnan(result[0]))
+
+    def test_normal_bbox_still_works(self) -> None:
+        """Normal detection with valid bbox_xywh still works as before."""
+        from autopilot.render.crop import _build_raw_path
+
+        det = {"track_id": 1, "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0],
+               "class": "person", "confidence": 0.9}
+        detections = [[det], [det]]
+        result = _build_raw_path(detections, track_id=1, crop_w=4096, crop_h=2304)
+        assert not np.any(np.isnan(result))
+
 
 class TestSmoothPath:
     """Tests for _smooth_path EMA smoother."""
