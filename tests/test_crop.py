@@ -795,3 +795,54 @@ class TestErrorHandling:
         }
         with pytest.raises(CropError, match="aspect"):
             compute_crop_path("err1", "banana", catalog_db, config, edl_entry)
+
+
+class TestTauValidation:
+    """Tests for smoothing_tau validation — prevents ZeroDivisionError."""
+
+    def test_edl_tau_zero_raises_crop_error(self, catalog_db) -> None:
+        """edl_entry with smoothing_tau=0 raises CropError, not ZeroDivisionError."""
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import CropError, compute_crop_path
+
+        _seed_tracking_media(catalog_db, "tau_zero")
+        config = CameraConfig(source_resolution=(4096, 4096), crop_smoothing_tau=0.5)
+        edl_entry = {
+            "mode": "auto_subject",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:10.000",
+            "smoothing_tau": 0,
+        }
+        with pytest.raises(CropError, match="positive"):
+            compute_crop_path("tau_zero", "16:9", catalog_db, config, edl_entry)
+
+    def test_edl_tau_negative_raises_crop_error(self, catalog_db) -> None:
+        """edl_entry with smoothing_tau=-1.0 raises CropError."""
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import CropError, compute_crop_path
+
+        _seed_tracking_media(catalog_db, "tau_neg")
+        config = CameraConfig(source_resolution=(4096, 4096), crop_smoothing_tau=0.5)
+        edl_entry = {
+            "mode": "auto_subject",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:10.000",
+            "smoothing_tau": -1.0,
+        }
+        with pytest.raises(CropError, match="positive"):
+            compute_crop_path("tau_neg", "16:9", catalog_db, config, edl_entry)
+
+    def test_config_tau_zero_no_override_raises_crop_error(self, catalog_db) -> None:
+        """config.crop_smoothing_tau=0 (no edl override) also raises CropError."""
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import CropError, compute_crop_path
+
+        _seed_tracking_media(catalog_db, "tau_cfg0")
+        config = CameraConfig(source_resolution=(4096, 4096), crop_smoothing_tau=0)
+        edl_entry = {
+            "mode": "auto_subject",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:10.000",
+        }
+        with pytest.raises(CropError, match="positive"):
+            compute_crop_path("tau_cfg0", "16:9", catalog_db, config, edl_entry)
