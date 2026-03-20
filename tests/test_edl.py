@@ -547,3 +547,174 @@ class TestEdlRetryLoop:
         # Check that validation errors are mentioned in the feedback
         feedback_text = str(messages)
         assert "overlap" in feedback_text.lower() or "error" in feedback_text.lower()
+
+
+# -- Step 23: Integration test ------------------------------------------------
+
+
+class TestEdlIntegration:
+    """Full pipeline: seeded DB -> generate_edl with mocked LLM -> verify."""
+
+    def test_full_pipeline(self, catalog_db):
+        """End-to-end: seed DB -> generate_edl -> verify EDL, DB state, validation."""
+        import numpy as np
+
+        from autopilot.config import LLMConfig
+        from autopilot.plan.edl import generate_edl
+
+        # --- Seed full DB data ---
+        catalog_db.insert_media(
+            "v1", "/tmp/v1.mp4", duration_seconds=60.0, fps=30.0,
+            created_at="2025-01-01T10:00:00",
+        )
+        catalog_db.insert_media(
+            "v2", "/tmp/v2.mp4", duration_seconds=90.0, fps=30.0,
+            created_at="2025-01-01T10:05:00",
+        )
+
+        # Shot boundaries
+        catalog_db.upsert_boundaries(
+            "v1",
+            json.dumps([
+                {"start_frame": 0, "end_frame": 900,
+                 "start_time": 0.0, "end_time": 30.0},
+            ]),
+            "transnetv2",
+        )
+
+        # Activity cluster + narrative
+        catalog_db.insert_activity_cluster(
+            "c1", label="Temple visit",
+            clip_ids_json=json.dumps(["v1", "v2"]),
+        )
+        catalog_db.insert_narrative(
+            "n1",
+            title="Morning Temple",
+            description="A peaceful morning visit",
+            proposed_duration_seconds=25.0,
+            activity_cluster_ids_json=json.dumps(["c1"]),
+        )
+
+        # Script (from prior stage)
+        catalog_db.upsert_narrative_script("n1", json.dumps({
+            "scenes": [
+                {
+                    "scene_number": 1,
+                    "description": "Opening at temple",
+                    "estimated_duration_seconds": 15,
+                    "source_clips": [
+                        {"clip_id": "v1", "in_timecode": "00:00:00.000",
+                         "out_timecode": "00:00:15.000"},
+                    ],
+                    "voiceover_text": "Dawn breaks...",
+                    "titles": [{"text": "Thailand", "style": "lower_third"}],
+                    "music_mood": "ambient",
+                },
+                {
+                    "scene_number": 2,
+                    "description": "Monks walking",
+                    "estimated_duration_seconds": 10,
+                    "source_clips": [
+                        {"clip_id": "v2", "in_timecode": "00:00:00.000",
+                         "out_timecode": "00:00:10.000"},
+                    ],
+                    "voiceover_text": None,
+                    "titles": [],
+                    "music_mood": "sacred",
+                },
+            ],
+            "broll_needs": [],
+            "quality_flags": [],
+        }))
+
+        # --- Mock LLM to return valid tool-use response ---
+        tool_calls = [
+            ("select_clip", {
+                "clip_id": "v1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:15.000",
+                "track": 1,
+            }),
+            ("select_clip", {
+                "clip_id": "v2",
+                "in_timecode": "00:00:15.000",
+                "out_timecode": "00:00:25.000",
+                "track": 1,
+            }),
+            ("add_transition", {
+                "type": "crossfade",
+                "duration": 1.0,
+                "position": "00:00:15.000",
+            }),
+            ("set_audio", {
+                "clip_id": "v1",
+                "level_db": -6.0,
+                "fade_in": 0.5,
+            }),
+            ("set_audio", {
+                "clip_id": "v2",
+                "level_db": -12.0,
+            }),
+            ("add_voiceover", {
+                "text": "Dawn breaks over ancient walls...",
+                "start_time": "00:00:00.000",
+                "duration": 8.0,
+            }),
+            ("add_title", {
+                "text": "Thailand",
+                "style": "lower_third",
+                "position": "00:00:02.000",
+                "duration": 4.0,
+            }),
+            ("add_music", {
+                "mood": "ambient contemplative",
+                "duration": 25.0,
+                "start_time": "00:00:00.000",
+            }),
+        ]
+
+        config = LLMConfig()
+        mock_anthropic, mock_client = _setup_mock_edl_anthropic(tool_calls)
+
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            edl = generate_edl("n1", catalog_db, config)
+
+        # --- Verify EDL structure ---
+        assert isinstance(edl, dict)
+        assert len(edl["clips"]) == 2
+        assert edl["clips"][0]["clip_id"] == "v1"
+        assert edl["clips"][1]["clip_id"] == "v2"
+        assert len(edl["transitions"]) == 1
+        assert len(edl["audio_settings"]) == 2
+        assert len(edl["voiceovers"]) == 1
+        assert len(edl["titles"]) == 1
+        assert len(edl["music"]) == 1
+        assert edl["target_duration_seconds"] == 25.0
+
+        # --- Verify DB state ---
+        # Edit plan stored
+        stored = catalog_db.get_edit_plan("n1")
+        assert stored is not None
+        edl_data = json.loads(stored["edl_json"])
+        assert len(edl_data["clips"]) == 2
+
+        # Validation stored
+        val_data = json.loads(stored["validation_json"])
+        assert val_data["passed"] is True
+        assert len(val_data["errors"]) == 0
+
+        # Narrative status updated
+        narrative = catalog_db.get_narrative("n1")
+        assert narrative["status"] == "planned"
+
+        # --- Verify LLM called correctly ---
+        mock_client.messages.create.assert_called_once()
+        call_kwargs = mock_client.messages.create.call_args[1]
+        assert call_kwargs["model"] == config.planning_model
+        assert "tools" in call_kwargs
+        assert len(call_kwargs["tools"]) == 8
+        # System prompt is edit_planner
+        assert "EDL" in call_kwargs["system"]
+        # User message contains script and storyboard
+        user_msg = call_kwargs["messages"][0]["content"]
+        assert "Temple" in user_msg or "temple" in user_msg
