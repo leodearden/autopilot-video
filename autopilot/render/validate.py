@@ -144,6 +144,39 @@ def _check_duration(
         )
 
 
+def _check_resolution_codec(
+    probe_data: dict, config: OutputConfig, issues: list[Issue],
+) -> None:
+    """Check rendered resolution and codec against config."""
+    actual_res = probe_data.get("resolution")
+    if actual_res is not None and actual_res != config.resolution:
+        issues.append(
+            Issue(
+                severity="error",
+                check="resolution",
+                message=(
+                    f"Resolution {actual_res[0]}x{actual_res[1]} does not match "
+                    f"expected {config.resolution[0]}x{config.resolution[1]}"
+                ),
+                measured_value=actual_res,
+            )
+        )
+
+    actual_codec = probe_data.get("video_codec")
+    if actual_codec is not None and actual_codec != config.codec:
+        issues.append(
+            Issue(
+                severity="error",
+                check="codec",
+                message=(
+                    f"Codec {actual_codec!r} does not match "
+                    f"expected {config.codec!r}"
+                ),
+                measured_value=actual_codec,
+            )
+        )
+
+
 def validate_render(
     rendered_path: Path,
     edl: dict,
