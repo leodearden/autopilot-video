@@ -582,6 +582,59 @@ class TestAnalyzeStage:
         # Only m1 should be analyzed, not m2 (duplicate)
         assert mock_asr.transcribe_media.call_count == 1
 
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_calls_force_unload_all_on_success(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """_run_analyze calls scheduler.force_unload_all() after analysis completes."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = MagicMock()
+        db.list_all_media.return_value = [
+            {"id": "m1", "file_path": "/fake/v1.mp4", "status": "ingested"},
+        ]
+        mock_scheduler = MagicMock()
+        mock_gpu_cls.return_value = mock_scheduler
+
+        _run_analyze(config=minimal_config, db=db)
+
+        mock_scheduler.force_unload_all.assert_called_once()
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_calls_force_unload_all_on_error(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """scheduler.force_unload_all() is called even when analysis raises."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = MagicMock()
+        db.list_all_media.return_value = [
+            {"id": "m1", "file_path": "/fake/v1.mp4", "status": "ingested"},
+        ]
+        mock_scheduler = MagicMock()
+        mock_gpu_cls.return_value = mock_scheduler
+        # Make cluster_faces raise to simulate error
+        mock_faces.cluster_faces.side_effect = RuntimeError("GPU error")
+
+        with pytest.raises(RuntimeError, match="GPU error"):
+            _run_analyze(config=minimal_config, db=db)
+
+        mock_scheduler.force_unload_all.assert_called_once()
+
 
 class TestClassifyStage:
     """Tests for the real _run_classify stage function."""
