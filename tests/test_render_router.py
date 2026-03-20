@@ -201,6 +201,56 @@ class TestEDLLoading:
 # ---------------------------------------------------------------------------
 
 
+class TestWorkDirCleanup:
+    """Verify temporary work directory is cleaned up."""
+
+    def test_work_dir_cleaned_up_on_success(self) -> None:
+        """After successful render, temporary work dir should be cleaned up."""
+        from autopilot.render.router import route_and_render
+
+        edl = _make_edl()
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        config = _make_config()
+
+        with patch("autopilot.render.router.render_simple") as mock_rs, \
+             patch("subprocess.run"), \
+             patch("tempfile.TemporaryDirectory") as mock_td:
+            mock_td.return_value.__enter__ = MagicMock(return_value="/tmp/render_work")
+            mock_td.return_value.__exit__ = MagicMock(return_value=False)
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config)
+
+        # TemporaryDirectory used as context manager (via with statement)
+        mock_td.return_value.__enter__.assert_called_once()
+        mock_td.return_value.__exit__.assert_called_once()
+
+    def test_work_dir_cleaned_up_on_error(self) -> None:
+        """On render failure, temporary work dir should still be cleaned up."""
+        from autopilot.render.ffmpeg_render import RenderError
+        from autopilot.render.router import RoutingError, route_and_render
+
+        edl = _make_edl()
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        config = _make_config()
+
+        with patch("autopilot.render.router.render_simple",
+                    side_effect=RenderError("fail")), \
+             patch("subprocess.run"), \
+             patch("tempfile.TemporaryDirectory") as mock_td:
+            mock_td.return_value.__enter__ = MagicMock(return_value="/tmp/render_work")
+            mock_td.return_value.__exit__ = MagicMock(return_value=False)
+            with pytest.raises(RoutingError):
+                route_and_render("n1", db, config)
+
+        # __exit__ must still be called for cleanup even on error
+        mock_td.return_value.__exit__.assert_called_once()
+
+
 class TestClipDispatching:
     """Verify route_and_render dispatches to correct renderers."""
 
