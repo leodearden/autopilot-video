@@ -143,29 +143,30 @@ def _extract_best_frame(
     import cv2  # lazy import
 
     cap = cv2.VideoCapture(str(video_path))
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    step = max(1, int(fps))  # sample at ~1fps
+    try:
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        step = max(1, int(fps))  # sample at ~1fps
 
-    best_score = -1.0
-    best_frame = None
+        best_score = -1.0
+        best_frame = None
 
-    for frame_idx in range(0, total_frames, step):
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-        ret, frame = cap.read()
-        if not ret or frame is None:
-            continue
+        for frame_idx in range(0, total_frames, step):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                continue
 
-        sharpness = _sharpness_score(frame)
-        thirds = _rule_of_thirds_score(frame.shape, detections)
-        confidence = _detection_confidence_score(detections)
-        score = _combined_score(sharpness, thirds, confidence)
+            sharpness = _sharpness_score(frame)
+            thirds = _rule_of_thirds_score(frame.shape, detections)
+            confidence = _detection_confidence_score(detections)
+            score = _combined_score(sharpness, thirds, confidence)
 
-        if score > best_score:
-            best_score = score
-            best_frame = frame.copy() if hasattr(frame, "copy") else frame
-
-    cap.release()
+            if score > best_score:
+                best_score = score
+                best_frame = frame.copy() if hasattr(frame, "copy") else frame
+    finally:
+        cap.release()
 
     if best_frame is None:
         return None
