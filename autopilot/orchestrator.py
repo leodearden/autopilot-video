@@ -7,8 +7,11 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
+from autopilot.analyze import asr, audio_events, embeddings, faces, objects, scenes
+from autopilot.analyze.gpu_scheduler import GPUScheduler
 from autopilot.ingest import dedup, normalizer, scanner
 
 logger = logging.getLogger(__name__)
@@ -103,6 +106,42 @@ def _run_ingest(*, config: Any, db: Any) -> None:
 
     dedup.mark_duplicates(db)
     logger.info("Ingest complete: %d files scanned", len(files))
+
+
+def _run_analyze(*, config: Any, db: Any) -> None:
+    """ANALYZE stage: run all analysis passes on each media file."""
+    scheduler = GPUScheduler(
+        total_vram=0,
+        device=config.processing.gpu_device,
+    )
+
+    all_media = db.list_all_media()
+    media_list = [m for m in all_media if m.get("status") != "duplicate"]
+
+    for media in media_list:
+        media_id = media["id"]
+        file_path = Path(media["file_path"])
+        audio_path = file_path  # audio extracted from same file
+
+        asr.transcribe_media(
+            media_id, audio_path, db, scheduler, config.models,
+            batch_size=config.processing.batch_size_whisper,
+        )
+        scenes.detect_shots(media_id, file_path, db, scheduler)
+        objects.detect_objects(
+            media_id, file_path, db, scheduler, config.models,
+            sparse=False,
+        )
+        faces.detect_faces(media_id, file_path, db, scheduler, config.models)
+        embeddings.compute_embeddings(
+            media_id, file_path, db, scheduler, config.models,
+        )
+        audio_events.classify_audio_events(
+            media_id, audio_path, db, scheduler,
+        )
+
+    faces.cluster_faces(db, eps=0.5, min_samples=3)
+    logger.info("Analyze complete: %d media processed", len(media_list))
 
 
 class PipelineOrchestrator:
