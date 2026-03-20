@@ -6,7 +6,11 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
     from autopilot.db import CatalogDB
 
 __all__ = [
@@ -16,9 +20,108 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
+# Scoring weights (must sum to 1.0)
+_WEIGHT_SHARPNESS = 0.3
+_WEIGHT_THIRDS = 0.3
+_WEIGHT_CONFIDENCE = 0.4
+
 
 class ThumbnailError(Exception):
     """Raised for any thumbnail extraction error."""
+
+
+def _sharpness_score(frame: NDArray) -> float:
+    """Compute sharpness score using Laplacian variance.
+
+    Higher variance means sharper image.
+    """
+    import cv2  # lazy import
+
+    gray = cv2.Laplacian(frame, cv2.CV_64F)
+    variance = float(gray.var())
+    # Normalize: typical Laplacian variances range 0-2000+
+    # Cap at 1.0 for scores above 500
+    return min(variance / 500.0, 1.0)
+
+
+def _rule_of_thirds_score(
+    frame_shape: tuple[int, ...],
+    detections: list[dict],
+) -> float:
+    """Score how close detection centers are to rule-of-thirds intersections.
+
+    Args:
+        frame_shape: (height, width, channels) of the frame.
+        detections: List of detection dicts with 'bbox' [x1, y1, x2, y2].
+
+    Returns:
+        Score between 0.0 and 1.0 (higher = closer to thirds grid).
+    """
+    if not detections:
+        return 0.0
+
+    h, w = frame_shape[0], frame_shape[1]
+    # Four intersection points of rule-of-thirds grid
+    intersections = [
+        (w / 3, h / 3),
+        (2 * w / 3, h / 3),
+        (w / 3, 2 * h / 3),
+        (2 * w / 3, 2 * h / 3),
+    ]
+
+    max_dist = np.sqrt((w / 3) ** 2 + (h / 3) ** 2)
+    best_score = 0.0
+
+    for det in detections:
+        bbox = det.get("bbox", [0, 0, 0, 0])
+        cx = (bbox[0] + bbox[2]) / 2.0
+        cy = (bbox[1] + bbox[3]) / 2.0
+
+        # Find min distance to any intersection point
+        min_dist = min(
+            np.sqrt((cx - ix) ** 2 + (cy - iy) ** 2)
+            for ix, iy in intersections
+        )
+        score = max(0.0, 1.0 - min_dist / max_dist)
+        best_score = max(best_score, score)
+
+    return best_score
+
+
+def _detection_confidence_score(detections: list[dict]) -> float:
+    """Return the max detection confidence from a list of detections.
+
+    Args:
+        detections: List of detection dicts with 'confidence' field.
+
+    Returns:
+        Max confidence value, or 0.0 if empty.
+    """
+    if not detections:
+        return 0.0
+    return max(d.get("confidence", 0.0) for d in detections)
+
+
+def _combined_score(
+    sharpness: float,
+    thirds: float,
+    confidence: float,
+) -> float:
+    """Compute weighted combination of the three scoring metrics.
+
+    Args:
+        sharpness: Sharpness score (0-1).
+        thirds: Rule-of-thirds score (0-1).
+        confidence: Detection confidence score (0-1).
+
+    Returns:
+        Weighted combined score.
+    """
+    return (
+        _WEIGHT_SHARPNESS * sharpness
+        + _WEIGHT_THIRDS * thirds
+        + _WEIGHT_CONFIDENCE * confidence
+    )
 
 
 def extract_best_thumbnail(
