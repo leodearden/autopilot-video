@@ -370,9 +370,9 @@ def build_master_storyboard(db: CatalogDB) -> str:
         cluster_id = str(cluster.get("cluster_id", "unknown"))
         try:
             summary = _build_cluster_summary(cluster, db)
-        except NarrativeError as exc:
+        except Exception as exc:
             logger.warning(
-                "Skipping corrupt cluster %s: %s", cluster_id, exc,
+                "Skipping cluster %s due to error: %s", cluster_id, exc,
             )
             continue
 
@@ -440,6 +440,7 @@ def propose_narratives(
                     proposed_duration_seconds=narrative.proposed_duration_seconds,
                     activity_cluster_ids_json=json.dumps(narrative.activity_cluster_ids),
                     arc_notes=json.dumps(narrative.arc),
+                    emotional_journey=narrative.emotional_journey or None,
                     status=narrative.status,
                 )
     except NarrativeError:
