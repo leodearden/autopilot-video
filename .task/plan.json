@@ -1,19 +1,26 @@
 {
-  "task_id": "22",
-  "title": "Post-render quality validation",
+  "task_id": "23",
+  "title": "YouTube upload and thumbnail",
   "files": [
-    "autopilot/render/validate.py",
-    "autopilot/render/__init__.py",
-    "tests/test_render_validate.py"
+    "autopilot/upload/__init__.py",
+    "autopilot/upload/youtube.py",
+    "autopilot/upload/thumbnail.py",
+    "scripts/setup_youtube_oauth.py",
+    "tests/test_youtube.py",
+    "tests/test_thumbnail.py"
   ],
-  "modules": ["autopilot/render", "tests"],
-  "analysis": "Implement autopilot/render/validate.py for post-render quality checks on rendered video files. The module needs validate_render(rendered_path, edl, config) -> ValidationReport which runs 6 checks: duration, loudness, black frames, silence, resolution/codec, and file size. All checks use ffprobe/ffmpeg subprocess calls. The existing codebase has strong patterns: (1) ValidationResult dataclass in plan/validator.py as a model (but we need a richer ValidationReport with severity levels and measurements), (2) _run_ffprobe in ingest/scanner.py for ffprobe JSON parsing, (3) subprocess.run mocking pattern from test_ffmpeg_render.py. The OutputConfig dataclass has resolution, codec, target_loudness_lufs fields we need. EDL dict has target_duration_seconds. Key design: ValidationReport should have pass/fail, list of issues with severity (error/warning), and a measurements dict. Each check is a private function that appends to issues list. ffprobe is called once for metadata (duration, resolution, codec, file size), ffmpeg loudnorm analysis for LUFS, ffmpeg blackdetect for black frames, ffmpeg silencedetect for silence gaps. All subprocess calls are mockable for unit testing.\n\nReview round: Three robustness issues identified — unguarded float() parsing in _check_black_frames and _check_silence, and unguarded report file writing in validate_render. Steps 21-26 address these with TDD pairs.",
+  "modules": [
+    "autopilot/upload",
+    "scripts",
+    "tests"
+  ],
+  "analysis": "This task creates two new modules under autopilot/upload/ and one helper script.\n\nyoutube.py: Implements upload_video() using google-api-python-client (already in pyproject.toml dependencies). Needs OAuth 2.0 credential loading from YouTubeConfig.credentials_path, token refresh for unattended operation, YouTube Data API v3 upload with metadata from the narrative/script/activity-cluster data in CatalogDB, and storage of the YouTube URL/ID in the existing uploads table via db.insert_upload().\n\nthumbnail.py: Implements extract_best_thumbnail() that scores candidate frames from a video using three criteria: YOLO detection confidence (from detections table), rule-of-thirds composition score, and sharpness (Laplacian variance via cv2/numpy). Extracts the best frame as JPEG and uploads it via YouTube thumbnails.set API.\n\nscripts/setup_youtube_oauth.py: One-time interactive script that runs the OAuth 2.0 installed-app flow, opens a browser for consent, and saves the refresh token to credentials_path.\n\nExisting infrastructure to reuse:\n- CatalogDB.insert_upload() / get_upload() already exists with the uploads table schema\n- YouTubeConfig dataclass with privacy_status, default_category, credentials_path\n- Narrative/script/activity-cluster data already in DB\n- google-api-python-client already a project dependency\n- Test patterns: mock external deps via sys.modules patching, use catalog_db fixture, tmp_path for file I/O\n\nThe upload/__init__.py currently exists but is empty. It needs to export the public symbols from both new modules.",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Create empty autopilot/render/validate.py with module docstring and __all__",
+      "description": "Update autopilot/upload/__init__.py to export public symbols from youtube and thumbnail modules (UploadError, upload_video, ThumbnailError, extract_best_thumbnail)",
       "status": "done",
-      "commit": "f51eb40",
+      "commit": "39db4ec",
       "tests": []
     }
   ],
@@ -21,250 +28,218 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing tests for public API surface: ValidationReport dataclass (passed, issues list with severity/message/measurement, measurements dict), ValidationError exception, validate_render function signature (rendered_path: Path, edl: dict, config: OutputConfig) -> ValidationReport, and __all__ exports",
+      "description": "Write failing tests for youtube.py public API surface: UploadError importable and is Exception, upload_video signature has (narrative_id, video_path, db, config) params, __all__ exports UploadError and upload_video",
       "status": "done",
-      "commit": "77c7211"
+      "commit": "39db4ec"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Implement ValidationReport dataclass with Issue(severity, check, message, measured_value) inner dataclass, ValidationError exception class, validate_render stub returning empty ValidationReport, and __all__ exports. Update render/__init__.py to export new symbols.",
+      "description": "Create autopilot/upload/youtube.py with UploadError exception class, upload_video stub function with correct signature (narrative_id: str, video_path: Path, db: CatalogDB, config: YouTubeConfig) -> str, and __all__ exports. Function raises NotImplementedError for now.",
       "status": "done",
-      "commit": "3879c18"
+      "commit": "39db4ec"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write failing tests for _run_ffprobe_json helper: mock subprocess.run to return ffprobe JSON with streams and format info; verify it extracts duration, resolution, codec, file size; test error handling when ffprobe fails (returns empty dict or raises)",
+      "description": "Write failing tests for OAuth credential loading: test_loads_credentials_from_config_path (mocks google.oauth2.credentials.Credentials.from_authorized_user_file), test_raises_upload_error_when_credentials_file_missing (no creds file -> UploadError), test_refreshes_expired_credentials (mocks creds.expired=True + creds.refresh_token set -> calls creds.refresh with google.auth.transport.requests.Request)",
       "status": "done",
-      "commit": "831f808"
+      "commit": "fb105bb"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement _run_ffprobe_json(path) that calls ffprobe -v quiet -print_format json -show_format -show_streams, parses stdout JSON, returns dict with duration_seconds, resolution (w,h), video_codec, audio_codec, file_size_bytes. Handle subprocess errors gracefully.",
+      "description": "Implement _load_credentials(credentials_path: Path) helper that loads OAuth2 credentials from file via Credentials.from_authorized_user_file, checks creds.expired and creds.refresh_token, refreshes via creds.refresh(Request()) if needed, and raises UploadError on missing file or refresh failure",
       "status": "done",
-      "commit": "bdfd0b9"
+      "commit": "a3a2bf2"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write failing tests for duration check: mock ffprobe to return duration. Test pass when within ±1s of EDL target_duration_seconds; test error when duration off by >1s; test warning/skip when edl has no target_duration_seconds",
+      "description": "Write failing tests for metadata assembly: test_builds_title_from_narrative (title from db.get_narrative), test_builds_description_from_script (description from db.get_narrative_script), test_tags_from_activity_labels_and_detections (extracts unique object class names from detections JSON + activity cluster labels), test_uses_config_privacy_status_and_category (privacyStatus and categoryId from YouTubeConfig)",
       "status": "done",
-      "commit": "b38ecac"
+      "commit": "6366683"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Implement _check_duration(probe_data, edl, issues) comparing probe duration to edl['target_duration_seconds'] within ±1s tolerance, appending Issue with severity='error' when out of range. Wire into validate_render.",
+      "description": "Implement _build_upload_metadata(narrative_id, db, config) that queries CatalogDB for narrative title/description, narrative_script for full description, activity_clusters for labels (tags), and detections for unique object class names (tags). Returns dict with 'snippet' (title, description, tags, categoryId) and 'status' (privacyStatus) suitable for YouTube API body.",
       "status": "done",
-      "commit": "bbe34aa"
+      "commit": "0461678"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write failing tests for resolution and codec check: test pass when probe resolution matches config.resolution and codec matches config.codec; test error on resolution mismatch; test error on codec mismatch",
+      "description": "Write failing tests for the full upload_video flow: test_upload_calls_youtube_api_insert (mocks googleapiclient.discovery.build, verifies videos().insert() called with MediaFileUpload), test_upload_stores_result_in_db (catalog_db fixture: verifies db.insert_upload called with youtube_video_id and youtube_url after upload), test_upload_returns_youtube_url (returns 'https://youtu.be/<video_id>'), test_upload_raises_on_api_error (HttpError from API wrapped as UploadError)",
       "status": "done",
-      "commit": "49f5af0"
+      "commit": "cce547c"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Implement _check_resolution_codec(probe_data, config, issues) comparing probe resolution/codec against OutputConfig values, appending error Issues on mismatch. Wire into validate_render.",
+      "description": "Implement the full upload_video() function: load credentials via _load_credentials, build metadata via _build_upload_metadata, create YouTube service via googleapiclient.discovery.build('youtube', 'v3', credentials=creds), call videos().insert() with MediaFileUpload(video_path, resumable=True), execute resumable upload via next_chunk() loop, store result in DB via db.insert_upload, return YouTube URL",
       "status": "done",
-      "commit": "cd78e49"
+      "commit": "6c6470b"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write failing tests for file size check: compute expected range as 8-15 MB per minute for 1080p h264. Test pass when file size within range; test warning when below 8 MB/min; test warning when above 15 MB/min; test that non-1080p or non-h264 skips the check",
+      "description": "Write failing tests for upload_video edge cases: test_narrative_not_found_raises_upload_error (narrative_id not in DB -> UploadError), test_video_file_not_found_raises_upload_error (video_path doesn't exist -> UploadError), test_resumable_upload_retry (simulates HttpError on first next_chunk, success on retry)",
       "status": "done",
-      "commit": "ae5e247"
+      "commit": "087c104"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Implement _check_file_size(probe_data, config, issues) computing per-minute bitrate and comparing to 8-15 MB/min threshold for 1080p h264, appending warning Issues when outside range. Wire into validate_render.",
+      "description": "Add input validation and retry logic to upload_video: validate narrative exists in DB (raise UploadError if not), validate video_path.exists() (raise UploadError if not), implement resumable upload retry loop with exponential backoff for transient HttpError (max 3 retries)",
       "status": "done",
-      "commit": "0f4a4e5"
+      "commit": "b5d87a6"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write failing tests for loudness check: mock subprocess.run for ffmpeg loudnorm analysis pass (ffmpeg -i file -af loudnorm=print_format=json -f null -). Parse measured LUFS from stderr JSON. Test pass when within -16±1 LUFS; test error when outside range; test error when ffmpeg fails",
+      "description": "Write failing tests for thumbnail.py public API surface: ThumbnailError importable and is Exception, extract_best_thumbnail signature has (narrative_id, video_path, db) params, __all__ exports ThumbnailError and extract_best_thumbnail",
       "status": "done",
-      "commit": "fe1cc19"
+      "commit": "dff18f1"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Implement _check_loudness(rendered_path, config, issues) running ffmpeg loudnorm analysis pass, parsing measured integrated loudness from stderr JSON output, appending error Issue when outside target_loudness_lufs ± 1 LUFS. Wire into validate_render.",
+      "description": "Create autopilot/upload/thumbnail.py with ThumbnailError exception class, extract_best_thumbnail stub with correct signature (narrative_id: str, video_path: Path, db: CatalogDB) -> Path, and __all__ exports. Function raises NotImplementedError for now.",
       "status": "done",
-      "commit": "5bc3ee8"
+      "commit": "39db4ec"
     },
     {
       "id": "step-13",
       "type": "test",
-      "description": "Write failing tests for black frame detection: mock subprocess.run for ffmpeg blackdetect filter. Test pass when no black frames detected; test warning when black frames found (stderr contains blackdetect output); test graceful handling when ffmpeg fails",
+      "description": "Write failing tests for frame scoring functions: test_sharpness_score_uses_laplacian_variance (mock cv2.Laplacian, verify variance computed on result), test_rule_of_thirds_score_high_at_intersections (numpy frame with subject bbox at thirds intersection scores higher than bbox at dead center), test_detection_confidence_score_aggregates (max confidence from list of detections dicts), test_combined_score_weighted (verify the 3 component scores are combined with weights summing to 1.0)",
       "status": "done",
-      "commit": "1ed32b8"
+      "commit": "752d790"
     },
     {
       "id": "step-14",
       "type": "impl",
-      "description": "Implement _check_black_frames(rendered_path, issues) running ffmpeg -i file -vf blackdetect=d=0.1:pix_th=5 -f null -, parsing blackdetect output from stderr for black_start/black_end/black_duration fields, appending warning Issues for each detected range. Wire into validate_render.",
+      "description": "Implement scoring functions: _sharpness_score(frame: ndarray) -> float using cv2.Laplacian variance, _rule_of_thirds_score(frame_shape, detections: list[dict]) -> float using bbox center distances to 4 thirds-grid intersection points, _detection_confidence_score(detections: list[dict]) -> float using max confidence across all detections, _combined_score(sharpness, thirds, confidence) -> float with configurable weights (default: 0.3 sharpness, 0.3 thirds, 0.4 confidence)",
       "status": "done",
-      "commit": "294ff75"
+      "commit": "41bc0fc"
     },
     {
       "id": "step-15",
       "type": "test",
-      "description": "Write failing tests for silence detection: mock subprocess.run for ffmpeg silencedetect filter. Test pass when no silence >2s detected; test warning when silence >2s found; test that intentional silence marked in EDL is excluded; test graceful handling when ffmpeg fails",
+      "description": "Write failing tests for frame extraction: test_extracts_best_frame_as_jpeg (mocks cv2.VideoCapture to return frames, verifies highest-scoring frame is saved as JPEG via cv2.imwrite), test_samples_frames_at_intervals (verifies frames are sampled every N frames rather than reading every frame by checking cap.set calls), test_returns_thumbnail_path (returns Path to the saved JPEG in video_path.parent)",
       "status": "done",
-      "commit": "bb026a7"
+      "commit": "da858c2"
     },
     {
       "id": "step-16",
       "type": "impl",
-      "description": "Implement _check_silence(rendered_path, edl, issues) running ffmpeg -i file -af silencedetect=n=-50dB:d=2 -f null -, parsing silence_start/silence_end/silence_duration from stderr, filtering out EDL-marked intentional silences, appending warning Issues. Wire into validate_render.",
+      "description": "Implement _extract_candidate_frames() that opens video with cv2.VideoCapture, gets total frame count and fps, samples frames at ~1fps intervals using cap.set(CAP_PROP_POS_FRAMES), scores each with combined scoring, and saves the best frame as JPEG via cv2.imwrite. Wire into extract_best_thumbnail flow.",
       "status": "done",
-      "commit": "9003d5c"
+      "commit": "659283f"
     },
     {
       "id": "step-17",
       "type": "test",
-      "description": "Write failing tests for validate_render end-to-end: mock all subprocess calls. Test full pass scenario returns passed=True with measurements dict populated. Test mixed issues scenario returns passed=False with correct error/warning counts. Test report JSON serialization.",
+      "description": "Write failing tests for thumbnail upload to YouTube: test_uploads_thumbnail_via_api (mocks YouTube service thumbnails().set() API call with youtube_video_id from uploads table), test_thumbnail_upload_error_logged_not_raised (API error logged as warning, does not raise), test_no_youtube_upload_skips_thumbnail_upload (when no upload record in DB, still returns thumbnail path without calling thumbnails API)",
       "status": "done",
-      "commit": "b26b5c6"
+      "commit": "4149804"
     },
     {
       "id": "step-18",
       "type": "impl",
-      "description": "Complete validate_render orchestration: call ffprobe once, run all checks, populate measurements dict (duration, loudness_lufs, file_size_mb, resolution, codec), set passed=True only if no error-severity issues, return ValidationReport. Add to_dict() method for JSON serialization.",
+      "description": "Implement YouTube thumbnail upload in extract_best_thumbnail: check uploads table via db.get_upload(narrative_id) for youtube_video_id, if present load credentials and call thumbnails().set(videoId=youtube_video_id, media_body=MediaFileUpload(thumb_path, mimetype='image/jpeg')), handle API errors gracefully (log warning, don't raise). Return thumbnail path unconditionally.",
       "status": "done",
-      "commit": "f33daed"
+      "commit": "a2a80c1"
     },
     {
       "id": "step-19",
       "type": "test",
-      "description": "Write failing tests for validation_report.json writing: validate_render should write validation_report.json to output/{narrative_title}/ directory. Test file is created with correct content. Test handles missing output directory by creating it.",
+      "description": "Write failing test for scripts/setup_youtube_oauth.py: test_oauth_flow_saves_credentials (mocks google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file and run_local_server, verifies credentials serialized and written to output path), test_main_requires_client_secrets_arg (verifies argparse requires --client-secrets)",
       "status": "done",
-      "commit": "401d760"
+      "commit": "623f714"
     },
     {
       "id": "step-20",
       "type": "impl",
-      "description": "Add report writing to validate_render: derive output directory from rendered_path parent, write validation_report.json with JSON-serialized ValidationReport. Create directory if needed.",
+      "description": "Create scripts/setup_youtube_oauth.py: argparse with --client-secrets (required) and --output (default ~/.config/autopilot/youtube_oauth.json). Uses InstalledAppFlow.from_client_secrets_file with YOUTUBE_UPLOAD_SCOPE, calls flow.run_local_server(port=0), serializes credentials to JSON (creds.to_json()), writes to output path. Includes if __name__ == '__main__' block.",
       "status": "done",
-      "commit": "77c51e1"
-    },
-    {
-      "id": "step-21",
-      "type": "test",
-      "description": "Write failing test for _check_black_frames ValueError guard: mock subprocess.run to return blackdetect stderr containing a non-numeric value like 'N/A' for black_start/black_end/black_duration (e.g. 'black_start:N/A black_end:2.5 black_duration:N/A'). Verify that _check_black_frames does NOT raise ValueError, and instead appends a warning Issue with check='black_frames' and a message indicating parse failure. Also test that valid numeric entries in the same stderr are still parsed correctly (mixed valid/invalid lines).",
-      "status": "done",
-      "commit": "e41f73d"
-    },
-    {
-      "id": "step-22",
-      "type": "impl",
-      "description": "Guard float() calls in _check_black_frames (lines 356-370): wrap the float(start), float(end), float(duration) calls and the issues.append in a try/except ValueError block. On ValueError, append a warning Issue with check='black_frames' and message=f'Could not parse blackdetect values: {match.group()}' and continue to the next regex match.",
-      "status": "done",
-      "commit": "0c1d4d5"
-    },
-    {
-      "id": "step-23",
-      "type": "test",
-      "description": "Write failing test for _check_silence ValueError guard: mock subprocess.run to return silencedetect stderr containing non-numeric values (e.g. 'silence_start: N/A ... silence_end: N/A | silence_duration: N/A'). Verify that _check_silence does NOT raise ValueError, and instead appends a warning Issue with check='silence' and a message indicating parse failure. Also test mixed valid/invalid matches to ensure good entries still get parsed.",
-      "status": "done",
-      "commit": "5f459a8"
-    },
-    {
-      "id": "step-24",
-      "type": "impl",
-      "description": "Guard float() calls in _check_silence (lines 414-416): wrap the float(match.group(1)), float(match.group(2)), float(match.group(3)) calls and subsequent logic in a try/except ValueError block. On ValueError, append a warning Issue with check='silence' and message=f'Could not parse silencedetect values: {match.group()}' and continue to the next regex match.",
-      "status": "done",
-      "commit": "fcc79aa"
-    },
-    {
-      "id": "step-25",
-      "type": "test",
-      "description": "Write failing test for validate_render report writing OSError guard: mock the Path.write_text method (or Path.mkdir) to raise OSError('Permission denied'). Verify that validate_render does NOT raise OSError, still returns a valid ValidationReport with correct passed/issues/measurements, and logs a warning. Test both mkdir failure and write_text failure scenarios.",
-      "status": "done",
-      "commit": "4e873be"
-    },
-    {
-      "id": "step-26",
-      "type": "impl",
-      "description": "Guard report file writing in validate_render (lines 496-499): wrap the output_dir.mkdir(...) and report_path.write_text(...) calls in a try/except OSError block. On OSError, log a warning via logger.warning('Could not write validation report to %s: %s', report_path, exc). Then unconditionally return report regardless of write success/failure.",
-      "status": "done",
-      "commit": "882b1c8"
+      "commit": "aa53ec0"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use a richer Issue dataclass instead of plain strings for issues list",
-      "rationale": "Task spec requires severity (error/warning) per issue plus measurements. A structured Issue(severity, check, message, measured_value) enables filtering by severity and programmatic consumption. The existing plan/validator.py uses plain strings but this module needs more structured output."
+      "decision": "Use resumable uploads via MediaFileUpload(resumable=True) with next_chunk() loop",
+      "rationale": "Video files can be large (multi-GB). Resumable uploads handle network interruptions gracefully and are the recommended approach for the YouTube Data API. Each upload costs 1600 quota units out of 10K/day (6 uploads max), so retry on failure is critical to avoid wasting quota."
     },
     {
-      "decision": "Run ffprobe once and pass probe_data dict to check functions, but run ffmpeg analysis filters as separate subprocess calls",
-      "rationale": "ffprobe gives us duration/resolution/codec/size in one call. Loudness, black frames, and silence detection each need separate ffmpeg filter passes. This minimizes subprocess calls while keeping each filter's output separate and parseable."
+      "decision": "Separate credential loading into _load_credentials() helper",
+      "rationale": "Credential handling (load from file, check expiry, refresh token) is complex enough to warrant its own function for testability. Both upload_video and thumbnail upload (via extract_best_thumbnail) need credentials, so this avoids duplication."
     },
     {
-      "decision": "Use severity='error' for hard failures (duration, loudness, resolution, codec) and severity='warning' for soft failures (black frames, silence, file size)",
-      "rationale": "Task spec says file size is a 'warn if outside range' check. Black frames and silence are quality warnings, not rendering failures. Duration and codec mismatches indicate a broken render. passed=True only when no error-severity issues exist."
+      "decision": "Frame scoring uses weighted combination of 3 metrics: YOLO detection confidence (0.4), rule-of-thirds composition (0.3), Laplacian sharpness (0.3)",
+      "rationale": "These are the three criteria specified in the task. Separating them into individual scoring functions allows independent testing and future tuning. Detection confidence gets highest weight since frames with clear subjects make the best thumbnails."
     },
     {
-      "decision": "Write validation_report.json to rendered_path.parent (same directory as the rendered file)",
-      "rationale": "Task spec says 'output/{narrative_title}/'. The router already places final.mp4 in output/{narrative_title}/, so rendered_path.parent is the correct location. This avoids needing narrative_title as a separate parameter."
+      "decision": "Sample frames at ~1fps intervals rather than scoring every frame",
+      "rationale": "Scoring every frame of a multi-minute video would be slow and unnecessary for thumbnail selection. Sampling at ~1fps provides sufficient coverage while keeping computation manageable. Uses cap.set(CAP_PROP_POS_FRAMES) for efficient seeking."
     },
     {
-      "decision": "Name the module validate.py (not validator.py) to avoid confusion with plan/validator.py",
-      "rationale": "Task spec explicitly says 'validate.py'. This also provides clear naming distinction: plan/validator.py validates EDL structure pre-render; render/validate.py validates the rendered output post-render."
+      "decision": "Use cv2 (OpenCV) for frame extraction and Laplacian sharpness, numpy for array operations",
+      "rationale": "OpenCV is the standard for video frame access and image processing. numpy is already a project dependency. cv2 provides VideoCapture for frame extraction and Laplacian filter for sharpness measurement. Pillow (already a dependency) is available but cv2 is more appropriate for video frame operations."
     },
     {
-      "decision": "Parse loudnorm output from ffmpeg stderr using regex rather than JSON",
-      "rationale": "ffmpeg loudnorm with print_format=json outputs JSON embedded in stderr alongside other log lines. Extracting the JSON block via regex is more robust than trying to parse the entire stderr as JSON."
+      "decision": "extract_best_thumbnail returns the JPEG path even if YouTube thumbnail upload fails or is skipped",
+      "rationale": "The thumbnail extraction is useful independently of whether it gets uploaded to YouTube. If no YouTube upload exists yet (e.g., upload_video hasn't been called), the thumbnail is still generated for potential later use. Thumbnail upload failure is logged as warning, not raised."
     },
     {
-      "decision": "Guard all float() parsing of ffmpeg filter output with try/except ValueError",
-      "rationale": "The \\S+ regex groups in blackdetect and silencedetect parsing can capture non-numeric values (N/A, locale-formatted numbers, version-skewed output). Unguarded float() would crash the entire validation call. Instead, emit a warning Issue and continue to the next match so other valid detections are still reported."
+      "decision": "Mock external Google API dependencies via unittest.mock patching, consistent with existing test patterns",
+      "rationale": "The project consistently mocks heavy external deps (see test_voiceover.py patching kokoro/soundfile, test_broll.py patching requests). This avoids needing google-api-python-client and google-auth installed in the test environment and avoids hitting real APIs."
     },
     {
-      "decision": "Guard report file I/O with try/except OSError, returning ValidationReport unconditionally",
-      "rationale": "Report writing is a non-critical side effect. An OSError (permissions, disk full, read-only mount) should not prevent the caller from receiving the ValidationReport that all checks have already produced. Log a warning and return the report regardless."
+      "decision": "Tags sourced from activity cluster labels AND unique YOLO object class names from detections",
+      "rationale": "Task specifies tags from 'activity labels + detected object classes'. Activity clusters have label fields. Detections JSON contains class_name strings. Combined and deduplicated, these provide semantic YouTube tags for discoverability."
     }
   ],
   "reuse": [
     {
-      "what": "OutputConfig dataclass (resolution, codec, target_loudness_lufs fields)",
-      "where": "autopilot/config.py",
-      "how": "Type hint for config parameter; access config.resolution, config.codec, config.target_loudness_lufs for validation checks"
+      "what": "CatalogDB.insert_upload() and get_upload()",
+      "where": "autopilot/db.py lines 738-768",
+      "how": "Use existing CRUD methods to store/retrieve YouTube upload records (narrative_id, youtube_video_id, youtube_url, uploaded_at, privacy_status) without any schema changes"
     },
     {
-      "what": "ffprobe invocation pattern (subprocess.run with JSON output parsing)",
-      "where": "autopilot/ingest/scanner.py _run_ffprobe()",
-      "how": "Follow same pattern: ffprobe -v quiet -print_format json -show_format -show_streams, capture_output=True, text=True, check=True, parse stdout JSON"
+      "what": "YouTubeConfig dataclass",
+      "where": "autopilot/config.py lines 88-93",
+      "how": "Use existing config with privacy_status, default_category, credentials_path fields. No config changes needed."
     },
     {
-      "what": "subprocess.run mocking pattern for tests",
-      "where": "tests/test_ffmpeg_render.py",
-      "how": "Use unittest.mock.patch('subprocess.run') to mock ffmpeg/ffprobe calls, verify command arguments, simulate success/failure"
+      "what": "CatalogDB.get_narrative() and get_narrative_script()",
+      "where": "autopilot/db.py lines 621-699",
+      "how": "Retrieve narrative title/description for YouTube video title/description, and script JSON for extended description"
     },
     {
-      "what": "ValidationResult pattern (dataclass with passed, errors, warnings)",
-      "where": "autopilot/plan/validator.py",
-      "how": "Model ValidationReport similarly but with structured Issue objects instead of plain strings, and add measurements dict"
+      "what": "CatalogDB.get_activity_clusters()",
+      "where": "autopilot/db.py lines 567-570",
+      "how": "Retrieve activity cluster labels to use as YouTube video tags"
     },
     {
-      "what": "Test class organization pattern (TestPublicAPI, then per-feature test classes)",
-      "where": "tests/test_validator.py, tests/test_ffmpeg_render.py",
-      "how": "Follow same test organization: TestPublicAPI for imports/signatures, then TestDurationCheck, TestLoudnessCheck, etc."
+      "what": "CatalogDB.get_detections_for_media()",
+      "where": "autopilot/db.py lines 525-531",
+      "how": "Retrieve YOLO detection JSON for: (1) object class names as YouTube tags, (2) detection confidences for thumbnail frame scoring"
     },
     {
-      "what": "render/__init__.py export pattern",
-      "where": "autopilot/render/__init__.py",
-      "how": "Add ValidationError and validate_render to __init__.py imports and __all__"
+      "what": "catalog_db fixture (in-memory CatalogDB)",
+      "where": "tests/conftest.py lines 26-39",
+      "how": "Use for testing upload_video and extract_best_thumbnail DB interactions with autocommit"
+    },
+    {
+      "what": "google-api-python-client dependency",
+      "where": "pyproject.toml line 38",
+      "how": "Already listed in project dependencies. Provides googleapiclient.discovery.build, googleapiclient.http.MediaFileUpload for YouTube API interaction."
+    },
+    {
+      "what": "Error class + __all__ + TYPE_CHECKING + logger pattern",
+      "where": "All existing modules (voiceover.py, objects.py, broll.py, etc.)",
+      "how": "Follow established pattern: custom XxxError class, __all__ list, TYPE_CHECKING guard for type-only imports of CatalogDB/config types, logger = logging.getLogger(__name__)"
     }
   ]
 }

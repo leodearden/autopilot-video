@@ -5,11 +5,9 @@ from __future__ import annotations
 import inspect
 import json
 import sys
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Public API surface tests
