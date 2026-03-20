@@ -177,6 +177,57 @@ def _check_resolution_codec(
         )
 
 
+# File size thresholds for 1080p h264 (MB per minute)
+_FILE_SIZE_MIN_MB_PER_MIN = 8
+_FILE_SIZE_MAX_MB_PER_MIN = 15
+
+
+def _check_file_size(
+    probe_data: dict, config: OutputConfig, issues: list[Issue],
+) -> None:
+    """Check file size is within expected range for 1080p h264.
+
+    Only runs the check when config specifies 1080p h264; skips otherwise.
+    """
+    # Only apply to 1080p h264
+    if config.resolution != (1920, 1080) or config.codec != "h264":
+        return
+
+    duration = probe_data.get("duration_seconds")
+    file_size = probe_data.get("file_size_bytes")
+    if duration is None or file_size is None or duration <= 0:
+        return
+
+    duration_minutes = duration / 60.0
+    file_size_mb = file_size / (1024 * 1024)
+    mb_per_min = file_size_mb / duration_minutes
+
+    if mb_per_min < _FILE_SIZE_MIN_MB_PER_MIN:
+        issues.append(
+            Issue(
+                severity="warning",
+                check="file_size",
+                message=(
+                    f"File size {file_size_mb:.1f} MB ({mb_per_min:.1f} MB/min) "
+                    f"is below expected minimum of {_FILE_SIZE_MIN_MB_PER_MIN} MB/min"
+                ),
+                measured_value=mb_per_min,
+            )
+        )
+    elif mb_per_min > _FILE_SIZE_MAX_MB_PER_MIN:
+        issues.append(
+            Issue(
+                severity="warning",
+                check="file_size",
+                message=(
+                    f"File size {file_size_mb:.1f} MB ({mb_per_min:.1f} MB/min) "
+                    f"exceeds expected maximum of {_FILE_SIZE_MAX_MB_PER_MIN} MB/min"
+                ),
+                measured_value=mb_per_min,
+            )
+        )
+
+
 def validate_render(
     rendered_path: Path,
     edl: dict,
