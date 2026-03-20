@@ -176,11 +176,21 @@ def export_otio(edl: dict, output_path: Path, db: CatalogDB) -> Path:
     # Build per-clip metadata lookup dicts
     crop_by_clip: dict[str, str] = {}
     for cm in edl.get("crop_modes", []):
-        crop_by_clip[cm["clip_id"]] = cm.get("mode", "")
+        try:
+            crop_by_clip[cm["clip_id"]] = cm.get("mode", "")
+        except KeyError as e:
+            raise OtioExportError(
+                f"Malformed crop_modes entry: missing {e}"
+            ) from e
 
     audio_by_clip: dict[str, float] = {}
     for au in edl.get("audio_settings", []):
-        audio_by_clip[au["clip_id"]] = au.get("level_db", 0.0)
+        try:
+            audio_by_clip[au["clip_id"]] = au.get("level_db", 0.0)
+        except KeyError as e:
+            raise OtioExportError(
+                f"Malformed audio_settings entry: missing {e}"
+            ) from e
 
     # Build timeline
     timeline = otio.schema.Timeline(name="autopilot_edit")
@@ -205,9 +215,14 @@ def export_otio(edl: dict, output_path: Path, db: CatalogDB) -> Path:
         )
 
         for clip_data in track_clips:
-            clip_id = clip_data["clip_id"]
-            in_tc = clip_data["in_timecode"]
-            out_tc = clip_data["out_timecode"]
+            try:
+                clip_id = clip_data["clip_id"]
+                in_tc = clip_data["in_timecode"]
+                out_tc = clip_data["out_timecode"]
+            except KeyError as e:
+                raise OtioExportError(
+                    f"Malformed clip in EDL: missing {e}"
+                ) from e
 
             file_path, fps = _get_media_info(clip_id, db)
 
