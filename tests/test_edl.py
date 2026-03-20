@@ -338,3 +338,62 @@ class TestToolUseCollection:
         assert len(edl["music"]) == 1
         assert len(edl["voiceovers"]) == 1
         assert len(edl["broll_requests"]) == 1
+
+
+# -- Step 19: DB persistence and status update tests --------------------------
+
+
+class TestEdlPersistence:
+    """Tests for generate_edl DB storage and status updates."""
+
+    def test_edl_stored_in_edit_plans(self, catalog_db):
+        """EDL JSON is stored in edit_plans table via upsert_edit_plan."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.edl import generate_edl
+
+        config = LLMConfig()
+        _seed_edl_narrative(catalog_db)
+
+        mock_anthropic, _ = _setup_mock_edl_anthropic()
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            generate_edl("n1", catalog_db, config)
+
+        stored = catalog_db.get_edit_plan("n1")
+        assert stored is not None
+        edl_data = json.loads(stored["edl_json"])
+        assert "clips" in edl_data
+        assert len(edl_data["clips"]) >= 1
+
+    def test_narrative_status_updated_to_planned(self, catalog_db):
+        """Narrative status is updated to 'planned' after EDL generation."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.edl import generate_edl
+
+        config = LLMConfig()
+        _seed_edl_narrative(catalog_db)
+
+        mock_anthropic, _ = _setup_mock_edl_anthropic()
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            generate_edl("n1", catalog_db, config)
+
+        narrative = catalog_db.get_narrative("n1")
+        assert narrative is not None
+        assert narrative["status"] == "planned"
+
+    def test_validation_result_stored_in_edit_plans(self, catalog_db):
+        """Validation result JSON is stored in edit_plans.validation_json."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.edl import generate_edl
+
+        config = LLMConfig()
+        _seed_edl_narrative(catalog_db)
+
+        mock_anthropic, _ = _setup_mock_edl_anthropic()
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            generate_edl("n1", catalog_db, config)
+
+        stored = catalog_db.get_edit_plan("n1")
+        assert stored is not None
+        assert stored["validation_json"] is not None
+        val_data = json.loads(stored["validation_json"])
+        assert "passed" in val_data
