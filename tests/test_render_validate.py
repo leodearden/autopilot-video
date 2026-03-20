@@ -391,3 +391,91 @@ class TestFileSizeCheck:
         _check_file_size(probe, config, issues)
 
         assert len(issues) == 0
+
+
+# ---------------------------------------------------------------------------
+# TestLoudnessCheck — _check_loudness
+# ---------------------------------------------------------------------------
+
+# Sample ffmpeg loudnorm stderr output
+LOUDNORM_STDERR_OK = """
+[Parsed_loudnorm_0 @ 0x5555]
+{
+	"input_i" : "-16.2",
+	"input_tp" : "-1.5",
+	"input_lra" : "7.2",
+	"input_thresh" : "-26.5",
+	"output_i" : "-16.0",
+	"output_tp" : "-1.0",
+	"output_lra" : "5.0",
+	"output_thresh" : "-26.0",
+	"normalization_type" : "dynamic",
+	"target_offset" : "0.0"
+}
+"""
+
+LOUDNORM_STDERR_TOO_LOUD = """
+[Parsed_loudnorm_0 @ 0x5555]
+{
+	"input_i" : "-10.0",
+	"input_tp" : "-1.5",
+	"input_lra" : "7.2",
+	"input_thresh" : "-26.5",
+	"output_i" : "-10.0",
+	"output_tp" : "-1.0",
+	"output_lra" : "5.0",
+	"output_thresh" : "-26.0",
+	"normalization_type" : "dynamic",
+	"target_offset" : "0.0"
+}
+"""
+
+
+class TestLoudnessCheck:
+    """Tests for _check_loudness internal helper."""
+
+    def test_pass_when_within_target(self) -> None:
+        from autopilot.render.validate import Issue, _check_loudness
+
+        mock = MagicMock()
+        mock.stderr = LOUDNORM_STDERR_OK
+        mock.returncode = 0
+
+        config = OutputConfig(target_loudness_lufs=-16)
+        issues: list[Issue] = []
+
+        with patch("subprocess.run", return_value=mock):
+            _check_loudness(Path("/fake/video.mp4"), config, issues)
+
+        assert len(issues) == 0
+
+    def test_error_when_outside_target(self) -> None:
+        from autopilot.render.validate import Issue, _check_loudness
+
+        mock = MagicMock()
+        mock.stderr = LOUDNORM_STDERR_TOO_LOUD
+        mock.returncode = 0
+
+        config = OutputConfig(target_loudness_lufs=-16)
+        issues: list[Issue] = []
+
+        with patch("subprocess.run", return_value=mock):
+            _check_loudness(Path("/fake/video.mp4"), config, issues)
+
+        assert len(issues) == 1
+        assert issues[0].severity == "error"
+        assert issues[0].check == "loudness"
+        assert issues[0].measured_value == pytest.approx(-10.0)
+
+    def test_error_when_ffmpeg_fails(self) -> None:
+        from autopilot.render.validate import Issue, _check_loudness
+
+        config = OutputConfig(target_loudness_lufs=-16)
+        issues: list[Issue] = []
+
+        with patch("subprocess.run", side_effect=subprocess.CalledProcessError(1, "ffmpeg")):
+            _check_loudness(Path("/fake/video.mp4"), config, issues)
+
+        assert len(issues) == 1
+        assert issues[0].severity == "error"
+        assert issues[0].check == "loudness"
