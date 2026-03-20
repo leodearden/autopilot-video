@@ -203,3 +203,138 @@ class TestGenerateEdlLLM:
 
         with pytest.raises(EdlError, match="[Nn]arrative.*not found"):
             generate_edl("nonexistent", catalog_db, config)
+
+
+# -- Step 17: Tool-use response collection tests ------------------------------
+
+
+class TestToolUseCollection:
+    """Tests for tool_use content block collection into EDL structure."""
+
+    def test_select_clip_collected_into_clips(self, catalog_db):
+        """select_clip tool calls are collected into clips array."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.edl import generate_edl
+
+        config = LLMConfig()
+        _seed_edl_narrative(catalog_db)
+
+        tool_calls = [
+            ("select_clip", {
+                "clip_id": "v1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }),
+        ]
+        mock_anthropic, _ = _setup_mock_edl_anthropic(tool_calls)
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            edl = generate_edl("n1", catalog_db, config)
+
+        assert len(edl["clips"]) == 1
+        assert edl["clips"][0]["clip_id"] == "v1"
+
+    def test_add_transition_collected_into_transitions(self, catalog_db):
+        """add_transition tool calls are collected into transitions array."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.edl import generate_edl
+
+        config = LLMConfig()
+        _seed_edl_narrative(catalog_db)
+
+        tool_calls = [
+            ("select_clip", {
+                "clip_id": "v1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }),
+            ("add_transition", {
+                "type": "crossfade",
+                "duration": 1.0,
+                "position": "00:00:10.000",
+            }),
+        ]
+        mock_anthropic, _ = _setup_mock_edl_anthropic(tool_calls)
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            edl = generate_edl("n1", catalog_db, config)
+
+        assert len(edl["transitions"]) == 1
+        assert edl["transitions"][0]["type"] == "crossfade"
+
+    def test_set_audio_collected_into_audio_settings(self, catalog_db):
+        """set_audio tool calls are collected into audio_settings array."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.edl import generate_edl
+
+        config = LLMConfig()
+        _seed_edl_narrative(catalog_db)
+
+        tool_calls = [
+            ("select_clip", {
+                "clip_id": "v1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }),
+            ("set_audio", {
+                "clip_id": "v1",
+                "level_db": -6.0,
+            }),
+        ]
+        mock_anthropic, _ = _setup_mock_edl_anthropic(tool_calls)
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            edl = generate_edl("n1", catalog_db, config)
+
+        assert len(edl["audio_settings"]) == 1
+        assert edl["audio_settings"][0]["level_db"] == -6.0
+
+    def test_all_8_tool_types_categorized(self, catalog_db):
+        """All 8 tool types are properly categorized in EDL dict."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.edl import generate_edl
+
+        config = LLMConfig()
+        _seed_edl_narrative(catalog_db)
+
+        tool_calls = [
+            ("select_clip", {
+                "clip_id": "v1", "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000", "track": 1,
+            }),
+            ("add_transition", {
+                "type": "cut", "duration": 0, "position": "00:00:10.000",
+            }),
+            ("set_crop_mode", {
+                "clip_id": "v1", "mode": "center",
+            }),
+            ("add_title", {
+                "text": "Title", "style": "lower_third",
+                "position": "00:00:02.000", "duration": 3.0,
+            }),
+            ("set_audio", {
+                "clip_id": "v1", "level_db": -6.0,
+            }),
+            ("add_music", {
+                "mood": "ambient", "duration": 10.0, "start_time": "00:00:00.000",
+            }),
+            ("add_voiceover", {
+                "text": "Welcome", "start_time": "00:00:00.000", "duration": 5.0,
+            }),
+            ("request_broll", {
+                "description": "Aerial shot", "duration": 3.0,
+                "start_time": "00:00:05.000",
+            }),
+        ]
+        mock_anthropic, _ = _setup_mock_edl_anthropic(tool_calls)
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            edl = generate_edl("n1", catalog_db, config)
+
+        assert len(edl["clips"]) == 1
+        assert len(edl["transitions"]) == 1
+        assert len(edl["crop_modes"]) == 1
+        assert len(edl["titles"]) == 1
+        assert len(edl["audio_settings"]) == 1
+        assert len(edl["music"]) == 1
+        assert len(edl["voiceovers"]) == 1
+        assert len(edl["broll_requests"]) == 1
