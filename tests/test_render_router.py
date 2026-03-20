@@ -6,7 +6,9 @@ import inspect
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
+
+import numpy as np
 
 import pytest
 
@@ -326,6 +328,62 @@ class TestClipDispatching:
 
         mock_rs.assert_called_once()
         mock_rc.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Crop path loading from DB
+# ---------------------------------------------------------------------------
+
+
+class TestCropPathLoading:
+    """Verify crop_path is loaded from DB for slow-path clips."""
+
+    def test_crop_path_loaded_from_db_for_slow_clip(self) -> None:
+        """Slow-path clip should have crop_path loaded via db.get_crop_path."""
+        from autopilot.render.router import route_and_render
+
+        edl = _make_edl(
+            crop_modes=[{"clip_id": "clip_1", "mode": "auto_subject",
+                         "subject_track_id": "face_0"}],
+        )
+        crop_data = np.full((30, 2), [100, 50], dtype=np.float64)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        db.get_crop_path.return_value = {"path_data": crop_data.tolist()}
+        config = _make_config()
+
+        with patch("autopilot.render.router.render_simple") as mock_rs, \
+             patch("autopilot.render.router.render_complex") as mock_rc, \
+             patch("subprocess.run"):
+            mock_rc.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config)
+
+        mock_rc.assert_called_once()
+        # The crop_path arg (index 1) should be an ndarray loaded from DB
+        crop_arg = mock_rc.call_args[0][1]
+        assert isinstance(crop_arg, np.ndarray)
+
+    def test_slow_clip_no_crop_raises_routing_error(self) -> None:
+        """Slow-path clip with no crop data should raise RoutingError."""
+        from autopilot.render.router import RoutingError, route_and_render
+
+        edl = _make_edl(
+            crop_modes=[{"clip_id": "clip_1", "mode": "auto_subject",
+                         "subject_track_id": "face_0"}],
+        )
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_crop_path.return_value = None
+        config = _make_config()
+
+        with patch("autopilot.render.router.render_simple"), \
+             patch("autopilot.render.router.render_complex"), \
+             patch("subprocess.run"):
+            with pytest.raises(RoutingError, match="crop"):
+                route_and_render("n1", db, config)
 
 
 # ---------------------------------------------------------------------------
