@@ -245,6 +245,9 @@ def _run_edl(*, config: Any, db: Any) -> None:
         except Exception:
             logger.exception("EDL generation failed for narrative %s", nid)
 
+    if approved and successes == 0:
+        raise RuntimeError("All narratives failed EDL generation")
+
     logger.info("EDL complete: %d/%d succeeded", successes, len(approved))
 
 
@@ -268,6 +271,9 @@ def _run_source_assets(*, config: Any, db: Any) -> None:
             successes += 1
         except Exception:
             logger.exception("Source resolution failed for narrative %s", nid)
+
+    if approved and successes == 0:
+        raise RuntimeError("All narratives failed source resolution")
 
     logger.info("Source complete: %d/%d succeeded", successes, len(approved))
 
@@ -295,6 +301,9 @@ def _run_render(*, config: Any, db: Any) -> None:
         except Exception:
             logger.exception("Render failed for narrative %s", nid)
 
+    if approved and successes == 0:
+        raise RuntimeError("All narratives failed render")
+
     logger.info("Render complete: %d/%d succeeded", successes, len(approved))
 
 
@@ -316,6 +325,9 @@ def _run_upload(*, config: Any, db: Any) -> None:
             successes += 1
         except Exception:
             logger.exception("Upload failed for narrative %s", nid)
+
+    if approved and successes == 0:
+        raise RuntimeError("All narratives failed upload")
 
     logger.info("Upload complete: %d/%d succeeded", successes, len(approved))
 
