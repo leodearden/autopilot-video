@@ -92,29 +92,35 @@ def _run_ingest(*, config: Any, db: Any) -> None:
     norm_dir = config.output_dir / "normalized"
     norm_dir.mkdir(parents=True, exist_ok=True)
 
+    ingested = 0
     for mf in files:
         media_id = mf.sha256_prefix or mf.file_path.stem
-        db.insert_media(
-            media_id,
-            str(mf.file_path),
-            sha256_prefix=mf.sha256_prefix,
-            codec=mf.codec,
-            resolution_w=mf.resolution_w,
-            resolution_h=mf.resolution_h,
-            fps=mf.fps,
-            duration_seconds=mf.duration_seconds,
-            created_at=mf.created_at,
-            gps_lat=mf.gps_lat,
-            gps_lon=mf.gps_lon,
-            audio_channels=mf.audio_channels,
-            metadata_json=mf.metadata_json,
-        )
-        normalizer.normalize_audio(
-            mf.file_path, norm_dir, root_dir=config.input_dir
-        )
+        try:
+            db.insert_media(
+                media_id,
+                str(mf.file_path),
+                sha256_prefix=mf.sha256_prefix,
+                codec=mf.codec,
+                resolution_w=mf.resolution_w,
+                resolution_h=mf.resolution_h,
+                fps=mf.fps,
+                duration_seconds=mf.duration_seconds,
+                created_at=mf.created_at,
+                gps_lat=mf.gps_lat,
+                gps_lon=mf.gps_lon,
+                audio_channels=mf.audio_channels,
+                metadata_json=mf.metadata_json,
+            )
+            normalizer.normalize_audio(
+                mf.file_path, norm_dir, root_dir=config.input_dir
+            )
+            ingested += 1
+        except Exception as exc:
+            logger.error("Failed to ingest %s: %s", mf.file_path, exc)
+            continue
 
     dedup.mark_duplicates(db)
-    logger.info("Ingest complete: %d files scanned", len(files))
+    logger.info("Ingest complete: %d/%d files ingested", ingested, len(files))
 
 
 def _run_analyze(*, config: Any, db: Any) -> None:
