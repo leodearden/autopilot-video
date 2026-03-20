@@ -226,8 +226,13 @@ def export_otio(edl: dict, output_path: Path, db: CatalogDB) -> Path:
 
             file_path, fps = _get_media_info(clip_id, db)
 
-            start_time = _tc_to_rational_time(in_tc, fps)
-            end_time = _tc_to_rational_time(out_tc, fps)
+            try:
+                start_time = _tc_to_rational_time(in_tc, fps)
+                end_time = _tc_to_rational_time(out_tc, fps)
+            except ValueError as e:
+                raise OtioExportError(
+                    f"Invalid timecode for clip {clip_id}: {e}"
+                ) from e
             duration = otio.opentime.RationalTime(
                 end_time.value - start_time.value,
                 fps,
@@ -347,8 +352,13 @@ def detect_otio_changes(otio_path: Path, original_edl: dict) -> dict:
             changes.append(f"Clip {clip_id}: missing from OTIO file")
             continue
 
-        orig_in_sec = timecode_to_seconds(orig_clip["in_timecode"])
-        orig_out_sec = timecode_to_seconds(orig_clip["out_timecode"])
+        try:
+            orig_in_sec = timecode_to_seconds(orig_clip["in_timecode"])
+            orig_out_sec = timecode_to_seconds(orig_clip["out_timecode"])
+        except (KeyError, ValueError) as e:
+            raise OtioExportError(
+                f"Invalid or missing timecode for clip {clip_id}: {e}"
+            ) from e
         orig_dur = orig_out_sec - orig_in_sec
 
         actual_start = otio.opentime.to_seconds(otio_clip.source_range.start_time)
