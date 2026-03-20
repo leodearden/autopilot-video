@@ -26,6 +26,26 @@ class MusicError(Exception):
     """Raised for any music sourcing error."""
 
 
+# Module-level cache for MusicGen model (avoids 10-30s reload per call).
+_musicgen_cache: dict[str, object] = {}
+
+
+def _get_musicgen_model(name: str) -> object:
+    """Get or create a cached MusicGen model instance.
+
+    Args:
+        name: Model name (e.g. 'facebook/musicgen-small').
+
+    Returns:
+        MusicGen model instance.
+    """
+    if name not in _musicgen_cache:
+        from audiocraft.models import MusicGen
+
+        _musicgen_cache[name] = MusicGen.get_pretrained(name)
+    return _musicgen_cache[name]
+
+
 def source_music(
     request: MusicRequest, config: ModelConfig, output_dir: Path
 ) -> Path | None:
@@ -83,7 +103,7 @@ def _generate_musicgen(request: MusicRequest, output_dir: Path) -> Path:
     """
     try:
         import torchaudio
-        from audiocraft.models import MusicGen
+        import audiocraft.models  # noqa: F401 — ensure audiocraft is importable
     except ImportError as e:
         raise MusicError(f"MusicGen dependencies not installed: {e}") from e
 
@@ -94,7 +114,7 @@ def _generate_musicgen(request: MusicRequest, output_dir: Path) -> Path:
             request.duration,
         )
 
-        model = MusicGen.get_pretrained("facebook/musicgen-small")
+        model = _get_musicgen_model("facebook/musicgen-small")
         model.set_generation_params(duration=request.duration)
 
         wav = model.generate([request.mood])
