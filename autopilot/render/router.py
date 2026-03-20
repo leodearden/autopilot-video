@@ -20,8 +20,40 @@ __all__ = ["RoutingError", "route_and_render"]
 logger = logging.getLogger(__name__)
 
 
+# Crop modes that use static (constant) crop coordinates — FFmpeg fast path
+_FAST_CROP_MODES = {"center", "manual_offset", "stabilize_only"}
+
+# Crop modes that produce dynamic per-frame crops — MoviePy slow path
+_SLOW_CROP_MODES = {"auto_subject"}
+
+
 class RoutingError(Exception):
     """Raised for all render routing and assembly failures."""
+
+
+def _classify_clip(clip: dict, crop_modes: dict) -> str:
+    """Classify a clip as 'fast' (FFmpeg) or 'slow' (MoviePy).
+
+    Args:
+        clip: EDL clip entry dict with clip_id and optional overlay field.
+        crop_modes: Mapping of clip_id -> crop mode string from EDL.
+
+    Returns:
+        'fast' or 'slow'.
+    """
+    # Complex overlays force slow path
+    overlay = clip.get("overlay")
+    if overlay in ("pip", "split_screen"):
+        return "slow"
+
+    # Check crop mode
+    clip_id = clip.get("clip_id", "")
+    mode = crop_modes.get(clip_id, "center")  # default to center (fast)
+
+    if mode in _SLOW_CROP_MODES:
+        return "slow"
+
+    return "fast"
 
 
 def route_and_render(
