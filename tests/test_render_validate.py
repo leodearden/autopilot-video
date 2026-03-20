@@ -546,6 +546,52 @@ class TestBlackFrameCheck:
         assert len(issues) == 1
         assert issues[0].severity == "warning"
 
+    def test_non_numeric_blackdetect_values_do_not_raise(self) -> None:
+        """Non-numeric values like 'N/A' in blackdetect output should not crash."""
+        from autopilot.render.validate import Issue, _check_black_frames
+
+        stderr = (
+            "[blackdetect @ 0x5555] black_start:N/A black_end:2.5 black_duration:N/A\n"
+        )
+        mock = MagicMock()
+        mock.stderr = stderr
+        mock.returncode = 0
+
+        issues: list[Issue] = []
+
+        with patch("subprocess.run", return_value=mock):
+            _check_black_frames(Path("/fake/video.mp4"), issues)
+
+        # Should NOT raise ValueError; instead append a warning about parse failure
+        assert len(issues) == 1
+        assert issues[0].severity == "warning"
+        assert issues[0].check == "black_frames"
+        assert "parse" in issues[0].message.lower() or "could not" in issues[0].message.lower()
+
+    def test_mixed_valid_and_invalid_blackdetect_values(self) -> None:
+        """Valid entries should still be parsed even if some entries have bad values."""
+        from autopilot.render.validate import Issue, _check_black_frames
+
+        stderr = (
+            "[blackdetect @ 0x5555] black_start:N/A black_end:2.5 black_duration:N/A\n"
+            "[blackdetect @ 0x5555] black_start:10.0 black_end:10.5 black_duration:0.5\n"
+        )
+        mock = MagicMock()
+        mock.stderr = stderr
+        mock.returncode = 0
+
+        issues: list[Issue] = []
+
+        with patch("subprocess.run", return_value=mock):
+            _check_black_frames(Path("/fake/video.mp4"), issues)
+
+        # Should have 2 issues: 1 parse warning + 1 valid detection
+        assert len(issues) == 2
+        # The valid detection should have measured_value with numeric values
+        valid_issues = [i for i in issues if i.measured_value is not None and isinstance(i.measured_value, dict)]
+        assert len(valid_issues) == 1
+        assert valid_issues[0].measured_value["start"] == pytest.approx(10.0)
+
 
 # ---------------------------------------------------------------------------
 # TestSilenceCheck — _check_silence
