@@ -675,6 +675,55 @@ class TestSilenceCheck:
         assert len(issues) == 1
         assert issues[0].severity == "warning"
 
+    def test_non_numeric_silencedetect_values_do_not_raise(self) -> None:
+        """Non-numeric values like 'N/A' in silencedetect output should not crash."""
+        from autopilot.render.validate import Issue, _check_silence
+
+        stderr = (
+            "[silencedetect @ 0x5555] silence_start: N/A\n"
+            "[silencedetect @ 0x5555] silence_end: N/A | silence_duration: N/A\n"
+        )
+        mock = MagicMock()
+        mock.stderr = stderr
+        mock.returncode = 0
+
+        issues: list[Issue] = []
+
+        with patch("subprocess.run", return_value=mock):
+            _check_silence(Path("/fake/video.mp4"), {}, issues)
+
+        # Should NOT raise ValueError; instead append a warning about parse failure
+        assert len(issues) == 1
+        assert issues[0].severity == "warning"
+        assert issues[0].check == "silence"
+        assert "parse" in issues[0].message.lower() or "could not" in issues[0].message.lower()
+
+    def test_mixed_valid_and_invalid_silencedetect_values(self) -> None:
+        """Valid entries should still be parsed even if some entries have bad values."""
+        from autopilot.render.validate import Issue, _check_silence
+
+        stderr = (
+            "[silencedetect @ 0x5555] silence_start: N/A\n"
+            "[silencedetect @ 0x5555] silence_end: N/A | silence_duration: N/A\n"
+            "[silencedetect @ 0x5555] silence_start: 20.0\n"
+            "[silencedetect @ 0x5555] silence_end: 25.0 | silence_duration: 5.0\n"
+        )
+        mock = MagicMock()
+        mock.stderr = stderr
+        mock.returncode = 0
+
+        issues: list[Issue] = []
+
+        with patch("subprocess.run", return_value=mock):
+            _check_silence(Path("/fake/video.mp4"), {}, issues)
+
+        # Should have 2 issues: 1 parse warning + 1 valid detection
+        assert len(issues) == 2
+        # The valid detection should have measured_value with numeric values
+        valid_issues = [i for i in issues if i.measured_value is not None and isinstance(i.measured_value, dict)]
+        assert len(valid_issues) == 1
+        assert valid_issues[0].measured_value["start"] == pytest.approx(20.0)
+
 
 # ---------------------------------------------------------------------------
 # TestValidateRenderE2E — end-to-end orchestration
