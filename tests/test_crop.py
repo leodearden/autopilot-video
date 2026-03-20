@@ -733,3 +733,57 @@ class TestTauOverride:
         compute_crop_path("tau3", "16:9", catalog_db, config, edl_entry)
         stored = catalog_db.get_crop_path("tau3", "16:9", 1)
         assert stored["smoothing_tau"] == pytest.approx(1.5)
+
+
+class TestErrorHandling:
+    """Tests for error handling in compute_crop_path."""
+
+    def test_media_not_found_raises_crop_error(self, catalog_db) -> None:
+        """Missing media_id raises CropError."""
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import CropError, compute_crop_path
+
+        config = CameraConfig(source_resolution=(4096, 4096))
+        edl_entry = {
+            "mode": "center",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:01.000",
+        }
+        with pytest.raises(CropError, match="[Mm]edia.*not found"):
+            compute_crop_path("nonexistent", "16:9", catalog_db, config, edl_entry)
+
+    def test_no_detections_auto_subject_raises_crop_error(self, catalog_db) -> None:
+        """auto_subject with no detections for media raises CropError."""
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import CropError, compute_crop_path
+
+        catalog_db.insert_media(
+            "empty1", "/fake.mp4",
+            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+        )
+        config = CameraConfig(source_resolution=(4096, 4096))
+        edl_entry = {
+            "mode": "auto_subject",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:01.000",
+        }
+        with pytest.raises(CropError, match="[Nn]o.*detect"):
+            compute_crop_path("empty1", "16:9", catalog_db, config, edl_entry)
+
+    def test_invalid_aspect_raises_crop_error(self, catalog_db) -> None:
+        """Invalid target_aspect raises CropError."""
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import CropError, compute_crop_path
+
+        catalog_db.insert_media(
+            "err1", "/fake.mp4",
+            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+        )
+        config = CameraConfig(source_resolution=(4096, 4096))
+        edl_entry = {
+            "mode": "center",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:01.000",
+        }
+        with pytest.raises(CropError, match="aspect"):
+            compute_crop_path("err1", "banana", catalog_db, config, edl_entry)
