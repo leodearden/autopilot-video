@@ -622,3 +622,123 @@ class TestSilenceCheck:
 
         assert len(issues) == 1
         assert issues[0].severity == "warning"
+
+
+# ---------------------------------------------------------------------------
+# TestValidateRenderE2E — end-to-end orchestration
+# ---------------------------------------------------------------------------
+
+
+def _make_subprocess_side_effect(
+    ffprobe_data: dict,
+    loudnorm_stderr: str,
+    blackdetect_stderr: str,
+    silence_stderr: str,
+):
+    """Create a side_effect function that routes calls to the right mock."""
+    call_count = {"n": 0}
+
+    def side_effect(*args, **kwargs):
+        cmd = args[0] if args else kwargs.get("args", [])
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        if cmd[0] == "ffprobe":
+            mock_result.stdout = json.dumps(ffprobe_data)
+            mock_result.stderr = ""
+        elif "loudnorm" in str(cmd):
+            mock_result.stdout = ""
+            mock_result.stderr = loudnorm_stderr
+        elif "blackdetect" in str(cmd):
+            mock_result.stdout = ""
+            mock_result.stderr = blackdetect_stderr
+        elif "silencedetect" in str(cmd):
+            mock_result.stdout = ""
+            mock_result.stderr = silence_stderr
+        else:
+            mock_result.stdout = ""
+            mock_result.stderr = ""
+
+        return mock_result
+
+    return side_effect
+
+
+class TestValidateRenderE2E:
+    """End-to-end tests for validate_render orchestration."""
+
+    def test_full_pass_scenario(self) -> None:
+        from autopilot.render.validate import validate_render
+
+        config = OutputConfig(
+            resolution=(1920, 1080),
+            codec="h264",
+            target_loudness_lufs=-16,
+        )
+        edl = {"target_duration_seconds": 120}
+
+        side_effect = _make_subprocess_side_effect(
+            ffprobe_data=SAMPLE_FFPROBE_JSON,
+            loudnorm_stderr=LOUDNORM_STDERR_OK,
+            blackdetect_stderr=BLACKDETECT_STDERR_NONE,
+            silence_stderr=SILENCE_STDERR_NONE,
+        )
+
+        with patch("subprocess.run", side_effect=side_effect):
+            report = validate_render(Path("/fake/video.mp4"), edl, config)
+
+        assert report.passed is True
+        assert len([i for i in report.issues if i.severity == "error"]) == 0
+        # Should have measurements populated
+        assert "duration" in report.measurements
+        assert "resolution" in report.measurements
+        assert "codec" in report.measurements
+
+    def test_mixed_issues_scenario(self) -> None:
+        from autopilot.render.validate import validate_render
+
+        config = OutputConfig(
+            resolution=(1920, 1080),
+            codec="h264",
+            target_loudness_lufs=-16,
+        )
+        # Duration doesn't match (probe says 120.5, target 60)
+        edl = {"target_duration_seconds": 60}
+
+        side_effect = _make_subprocess_side_effect(
+            ffprobe_data=SAMPLE_FFPROBE_JSON,
+            loudnorm_stderr=LOUDNORM_STDERR_TOO_LOUD,
+            blackdetect_stderr=BLACKDETECT_STDERR_FOUND,
+            silence_stderr=SILENCE_STDERR_NONE,
+        )
+
+        with patch("subprocess.run", side_effect=side_effect):
+            report = validate_render(Path("/fake/video.mp4"), edl, config)
+
+        assert report.passed is False
+        errors = [i for i in report.issues if i.severity == "error"]
+        warnings = [i for i in report.issues if i.severity == "warning"]
+        assert len(errors) >= 2  # duration + loudness
+        assert len(warnings) >= 2  # black frames
+
+    def test_report_to_dict(self) -> None:
+        from autopilot.render.validate import validate_render
+
+        config = OutputConfig()
+        edl: dict = {}
+
+        side_effect = _make_subprocess_side_effect(
+            ffprobe_data=SAMPLE_FFPROBE_JSON,
+            loudnorm_stderr=LOUDNORM_STDERR_OK,
+            blackdetect_stderr=BLACKDETECT_STDERR_NONE,
+            silence_stderr=SILENCE_STDERR_NONE,
+        )
+
+        with patch("subprocess.run", side_effect=side_effect):
+            report = validate_render(Path("/fake/video.mp4"), edl, config)
+
+        report_dict = report.to_dict()
+        assert isinstance(report_dict, dict)
+        assert "passed" in report_dict
+        assert "issues" in report_dict
+        assert "measurements" in report_dict
