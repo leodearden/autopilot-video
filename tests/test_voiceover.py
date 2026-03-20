@@ -184,6 +184,31 @@ class TestElevenLabsEngine:
         call_kwargs = mock_requests.post.call_args
         assert "my-secret-key" in str(call_kwargs)
 
+    def test_elevenlabs_post_has_timeout(self, tmp_path):
+        """ElevenLabs POST request includes a timeout parameter."""
+        output_path = tmp_path / "voice.wav"
+        config = _make_model_config("elevenlabs")
+
+        mock_requests = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.iter_content = MagicMock(return_value=iter([b"fake_audio"]))
+        mock_response.raise_for_status = MagicMock()
+        mock_requests.post.return_value = mock_response
+
+        with patch.dict(sys.modules, {"requests": mock_requests}):
+            if "autopilot.source.voiceover" in sys.modules:
+                del sys.modules["autopilot.source.voiceover"]
+            from autopilot.source.voiceover import generate_voiceover
+
+            with patch.dict("os.environ", {"ELEVENLABS_API_KEY": "test-key"}):
+                generate_voiceover("Hello world", output_path, config)
+
+        call_kwargs = mock_requests.post.call_args
+        assert call_kwargs.kwargs.get("timeout") is not None, (
+            "ElevenLabs POST request must include a timeout parameter"
+        )
+
     def test_elevenlabs_missing_api_key_raises(self, tmp_path):
         """ElevenLabs engine raises VoiceoverError when API key is missing."""
         output_path = tmp_path / "voice.wav"
