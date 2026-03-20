@@ -7,15 +7,12 @@ bounds, and audio level verification.
 
 from __future__ import annotations
 
-import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from autopilot.db import CatalogDB
-
-logger = logging.getLogger(__name__)
 
 __all__ = [
     "EdlValidationError",
