@@ -474,3 +474,76 @@ class TestCenterMode:
         # crop_w=4096, crop_h=2304; center: (0, 896)
         assert result[0, 0] == pytest.approx(0.0, abs=1.0)
         assert result[0, 1] == pytest.approx(896.0, abs=1.0)
+
+
+class TestManualOffsetMode:
+    """Tests for compute_crop_path with mode='manual_offset'."""
+
+    def test_manual_offset_shifts_crop(self, catalog_db) -> None:
+        """Manual offset with offset_y=200 shifts crop down from center."""
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import compute_crop_path
+
+        catalog_db.insert_media(
+            "vid3", "/fake.mp4",
+            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+        )
+        config = CameraConfig(source_resolution=(4096, 4096))
+        edl_entry = {
+            "mode": "manual_offset",
+            "offset_x": 0,
+            "offset_y": 200,
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:01.000",
+        }
+        result = compute_crop_path("vid3", "16:9", catalog_db, config, edl_entry)
+        assert result.shape == (30, 2)
+        # Center is (0, 896), offset_y=200 -> (0, 1096)
+        assert result[0, 1] == pytest.approx(1096.0, abs=1.0)
+
+    def test_manual_offset_clamped(self, catalog_db) -> None:
+        """Offset that would push crop out of bounds gets clamped."""
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import compute_crop_path
+
+        catalog_db.insert_media(
+            "vid4", "/fake.mp4",
+            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+        )
+        config = CameraConfig(source_resolution=(4096, 4096))
+        edl_entry = {
+            "mode": "manual_offset",
+            "offset_x": 0,
+            "offset_y": 9999,  # way too much
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:01.000",
+        }
+        result = compute_crop_path("vid4", "16:9", catalog_db, config, edl_entry)
+        # crop_h=2304, so max_y = 4096-2304 = 1792
+        assert result[0, 1] <= 1792.0
+
+    def test_manual_offset_zero_equals_center(self, catalog_db) -> None:
+        """Offset (0, 0) equals center mode."""
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import compute_crop_path
+
+        catalog_db.insert_media(
+            "vid5", "/fake.mp4",
+            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+        )
+        config = CameraConfig(source_resolution=(4096, 4096))
+        edl_center = {
+            "mode": "center",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:01.000",
+        }
+        edl_offset = {
+            "mode": "manual_offset",
+            "offset_x": 0,
+            "offset_y": 0,
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:01.000",
+        }
+        r_center = compute_crop_path("vid5", "16:9", catalog_db, config, edl_center)
+        r_offset = compute_crop_path("vid5", "16:9", catalog_db, config, edl_offset)
+        np.testing.assert_allclose(r_center, r_offset)
