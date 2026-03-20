@@ -318,6 +318,44 @@ def _handle_detection_gaps(
     return result
 
 
+def _clamp_to_bounds(
+    path: np.ndarray,
+    source_w: int,
+    source_h: int,
+    crop_w: int,
+    crop_h: int,
+) -> np.ndarray:
+    """Convert crop centers to clamped top-left (crop_x, crop_y) coordinates.
+
+    Converts center coordinates to top-left corner, then clamps so the entire
+    crop window stays within [0, source_w] x [0, source_h].
+
+    Args:
+        path: Array of shape (N, 2) with (center_x, center_y) per frame.
+        source_w: Source frame width.
+        source_h: Source frame height.
+        crop_w: Crop window width.
+        crop_h: Crop window height.
+
+    Returns:
+        Array of shape (N, 2) with (crop_x, crop_y) top-left coordinates.
+    """
+    result = np.empty_like(path)
+
+    # Convert center to top-left
+    result[:, 0] = path[:, 0] - crop_w / 2.0
+    result[:, 1] = path[:, 1] - crop_h / 2.0
+
+    # Clamp to bounds
+    max_x = max(0.0, float(source_w - crop_w))
+    max_y = max(0.0, float(source_h - crop_h))
+
+    result[:, 0] = np.clip(result[:, 0], 0.0, max_x)
+    result[:, 1] = np.clip(result[:, 1], 0.0, max_y)
+
+    return result
+
+
 def compute_crop_path(
     media_id: str,
     target_aspect: str,
