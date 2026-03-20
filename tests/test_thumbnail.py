@@ -253,6 +253,26 @@ class TestFrameExtraction:
         # Verify cap.release() was called despite the exception
         mock_cap.release.assert_called_once()
 
+    def test_imwrite_failure_returns_none(self, tmp_path):
+        """Returns None when cv2.imwrite returns False (disk full, etc)."""
+        mock_cv2 = _setup_cv2_mock()
+        mock_cap = self._make_mock_cap(num_frames=30, fps=30.0)
+        mock_cv2.VideoCapture.return_value = mock_cap
+        mock_cv2.Laplacian.return_value = np.zeros((10, 10))
+        # Simulate imwrite failure (disk full, permission denied)
+        mock_cv2.imwrite.return_value = False
+
+        video_path = tmp_path / "test.mp4"
+        video_path.write_bytes(b"\x00" * 100)
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            from autopilot.upload.thumbnail import _extract_best_frame
+
+            result = _extract_best_frame(video_path, [])
+
+        # Should return None, not a path to a non-existent file
+        assert result is None
+
 
 # ---------------------------------------------------------------------------
 # Google API mock helpers
