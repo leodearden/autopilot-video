@@ -7,16 +7,13 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from autopilot.source import MusicRequest
-
 
 # ---------------------------------------------------------------------------
 # Mock helpers
 # ---------------------------------------------------------------------------
 
-def _make_mock_audiocraft() -> tuple[MagicMock, MagicMock]:
+def _make_mock_audiocraft() -> tuple[MagicMock, MagicMock, MagicMock, MagicMock]:
     """Create mock audiocraft and torchaudio modules.
 
     Returns:
@@ -165,7 +162,7 @@ class TestMusicGenEngine:
                 del sys.modules["autopilot.source.music"]
             from autopilot.source.music import source_music
 
-            result = source_music(request, config, tmp_path)
+            source_music(request, config, tmp_path)
 
         # torchaudio.save should have been called
         mock_ta.save.assert_called_once()
@@ -205,7 +202,6 @@ class TestFreesoundSearch:
         mock_requests.get.side_effect = [search_response, download_response]
 
         request = _make_music_request()
-        config = _make_model_config("musicgen")
 
         with patch.dict(sys.modules, {"requests": mock_requests}):
             if "autopilot.source.music" in sys.modules:

@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import inspect
 import sys
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Mock helpers
@@ -193,7 +191,7 @@ class TestElevenLabsEngine:
 
         if "autopilot.source.voiceover" in sys.modules:
             del sys.modules["autopilot.source.voiceover"]
-        from autopilot.source.voiceover import generate_voiceover, VoiceoverError
+        from autopilot.source.voiceover import VoiceoverError, generate_voiceover
 
         with patch.dict("os.environ", {}, clear=True):
             import os
@@ -217,7 +215,7 @@ class TestVoiceoverErrors:
         with patch.dict(sys.modules):
             if "autopilot.source.voiceover" in sys.modules:
                 del sys.modules["autopilot.source.voiceover"]
-            from autopilot.source.voiceover import generate_voiceover, VoiceoverError
+            from autopilot.source.voiceover import VoiceoverError, generate_voiceover
 
             with pytest.raises(VoiceoverError, match="unknown_engine"):
                 generate_voiceover("Hello", output_path, config)

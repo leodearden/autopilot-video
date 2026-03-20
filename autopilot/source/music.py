@@ -82,9 +82,8 @@ def _generate_musicgen(request: MusicRequest, output_dir: Path) -> Path:
         MusicError: If generation fails.
     """
     try:
-        from audiocraft.models import MusicGen
         import torchaudio
-        import torch
+        from audiocraft.models import MusicGen
     except ImportError as e:
         raise MusicError(f"MusicGen dependencies not installed: {e}") from e
 

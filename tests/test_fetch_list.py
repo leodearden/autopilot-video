@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import inspect
-from pathlib import Path
-
-import pytest
 
 from autopilot.source import BrollRequest, MusicRequest, VoiceoverRequest
 
@@ -50,7 +47,7 @@ class TestFetchListOutput:
         assert output_path.exists()
 
     def test_markdown_has_table_header(self, tmp_path):
-        """Output markdown contains a table with type/description/suggested_sources/priority columns."""
+        """Output markdown has type/description/suggested_sources/priority columns."""
         from autopilot.source.fetch_list import generate_fetch_list
 
         output_path = tmp_path / "fetch_list.md"
@@ -121,7 +118,7 @@ class TestFetchListOutput:
         content = output_path.read_text()
         assert "Type" in content
         # No data rows after header
-        lines = [l for l in content.strip().split("\n") if l.startswith("|")]
+        lines = [ln for ln in content.strip().split("\n") if ln.startswith("|")]
         # Header row + separator row = 2 lines
         assert len(lines) == 2
 

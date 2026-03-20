@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 
 from autopilot.source import AssetRequest, BrollRequest, MusicRequest, VoiceoverRequest
@@ -21,7 +22,7 @@ _SUGGESTED_SOURCES = {
 
 
 def generate_fetch_list(
-    unresolved: list[AssetRequest], output_path: Path
+    unresolved: Sequence[AssetRequest], output_path: Path
 ) -> None:
     """Write a human-readable markdown table listing unresolved asset requests.
 
@@ -84,4 +85,7 @@ def _format_row(req: AssetRequest) -> str | None:
 
     sources = _SUGGESTED_SOURCES.get(req_type, "N/A")
 
-    return f"| {req_type} | {description} | {start_time} | {duration:.1f}s | {sources} | {priority} |"
+    return (
+        f"| {req_type} | {description} | {start_time}"
+        f" | {duration:.1f}s | {sources} | {priority} |"
+    )

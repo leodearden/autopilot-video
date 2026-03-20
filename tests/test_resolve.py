@@ -4,14 +4,9 @@ from __future__ import annotations
 
 import inspect
 import json
-import sys
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from autopilot.source import BrollRequest, MusicRequest, VoiceoverRequest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -202,7 +197,7 @@ class TestResolutionPipeline:
 
         from autopilot.source.resolve import resolve_edl_assets
 
-        result = resolve_edl_assets(edl, config, tmp_path, db)
+        resolve_edl_assets(edl, config, tmp_path, db)
 
         fetch_list_path = tmp_path / "fetch_list.md"
         assert fetch_list_path.exists()
