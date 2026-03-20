@@ -13,7 +13,7 @@ from typing import Any
 from autopilot.analyze import asr, audio_events, embeddings, faces, objects, scenes
 from autopilot.analyze.gpu_scheduler import GPUScheduler
 from autopilot.ingest import dedup, normalizer, scanner
-from autopilot.organize import classify, cluster
+from autopilot.organize import classify, cluster, narratives
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +150,33 @@ def _run_classify(*, config: Any, db: Any) -> None:
     cluster.cluster_activities(db)
     classify.label_activities(db, config.llm)
     logger.info("Classify complete")
+
+
+def _run_narrate(
+    *, config: Any, db: Any, human_review_fn: Callable | None = None,
+) -> None:
+    """NARRATE stage: build storyboard, propose narratives, human review."""
+    storyboard = narratives.build_master_storyboard(db)
+    proposed = narratives.propose_narratives(storyboard, db, config)
+    formatted = narratives.format_for_review(proposed)
+
+    if human_review_fn is not None:
+        approved_ids = set(human_review_fn(formatted, proposed))
+    else:
+        # Auto-approve all when no callback provided
+        approved_ids = {n.narrative_id for n in proposed}
+
+    for narr in proposed:
+        if narr.narrative_id in approved_ids:
+            db.update_narrative_status(narr.narrative_id, "approved")
+        else:
+            db.update_narrative_status(narr.narrative_id, "rejected")
+
+    logger.info(
+        "Narrate complete: %d proposed, %d approved",
+        len(proposed),
+        len(approved_ids),
+    )
 
 
 class PipelineOrchestrator:
