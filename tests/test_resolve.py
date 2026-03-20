@@ -250,6 +250,90 @@ class TestResolveDBIntegration:
         stored_edl = json.loads(plan["edl_json"])
         assert "music" in stored_edl
 
+    def test_db_writes_committed_with_context_manager(self, tmp_path):
+        """DB writes use `with db:` so data is committed (not silently lost).
+
+        Uses a file-based CatalogDB (NOT the autocommit fixture) to verify
+        that resolve_edl_assets wraps DB writes in the context manager.
+        A second connection to the same DB file confirms the data is visible.
+        """
+        from autopilot.db import CatalogDB
+
+        db_path = str(tmp_path / "test_commit.db")
+        db = CatalogDB(db_path)
+
+        # Seed a narrative so the foreign key exists
+        db.conn.execute(
+            "INSERT INTO narratives (narrative_id, title, status) VALUES (?, ?, ?)",
+            ("narr-commit", "Commit Test", "planned"),
+        )
+        db.conn.commit()
+
+        edl = _make_edl(
+            music=[
+                {"mood": "upbeat", "duration": 30.0, "start_time": "00:01:00.000"},
+            ],
+        )
+        config = _make_config(music_engine="fetch_list_only")
+
+        from autopilot.source.resolve import resolve_edl_assets
+
+        resolve_edl_assets(
+            edl, config, tmp_path, db, narrative_id="narr-commit"
+        )
+
+        # Open a SECOND connection to the same DB file.
+        # If resolve_edl_assets didn't use `with db:`, the write
+        # won't be committed and this connection won't see it.
+        db2 = CatalogDB(db_path)
+        plan = db2.get_edit_plan("narr-commit")
+        db2.close()
+        db.close()
+
+        assert plan is not None, (
+            "Edit plan not visible from second connection — "
+            "resolve_edl_assets likely forgot `with db:` context manager"
+        )
+        stored_edl = json.loads(plan["edl_json"])
+        assert "music" in stored_edl
+
+    def test_narrative_status_updated_to_sourced(self, tmp_path):
+        """resolve_edl_assets updates narrative status to 'sourced' within the transaction."""
+        from autopilot.db import CatalogDB
+
+        db_path = str(tmp_path / "test_status.db")
+        db = CatalogDB(db_path)
+
+        db.conn.execute(
+            "INSERT INTO narratives (narrative_id, title, status) VALUES (?, ?, ?)",
+            ("narr-status", "Status Test", "planned"),
+        )
+        db.conn.commit()
+
+        edl = _make_edl()
+        config = _make_config(music_engine="fetch_list_only")
+
+        from autopilot.source.resolve import resolve_edl_assets
+
+        resolve_edl_assets(
+            edl, config, tmp_path, db, narrative_id="narr-status"
+        )
+
+        # Verify status via second connection
+        db2 = CatalogDB(db_path)
+        row = db2.conn.execute(
+            "SELECT status FROM narratives WHERE narrative_id = ?",
+            ("narr-status",),
+        ).fetchone()
+        db2.close()
+        db.close()
+
+        assert row is not None
+        assert row["status"] == "sourced", (
+            f"Expected status 'sourced', got {row['status']!r} — "
+            "resolve_edl_assets should call update_narrative_status within `with db:`"
+        )
+
     def test_full_pipeline_with_mocked_sources(self, tmp_path):
         """Full pipeline: extract → source → update EDL → write fetch_list."""
         edl = _make_edl(
