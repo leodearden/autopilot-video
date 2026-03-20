@@ -221,3 +221,49 @@ class TestComputeMultiSubjectCenter:
         cx, cy = _compute_multi_subject_center(bboxes, crop_w, crop_h)
         assert cx == pytest.approx(2048.0, abs=1.0)
         assert cy == pytest.approx(2048.0, abs=1.0)
+
+
+class TestBuildRawPath:
+    """Tests for _build_raw_path: per-frame raw centers from detection data."""
+
+    def test_track_present_all_frames(self) -> None:
+        """Track present on every frame produces valid centers with correct shape."""
+        from autopilot.render.crop import _build_raw_path
+
+        detections = [
+            [{"track_id": 1, "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0], "class": "person", "confidence": 0.9}],
+            [{"track_id": 1, "bbox_xywh": [2100.0, 2048.0, 200.0, 400.0], "class": "person", "confidence": 0.9}],
+            [{"track_id": 1, "bbox_xywh": [2200.0, 2048.0, 200.0, 400.0], "class": "person", "confidence": 0.9}],
+        ]
+        result = _build_raw_path(detections, track_id=1, crop_w=4096, crop_h=2304)
+        assert result.shape == (3, 2)
+        assert not np.any(np.isnan(result))
+
+    def test_track_missing_some_frames(self) -> None:
+        """Track missing on middle frame -> NaN markers for gaps."""
+        from autopilot.render.crop import _build_raw_path
+
+        detections = [
+            [{"track_id": 1, "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0], "class": "person", "confidence": 0.9}],
+            [{"track_id": 2, "bbox_xywh": [1000.0, 1000.0, 100.0, 100.0], "class": "car", "confidence": 0.8}],
+            [{"track_id": 1, "bbox_xywh": [2200.0, 2048.0, 200.0, 400.0], "class": "person", "confidence": 0.9}],
+        ]
+        result = _build_raw_path(detections, track_id=1, crop_w=4096, crop_h=2304)
+        assert result.shape == (3, 2)
+        # Frame 1 (middle) should be NaN
+        assert np.all(np.isnan(result[1]))
+        # Frames 0 and 2 should be valid
+        assert not np.any(np.isnan(result[0]))
+        assert not np.any(np.isnan(result[2]))
+
+    def test_output_shape_matches_frame_count(self) -> None:
+        """Output shape (N, 2) where N matches the number of input frames."""
+        from autopilot.render.crop import _build_raw_path
+
+        n_frames = 10
+        detections = [
+            [{"track_id": 1, "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0], "class": "person", "confidence": 0.9}]
+            for _ in range(n_frames)
+        ]
+        result = _build_raw_path(detections, track_id=1, crop_w=4096, crop_h=2304)
+        assert result.shape == (n_frames, 2)
