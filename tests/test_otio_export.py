@@ -645,3 +645,76 @@ class TestMetadataPreservation:
 
         tl = otio.adapters.read_from_file(str(output))
         assert tl.metadata["autopilot"]["target_duration_seconds"] == 120
+
+
+# -- Step 13: Round-trip change detection tests --------------------------------
+
+
+class TestDetectOtioChanges:
+    """Verify detect_otio_changes detects modifications to .otio files."""
+
+    def test_unmodified_returns_not_modified(self, tmp_path):
+        """Unmodified .otio file returns modified=False."""
+        from autopilot.plan.otio_export import detect_otio_changes, export_otio
+
+        edl = _minimal_edl(clips=[{
+            "clip_id": "v1",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:10.000",
+            "track": 1,
+        }])
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        result = detect_otio_changes(output, edl)
+        assert result["modified"] is False
+        assert result["changes"] == []
+
+    def test_modified_clip_detected(self, tmp_path):
+        """Modifying clip source_range in .otio is detected."""
+        from autopilot.plan.otio_export import detect_otio_changes, export_otio
+
+        edl = _minimal_edl(clips=[{
+            "clip_id": "v1",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:10.000",
+            "track": 1,
+        }])
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        # Manually alter the .otio file (change clip source_range)
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [
+            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
+        ]
+        clips = [c for c in video_tracks[0] if isinstance(c, otio.schema.Clip)]
+        # Change the clip's source range duration
+        clips[0].source_range = otio.opentime.TimeRange(
+            start_time=otio.opentime.RationalTime(0, 30),
+            duration=otio.opentime.RationalTime(600, 30),  # 20s instead of 10s
+        )
+        otio.adapters.write_to_file(tl, str(output))
+
+        result = detect_otio_changes(output, edl)
+        assert result["modified"] is True
+        assert len(result["changes"]) > 0
+
+    def test_edl_hash_stored_in_metadata(self, tmp_path):
+        """export_otio stores edl_hash in timeline metadata."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(clips=[{
+            "clip_id": "v1",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:10.000",
+            "track": 1,
+        }])
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        assert "edl_hash" in tl.metadata.get("autopilot", {})
