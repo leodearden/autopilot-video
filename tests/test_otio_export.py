@@ -362,3 +362,139 @@ class TestMultiTrackSupport:
         # v1 comes first (in_timecode 00:00:05) then v2 (00:00:20)
         assert t1_clips[0].name == "v1"
         assert t1_clips[1].name == "v2"
+
+
+# -- Step 9: Transition mapping tests -----------------------------------------
+
+
+class TestTransitionMapping:
+    """Verify EDL transitions map to OTIO Transition objects."""
+
+    def test_crossfade_creates_smpte_dissolve(self, tmp_path):
+        """EDL transition type 'crossfade' creates SMPTE_Dissolve."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "crossfade",
+                    "duration": 1.0,
+                    "position": 1,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [
+            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
+        ]
+        transitions = [
+            item for item in video_tracks[0]
+            if isinstance(item, otio.schema.Transition)
+        ]
+        assert len(transitions) == 1
+        assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
+
+    def test_crossfade_duration_correct(self, tmp_path):
+        """Transition duration matches EDL duration (1.0 second)."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "crossfade",
+                    "duration": 1.0,
+                    "position": 1,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [
+            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
+        ]
+        transitions = [
+            item for item in video_tracks[0]
+            if isinstance(item, otio.schema.Transition)
+        ]
+        # Transition has in_offset + out_offset = total duration
+        total_dur_sec = (
+            otio.opentime.to_seconds(transitions[0].in_offset)
+            + otio.opentime.to_seconds(transitions[0].out_offset)
+        )
+        assert abs(total_dur_sec - 1.0) < 0.01
+
+    def test_cut_type_produces_no_transition(self, tmp_path):
+        """EDL transition type 'cut' produces no explicit Transition object."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "cut",
+                    "duration": 0,
+                    "position": 1,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [
+            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
+        ]
+        transitions = [
+            item for item in video_tracks[0]
+            if isinstance(item, otio.schema.Transition)
+        ]
+        assert len(transitions) == 0
