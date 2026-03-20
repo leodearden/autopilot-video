@@ -5,9 +5,6 @@ from __future__ import annotations
 import inspect
 from unittest.mock import MagicMock
 
-import pytest
-
-
 # -- Step 1: Public API surface tests -----------------------------------------
 
 
@@ -411,7 +408,10 @@ class TestAudioLevelCheck:
 
         edl = _make_audio_edl(-30.0)
         result = validate_edl(edl, _mock_db())
-        audio_warnings = [w for w in result.warnings if "audio" in w.lower() or "level" in w.lower()]
+        audio_warnings = [
+            w for w in result.warnings
+            if "audio" in w.lower() or "level" in w.lower()
+        ]
         assert len(audio_warnings) >= 1
 
     def test_level_above_0_generates_error(self):

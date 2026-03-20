@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # -- Step 13: Public API surface tests ----------------------------------------
 
 
@@ -557,8 +556,6 @@ class TestEdlIntegration:
 
     def test_full_pipeline(self, catalog_db):
         """End-to-end: seed DB -> generate_edl -> verify EDL, DB state, validation."""
-        import numpy as np
-
         from autopilot.config import LLMConfig
         from autopilot.plan.edl import generate_edl
 

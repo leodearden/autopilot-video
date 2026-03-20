@@ -141,7 +141,8 @@ def _check_timecode_bounds(
         media = db.get_media(clip_id)
         if media is None:
             continue  # already caught by _check_clip_ids
-        duration = float(media.get("duration_seconds", 0))
+        raw_duration = media.get("duration_seconds", 0)
+        duration = float(raw_duration)  # type: ignore[arg-type]
         if out_s > duration:
             errors.append(
                 f"Clip {clip_id}: out_timecode ({clip['out_timecode']}) "
