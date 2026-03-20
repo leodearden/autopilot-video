@@ -464,6 +464,8 @@ def compute_crop_path(
 
         # Smooth
         tau = edl_entry.get("smoothing_tau", config.crop_smoothing_tau)
+        if not tau or tau <= 0:
+            raise CropError(f"smoothing_tau must be positive, got {tau!r}")
         smoothed_path = _smooth_path(filled_path, fps, tau)
 
         # Clamp to bounds (converts centers to top-left)
