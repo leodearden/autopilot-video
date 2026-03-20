@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -33,12 +33,12 @@ class ComplexRenderError(Exception):
 
 
 def _apply_dynamic_crop(
-    clip: object,
+    clip: Any,
     crop_path: np.ndarray,
     crop_w: int,
     crop_h: int,
     fps: float,
-) -> object:
+) -> Any:
     """Apply per-frame crop to a clip using crop_path coordinates.
 
     Args:
@@ -95,6 +95,9 @@ def render_complex(
     source_path = edl_entry["source_path"]
     in_tc = edl_entry.get("in_timecode", "00:00:00.000")
     out_tc = edl_entry.get("out_timecode")
+
+    if VideoFileClip is None:
+        raise ComplexRenderError("moviepy is not installed")
 
     try:
         # Open source video
