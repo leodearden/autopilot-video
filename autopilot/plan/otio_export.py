@@ -27,6 +27,24 @@ class OtioExportError(Exception):
     """Raised for all OTIO export failures."""
 
 
+def _tc_to_rational_time(tc: str, fps: float) -> "otio.opentime.RationalTime":
+    """Convert HH:MM:SS.mmm timecode to an OTIO RationalTime.
+
+    Args:
+        tc: Timecode in HH:MM:SS.mmm format.
+        fps: Frame rate for the RationalTime.
+
+    Returns:
+        RationalTime at the given fps.
+    """
+    import opentimelineio as otio  # type: ignore[import-untyped]
+
+    from autopilot.plan.validator import timecode_to_seconds
+
+    seconds = timecode_to_seconds(tc)
+    return otio.opentime.RationalTime.from_seconds(seconds, fps)
+
+
 def export_otio(edl: dict, output_path: Path, db: CatalogDB) -> Path:
     """Export an EDL structure to an OpenTimelineIO .otio file.
 
