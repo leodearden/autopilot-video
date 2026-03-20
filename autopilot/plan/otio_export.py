@@ -7,6 +7,8 @@ change detection.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -70,6 +72,15 @@ def _get_media_info(clip_id: str, db: CatalogDB) -> tuple[str, float]:
     file_path = str(media.get("file_path") or clip_id)
     fps = float(media.get("fps") or _DEFAULT_FPS)
     return file_path, fps
+
+
+def _edl_hash(edl: dict) -> str:
+    """Compute a stable hash of an EDL dict for change detection.
+
+    Uses JSON serialization with sorted keys for deterministic output.
+    """
+    canonical = json.dumps(edl, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 def _insert_transitions(
@@ -226,16 +237,15 @@ def export_otio(edl: dict, output_path: Path, db: CatalogDB) -> Path:
 
         timeline.tracks.append(track)
 
-    # Attach timeline-level metadata
-    tl_meta: dict = {}
+    # Attach timeline-level metadata (always includes edl_hash)
+    tl_meta: dict = {"edl_hash": _edl_hash(edl)}
     for key in ("titles", "music", "voiceovers", "broll_requests"):
         val = edl.get(key)
         if val:
             tl_meta[key] = val
     if "target_duration_seconds" in edl:
         tl_meta["target_duration_seconds"] = edl["target_duration_seconds"]
-    if tl_meta:
-        timeline.metadata["autopilot"] = tl_meta
+    timeline.metadata["autopilot"] = tl_meta
 
     # Write to file
     try:
@@ -259,4 +269,78 @@ def detect_otio_changes(otio_path: Path, original_edl: dict) -> dict:
     Raises:
         OtioExportError: If the .otio file cannot be read.
     """
-    raise NotImplementedError
+    import opentimelineio as otio  # type: ignore[import-untyped]
+
+    otio_path = Path(otio_path)
+    if not otio_path.exists():
+        raise OtioExportError(f"OTIO file not found: {otio_path}")
+
+    try:
+        timeline = otio.adapters.read_from_file(str(otio_path))
+    except Exception as e:
+        raise OtioExportError(f"Failed to read OTIO file: {e}") from e
+
+    changes: list[str] = []
+
+    # Check EDL hash
+    stored_hash = (
+        timeline.metadata.get("autopilot", {}).get("edl_hash", "")
+    )
+    current_hash = _edl_hash(original_edl)
+
+    if stored_hash != current_hash:
+        changes.append("EDL content hash mismatch")
+
+    # Structural comparison for descriptive reporting
+    original_clips = original_edl.get("clips", [])
+    otio_clips = []
+    for track in timeline.tracks:
+        for item in track:
+            if isinstance(item, otio.schema.Clip):
+                otio_clips.append(item)
+
+    if len(otio_clips) != len(original_clips):
+        changes.append(
+            f"Clip count changed: {len(original_clips)} -> {len(otio_clips)}"
+        )
+
+    # Compare individual clip source ranges
+    from autopilot.plan.validator import timecode_to_seconds
+
+    for i, orig_clip in enumerate(original_clips):
+        if i >= len(otio_clips):
+            break
+        otio_clip = otio_clips[i]
+        orig_in_sec = timecode_to_seconds(orig_clip["in_timecode"])
+        orig_out_sec = timecode_to_seconds(orig_clip["out_timecode"])
+        orig_dur = orig_out_sec - orig_in_sec
+
+        actual_start = otio.opentime.to_seconds(otio_clip.source_range.start_time)
+        actual_dur = otio.opentime.to_seconds(otio_clip.source_range.duration)
+
+        if abs(actual_start - orig_in_sec) > 0.05:
+            changes.append(
+                f"Clip {orig_clip.get('clip_id', i)}: start changed "
+                f"{orig_in_sec:.3f}s -> {actual_start:.3f}s"
+            )
+        if abs(actual_dur - orig_dur) > 0.05:
+            changes.append(
+                f"Clip {orig_clip.get('clip_id', i)}: duration changed "
+                f"{orig_dur:.3f}s -> {actual_dur:.3f}s"
+            )
+
+    original_tracks = set()
+    for c in original_clips:
+        original_tracks.add(c.get("track", 1))
+    otio_track_count = len(
+        [t for t in timeline.tracks if t.kind == otio.schema.TrackKind.Video]
+    )
+    if otio_track_count != len(original_tracks):
+        changes.append(
+            f"Track count changed: {len(original_tracks)} -> {otio_track_count}"
+        )
+
+    return {
+        "modified": len(changes) > 0,
+        "changes": changes,
+    }
