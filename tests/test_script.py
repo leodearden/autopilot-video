@@ -715,3 +715,127 @@ class TestGenerateScriptPersistence:
 
         assert exc_info.value.__cause__ is not None
         assert isinstance(exc_info.value.__cause__, RuntimeError)
+
+
+# -- Step 15: Integration test -------------------------------------------------
+
+
+class TestIntegration:
+    """Full pipeline: seed DB -> storyboard -> generate_script -> verify DB."""
+
+    def test_full_pipeline(self, catalog_db):
+        """End-to-end: seeded DB -> build storyboard -> generate script -> verify."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.script import build_narrative_storyboard, generate_script
+
+        # --- Seed full DB data ---
+        _seed_full_storyboard_data(catalog_db)
+
+        # --- Phase 1: Build storyboard ---
+        storyboard = build_narrative_storyboard("n1", catalog_db)
+
+        assert isinstance(storyboard, str)
+        assert "L-Storyboard" in storyboard
+        assert "Temple visit" in storyboard
+        assert "Alice" in storyboard
+        assert "Bob" in storyboard
+        assert "beautiful temple" in storyboard
+        assert "Speech" in storyboard
+        assert "Chanting" in storyboard
+
+        # Verify shot segmentation (v1 has 2 shots, v2 has 1)
+        assert "Shot 1" in storyboard
+        assert "Shot 2" in storyboard
+        assert "Shot 3" in storyboard
+
+        # --- Phase 2: Generate script (mocked LLM) ---
+        config = LLMConfig()
+
+        script_response = {
+            "scenes": [
+                {
+                    "scene_number": 1,
+                    "description": "Opening at the temple at dawn",
+                    "estimated_duration_seconds": 10,
+                    "source_clips": [
+                        {
+                            "clip_id": "v1",
+                            "in_timecode": "00:00:00.000",
+                            "out_timecode": "00:00:10.000",
+                        }
+                    ],
+                    "voiceover_text": "Dawn breaks over ancient walls...",
+                    "titles": [
+                        {
+                            "text": "Chiang Mai, Thailand",
+                            "style": "lower_third",
+                            "display_at_seconds": 2.0,
+                            "duration_seconds": 4.0,
+                        }
+                    ],
+                    "music_mood": "ambient, contemplative",
+                },
+                {
+                    "scene_number": 2,
+                    "description": "Monks walking in morning procession",
+                    "estimated_duration_seconds": 15,
+                    "source_clips": [
+                        {
+                            "clip_id": "v2",
+                            "in_timecode": "00:00:00.000",
+                            "out_timecode": "00:00:15.000",
+                        }
+                    ],
+                    "voiceover_text": None,
+                    "titles": [],
+                    "music_mood": "sacred, reverent",
+                },
+            ],
+            "broll_needs": [
+                {
+                    "description": "Wide aerial of temple complex",
+                    "duration_seconds": 5,
+                    "placement_after_scene": 1,
+                },
+            ],
+            "quality_flags": [
+                {
+                    "scene_number": 2,
+                    "issue": "Slight underexposure in morning light",
+                    "severity": "low",
+                    "suggestion": "Brighten shadows in color grade",
+                },
+            ],
+        }
+
+        mock_anthropic, mock_client = _setup_mock_script_anthropic(script_response)
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            result = generate_script("n1", catalog_db, config)
+
+        # --- Verify return value ---
+        assert isinstance(result, dict)
+        assert len(result["scenes"]) == 2
+        assert result["scenes"][0]["description"] == "Opening at the temple at dawn"
+        assert result["scenes"][1]["description"] == "Monks walking in morning procession"
+        assert len(result["broll_needs"]) == 1
+        assert len(result["quality_flags"]) == 1
+
+        # --- Verify DB state ---
+        # Script stored
+        stored = catalog_db.get_narrative_script("n1")
+        assert stored is not None
+        stored_data = json.loads(stored["script_json"])
+        assert len(stored_data["scenes"]) == 2
+
+        # Narrative status updated
+        narrative = catalog_db.get_narrative("n1")
+        assert narrative["status"] == "scripted"
+
+        # --- Verify LLM was called correctly ---
+        mock_client.messages.create.assert_called_once()
+        call_kwargs = mock_client.messages.create.call_args[1]
+        assert call_kwargs["model"] == config.planning_model
+        # Storyboard content was in the user message
+        assert "Temple visit" in call_kwargs["messages"][0]["content"]
+        # System prompt was script_writer.md
+        assert "Script Writer" in call_kwargs["system"]
