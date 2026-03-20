@@ -79,6 +79,31 @@ def _setup_context(
     return config, db
 
 
+def _cli_human_review(formatted_text: str, narratives: list) -> list[str]:
+    """Interactive CLI prompt for human review of proposed narratives.
+
+    Displays the formatted review text and prompts the user to select
+    which narratives to approve. Returns a list of approved narrative IDs.
+    """
+    click.echo("\n" + "=" * 60)
+    click.echo("NARRATIVE REVIEW")
+    click.echo("=" * 60)
+    click.echo(formatted_text)
+    click.echo("=" * 60)
+
+    all_ids = [n.narrative_id for n in narratives]
+    click.echo(f"\nNarrative IDs: {', '.join(all_ids)}")
+    response = click.prompt(
+        "Enter narrative IDs to approve (comma-separated, or 'all')",
+        default="all",
+    )
+
+    if response.strip().lower() == "all":
+        return all_ids
+
+    return [nid.strip() for nid in response.split(",") if nid.strip()]
+
+
 @main.command()
 @_common_options
 @click.pass_context
@@ -248,6 +273,7 @@ def run(
         config, db = _setup_context(ctx, input_dir, output_dir, verbose)
         orch = PipelineOrchestrator(
             budget_seconds=config.processing.max_wall_clock_hours * 3600,
+            human_review_fn=_cli_human_review,
         )
         orch.run(config=config, db=db, dry_run=dry_run)
     except click.ClickException:
