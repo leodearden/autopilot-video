@@ -157,6 +157,33 @@ def _check_timecode_bounds(
             )
 
 
+def _check_audio_levels(
+    audio_settings: list[dict],
+    errors: list[str],
+    warnings: list[str],
+) -> None:
+    """Check audio levels are in broadcast-safe range (-24 to 0 dBFS).
+
+    Levels above 0 dB produce errors (clipping risk).
+    Levels below -24 dB produce warnings (inaudible risk).
+    """
+    for entry in audio_settings:
+        clip_id = entry.get("clip_id", "unknown")
+        level = entry.get("level_db")
+        if level is None:
+            continue
+        if level > 0:
+            errors.append(
+                f"Audio level for clip {clip_id}: {level} dB "
+                f"exceeds 0 dB (clipping risk)"
+            )
+        elif level < -24:
+            warnings.append(
+                f"Audio level for clip {clip_id}: {level} dB "
+                f"is below -24 dB (may be inaudible)"
+            )
+
+
 def validate_edl(edl: dict, db: CatalogDB) -> ValidationResult:
     """Validate an EDL structure against all constraints.
 
@@ -190,6 +217,10 @@ def validate_edl(edl: dict, db: CatalogDB) -> ValidationResult:
 
     # Check in/out timecode bounds
     _check_timecode_bounds(clips, db, errors)
+
+    # Check audio levels
+    audio_settings = edl.get("audio_settings", [])
+    _check_audio_levels(audio_settings, errors, warnings)
 
     passed = len(errors) == 0
     return ValidationResult(passed=passed, errors=errors, warnings=warnings)
