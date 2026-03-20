@@ -72,6 +72,13 @@ def render_simple(
     if out_tc:
         cmd.extend(["-to", out_tc])
 
+    # Video filter: static crop if crop_path provided and static
+    if crop_path is not None and _is_static_crop(crop_path):
+        crop_x = int(crop_path[0, 0])
+        crop_y = int(crop_path[0, 1])
+        crop_w, crop_h = config.resolution
+        cmd.extend(["-vf", f"crop={crop_w}:{crop_h}:{crop_x}:{crop_y}"])
+
     # Video codec — NVENC
     cmd.extend(["-c:v", "h264_nvenc"])
 
