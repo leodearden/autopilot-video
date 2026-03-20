@@ -429,3 +429,48 @@ class TestClampToBounds:
         # Should center: top-left x = (1000 - 2000) / 2 = -500, clamped to 0 or centered
         # Implementation should handle this gracefully
         assert isinstance(result[0, 0], (float, np.floating))
+
+
+class TestCenterMode:
+    """Tests for compute_crop_path with mode='center'."""
+
+    def test_center_mode_constant_crop(self, catalog_db) -> None:
+        """Center mode returns constant center crop for all frames."""
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import compute_crop_path
+
+        # Seed a 4096x4096, 30fps, 1s media
+        catalog_db.insert_media(
+            "vid1", "/fake.mp4",
+            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+        )
+        config = CameraConfig(source_resolution=(4096, 4096))
+        edl_entry = {
+            "mode": "center",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:01.000",
+        }
+        result = compute_crop_path("vid1", "16:9", catalog_db, config, edl_entry)
+        assert result.shape == (30, 2)
+        # All coordinates should be identical
+        assert np.all(result == result[0])
+
+    def test_center_mode_crop_position(self, catalog_db) -> None:
+        """Center mode places crop at ((source_w-crop_w)/2, (source_h-crop_h)/2)."""
+        from autopilot.config import CameraConfig
+        from autopilot.render.crop import compute_crop_path
+
+        catalog_db.insert_media(
+            "vid2", "/fake.mp4",
+            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+        )
+        config = CameraConfig(source_resolution=(4096, 4096))
+        edl_entry = {
+            "mode": "center",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:01.000",
+        }
+        result = compute_crop_path("vid2", "16:9", catalog_db, config, edl_entry)
+        # crop_w=4096, crop_h=2304; center: (0, 896)
+        assert result[0, 0] == pytest.approx(0.0, abs=1.0)
+        assert result[0, 1] == pytest.approx(896.0, abs=1.0)
