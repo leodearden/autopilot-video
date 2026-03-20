@@ -498,3 +498,150 @@ class TestTransitionMapping:
             if isinstance(item, otio.schema.Transition)
         ]
         assert len(transitions) == 0
+
+
+# -- Step 11: Metadata preservation tests -------------------------------------
+
+
+def _edl_with_metadata():
+    """Build an EDL dict with all metadata fields populated."""
+    return {
+        "clips": [
+            {
+                "clip_id": "v1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            },
+        ],
+        "transitions": [],
+        "crop_modes": [
+            {"clip_id": "v1", "mode": "16:9"},
+        ],
+        "titles": [
+            {"text": "My Video Title", "position": "lower_third", "start": 0, "duration": 3},
+        ],
+        "audio_settings": [
+            {"clip_id": "v1", "level_db": -6.0},
+        ],
+        "music": [
+            {"track": "background_music.mp3", "level_db": -12.0},
+        ],
+        "voiceovers": [
+            {"text": "Welcome to the show", "start": 0.0, "duration": 5.0},
+        ],
+        "broll_requests": [
+            {"description": "aerial city shot", "duration": 3.0},
+        ],
+        "target_duration_seconds": 120,
+    }
+
+
+class TestMetadataPreservation:
+    """Verify metadata is preserved on clips and timeline."""
+
+    def test_clip_level_crop_mode(self, tmp_path):
+        """Clip metadata includes crop_mode from EDL crop_modes."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _edl_with_metadata()
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [
+            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
+        ]
+        clips = [c for c in video_tracks[0] if isinstance(c, otio.schema.Clip)]
+        clip = clips[0]
+
+        assert "autopilot" in clip.metadata
+        assert clip.metadata["autopilot"]["crop_mode"] == "16:9"
+
+    def test_clip_level_audio_setting(self, tmp_path):
+        """Clip metadata includes audio level_db from EDL audio_settings."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _edl_with_metadata()
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [
+            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
+        ]
+        clips = [c for c in video_tracks[0] if isinstance(c, otio.schema.Clip)]
+        clip = clips[0]
+
+        assert clip.metadata["autopilot"]["level_db"] == -6.0
+
+    def test_timeline_level_titles(self, tmp_path):
+        """Timeline metadata includes titles list."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _edl_with_metadata()
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        assert "autopilot" in tl.metadata
+        titles = tl.metadata["autopilot"]["titles"]
+        assert len(titles) == 1
+        assert titles[0]["text"] == "My Video Title"
+
+    def test_timeline_level_music(self, tmp_path):
+        """Timeline metadata includes music list."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _edl_with_metadata()
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        music = tl.metadata["autopilot"]["music"]
+        assert len(music) == 1
+        assert music[0]["track"] == "background_music.mp3"
+
+    def test_timeline_level_voiceovers(self, tmp_path):
+        """Timeline metadata includes voiceovers list."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _edl_with_metadata()
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        voiceovers = tl.metadata["autopilot"]["voiceovers"]
+        assert len(voiceovers) == 1
+        assert voiceovers[0]["text"] == "Welcome to the show"
+
+    def test_timeline_level_broll_requests(self, tmp_path):
+        """Timeline metadata includes broll_requests list."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _edl_with_metadata()
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        broll = tl.metadata["autopilot"]["broll_requests"]
+        assert len(broll) == 1
+        assert broll[0]["description"] == "aerial city shot"
+
+    def test_timeline_level_target_duration(self, tmp_path):
+        """Timeline metadata includes target_duration_seconds."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _edl_with_metadata()
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        assert tl.metadata["autopilot"]["target_duration_seconds"] == 120
