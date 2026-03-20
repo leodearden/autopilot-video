@@ -238,12 +238,12 @@ def extract_best_thumbnail(
     all_detections: list[dict] = []
     media_files = db.list_all_media()
     for mf in media_files:
-        dets = db.get_detections_for_media(mf["id"])
+        dets = db.get_detections_for_media(str(mf["id"]))
         for det_row in dets:
             det_json = det_row.get("detections_json")
             if det_json:
                 try:
-                    parsed = json.loads(det_json)
+                    parsed = json.loads(str(det_json))
                     all_detections.extend(parsed)
                 except (json.JSONDecodeError, TypeError):
                     pass

@@ -83,7 +83,7 @@ def _build_upload_metadata(
     script_row = db.get_narrative_script(narrative_id)
     if script_row and script_row.get("script_json"):
         try:
-            script_data = json.loads(script_row["script_json"])
+            script_data = json.loads(str(script_row["script_json"]))
             scenes = script_data.get("scenes", [])
             narrations = [
                 s.get("narration", "")
@@ -116,12 +116,12 @@ def _build_upload_metadata(
     # Get all media files to collect detections across the project
     media_files = db.list_all_media()
     for mf in media_files:
-        detections = db.get_detections_for_media(mf["id"])
+        detections = db.get_detections_for_media(str(mf["id"]))
         for det_row in detections:
             det_json = det_row.get("detections_json")
             if det_json:
                 try:
-                    dets = json.loads(det_json)
+                    dets = json.loads(str(det_json))
                     for d in dets:
                         if d.get("class_name"):
                             class_names.add(d["class_name"])
@@ -209,6 +209,9 @@ def upload_video(
                 msg = f"YouTube upload failed: {exc}"
                 raise UploadError(msg) from exc
 
+    if response is None:
+        msg = "YouTube upload failed: no response received"
+        raise UploadError(msg)
     video_id = response["id"]
     youtube_url = f"https://youtu.be/{video_id}"
 
