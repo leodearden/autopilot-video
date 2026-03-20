@@ -233,6 +233,26 @@ class TestFrameExtraction:
         assert isinstance(result, Path)
         assert result.parent == tmp_path
 
+    def test_video_capture_released_on_scoring_exception(self, tmp_path):
+        """cap.release() called even when scoring raises an exception."""
+        mock_cv2 = _setup_cv2_mock()
+        mock_cap = self._make_mock_cap(num_frames=90, fps=30.0)
+        mock_cv2.VideoCapture.return_value = mock_cap
+        # Laplacian raises on first call, simulating a malformed frame
+        mock_cv2.Laplacian.side_effect = RuntimeError("malformed frame")
+
+        video_path = tmp_path / "test.mp4"
+        video_path.write_bytes(b"\x00" * 100)
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            from autopilot.upload.thumbnail import _extract_best_frame
+
+            with pytest.raises(RuntimeError, match="malformed frame"):
+                _extract_best_frame(video_path, [])
+
+        # Verify cap.release() was called despite the exception
+        mock_cap.release.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # Google API mock helpers
