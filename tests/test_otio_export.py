@@ -874,6 +874,60 @@ class TestErrorHandling:
             export_otio(edl, output, db)
 
 
+# -- Step 24: KeyError wrapping tests -----------------------------------------
+
+
+class TestKeyErrorWrapping:
+    """Verify bare bracket access on EDL dicts is wrapped as OtioExportError."""
+
+    def test_crop_modes_missing_clip_id(self, tmp_path):
+        """crop_modes entry missing 'clip_id' raises OtioExportError, not KeyError."""
+        from autopilot.plan.otio_export import OtioExportError, export_otio
+
+        edl = _minimal_edl(clips=[{
+            "clip_id": "v1",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:10.000",
+            "track": 1,
+        }])
+        edl["crop_modes"] = [{"mode": "16:9"}]  # missing clip_id
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+
+        with pytest.raises(OtioExportError, match="crop_modes|clip_id"):
+            export_otio(edl, output, db)
+
+    def test_clip_missing_clip_id(self, tmp_path):
+        """clip dict missing 'clip_id' raises OtioExportError, not KeyError."""
+        from autopilot.plan.otio_export import OtioExportError, export_otio
+
+        edl = _minimal_edl(clips=[{
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:10.000",
+            "track": 1,
+        }])
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+
+        with pytest.raises(OtioExportError, match="clip_id"):
+            export_otio(edl, output, db)
+
+    def test_clip_missing_in_timecode(self, tmp_path):
+        """clip dict missing 'in_timecode' raises OtioExportError, not KeyError."""
+        from autopilot.plan.otio_export import OtioExportError, export_otio
+
+        edl = _minimal_edl(clips=[{
+            "clip_id": "v1",
+            "out_timecode": "00:00:10.000",
+            "track": 1,
+        }])
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+
+        with pytest.raises(OtioExportError, match="in_timecode"):
+            export_otio(edl, output, db)
+
+
 # -- Step 17: Integration test ------------------------------------------------
 
 
