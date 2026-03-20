@@ -535,6 +535,67 @@ class TestSubtitleSupport:
 
 
 # ---------------------------------------------------------------------------
+# Stream copy vs filter conflict
+# ---------------------------------------------------------------------------
+
+
+class TestStreamCopyVsFilter:
+    """Verify -c copy is not used when video filters are present."""
+
+    def test_no_stream_copy_when_subtitles_present(self) -> None:
+        """When subtitles are active (no audio mixing), must NOT use -c copy."""
+        from autopilot.render.router import route_and_render
+
+        segments = [{"start": 0.0, "end": 2.0, "text": "Hello"}]
+        edl = _make_edl()  # no music -> no audio mixing
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = {"segments_json": json.dumps(segments)}
+        config = _make_config()
+
+        with patch("autopilot.render.router.render_simple") as mock_rs, \
+             patch("subprocess.run") as mock_run:
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config)
+
+        concat_cmd = mock_run.call_args[0][0]
+        cmd_str = " ".join(concat_cmd)
+        # Subtitles should be present
+        assert "subtitles=" in cmd_str
+        # -c copy must NOT be present (incompatible with -vf)
+        # Check adjacent pairs for "-c" followed by "copy"
+        for i, arg in enumerate(concat_cmd[:-1]):
+            if arg == "-c" and concat_cmd[i + 1] == "copy":
+                pytest.fail("-c copy found in command alongside subtitles filter")
+
+    def test_stream_copy_when_no_filters(self) -> None:
+        """With no subtitles and no audio mixing, -c copy SHOULD be used."""
+        from autopilot.render.router import route_and_render
+
+        edl = _make_edl()  # no music, no voiceovers
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None  # no subtitles
+        config = _make_config()
+
+        with patch("autopilot.render.router.render_simple") as mock_rs, \
+             patch("subprocess.run") as mock_run:
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config)
+
+        concat_cmd = mock_run.call_args[0][0]
+        # Should have -c copy
+        found_copy = False
+        for i, arg in enumerate(concat_cmd[:-1]):
+            if arg == "-c" and concat_cmd[i + 1] == "copy":
+                found_copy = True
+                break
+        assert found_copy, f"-c copy not found in command: {concat_cmd}"
+
+
+# ---------------------------------------------------------------------------
 # Transcript lookup by media_id
 # ---------------------------------------------------------------------------
 
