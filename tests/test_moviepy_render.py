@@ -203,6 +203,55 @@ class TestRenderComplex:
 
         assert result == output
 
+    def test_transform_called_with_crop_path(self, tmp_path: Path) -> None:
+        """When crop_path is provided, clip.transform() must be called for per-frame crop."""
+        config = _make_config()
+        edl_entry = _make_edl_entry()
+        output = tmp_path / "out.mp4"
+        crop_path = np.full((30, 2), [100, 50], dtype=np.float64)
+
+        mock_clip = MagicMock()
+        mock_clip.subclipped.return_value = mock_clip
+        mock_clip.with_effects.return_value = mock_clip
+        mock_clip.transform.return_value = mock_clip
+        mock_clip.duration = 10.0
+        mock_clip.fps = 30
+        mock_clip.size = (1920, 1080)
+
+        with patch(
+            "autopilot.render.moviepy_render.VideoFileClip",
+            return_value=mock_clip,
+        ):
+            from autopilot.render.moviepy_render import render_complex
+
+            render_complex(edl_entry, crop_path, output, config)
+
+        mock_clip.transform.assert_called_once()
+
+    def test_transform_not_called_without_crop_path(self, tmp_path: Path) -> None:
+        """When crop_path is None, clip.transform() must NOT be called."""
+        config = _make_config()
+        edl_entry = _make_edl_entry()
+        output = tmp_path / "out.mp4"
+
+        mock_clip = MagicMock()
+        mock_clip.subclipped.return_value = mock_clip
+        mock_clip.with_effects.return_value = mock_clip
+        mock_clip.transform.return_value = mock_clip
+        mock_clip.duration = 10.0
+        mock_clip.fps = 30
+        mock_clip.size = (1920, 1080)
+
+        with patch(
+            "autopilot.render.moviepy_render.VideoFileClip",
+            return_value=mock_clip,
+        ):
+            from autopilot.render.moviepy_render import render_complex
+
+            render_complex(edl_entry, None, output, config)
+
+        mock_clip.transform.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # Edge cases
