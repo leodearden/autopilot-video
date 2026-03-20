@@ -50,3 +50,68 @@ class TestYouTubePublicAPI:
 
         assert "UploadError" in youtube.__all__
         assert "upload_video" in youtube.__all__
+
+
+# ---------------------------------------------------------------------------
+# OAuth credential loading tests
+# ---------------------------------------------------------------------------
+
+
+class TestLoadCredentials:
+    """Verify _load_credentials helper."""
+
+    def test_loads_credentials_from_config_path(self, tmp_path):
+        """Loads OAuth2 credentials from the given file path."""
+        creds_file = tmp_path / "oauth.json"
+        creds_file.write_text("{}")
+
+        mock_creds = MagicMock()
+        mock_creds.valid = True
+        mock_creds.expired = False
+
+        with patch(
+            "autopilot.upload.youtube.Credentials"
+        ) as mock_creds_cls:
+            mock_creds_cls.from_authorized_user_file.return_value = mock_creds
+            from autopilot.upload.youtube import _load_credentials
+
+            result = _load_credentials(creds_file)
+
+        mock_creds_cls.from_authorized_user_file.assert_called_once_with(
+            str(creds_file),
+        )
+        assert result is mock_creds
+
+    def test_raises_upload_error_when_credentials_file_missing(self, tmp_path):
+        """Raises UploadError when credentials file does not exist."""
+        from autopilot.upload.youtube import UploadError, _load_credentials
+
+        missing = tmp_path / "nonexistent.json"
+        with pytest.raises(UploadError, match="credentials"):
+            _load_credentials(missing)
+
+    def test_refreshes_expired_credentials(self, tmp_path):
+        """Refreshes credentials when expired but refresh_token available."""
+        creds_file = tmp_path / "oauth.json"
+        creds_file.write_text("{}")
+
+        mock_creds = MagicMock()
+        mock_creds.valid = False
+        mock_creds.expired = True
+        mock_creds.refresh_token = "some-refresh-token"
+
+        with (
+            patch(
+                "autopilot.upload.youtube.Credentials"
+            ) as mock_creds_cls,
+            patch(
+                "autopilot.upload.youtube.Request"
+            ) as mock_request_cls,
+        ):
+            mock_creds_cls.from_authorized_user_file.return_value = mock_creds
+            from autopilot.upload.youtube import _load_credentials
+
+            result = _load_credentials(creds_file)
+
+        mock_creds.refresh.assert_called_once_with(mock_request_cls())
+        assert result is mock_creds
