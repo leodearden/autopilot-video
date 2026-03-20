@@ -7,11 +7,15 @@ for LLM-powered scene-by-scene script creation.
 
 from __future__ import annotations
 
+import json
+import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from autopilot.config import LLMConfig
     from autopilot.db import CatalogDB
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "ScriptError",
@@ -40,7 +44,38 @@ def build_narrative_storyboard(narrative_id: str, db: CatalogDB) -> str:
     Raises:
         ScriptError: If the narrative is not found.
     """
-    raise NotImplementedError
+    narrative = db.get_narrative(narrative_id)
+    if narrative is None:
+        raise ScriptError(f"Narrative not found: {narrative_id}")
+
+    # Parse activity cluster IDs
+    cluster_ids_raw = narrative.get("activity_cluster_ids_json")
+    if not cluster_ids_raw:
+        cluster_ids: list[str] = []
+    else:
+        try:
+            cluster_ids = json.loads(str(cluster_ids_raw))
+        except json.JSONDecodeError as e:
+            raise ScriptError(
+                f"Corrupt activity_cluster_ids_json in narrative: {e}"
+            ) from e
+
+    title = str(narrative.get("title") or "Untitled")
+
+    if not cluster_ids:
+        logger.info("Narrative %s has no activity clusters", narrative_id)
+        return (
+            f"# L-Storyboard: {title}\n\n"
+            "No activity clusters assigned to this narrative."
+        )
+
+    sections: list[str] = [f"# L-Storyboard: {title}\n"]
+
+    # TODO: Assemble per-shot data in steps 5-8
+    for cid in cluster_ids:
+        sections.append(f"## Cluster: {cid}\n(data pending)")
+
+    return "\n\n".join(sections)
 
 
 def generate_script(narrative_id: str, db: CatalogDB, config: LLMConfig) -> dict:

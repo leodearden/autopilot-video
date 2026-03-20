@@ -96,3 +96,33 @@ class TestPublicAPI:
         assert "ScriptError" in script.__all__
         assert "build_narrative_storyboard" in script.__all__
         assert "generate_script" in script.__all__
+
+
+# -- Step 3: build_narrative_storyboard basic tests ----------------------------
+
+
+class TestBuildStoryboardBasic:
+    """Tests for build_narrative_storyboard: not found and empty clusters."""
+
+    def test_narrative_not_found_raises_script_error(self, catalog_db):
+        """Raises ScriptError when narrative_id does not exist in DB."""
+        from autopilot.plan.script import ScriptError, build_narrative_storyboard
+
+        with pytest.raises(ScriptError, match="[Nn]arrative.*not found"):
+            build_narrative_storyboard("nonexistent", catalog_db)
+
+    def test_empty_cluster_list_returns_minimal_storyboard(self, catalog_db):
+        """Narrative with no activity clusters returns minimal storyboard text."""
+        from autopilot.plan.script import build_narrative_storyboard
+
+        catalog_db.insert_narrative(
+            "n1",
+            title="Empty Narrative",
+            activity_cluster_ids_json=json.dumps([]),
+        )
+
+        result = build_narrative_storyboard("n1", catalog_db)
+        assert isinstance(result, str)
+        assert len(result) > 0
+        # Should mention the narrative title or indicate it's empty
+        assert "Empty Narrative" in result or "no" in result.lower()
