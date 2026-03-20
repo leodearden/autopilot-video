@@ -448,6 +448,42 @@ class TestUploadVideoEdgeCases:
             with pytest.raises(UploadError, match="[Vv]ideo.*not found"):
                 upload_video("n1", missing_video, catalog_db, config)
 
+    def test_upload_breaks_after_first_success(self, catalog_db, tmp_path):
+        """Outer retry loop breaks after first successful upload."""
+        from autopilot.upload.youtube import upload_video
+
+        catalog_db.insert_narrative("n1", title="Test", description="desc")
+        video_file = tmp_path / "video.mp4"
+        video_file.write_bytes(b"\x00" * 100)
+        config = self._make_config(tmp_path)
+
+        mods, _, _ = _setup_google_mocks()
+        mock_creds = MagicMock()
+        mock_creds.expired = False
+        mods["google.oauth2.credentials"].Credentials \
+            .from_authorized_user_file.return_value = mock_creds
+
+        mock_youtube = MagicMock()
+        mock_insert_req = MagicMock()
+        # First call succeeds immediately
+        mock_insert_req.next_chunk.return_value = (
+            None,
+            {"id": "ok123"},
+        )
+        mock_youtube.videos.return_value.insert.return_value = (
+            mock_insert_req
+        )
+        mods["googleapiclient.discovery"].build.return_value = mock_youtube
+
+        with patch.dict(sys.modules, mods):
+            upload_video("n1", video_file, catalog_db, config)
+
+        # If break is missing, next_chunk would be called 3 times
+        # (once per retry iteration) because subsequent calls return
+        # the same non-None response immediately, skipping the while.
+        # With break, it should be called exactly once.
+        assert mock_insert_req.next_chunk.call_count == 1
+
     def test_resumable_upload_retry(self, catalog_db, tmp_path):
         """Retries on transient error then succeeds."""
         from autopilot.upload.youtube import upload_video
