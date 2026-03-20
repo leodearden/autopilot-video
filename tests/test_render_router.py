@@ -457,6 +457,29 @@ class TestFinalConcatenation:
         assert "/tmp/music.mp3" in cmd_str
         assert "amix" in cmd_str
 
+    def test_amix_has_output_label_and_map(self) -> None:
+        """amix filter_complex must end with [aout] and use -map for routing."""
+        from autopilot.render.router import route_and_render
+
+        edl = _make_edl(music=[{"path": "/tmp/music.mp3", "level": -6}])
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        config = _make_config()
+
+        with patch("autopilot.render.router.render_simple") as mock_rs, \
+             patch("subprocess.run") as mock_run:
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config)
+
+        concat_cmd = mock_run.call_args[0][0]
+        cmd_str = " ".join(concat_cmd)
+        # filter_complex must have [aout] output label
+        assert "[aout]" in cmd_str
+        # Must have -map for both video and audio streams
+        assert "-map" in cmd_str
+
 
 # ---------------------------------------------------------------------------
 # Subtitle support
