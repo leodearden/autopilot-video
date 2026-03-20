@@ -635,6 +635,96 @@ class TestAnalyzeStage:
 
         mock_scheduler.force_unload_all.assert_called_once()
 
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_continues_on_per_media_error(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """If analysis fails for one media, remaining media are still processed."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = MagicMock()
+        db.list_all_media.return_value = [
+            {"id": "m1", "file_path": "/fake/v1.mp4", "status": "ingested"},
+            {"id": "m2", "file_path": "/fake/v2.mp4", "status": "ingested"},
+            {"id": "m3", "file_path": "/fake/v3.mp4", "status": "ingested"},
+        ]
+        mock_scheduler = MagicMock()
+        mock_gpu_cls.return_value = mock_scheduler
+        # First media's ASR fails
+        mock_asr.transcribe_media.side_effect = [
+            RuntimeError("ASR failed"), None, None,
+        ]
+
+        _run_analyze(config=minimal_config, db=db)
+
+        # m2 and m3 should still be analyzed (scenes.detect_shots for all 3)
+        assert mock_scenes.detect_shots.call_count >= 2
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_logs_per_media_error(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config, caplog,
+    ):
+        """Error for a failed media is logged."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = MagicMock()
+        db.list_all_media.return_value = [
+            {"id": "m1", "file_path": "/fake/v1.mp4", "status": "ingested"},
+        ]
+        mock_scheduler = MagicMock()
+        mock_gpu_cls.return_value = mock_scheduler
+        mock_asr.transcribe_media.side_effect = RuntimeError("ASR failed")
+
+        with caplog.at_level(logging.ERROR, logger="autopilot.orchestrator"):
+            _run_analyze(config=minimal_config, db=db)
+
+        assert any("m1" in r.message for r in caplog.records)
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_counts_failures(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config, caplog,
+    ):
+        """Log reports correct success/failure counts."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = MagicMock()
+        db.list_all_media.return_value = [
+            {"id": "m1", "file_path": "/fake/v1.mp4", "status": "ingested"},
+            {"id": "m2", "file_path": "/fake/v2.mp4", "status": "ingested"},
+            {"id": "m3", "file_path": "/fake/v3.mp4", "status": "ingested"},
+        ]
+        mock_scheduler = MagicMock()
+        mock_gpu_cls.return_value = mock_scheduler
+        mock_asr.transcribe_media.side_effect = [
+            RuntimeError("fail"), None, None,
+        ]
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            _run_analyze(config=minimal_config, db=db)
+
+        assert any("2/3" in r.message for r in caplog.records)
+
 
 class TestClassifyStage:
     """Tests for the real _run_classify stage function."""
