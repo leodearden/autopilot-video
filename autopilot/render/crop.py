@@ -260,6 +260,64 @@ def _smooth_path(raw_path: np.ndarray, fps: float, tau: float) -> np.ndarray:
     return smoothed
 
 
+def _handle_detection_gaps(
+    raw_path: np.ndarray,
+    fps: float,
+    source_w: int,
+    source_h: int,
+    hold_seconds: float = 2.0,
+    drift_seconds: float = 1.0,
+) -> np.ndarray:
+    """Replace NaN gaps in the raw path with hold/drift/center behavior.
+
+    Strategy for each NaN frame within a gap:
+    - First hold_seconds of gap: hold last valid position.
+    - Next drift_seconds: linear interpolation from held position to frame center.
+    - Beyond that: stay at frame center.
+
+    Args:
+        raw_path: Array of shape (N, 2) with NaN for missing frames.
+        fps: Video frame rate.
+        source_w: Source frame width.
+        source_h: Source frame height.
+        hold_seconds: How long to hold last position before drifting.
+        drift_seconds: How long the drift phase lasts.
+
+    Returns:
+        Array of shape (N, 2) with all NaN values replaced.
+    """
+    result = raw_path.copy()
+    n = result.shape[0]
+    center = np.array([source_w / 2.0, source_h / 2.0])
+    hold_frames = int(hold_seconds * fps)
+    drift_frames = int(drift_seconds * fps)
+
+    last_valid = center.copy()
+    gap_start = -1
+
+    for i in range(n):
+        if np.any(np.isnan(result[i])):
+            if gap_start < 0:
+                gap_start = i
+            frames_into_gap = i - gap_start
+
+            if frames_into_gap < hold_frames:
+                # Hold phase
+                result[i] = last_valid
+            elif frames_into_gap < hold_frames + drift_frames:
+                # Drift phase: linear interpolation toward center
+                t = (frames_into_gap - hold_frames) / max(drift_frames, 1)
+                result[i] = last_valid + t * (center - last_valid)
+            else:
+                # Past drift: at center
+                result[i] = center
+        else:
+            last_valid = result[i].copy()
+            gap_start = -1
+
+    return result
+
+
 def compute_crop_path(
     media_id: str,
     target_aspect: str,
