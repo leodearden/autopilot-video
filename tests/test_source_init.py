@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import inspect
 from dataclasses import fields
 from pathlib import Path
-
-import pytest
 
 
 class TestMusicRequest:
@@ -131,17 +128,17 @@ class TestAssetRequest:
         assert MusicRequest in args
 
     def test_broll_request_is_asset_request(self):
-        from autopilot.source import AssetRequest, BrollRequest
-
         import typing
+
+        from autopilot.source import AssetRequest, BrollRequest
 
         args = typing.get_args(AssetRequest)
         assert BrollRequest in args
 
     def test_voiceover_request_is_asset_request(self):
-        from autopilot.source import AssetRequest, VoiceoverRequest
-
         import typing
+
+        from autopilot.source import AssetRequest, VoiceoverRequest
 
         args = typing.get_args(AssetRequest)
         assert VoiceoverRequest in args
