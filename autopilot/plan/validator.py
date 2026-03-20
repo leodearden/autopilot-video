@@ -123,6 +123,40 @@ def _check_clip_ids(
             errors.append(f"Clip not found in catalog: {clip_id}")
 
 
+def _check_timecode_bounds(
+    clips: list[dict], db: CatalogDB, errors: list[str],
+) -> None:
+    """Check that in/out timecodes are within clip duration and in < out."""
+    for clip in clips:
+        clip_id = clip.get("clip_id", "")
+        in_s = timecode_to_seconds(clip["in_timecode"])
+        out_s = timecode_to_seconds(clip["out_timecode"])
+
+        # Check in < out
+        if in_s >= out_s:
+            errors.append(
+                f"Clip {clip_id}: in_timecode ({clip['in_timecode']}) "
+                f"must be before out_timecode ({clip['out_timecode']})"
+            )
+            continue
+
+        # Check bounds against clip duration
+        media = db.get_media(clip_id)
+        if media is None:
+            continue  # already caught by _check_clip_ids
+        duration = float(media.get("duration_seconds", 0))
+        if out_s > duration:
+            errors.append(
+                f"Clip {clip_id}: out_timecode ({clip['out_timecode']}) "
+                f"exceeds clip duration ({duration:.1f}s)"
+            )
+        if in_s > duration:
+            errors.append(
+                f"Clip {clip_id}: in_timecode ({clip['in_timecode']}) "
+                f"exceeds clip duration ({duration:.1f}s)"
+            )
+
+
 def validate_edl(edl: dict, db: CatalogDB) -> ValidationResult:
     """Validate an EDL structure against all constraints.
 
@@ -153,6 +187,9 @@ def validate_edl(edl: dict, db: CatalogDB) -> ValidationResult:
 
     # Check clip_id existence
     _check_clip_ids(clips, db, errors)
+
+    # Check in/out timecode bounds
+    _check_timecode_bounds(clips, db, errors)
 
     passed = len(errors) == 0
     return ValidationResult(passed=passed, errors=errors, warnings=warnings)
