@@ -16,6 +16,8 @@ from autopilot.ingest import dedup, normalizer, scanner
 from autopilot.organize import classify, cluster, narratives
 from autopilot.plan import edl as edl_mod
 from autopilot.plan import otio_export, script, validator
+from autopilot.render import router
+from autopilot.render import validate as render_validate
 from autopilot.source import resolve
 
 logger = logging.getLogger(__name__)
@@ -258,6 +260,34 @@ def _run_source_assets(*, config: Any, db: Any) -> None:
             logger.exception("Source resolution failed for narrative %s", nid)
 
     logger.info("Source complete: %d/%d succeeded", successes, len(approved))
+
+
+def _run_render(*, config: Any, db: Any) -> None:
+    """RENDER stage: route, render, and validate per narrative."""
+    import json as _json
+
+    approved = db.list_narratives("approved")
+    successes = 0
+    for narr in approved:
+        nid = narr["narrative_id"]
+        plan = db.get_edit_plan(nid)
+        if plan is None:
+            logger.warning("Skipping render for %s: no edit plan", nid)
+            continue
+        try:
+            output_path = router.route_and_render(nid, db, config.output)
+            edl = _json.loads(plan["edl_json"])
+            report = render_validate.validate_render(output_path, edl, config.output)
+            for issue in report.issues:
+                logger.warning(
+                    "Render validation [%s] %s: %s",
+                    nid, issue.severity, issue.message,
+                )
+            successes += 1
+        except Exception:
+            logger.exception("Render failed for narrative %s", nid)
+
+    logger.info("Render complete: %d/%d succeeded", successes, len(approved))
 
 
 class PipelineOrchestrator:
