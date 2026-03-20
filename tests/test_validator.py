@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -71,3 +72,115 @@ class TestValidatorPublicAPI:
         assert "EdlValidationError" in validator.__all__
         assert "ValidationResult" in validator.__all__
         assert "validate_edl" in validator.__all__
+
+
+# -- Step 3: Overlap detection tests ------------------------------------------
+
+
+def _mock_db():
+    """Create a mock CatalogDB that returns media for known clip_ids."""
+    db = MagicMock()
+    db.get_media.return_value = {"id": "v1", "duration_seconds": 120.0}
+    return db
+
+
+class TestOverlapDetection:
+    """Tests for validate_edl overlap detection on same track."""
+
+    def test_non_overlapping_clips_pass(self):
+        """Non-overlapping clips on the same track produce no errors."""
+        from autopilot.plan.validator import validate_edl
+
+        edl = {
+            "target_duration_seconds": 20,
+            "clips": [
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            "transitions": [],
+            "audio_settings": [],
+            "crop_modes": [],
+            "titles": [],
+            "music": [],
+            "voiceovers": [],
+            "broll_requests": [],
+        }
+        result = validate_edl(edl, _mock_db())
+        # No overlap errors
+        overlap_errors = [e for e in result.errors if "overlap" in e.lower()]
+        assert len(overlap_errors) == 0
+
+    def test_overlapping_clips_same_track_fail(self):
+        """Overlapping clips on the same track produce an error."""
+        from autopilot.plan.validator import validate_edl
+
+        edl = {
+            "target_duration_seconds": 15,
+            "clips": [
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:05.000",
+                    "out_timecode": "00:00:15.000",
+                    "track": 1,
+                },
+            ],
+            "transitions": [],
+            "audio_settings": [],
+            "crop_modes": [],
+            "titles": [],
+            "music": [],
+            "voiceovers": [],
+            "broll_requests": [],
+        }
+        result = validate_edl(edl, _mock_db())
+        assert result.passed is False
+        overlap_errors = [e for e in result.errors if "overlap" in e.lower()]
+        assert len(overlap_errors) >= 1
+
+    def test_overlapping_clips_different_tracks_pass(self):
+        """Overlapping clips on different tracks produce no overlap errors."""
+        from autopilot.plan.validator import validate_edl
+
+        edl = {
+            "target_duration_seconds": 10,
+            "clips": [
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:05.000",
+                    "out_timecode": "00:00:15.000",
+                    "track": 2,
+                },
+            ],
+            "transitions": [],
+            "audio_settings": [],
+            "crop_modes": [],
+            "titles": [],
+            "music": [],
+            "voiceovers": [],
+            "broll_requests": [],
+        }
+        result = validate_edl(edl, _mock_db())
+        overlap_errors = [e for e in result.errors if "overlap" in e.lower()]
+        assert len(overlap_errors) == 0
