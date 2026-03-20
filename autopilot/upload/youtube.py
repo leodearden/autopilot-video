@@ -195,6 +195,7 @@ def upload_video(
         try:
             while response is None:
                 _, response = request.next_chunk()
+            break  # Upload succeeded; exit retry loop
         except Exception as exc:
             if attempt < max_retries - 1:
                 wait = 2 ** attempt
