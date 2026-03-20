@@ -311,6 +311,109 @@ class TestFreesoundSearch:
 # fetch_list_only config tests
 # ---------------------------------------------------------------------------
 
+    def test_freesound_search_has_timeout(self, tmp_path):
+        """Freesound search API call includes a timeout parameter."""
+        mock_requests = MagicMock()
+        search_response = MagicMock()
+        search_response.status_code = 200
+        search_response.json.return_value = {"results": []}
+        search_response.raise_for_status = MagicMock()
+        mock_requests.get.return_value = search_response
+
+        request = _make_music_request()
+
+        with patch.dict(sys.modules, {"requests": mock_requests}):
+            if "autopilot.source.music" in sys.modules:
+                del sys.modules["autopilot.source.music"]
+            from autopilot.source.music import _search_freesound
+
+            with patch.dict("os.environ", {"FREESOUND_API_KEY": "test-key"}):
+                _search_freesound(request, tmp_path)
+
+        call_kwargs = mock_requests.get.call_args
+        assert call_kwargs.kwargs.get("timeout") is not None, (
+            "Freesound search request must include a timeout parameter"
+        )
+
+    def test_freesound_download_has_timeout(self, tmp_path):
+        """Freesound download call includes a timeout parameter."""
+        mock_requests = MagicMock()
+        search_response = MagicMock()
+        search_response.status_code = 200
+        search_response.json.return_value = {
+            "results": [
+                {
+                    "id": 12345,
+                    "name": "track.wav",
+                    "previews": {"preview-hq-mp3": "https://example.com/audio.mp3"},
+                }
+            ]
+        }
+        search_response.raise_for_status = MagicMock()
+        download_response = MagicMock()
+        download_response.status_code = 200
+        download_response.content = b"fake_audio"
+        download_response.raise_for_status = MagicMock()
+        mock_requests.get.side_effect = [search_response, download_response]
+
+        request = _make_music_request()
+
+        with patch.dict(sys.modules, {"requests": mock_requests}):
+            if "autopilot.source.music" in sys.modules:
+                del sys.modules["autopilot.source.music"]
+            from autopilot.source.music import _search_freesound
+
+            with patch.dict("os.environ", {"FREESOUND_API_KEY": "test-key"}):
+                _search_freesound(request, tmp_path)
+
+        # Download call is the second .get() call
+        download_call = mock_requests.get.call_args_list[1]
+        assert download_call.kwargs.get("timeout") is not None, (
+            "Freesound download request must include a timeout parameter"
+        )
+
+    def test_freesound_sanitizes_filename(self, tmp_path):
+        """Freesound track names with path separators/special chars are sanitized."""
+        mock_requests = MagicMock()
+        search_response = MagicMock()
+        search_response.status_code = 200
+        search_response.json.return_value = {
+            "results": [
+                {
+                    "id": 99999,
+                    "name": "my/track\\name<>:.wav\x00evil",
+                    "previews": {"preview-hq-mp3": "https://example.com/audio.mp3"},
+                }
+            ]
+        }
+        search_response.raise_for_status = MagicMock()
+        download_response = MagicMock()
+        download_response.status_code = 200
+        download_response.content = b"fake_audio"
+        download_response.raise_for_status = MagicMock()
+        mock_requests.get.side_effect = [search_response, download_response]
+
+        request = _make_music_request()
+
+        with patch.dict(sys.modules, {"requests": mock_requests}):
+            if "autopilot.source.music" in sys.modules:
+                del sys.modules["autopilot.source.music"]
+            from autopilot.source.music import _search_freesound
+
+            with patch.dict("os.environ", {"FREESOUND_API_KEY": "test-key"}):
+                result = _search_freesound(request, tmp_path)
+
+        assert result is not None
+        filename = result.name
+        # Must not contain path separators or dangerous characters
+        for char in ['/', '\\', '<', '>', ':', '\x00']:
+            assert char not in filename, (
+                f"Filename {filename!r} contains unsafe character {char!r}"
+            )
+        # File must be directly in output_dir, not a subdirectory
+        assert result.parent == tmp_path
+
+
 class TestFetchListOnly:
     """Tests for fetch_list_only engine mode."""
 
