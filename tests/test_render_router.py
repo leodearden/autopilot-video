@@ -45,3 +45,60 @@ class TestPublicAPI:
 
         assert hasattr(router, "__all__")
         assert set(router.__all__) == {"RoutingError", "route_and_render"}
+
+
+# ---------------------------------------------------------------------------
+# _classify_clip helper
+# ---------------------------------------------------------------------------
+
+
+class TestClassifyClip:
+    """Verify _classify_clip returns 'fast' or 'slow' correctly."""
+
+    def test_center_crop_returns_fast(self) -> None:
+        """Clip with crop mode 'center' should classify as 'fast'."""
+        from autopilot.render.router import _classify_clip
+
+        clip = {"clip_id": "c1"}
+        crop_modes = {"c1": "center"}
+        assert _classify_clip(clip, crop_modes) == "fast"
+
+    def test_manual_offset_returns_fast(self) -> None:
+        """Clip with crop mode 'manual_offset' should classify as 'fast'."""
+        from autopilot.render.router import _classify_clip
+
+        clip = {"clip_id": "c1"}
+        crop_modes = {"c1": "manual_offset"}
+        assert _classify_clip(clip, crop_modes) == "fast"
+
+    def test_stabilize_only_returns_fast(self) -> None:
+        """Clip with crop mode 'stabilize_only' should classify as 'fast'."""
+        from autopilot.render.router import _classify_clip
+
+        clip = {"clip_id": "c1"}
+        crop_modes = {"c1": "stabilize_only"}
+        assert _classify_clip(clip, crop_modes) == "fast"
+
+    def test_auto_subject_returns_slow(self) -> None:
+        """Clip with crop mode 'auto_subject' should classify as 'slow'."""
+        from autopilot.render.router import _classify_clip
+
+        clip = {"clip_id": "c1"}
+        crop_modes = {"c1": "auto_subject"}
+        assert _classify_clip(clip, crop_modes) == "slow"
+
+    def test_pip_overlay_returns_slow(self) -> None:
+        """Clip with 'pip' overlay should classify as 'slow'."""
+        from autopilot.render.router import _classify_clip
+
+        clip = {"clip_id": "c1", "overlay": "pip"}
+        crop_modes = {"c1": "center"}
+        assert _classify_clip(clip, crop_modes) == "slow"
+
+    def test_no_crop_mode_defaults_fast(self) -> None:
+        """Clip with no crop_modes entry should default to 'fast'."""
+        from autopilot.render.router import _classify_clip
+
+        clip = {"clip_id": "c1"}
+        crop_modes = {}  # no entry for c1
+        assert _classify_clip(clip, crop_modes) == "fast"
