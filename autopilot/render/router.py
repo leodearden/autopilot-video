@@ -219,16 +219,16 @@ def route_and_render(
                 input_idx += 1
 
         # Audio mixing filter
-        if audio_inputs:
+        has_audio_mix = bool(audio_inputs)
+        if has_audio_mix:
             # Mix source audio with additional tracks
             all_audio = ["[0:a]"] + audio_inputs
             mix_filter = (
                 "".join(all_audio)
-                + f"amix=inputs={len(all_audio)}:duration=longest"
+                + f"amix=inputs={len(all_audio)}:duration=longest[aout]"
             )
             cmd.extend(["-filter_complex", mix_filter])
-        else:
-            cmd.extend(["-c", "copy"])
+            cmd.extend(["-map", "0:v", "-map", "[aout]"])
 
         # Subtitle support: collect transcripts per clip and combine
         all_subtitle_segs: list[dict] = []
