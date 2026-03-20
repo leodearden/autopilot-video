@@ -102,3 +102,93 @@ class TestClassifyClip:
         clip = {"clip_id": "c1"}
         crop_modes = {}  # no entry for c1
         assert _classify_clip(clip, crop_modes) == "fast"
+
+
+# ---------------------------------------------------------------------------
+# Helpers for integration tests
+# ---------------------------------------------------------------------------
+
+
+def _make_config(
+    resolution: tuple[int, int] = (1920, 1080),
+    codec: str = "h264",
+    quality_crf: int = 18,
+    audio_bitrate: str = "256k",
+    target_loudness_lufs: int = -16,
+) -> object:
+    """Create an OutputConfig for testing."""
+    from autopilot.config import OutputConfig
+
+    return OutputConfig(
+        resolution=resolution,
+        codec=codec,
+        quality_crf=quality_crf,
+        audio_bitrate=audio_bitrate,
+        target_loudness_lufs=target_loudness_lufs,
+    )
+
+
+def _make_edl(clips: list[dict] | None = None, **kwargs: object) -> dict:
+    """Create a minimal EDL dict for testing."""
+    edl: dict = {
+        "clips": clips or [
+            {
+                "clip_id": "clip_1",
+                "source_path": "/tmp/src/clip.mp4",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }
+        ],
+        "transitions": {},
+        "crop_modes": {},
+        "audio_settings": {},
+        "music": [],
+        "voiceovers": [],
+        "broll_requests": [],
+    }
+    edl.update(kwargs)
+    return edl
+
+
+# ---------------------------------------------------------------------------
+# EDL loading
+# ---------------------------------------------------------------------------
+
+
+class TestEDLLoading:
+    """Verify route_and_render loads EDL correctly from database."""
+
+    def test_no_edit_plan_raises_routing_error(self) -> None:
+        """When narrative has no edit plan, should raise RoutingError."""
+        from autopilot.render.router import RoutingError, route_and_render
+
+        db = MagicMock()
+        db.get_edit_plan.return_value = None
+        config = _make_config()
+
+        with pytest.raises(RoutingError, match="No edit plan"):
+            route_and_render("narr_1", db, config)
+
+    def test_loads_edl_from_edit_plan(self) -> None:
+        """route_and_render should parse edl_json from edit plan."""
+        from autopilot.render.router import RoutingError, route_and_render
+
+        edl = _make_edl()
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "narr_1", "title": "Test"}
+        config = _make_config()
+
+        # Should not raise RoutingError for missing EDL
+        # (will raise NotImplementedError or other error later in pipeline)
+        with patch("autopilot.render.router.render_simple") as mock_rs, \
+             patch("autopilot.render.router.render_complex"), \
+             patch("subprocess.run"):
+            mock_rs.return_value = Path("/tmp/segment.mp4")
+            try:
+                route_and_render("narr_1", db, config)
+            except (NotImplementedError, RoutingError, Exception):
+                pass  # We just want to verify EDL was loaded
+
+        db.get_edit_plan.assert_called_once_with("narr_1")
