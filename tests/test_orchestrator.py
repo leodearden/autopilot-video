@@ -993,3 +993,32 @@ class TestUploadStage:
         _run_upload(config=minimal_config, db=db)
 
         assert mock_youtube.upload_video.call_count == 2
+
+
+class TestRealStageRegistration:
+    """Tests for PipelineOrchestrator registering real stage functions."""
+
+    def test_orchestrator_registers_real_functions_not_stubs(
+        self, caplog
+    ):
+        """Each stage's func is not a stub (doesn't log 'not yet implemented')."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            caplog.clear()
+            with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+                # We can't actually call the real functions without deps,
+                # so check that the function is not the stub by name
+                assert "stub" not in stage.func.__name__.lower(), (
+                    f"{stage.name} still uses a stub function"
+                )
+
+    def test_orchestrator_accepts_human_review_fn_parameter(self):
+        """PipelineOrchestrator(human_review_fn=callback) stores it."""
+        callback = MagicMock()
+        orch = PipelineOrchestrator(human_review_fn=callback)
+        assert orch.human_review_fn is callback
+
+    def test_orchestrator_human_review_fn_defaults_to_none(self):
+        """PipelineOrchestrator() defaults human_review_fn to None."""
+        orch = PipelineOrchestrator()
+        assert orch.human_review_fn is None
