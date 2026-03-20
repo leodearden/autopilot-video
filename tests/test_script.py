@@ -931,7 +931,8 @@ class TestNullFieldResilience:
         catalog_db.insert_face_cluster(1, label="ValidPerson")
         # Insert face with NULL frame_number via raw SQL
         catalog_db.conn.execute(
-            "INSERT INTO faces (media_id, frame_number, face_index, bbox_json, embedding, cluster_id) "
+            "INSERT INTO faces (media_id, frame_number, face_index,"
+            " bbox_json, embedding, cluster_id) "
             "VALUES (?, NULL, ?, ?, ?, ?)",
             ("v1", 0, json.dumps({"x": 0, "y": 0, "w": 1, "h": 1}), emb, 2),
         )

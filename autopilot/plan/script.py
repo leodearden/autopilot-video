@@ -272,7 +272,10 @@ def _get_detections_in_range(
         try:
             frame = int(det_row["frame_number"])  # type: ignore[arg-type]
         except (TypeError, ValueError):
-            logger.warning("Skipping detection with invalid frame_number: %s", det_row.get("frame_number"))
+            logger.warning(
+                "Skipping detection with invalid frame_number: %s",
+                det_row.get("frame_number"),
+            )
             continue
         if frame < start_frame or frame > end_frame:
             continue
@@ -330,7 +333,10 @@ def _get_audio_in_range(
         try:
             ts = float(ev_row["timestamp_seconds"])  # type: ignore[arg-type]
         except (TypeError, ValueError):
-            logger.warning("Skipping audio event with invalid timestamp_seconds: %s", ev_row.get("timestamp_seconds"))
+            logger.warning(
+                "Skipping audio event with invalid timestamp_seconds: %s",
+                ev_row.get("timestamp_seconds"),
+            )
             continue
         if ts < start_time or ts > end_time:
             continue
