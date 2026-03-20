@@ -149,7 +149,7 @@ def _generate_elevenlabs(text: str, output_path: Path) -> Path:
             },
         }
 
-        response = _requests.post(url, json=payload, headers=headers)
+        response = _requests.post(url, json=payload, headers=headers, timeout=(10, 120))
         response.raise_for_status()
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
