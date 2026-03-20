@@ -354,6 +354,75 @@ def _check_black_frames(rendered_path: Path, issues: list[Issue]) -> None:
         )
 
 
+def _check_silence(
+    rendered_path: Path, edl: dict, issues: list[Issue],
+) -> None:
+    """Detect silence gaps >2s via ffmpeg silencedetect filter.
+
+    Excludes gaps that overlap with EDL-marked intentional silences.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-i",
+                str(rendered_path),
+                "-af",
+                "silencedetect=n=-50dB:d=2",
+                "-f",
+                "null",
+                "-",
+            ],
+            capture_output=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, OSError) as exc:
+        issues.append(
+            Issue(
+                severity="warning",
+                check="silence",
+                message=f"ffmpeg silencedetect failed: {exc}",
+            )
+        )
+        return
+
+    stderr = result.stderr or ""
+    intentional = edl.get("intentional_silences", [])
+
+    for match in re.finditer(
+        r"silence_start:\s*(\S+).*?silence_end:\s*(\S+)\s*\|\s*silence_duration:\s*(\S+)",
+        stderr,
+        re.DOTALL,
+    ):
+        start = float(match.group(1))
+        end = float(match.group(2))
+        duration = float(match.group(3))
+
+        # Skip if covered by an intentional silence range
+        is_intentional = any(
+            s.get("start", 0) <= start and s.get("end", 0) >= end
+            for s in intentional
+        )
+        if is_intentional:
+            continue
+
+        issues.append(
+            Issue(
+                severity="warning",
+                check="silence",
+                message=(
+                    f"Silence detected: {start:.1f}s–{end:.1f}s "
+                    f"(duration: {duration:.1f}s)"
+                ),
+                measured_value={
+                    "start": start,
+                    "end": end,
+                    "duration": duration,
+                },
+            )
+        )
+
+
 def validate_render(
     rendered_path: Path,
     edl: dict,
