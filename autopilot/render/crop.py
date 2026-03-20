@@ -110,6 +110,50 @@ def _select_subject_track(
     return max(track_areas, key=track_areas.get)  # type: ignore[arg-type]
 
 
+def _compute_raw_center(
+    subject_bbox: list[float],
+    crop_w: int,
+    crop_h: int,
+    thirds_horizontal: str = "right",
+) -> tuple[float, float]:
+    """Compute raw crop center using rule-of-thirds framing for a single subject.
+
+    Places the subject horizontally at the 1/3 or 2/3 position of the crop
+    window, and vertically positions the eye line (top 1/3 of bbox) at the
+    upper 1/3 of the crop.
+
+    Args:
+        subject_bbox: [cx, cy, w, h] in source pixel coordinates.
+        crop_w: Crop window width.
+        crop_h: Crop window height.
+        thirds_horizontal: 'left' to place subject at 1/3, 'right' for 2/3.
+
+    Returns:
+        (crop_center_x, crop_center_y) in source pixel coordinates.
+    """
+    subj_cx, subj_cy, _, bbox_h = subject_bbox
+
+    # Horizontal: place subject at target fraction of crop width
+    if thirds_horizontal == "left":
+        h_frac = 1.0 / 3.0
+    else:
+        h_frac = 2.0 / 3.0
+
+    # crop_center_x such that subject is at h_frac from left of crop:
+    # subject_cx = crop_center_x - crop_w/2 + h_frac * crop_w
+    # => crop_center_x = subject_cx - (h_frac - 0.5) * crop_w
+    crop_center_x = subj_cx - (h_frac - 0.5) * crop_w
+
+    # Vertical: place eye line at 1/3 from top of crop
+    # Eye line is at top 1/3 of bbox: eye_y = subj_cy - bbox_h/3
+    eye_y = subj_cy - bbox_h / 3.0
+    # eye_y = crop_center_y - crop_h/2 + crop_h/3
+    # => crop_center_y = eye_y + crop_h/2 - crop_h/3 = eye_y + crop_h/6
+    crop_center_y = eye_y + crop_h / 6.0
+
+    return (crop_center_x, crop_center_y)
+
+
 def compute_crop_path(
     media_id: str,
     target_aspect: str,
