@@ -40,7 +40,7 @@ def catalog_db() -> Generator:
 
 
 @pytest.fixture
-def minimal_config(tmp_path: Path) -> "AutopilotConfig":
+def minimal_config(tmp_path: Path):
     """Create an AutopilotConfig with tmp_path-based directories."""
     from autopilot.config import AutopilotConfig
 

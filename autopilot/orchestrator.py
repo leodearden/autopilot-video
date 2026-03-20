@@ -240,8 +240,6 @@ def _run_edl(*, config: Any, db: Any) -> None:
 
 def _run_source_assets(*, config: Any, db: Any) -> None:
     """SOURCE_ASSETS stage: resolve assets for each narrative with an edit plan."""
-    import json as _json
-
     approved = db.list_narratives("approved")
     successes = 0
     for narr in approved:
@@ -266,8 +264,6 @@ def _run_source_assets(*, config: Any, db: Any) -> None:
 
 def _run_render(*, config: Any, db: Any) -> None:
     """RENDER stage: route, render, and validate per narrative."""
-    import json as _json
-
     approved = db.list_narratives("approved")
     successes = 0
     for narr in approved:
