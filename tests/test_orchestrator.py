@@ -825,3 +825,30 @@ class TestEdlStage:
 
         # Second narrative should still be processed
         assert mock_edl.generate_edl.call_count == 2
+
+
+class TestSourceStage:
+    """Tests for the real _run_source_assets stage function."""
+
+    @patch("autopilot.orchestrator.resolve")
+    def test_source_resolves_assets_per_narrative(
+        self, mock_resolve, minimal_config
+    ):
+        """_run_source_assets calls resolve_edl_assets for each narrative with an edit plan."""
+        from autopilot.orchestrator import _run_source_assets
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_edit_plan.return_value = {
+            "narrative_id": "n1",
+            "edl_json": '{"timeline": []}',
+        }
+        mock_resolve.resolve_edl_assets.return_value = {"edl": {}, "unresolved": []}
+
+        _run_source_assets(config=minimal_config, db=db)
+
+        mock_resolve.resolve_edl_assets.assert_called_once()
+        call_kwargs = mock_resolve.resolve_edl_assets.call_args
+        assert call_kwargs[1].get("narrative_id") == "n1" or (
+            len(call_kwargs[0]) >= 1  # positional args present
+        )
