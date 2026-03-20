@@ -606,3 +606,91 @@ class TestClassifyStage:
         _run_classify(config=minimal_config, db=db)
 
         mock_classify.label_activities.assert_called_once_with(db, minimal_config.llm)
+
+
+class TestNarrateStage:
+    """Tests for the real _run_narrate stage function."""
+
+    @patch("autopilot.orchestrator.narratives")
+    def test_narrate_builds_storyboard(self, mock_narratives, minimal_config):
+        """_run_narrate calls build_master_storyboard with db."""
+        from autopilot.orchestrator import _run_narrate
+
+        mock_narratives.build_master_storyboard.return_value = "storyboard text"
+        mock_narratives.propose_narratives.return_value = []
+        mock_narratives.format_for_review.return_value = ""
+        db = MagicMock()
+
+        _run_narrate(config=minimal_config, db=db)
+
+        mock_narratives.build_master_storyboard.assert_called_once_with(db)
+
+    @patch("autopilot.orchestrator.narratives")
+    def test_narrate_proposes_narratives(self, mock_narratives, minimal_config):
+        """_run_narrate calls propose_narratives with storyboard, db, config."""
+        from autopilot.orchestrator import _run_narrate
+
+        mock_narratives.build_master_storyboard.return_value = "storyboard"
+        mock_narratives.propose_narratives.return_value = []
+        mock_narratives.format_for_review.return_value = ""
+        db = MagicMock()
+
+        _run_narrate(config=minimal_config, db=db)
+
+        mock_narratives.propose_narratives.assert_called_once_with(
+            "storyboard", db, minimal_config
+        )
+
+    @patch("autopilot.orchestrator.narratives")
+    def test_narrate_calls_human_review_callback(self, mock_narratives, minimal_config):
+        """_run_narrate invokes human_review_fn with formatted text and narratives."""
+        from autopilot.orchestrator import _run_narrate
+
+        narr = MagicMock()
+        narr.narrative_id = "n1"
+        mock_narratives.build_master_storyboard.return_value = "sb"
+        mock_narratives.propose_narratives.return_value = [narr]
+        mock_narratives.format_for_review.return_value = "review text"
+        db = MagicMock()
+
+        review_fn = MagicMock(return_value=["n1"])
+        _run_narrate(config=minimal_config, db=db, human_review_fn=review_fn)
+
+        review_fn.assert_called_once_with("review text", [narr])
+
+    @patch("autopilot.orchestrator.narratives")
+    def test_narrate_auto_approves_when_no_callback(self, mock_narratives, minimal_config):
+        """Without human_review_fn all narratives get status='approved'."""
+        from autopilot.orchestrator import _run_narrate
+
+        narr = MagicMock()
+        narr.narrative_id = "n1"
+        mock_narratives.build_master_storyboard.return_value = "sb"
+        mock_narratives.propose_narratives.return_value = [narr]
+        mock_narratives.format_for_review.return_value = ""
+        db = MagicMock()
+
+        _run_narrate(config=minimal_config, db=db)
+
+        db.update_narrative_status.assert_any_call("n1", "approved")
+
+    @patch("autopilot.orchestrator.narratives")
+    def test_narrate_respects_review_rejections(self, mock_narratives, minimal_config):
+        """human_review_fn returns subset of IDs; rejected ones get status='rejected'."""
+        from autopilot.orchestrator import _run_narrate
+
+        narr1 = MagicMock()
+        narr1.narrative_id = "n1"
+        narr2 = MagicMock()
+        narr2.narrative_id = "n2"
+        mock_narratives.build_master_storyboard.return_value = "sb"
+        mock_narratives.propose_narratives.return_value = [narr1, narr2]
+        mock_narratives.format_for_review.return_value = "review"
+        db = MagicMock()
+
+        # Only approve n1, reject n2
+        review_fn = MagicMock(return_value=["n1"])
+        _run_narrate(config=minimal_config, db=db, human_review_fn=review_fn)
+
+        db.update_narrative_status.assert_any_call("n1", "approved")
+        db.update_narrative_status.assert_any_call("n2", "rejected")
