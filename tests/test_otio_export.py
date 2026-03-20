@@ -783,3 +783,149 @@ class TestErrorHandling:
 
         with pytest.raises(OtioExportError):
             export_otio(edl, output, db)
+
+
+# -- Step 17: Integration test ------------------------------------------------
+
+
+class TestIntegration:
+    """Full integration test with real DB, complete EDL, and round-trip."""
+
+    def test_full_round_trip(self, catalog_db, tmp_path):
+        """End-to-end: seed DB, export OTIO, round-trip, detect no changes, store in DB."""
+        import json
+
+        from autopilot.plan.otio_export import detect_otio_changes, export_otio
+
+        # Seed DB with 2 media files
+        catalog_db.insert_media(
+            "v1",
+            "/media/interview.mp4",
+            fps=30.0,
+            duration_seconds=120.0,
+        )
+        catalog_db.insert_media(
+            "v2",
+            "/media/broll_city.mp4",
+            fps=24.0,
+            duration_seconds=60.0,
+        )
+
+        # Create a full EDL
+        edl = {
+            "clips": [
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:05.000",
+                    "out_timecode": "00:00:35.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+            ],
+            "transitions": [
+                {
+                    "type": "crossfade",
+                    "duration": 0.5,
+                    "position": 0,
+                },
+            ],
+            "crop_modes": [
+                {"clip_id": "v1", "mode": "16:9"},
+                {"clip_id": "v2", "mode": "letterbox"},
+            ],
+            "titles": [
+                {"text": "Welcome", "position": "center", "start": 0, "duration": 3},
+            ],
+            "audio_settings": [
+                {"clip_id": "v1", "level_db": -3.0},
+                {"clip_id": "v2", "level_db": -6.0},
+            ],
+            "music": [
+                {"track": "ambient.mp3", "level_db": -18.0},
+            ],
+            "voiceovers": [
+                {"text": "In this video...", "start": 0.0, "duration": 5.0},
+            ],
+            "broll_requests": [
+                {"description": "sunset timelapse", "duration": 4.0},
+            ],
+            "target_duration_seconds": 45,
+        }
+
+        # Export
+        output = tmp_path / "edit.otio"
+        result = export_otio(edl, output, catalog_db)
+        assert result == output
+        assert output.exists()
+
+        # Read back and verify structure
+        tl = otio.adapters.read_from_file(str(output))
+        assert tl.name == "autopilot_edit"
+
+        # Check video tracks
+        video_tracks = [
+            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
+        ]
+        assert len(video_tracks) == 1  # both clips on track 1
+
+        # Check clips (2 clips)
+        all_clips = [
+            c for c in video_tracks[0] if isinstance(c, otio.schema.Clip)
+        ]
+        assert len(all_clips) == 2
+
+        # v2 should come first (sorted by in_timecode: 00:00:00 < 00:00:05)
+        assert all_clips[0].name == "v2"
+        assert all_clips[0].media_reference.target_url == "/media/broll_city.mp4"
+        assert all_clips[1].name == "v1"
+        assert all_clips[1].media_reference.target_url == "/media/interview.mp4"
+
+        # Check transitions
+        transitions = [
+            item for item in video_tracks[0]
+            if isinstance(item, otio.schema.Transition)
+        ]
+        assert len(transitions) == 1
+        assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
+
+        # Check per-clip metadata
+        assert all_clips[0].metadata["autopilot"]["crop_mode"] == "letterbox"
+        assert all_clips[0].metadata["autopilot"]["level_db"] == -6.0
+        assert all_clips[1].metadata["autopilot"]["crop_mode"] == "16:9"
+        assert all_clips[1].metadata["autopilot"]["level_db"] == -3.0
+
+        # Check timeline metadata
+        tl_meta = tl.metadata["autopilot"]
+        assert tl_meta["target_duration_seconds"] == 45
+        assert len(tl_meta["titles"]) == 1
+        assert len(tl_meta["music"]) == 1
+        assert len(tl_meta["voiceovers"]) == 1
+        assert len(tl_meta["broll_requests"]) == 1
+        assert "edl_hash" in tl_meta
+
+        # Detect no changes
+        change_result = detect_otio_changes(output, edl)
+        assert change_result["modified"] is False
+        assert change_result["changes"] == []
+
+        # Store otio_path in DB via upsert_edit_plan
+        catalog_db.insert_narrative("test_narrative", title="Test")
+        catalog_db.upsert_edit_plan(
+            narrative_id="test_narrative",
+            edl_json=json.dumps(edl),
+            otio_path=str(output),
+        )
+
+        # Verify DB has correct otio_path
+        cur = catalog_db.conn.execute(
+            "SELECT otio_path FROM edit_plans WHERE narrative_id = ?",
+            ("test_narrative",),
+        )
+        row = cur.fetchone()
+        assert row is not None
+        assert row["otio_path"] == str(output)

@@ -306,13 +306,18 @@ def detect_otio_changes(otio_path: Path, original_edl: dict) -> dict:
             f"Clip count changed: {len(original_clips)} -> {len(otio_clips)}"
         )
 
-    # Compare individual clip source ranges
+    # Compare individual clip source ranges (match by name/clip_id)
     from autopilot.plan.validator import timecode_to_seconds
 
-    for i, orig_clip in enumerate(original_clips):
-        if i >= len(otio_clips):
-            break
-        otio_clip = otio_clips[i]
+    otio_clips_by_name: dict[str, object] = {c.name: c for c in otio_clips}
+
+    for orig_clip in original_clips:
+        clip_id = orig_clip.get("clip_id", "")
+        otio_clip = otio_clips_by_name.get(clip_id)
+        if otio_clip is None:
+            changes.append(f"Clip {clip_id}: missing from OTIO file")
+            continue
+
         orig_in_sec = timecode_to_seconds(orig_clip["in_timecode"])
         orig_out_sec = timecode_to_seconds(orig_clip["out_timecode"])
         orig_dur = orig_out_sec - orig_in_sec
@@ -322,12 +327,12 @@ def detect_otio_changes(otio_path: Path, original_edl: dict) -> dict:
 
         if abs(actual_start - orig_in_sec) > 0.05:
             changes.append(
-                f"Clip {orig_clip.get('clip_id', i)}: start changed "
+                f"Clip {clip_id}: start changed "
                 f"{orig_in_sec:.3f}s -> {actual_start:.3f}s"
             )
         if abs(actual_dur - orig_dur) > 0.05:
             changes.append(
-                f"Clip {orig_clip.get('clip_id', i)}: duration changed "
+                f"Clip {clip_id}: duration changed "
                 f"{orig_dur:.3f}s -> {actual_dur:.3f}s"
             )
 
