@@ -491,8 +491,34 @@ class PipelineOrchestrator:
                 errored_stages.add(stage_name)
                 logger.error("[ERROR] %s: %s", stage_name, exc)
 
+            # Progress reporting after each stage
+            cumulative = time.monotonic() - pipeline_start
+            if self.budget_seconds and self.budget_seconds > 0:
+                pct = (cumulative / self.budget_seconds) * 100
+                logger.info(
+                    "[PROGRESS] %.1fs / %.1fs budget (%.1f%%)",
+                    cumulative, self.budget_seconds, pct,
+                )
+            else:
+                logger.info(
+                    "[PROGRESS] %.1fs elapsed (no budget set)",
+                    cumulative,
+                )
+
         total_elapsed = time.monotonic() - pipeline_start
-        logger.info("Pipeline complete (%.1fs)", total_elapsed)
+
+        # Summary table
+        summary_parts = []
+        for sn in order:
+            if sn in results:
+                r = results[sn]
+                summary_parts.append(
+                    f"  {sn}: {r.status.value} ({r.elapsed_seconds:.1f}s)"
+                )
+        summary = "\n".join(summary_parts)
+        logger.info(
+            "Pipeline complete (%.1fs)\n%s", total_elapsed, summary,
+        )
 
         # Check budget
         if self.budget_seconds is not None and total_elapsed > self.budget_seconds:
