@@ -127,30 +127,33 @@ def _run_analyze(*, config: Any, db: Any) -> None:
     all_media = db.list_all_media()
     media_list = [m for m in all_media if m.get("status") != "duplicate"]
 
-    for media in media_list:
-        media_id = media["id"]
-        file_path = Path(media["file_path"])
-        audio_path = file_path  # audio extracted from same file
+    try:
+        for media in media_list:
+            media_id = media["id"]
+            file_path = Path(media["file_path"])
+            audio_path = file_path  # audio extracted from same file
 
-        asr.transcribe_media(
-            media_id, audio_path, db, scheduler, config.models,
-            batch_size=config.processing.batch_size_whisper,
-        )
-        scenes.detect_shots(media_id, file_path, db, scheduler)
-        objects.detect_objects(
-            media_id, file_path, db, scheduler, config.models,
-            sparse=False,
-        )
-        faces.detect_faces(media_id, file_path, db, scheduler, config.models)
-        embeddings.compute_embeddings(
-            media_id, file_path, db, scheduler, config.models,
-        )
-        audio_events.classify_audio_events(
-            media_id, audio_path, db, scheduler,
-        )
+            asr.transcribe_media(
+                media_id, audio_path, db, scheduler, config.models,
+                batch_size=config.processing.batch_size_whisper,
+            )
+            scenes.detect_shots(media_id, file_path, db, scheduler)
+            objects.detect_objects(
+                media_id, file_path, db, scheduler, config.models,
+                sparse=False,
+            )
+            faces.detect_faces(media_id, file_path, db, scheduler, config.models)
+            embeddings.compute_embeddings(
+                media_id, file_path, db, scheduler, config.models,
+            )
+            audio_events.classify_audio_events(
+                media_id, audio_path, db, scheduler,
+            )
 
-    faces.cluster_faces(db, eps=0.5, min_samples=3)
-    logger.info("Analyze complete: %d media processed", len(media_list))
+        faces.cluster_faces(db, eps=0.5, min_samples=3)
+        logger.info("Analyze complete: %d media processed", len(media_list))
+    finally:
+        scheduler.force_unload_all()
 
 
 def _run_classify(*, config: Any, db: Any) -> None:
