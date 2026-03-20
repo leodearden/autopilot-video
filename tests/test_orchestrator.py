@@ -576,3 +576,33 @@ class TestAnalyzeStage:
 
         # Only m1 should be analyzed, not m2 (duplicate)
         assert mock_asr.transcribe_media.call_count == 1
+
+
+class TestClassifyStage:
+    """Tests for the real _run_classify stage function."""
+
+    @patch("autopilot.orchestrator.classify")
+    @patch("autopilot.orchestrator.cluster")
+    def test_classify_calls_cluster_activities(
+        self, mock_cluster, mock_classify, minimal_config
+    ):
+        """_run_classify calls cluster.cluster_activities with db."""
+        from autopilot.orchestrator import _run_classify
+
+        db = MagicMock()
+        _run_classify(config=minimal_config, db=db)
+
+        mock_cluster.cluster_activities.assert_called_once_with(db)
+
+    @patch("autopilot.orchestrator.classify")
+    @patch("autopilot.orchestrator.cluster")
+    def test_classify_calls_label_activities(
+        self, mock_cluster, mock_classify, minimal_config
+    ):
+        """_run_classify calls classify.label_activities with db and config.llm."""
+        from autopilot.orchestrator import _run_classify
+
+        db = MagicMock()
+        _run_classify(config=minimal_config, db=db)
+
+        mock_classify.label_activities.assert_called_once_with(db, minimal_config.llm)
