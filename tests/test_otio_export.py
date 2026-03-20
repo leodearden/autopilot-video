@@ -6,6 +6,7 @@ import inspect
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import opentimelineio as otio
 import pytest
 
 # -- Step 1: Public API surface tests -----------------------------------------
@@ -58,8 +59,6 @@ class TestOtioExportPublicAPI:
 
 
 # -- Step 3: Timecode-to-RationalTime conversion tests ------------------------
-
-import opentimelineio as otio
 
 
 class TestTcToRationalTime:

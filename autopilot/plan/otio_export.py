@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    import opentimelineio as otio
+
     from autopilot.db import CatalogDB
 
 logger = logging.getLogger(__name__)
@@ -70,7 +72,8 @@ def _get_media_info(clip_id: str, db: CatalogDB) -> tuple[str, float]:
         logger.warning("Media not found for clip_id=%s, using fallback", clip_id)
         return clip_id, _DEFAULT_FPS
     file_path = str(media.get("file_path") or clip_id)
-    fps = float(media.get("fps") or _DEFAULT_FPS)
+    fps_raw = media.get("fps")
+    fps = float(str(fps_raw)) if fps_raw is not None else _DEFAULT_FPS
     return file_path, fps
 
 
@@ -313,7 +316,7 @@ def detect_otio_changes(otio_path: Path, original_edl: dict) -> dict:
     # Compare individual clip source ranges (match by name/clip_id)
     from autopilot.plan.validator import timecode_to_seconds
 
-    otio_clips_by_name: dict[str, object] = {c.name: c for c in otio_clips}
+    otio_clips_by_name: dict[str, otio.schema.Clip] = {c.name: c for c in otio_clips}
 
     for orig_clip in original_clips:
         clip_id = orig_clip.get("clip_id", "")
