@@ -588,7 +588,11 @@ class TestBlackFrameCheck:
         # Should have 2 issues: 1 parse warning + 1 valid detection
         assert len(issues) == 2
         # The valid detection should have measured_value with numeric values
-        valid_issues = [i for i in issues if i.measured_value is not None and isinstance(i.measured_value, dict)]
+        valid_issues = [
+            i for i in issues
+            if i.measured_value is not None
+            and isinstance(i.measured_value, dict)
+        ]
         assert len(valid_issues) == 1
         assert valid_issues[0].measured_value["start"] == pytest.approx(10.0)
 
@@ -720,7 +724,11 @@ class TestSilenceCheck:
         # Should have 2 issues: 1 parse warning + 1 valid detection
         assert len(issues) == 2
         # The valid detection should have measured_value with numeric values
-        valid_issues = [i for i in issues if i.measured_value is not None and isinstance(i.measured_value, dict)]
+        valid_issues = [
+            i for i in issues
+            if i.measured_value is not None
+            and isinstance(i.measured_value, dict)
+        ]
         assert len(valid_issues) == 1
         assert valid_issues[0].measured_value["start"] == pytest.approx(20.0)
 
