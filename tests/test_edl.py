@@ -397,3 +397,153 @@ class TestEdlPersistence:
         assert stored["validation_json"] is not None
         val_data = json.loads(stored["validation_json"])
         assert "passed" in val_data
+
+
+# -- Step 21: Validation retry loop tests -------------------------------------
+
+
+class TestEdlRetryLoop:
+    """Tests for generate_edl validation retry loop."""
+
+    def test_validation_passes_first_try_no_retry(self, catalog_db):
+        """Validation passes on first try — LLM called only once."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.edl import generate_edl
+
+        config = LLMConfig()
+        _seed_edl_narrative(catalog_db)
+
+        mock_anthropic, mock_client = _setup_mock_edl_anthropic()
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            generate_edl("n1", catalog_db, config)
+
+        assert mock_client.messages.create.call_count == 1
+
+    def test_validation_fails_then_passes_on_retry(self, catalog_db):
+        """Validation fails then passes on retry — LLM called twice."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.edl import generate_edl
+
+        config = LLMConfig()
+        _seed_edl_narrative(catalog_db)
+
+        # First response: overlapping clips (invalid)
+        bad_response = _make_tool_use_response([
+            ("select_clip", {
+                "clip_id": "v1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }),
+            ("select_clip", {
+                "clip_id": "v1",
+                "in_timecode": "00:00:05.000",
+                "out_timecode": "00:00:15.000",
+                "track": 1,
+            }),
+        ])
+        # Second response: valid (non-overlapping)
+        good_response = _make_tool_use_response([
+            ("select_clip", {
+                "clip_id": "v1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }),
+        ])
+
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = [bad_response, good_response]
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            edl = generate_edl("n1", catalog_db, config)
+
+        assert mock_client.messages.create.call_count == 2
+        assert len(edl["clips"]) == 1  # good response
+
+    def test_validation_fails_3_times_raises_edl_error(self, catalog_db):
+        """Validation fails 3 times — EdlError raised with validation errors."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.edl import EdlError, generate_edl
+
+        config = LLMConfig()
+        _seed_edl_narrative(catalog_db)
+
+        # All responses: overlapping clips (invalid)
+        bad_response = _make_tool_use_response([
+            ("select_clip", {
+                "clip_id": "v1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }),
+            ("select_clip", {
+                "clip_id": "v1",
+                "in_timecode": "00:00:05.000",
+                "out_timecode": "00:00:15.000",
+                "track": 1,
+            }),
+        ])
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = bad_response
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            with pytest.raises(EdlError, match="[Vv]alidation"):
+                generate_edl("n1", catalog_db, config)
+
+        # Initial + 3 retries = 4 calls max
+        assert mock_client.messages.create.call_count <= 4
+
+    def test_retry_message_includes_validation_errors(self, catalog_db):
+        """Retry message includes previous validation errors for context."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.edl import generate_edl
+
+        config = LLMConfig()
+        _seed_edl_narrative(catalog_db)
+
+        # First: bad, second: good
+        bad_response = _make_tool_use_response([
+            ("select_clip", {
+                "clip_id": "v1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }),
+            ("select_clip", {
+                "clip_id": "v1",
+                "in_timecode": "00:00:05.000",
+                "out_timecode": "00:00:15.000",
+                "track": 1,
+            }),
+        ])
+        good_response = _make_tool_use_response([
+            ("select_clip", {
+                "clip_id": "v1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }),
+        ])
+
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = [bad_response, good_response]
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            generate_edl("n1", catalog_db, config)
+
+        # The second call's messages should include error feedback
+        second_call = mock_client.messages.create.call_args_list[1]
+        messages = second_call[1]["messages"]
+        # Should have more than just the initial user message
+        assert len(messages) >= 2
+        # Check that validation errors are mentioned in the feedback
+        feedback_text = str(messages)
+        assert "overlap" in feedback_text.lower() or "error" in feedback_text.lower()
