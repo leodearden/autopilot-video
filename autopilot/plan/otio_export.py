@@ -142,8 +142,6 @@ def _insert_transitions(
         if insert_idx <= len(track):
             track.insert(insert_idx, transition)
 
-    return
-
 
 def export_otio(edl: dict, output_path: Path, db: CatalogDB) -> Path:
     """Export an EDL structure to an OpenTimelineIO .otio file.
@@ -255,6 +253,12 @@ def export_otio(edl: dict, output_path: Path, db: CatalogDB) -> Path:
     except Exception as e:
         raise OtioExportError(f"Failed to write OTIO file: {e}") from e
 
+    logger.info(
+        "Exported OTIO timeline with %d clips across %d tracks to %s",
+        len(clips),
+        len(tracks_map),
+        output_path,
+    )
     return output_path
 
 
