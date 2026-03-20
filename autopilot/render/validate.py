@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -226,6 +227,81 @@ def _check_file_size(
                 measured_value=mb_per_min,
             )
         )
+
+
+def _check_loudness(
+    rendered_path: Path, config: OutputConfig, issues: list[Issue],
+) -> float | None:
+    """Check integrated loudness via ffmpeg loudnorm analysis pass.
+
+    Returns the measured LUFS value on success, or None on failure.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-i",
+                str(rendered_path),
+                "-af",
+                "loudnorm=print_format=json",
+                "-f",
+                "null",
+                "-",
+            ],
+            capture_output=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, OSError) as exc:
+        issues.append(
+            Issue(
+                severity="error",
+                check="loudness",
+                message=f"ffmpeg loudness analysis failed: {exc}",
+            )
+        )
+        return None
+
+    # Extract JSON block from stderr
+    stderr = result.stderr or ""
+    match = re.search(r"\{[^}]+\}", stderr, re.DOTALL)
+    if match is None:
+        issues.append(
+            Issue(
+                severity="error",
+                check="loudness",
+                message="Could not parse loudnorm output from ffmpeg stderr",
+            )
+        )
+        return None
+
+    try:
+        loudnorm_data = json.loads(match.group())
+        measured_lufs = float(loudnorm_data["input_i"])
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
+        issues.append(
+            Issue(
+                severity="error",
+                check="loudness",
+                message=f"Could not parse LUFS from loudnorm output: {exc}",
+            )
+        )
+        return None
+
+    target = config.target_loudness_lufs
+    if abs(measured_lufs - target) > 1.0:
+        issues.append(
+            Issue(
+                severity="error",
+                check="loudness",
+                message=(
+                    f"Integrated loudness {measured_lufs:.1f} LUFS differs from "
+                    f"target {target} LUFS by more than 1 LUFS"
+                ),
+                measured_value=measured_lufs,
+            )
+        )
+
+    return measured_lufs
 
 
 def validate_render(
