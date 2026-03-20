@@ -124,6 +124,57 @@ def _combined_score(
     )
 
 
+def _extract_best_frame(
+    video_path: Path,
+    detections: list[dict],
+) -> Path | None:
+    """Extract the best-scoring frame from a video and save as JPEG.
+
+    Samples frames at ~1fps intervals, scores each using combined metrics,
+    and saves the highest-scoring frame as a JPEG file.
+
+    Args:
+        video_path: Path to the video file.
+        detections: List of detection dicts for scoring.
+
+    Returns:
+        Path to the saved JPEG, or None if no frames could be read.
+    """
+    import cv2  # lazy import
+
+    cap = cv2.VideoCapture(str(video_path))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    step = max(1, int(fps))  # sample at ~1fps
+
+    best_score = -1.0
+    best_frame = None
+
+    for frame_idx in range(0, total_frames, step):
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+        ret, frame = cap.read()
+        if not ret or frame is None:
+            continue
+
+        sharpness = _sharpness_score(frame)
+        thirds = _rule_of_thirds_score(frame.shape, detections)
+        confidence = _detection_confidence_score(detections)
+        score = _combined_score(sharpness, thirds, confidence)
+
+        if score > best_score:
+            best_score = score
+            best_frame = frame.copy() if hasattr(frame, "copy") else frame
+
+    cap.release()
+
+    if best_frame is None:
+        return None
+
+    thumb_path = video_path.parent / f"{video_path.stem}_thumbnail.jpg"
+    cv2.imwrite(str(thumb_path), best_frame)
+    return thumb_path
+
+
 def extract_best_thumbnail(
     narrative_id: str,
     video_path: Path,
@@ -146,4 +197,25 @@ def extract_best_thumbnail(
     Raises:
         ThumbnailError: If thumbnail extraction fails.
     """
-    raise NotImplementedError
+    # Gather detections from all media files for scoring
+    import json
+
+    all_detections: list[dict] = []
+    media_files = db.list_all_media()
+    for mf in media_files:
+        dets = db.get_detections_for_media(mf["id"])
+        for det_row in dets:
+            det_json = det_row.get("detections_json")
+            if det_json:
+                try:
+                    parsed = json.loads(det_json)
+                    all_detections.extend(parsed)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+    thumb_path = _extract_best_frame(video_path, all_detections)
+    if thumb_path is None:
+        msg = f"Could not extract any frames from {video_path}"
+        raise ThumbnailError(msg)
+
+    return thumb_path
