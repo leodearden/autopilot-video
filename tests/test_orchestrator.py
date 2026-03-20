@@ -471,3 +471,108 @@ class TestIngestStage:
         _run_ingest(config=minimal_config, db=db)
 
         mock_dedup.mark_duplicates.assert_called_once_with(db)
+
+
+class TestAnalyzeStage:
+    """Tests for the real _run_analyze stage function."""
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_creates_gpu_scheduler(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """_run_analyze creates a GPUScheduler with config.processing settings."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = MagicMock()
+        db.list_all_media.return_value = []
+
+        _run_analyze(config=minimal_config, db=db)
+
+        mock_gpu_cls.assert_called_once()
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_runs_all_analysis_per_media(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """_run_analyze calls all 6 analysis functions for each media in DB."""
+        from autopilot.orchestrator import _run_analyze
+
+        media1 = {"id": "m1", "file_path": "/fake/v1.mp4", "status": "ingested"}
+        media2 = {"id": "m2", "file_path": "/fake/v2.mp4", "status": "ingested"}
+        db = MagicMock()
+        db.list_all_media.return_value = [media1, media2]
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(config=minimal_config, db=db)
+
+        assert mock_asr.transcribe_media.call_count == 2
+        assert mock_scenes.detect_shots.call_count == 2
+        assert mock_objects.detect_objects.call_count == 2
+        assert mock_faces.detect_faces.call_count == 2
+        assert mock_embeddings.compute_embeddings.call_count == 2
+        assert mock_audio_events.classify_audio_events.call_count == 2
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_calls_cluster_faces_after_analysis(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """_run_analyze calls cluster_faces once after all per-media analysis."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = MagicMock()
+        db.list_all_media.return_value = [
+            {"id": "m1", "file_path": "/fake/v1.mp4", "status": "ingested"},
+        ]
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(config=minimal_config, db=db)
+
+        mock_faces.cluster_faces.assert_called_once_with(db, eps=0.5, min_samples=3)
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_skips_duplicate_media(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """_run_analyze skips media with status='duplicate'."""
+        from autopilot.orchestrator import _run_analyze
+
+        media = [
+            {"id": "m1", "file_path": "/fake/v1.mp4", "status": "ingested"},
+            {"id": "m2", "file_path": "/fake/v2.mp4", "status": "duplicate"},
+        ]
+        db = MagicMock()
+        db.list_all_media.return_value = media
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(config=minimal_config, db=db)
+
+        # Only m1 should be analyzed, not m2 (duplicate)
+        assert mock_asr.transcribe_media.call_count == 1
