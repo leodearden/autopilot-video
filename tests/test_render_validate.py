@@ -11,7 +11,6 @@ import pytest
 
 from autopilot.config import OutputConfig
 
-
 # ---------------------------------------------------------------------------
 # TestPublicAPI — imports, dataclasses, function signatures, __all__
 # ---------------------------------------------------------------------------
@@ -643,7 +642,6 @@ def _make_subprocess_side_effect(
     silence_stderr: str,
 ):
     """Create a side_effect function that routes calls to the right mock."""
-    call_count = {"n": 0}
 
     def side_effect(*args, **kwargs):
         cmd = args[0] if args else kwargs.get("args", [])
