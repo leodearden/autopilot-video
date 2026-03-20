@@ -144,6 +144,7 @@ class CatalogDB:
                 proposed_duration_seconds REAL,
                 activity_cluster_ids_json TEXT,
                 arc_notes TEXT,
+                emotional_journey TEXT,
                 status TEXT DEFAULT 'proposed'
             );
 
@@ -589,14 +590,15 @@ class CatalogDB:
         proposed_duration_seconds: float | None = None,
         activity_cluster_ids_json: str | None = None,
         arc_notes: str | None = None,
+        emotional_journey: str | None = None,
         status: str = "proposed",
     ) -> None:
         """Insert a new narrative."""
         self.conn.execute(
             "INSERT INTO narratives "
             "(narrative_id, title, description, proposed_duration_seconds, "
-            "activity_cluster_ids_json, arc_notes, status) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "activity_cluster_ids_json, arc_notes, emotional_journey, status) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 narrative_id,
                 title,
@@ -604,6 +606,7 @@ class CatalogDB:
                 proposed_duration_seconds,
                 activity_cluster_ids_json,
                 arc_notes,
+                emotional_journey,
                 status,
             ),
         )
