@@ -118,13 +118,19 @@ def _collect_tool_calls(content_blocks: list) -> dict:
     return edl
 
 
-def _call_llm(
-    user_message: str,
+def _call_llm_with_messages(
+    messages: list[dict],
     system_prompt: str,
     config: LLMConfig,
     tools: list[dict],
 ) -> list:
     """Call Claude Opus with tool-use for EDL generation.
+
+    Args:
+        messages: Conversation messages list.
+        system_prompt: System prompt text.
+        config: LLM config with planning_model.
+        tools: Tool definitions for tool-use.
 
     Returns:
         List of content blocks from the response.
@@ -140,7 +146,7 @@ def _call_llm(
             model=config.planning_model,
             max_tokens=16384,
             system=system_prompt,
-            messages=[{"role": "user", "content": user_message}],
+            messages=messages,
             tools=tools,
         )
     except Exception as e:
@@ -200,34 +206,66 @@ def generate_edl(narrative_id: str, db: CatalogDB, config: LLMConfig) -> dict:
     # Build user message
     user_message = _build_user_message(narrative, script_data, storyboard)
 
-    # Call LLM
-    content_blocks = _call_llm(user_message, system_prompt, config, TOOL_DEFINITIONS)
+    from autopilot.plan.validator import validate_edl as _validate_edl
 
-    # Collect tool calls into EDL
-    edl = _collect_tool_calls(content_blocks)
+    target_duration = narrative.get("proposed_duration_seconds", 0)
+    max_retries = 3
+    messages: list[dict] = [{"role": "user", "content": user_message}]
 
-    # Add target duration
-    edl["target_duration_seconds"] = narrative.get(
-        "proposed_duration_seconds", 0,
-    )
-
-    # Validate
-    from autopilot.plan.validator import validate_edl
-
-    validation = validate_edl(edl, db)
-
-    # Store in DB
-    validation_dict = {
-        "passed": validation.passed,
-        "errors": validation.errors,
-        "warnings": validation.warnings,
-    }
-    with db:
-        db.upsert_edit_plan(
-            narrative_id,
-            json.dumps(edl),
-            validation_json=json.dumps(validation_dict),
+    for attempt in range(1 + max_retries):
+        # Call LLM
+        content_blocks = _call_llm_with_messages(
+            messages, system_prompt, config, TOOL_DEFINITIONS,
         )
-        db.update_narrative_status(narrative_id, "planned")
 
-    return edl
+        # Collect tool calls into EDL
+        edl = _collect_tool_calls(content_blocks)
+        edl["target_duration_seconds"] = target_duration
+
+        # Validate
+        validation = _validate_edl(edl, db)
+
+        if validation.passed:
+            # Store and return
+            validation_dict = {
+                "passed": validation.passed,
+                "errors": validation.errors,
+                "warnings": validation.warnings,
+            }
+            with db:
+                db.upsert_edit_plan(
+                    narrative_id,
+                    json.dumps(edl),
+                    validation_json=json.dumps(validation_dict),
+                )
+                db.update_narrative_status(narrative_id, "planned")
+            return edl
+
+        # Validation failed — prepare retry message with error feedback
+        if attempt < max_retries:
+            error_list = "\n".join(f"- {e}" for e in validation.errors)
+            warning_list = "\n".join(f"- {w}" for w in validation.warnings)
+            feedback = (
+                "The EDL you generated has validation errors. "
+                "Please fix these issues and regenerate the EDL:\n\n"
+                f"**Errors:**\n{error_list}"
+            )
+            if warning_list:
+                feedback += f"\n\n**Warnings:**\n{warning_list}"
+
+            # Build conversation with assistant tool_use + user feedback
+            messages = [
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": "I'll create the EDL."},
+                {"role": "user", "content": feedback},
+            ]
+            logger.info(
+                "EDL validation failed (attempt %d/%d): %s",
+                attempt + 1, 1 + max_retries, validation.errors,
+            )
+
+    # All retries exhausted
+    all_errors = "; ".join(validation.errors)
+    raise EdlError(
+        f"Validation failed after {1 + max_retries} attempts: {all_errors}"
+    )
