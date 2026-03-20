@@ -55,23 +55,49 @@ def timecode_to_seconds(tc: str) -> float:
     return hours * 3600 + minutes * 60 + seconds
 
 
+def _safe_timecode(clip: dict, key: str) -> float | None:
+    """Try to extract and parse a timecode from a clip dict.
+
+    Returns seconds on success, or None if the key is missing or the
+    timecode format is invalid.
+    """
+    try:
+        return timecode_to_seconds(clip[key])
+    except (KeyError, ValueError, TypeError):
+        return None
+
+
 def _check_overlaps(clips: list[dict], errors: list[str]) -> None:
     """Check for overlapping clips on the same track."""
-    # Group clips by track
+    # Group clips by track, skipping clips with unparseable timecodes
     by_track: dict[int, list[dict]] = defaultdict(list)
     for clip in clips:
         track = clip.get("track", 1)
+        in_s = _safe_timecode(clip, "in_timecode")
+        if in_s is None:
+            clip_id = clip.get("clip_id", "unknown")
+            errors.append(
+                f"Clip {clip_id}: invalid or missing in_timecode in overlap check"
+            )
+            continue
         by_track[track].append(clip)
 
     for track, track_clips in by_track.items():
-        # Sort by in_timecode
+        # Sort by in_timecode (already validated above)
         sorted_clips = sorted(
             track_clips,
             key=lambda c: timecode_to_seconds(c["in_timecode"]),
         )
         for i in range(len(sorted_clips) - 1):
-            current_out = timecode_to_seconds(sorted_clips[i]["out_timecode"])
-            next_in = timecode_to_seconds(sorted_clips[i + 1]["in_timecode"])
+            try:
+                current_out = timecode_to_seconds(sorted_clips[i]["out_timecode"])
+                next_in = timecode_to_seconds(sorted_clips[i + 1]["in_timecode"])
+            except (KeyError, ValueError, TypeError):
+                clip_id = sorted_clips[i].get("clip_id", "unknown")
+                errors.append(
+                    f"Clip {clip_id}: invalid or missing timecode in overlap check"
+                )
+                continue
             if current_out > next_in:
                 errors.append(
                     f"Overlap on track {track}: clip ends at "
@@ -88,12 +114,18 @@ def _check_duration(
     if target is None or target <= 0:
         return
 
-    # Sum durations of clips on track 1
+    # Sum durations of clips on track 1, skipping unparseable clips
     total = 0.0
     for clip in clips:
         if clip.get("track", 1) == 1:
-            in_s = timecode_to_seconds(clip["in_timecode"])
-            out_s = timecode_to_seconds(clip["out_timecode"])
+            in_s = _safe_timecode(clip, "in_timecode")
+            out_s = _safe_timecode(clip, "out_timecode")
+            if in_s is None or out_s is None:
+                clip_id = clip.get("clip_id", "unknown")
+                errors.append(
+                    f"Clip {clip_id}: invalid or missing timecode in duration check"
+                )
+                continue
             total += out_s - in_s
 
     lower = target * 0.9
@@ -126,8 +158,14 @@ def _check_timecode_bounds(
     """Check that in/out timecodes are within clip duration and in < out."""
     for clip in clips:
         clip_id = clip.get("clip_id", "")
-        in_s = timecode_to_seconds(clip["in_timecode"])
-        out_s = timecode_to_seconds(clip["out_timecode"])
+        in_s = _safe_timecode(clip, "in_timecode")
+        out_s = _safe_timecode(clip, "out_timecode")
+
+        if in_s is None or out_s is None:
+            errors.append(
+                f"Clip {clip_id}: invalid or missing timecode"
+            )
+            continue
 
         # Check in < out
         if in_s >= out_s:
@@ -142,7 +180,13 @@ def _check_timecode_bounds(
         if media is None:
             continue  # already caught by _check_clip_ids
         raw_duration = media.get("duration_seconds", 0)
-        duration = float(raw_duration)  # type: ignore[arg-type]
+        try:
+            duration = float(raw_duration)  # type: ignore[arg-type]
+        except (ValueError, TypeError):
+            errors.append(
+                f"Clip {clip_id}: non-numeric duration_seconds in catalog"
+            )
+            continue
         if out_s > duration:
             errors.append(
                 f"Clip {clip_id}: out_timecode ({clip['out_timecode']}) "
