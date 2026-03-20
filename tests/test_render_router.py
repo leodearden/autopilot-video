@@ -173,27 +173,27 @@ class TestEDLLoading:
             route_and_render("narr_1", db, config)
 
     def test_loads_edl_from_edit_plan(self) -> None:
-        """route_and_render should parse edl_json from edit plan."""
-        from autopilot.render.router import RoutingError, route_and_render
+        """route_and_render should parse edl_json from edit plan and use clip data."""
+        from autopilot.render.router import route_and_render
 
         edl = _make_edl()
         db = MagicMock()
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "narr_1", "title": "Test"}
+        db.get_transcript.return_value = None
         config = _make_config()
 
-        # Should not raise RoutingError for missing EDL
-        # (will raise NotImplementedError or other error later in pipeline)
         with patch("autopilot.render.router.render_simple") as mock_rs, \
              patch("autopilot.render.router.render_complex"), \
              patch("subprocess.run"):
             mock_rs.return_value = Path("/tmp/segment.mp4")
-            try:
-                route_and_render("narr_1", db, config)
-            except (NotImplementedError, RoutingError, Exception):
-                pass  # We just want to verify EDL was loaded
+            route_and_render("narr_1", db, config)
 
         db.get_edit_plan.assert_called_once_with("narr_1")
+        # Verify the parsed EDL clip was passed to render_simple
+        mock_rs.assert_called_once()
+        rendered_clip = mock_rs.call_args[0][0]
+        assert rendered_clip["clip_id"] == "clip_1"
 
 
 # ---------------------------------------------------------------------------
