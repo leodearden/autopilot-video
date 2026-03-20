@@ -364,3 +364,62 @@ class TestTimeccodeBounds:
                 or "in_timecode" in e.lower()
         ]
         assert len(order_errors) >= 1
+
+
+# -- Step 11: Audio level tests -----------------------------------------------
+
+
+def _make_audio_edl(level_db: float) -> dict:
+    """Create a minimal EDL with one audio_settings entry."""
+    return {
+        "target_duration_seconds": 10,
+        "clips": [
+            {
+                "clip_id": "v1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            },
+        ],
+        "transitions": [],
+        "audio_settings": [
+            {"clip_id": "v1", "level_db": level_db},
+        ],
+        "crop_modes": [],
+        "titles": [],
+        "music": [],
+        "voiceovers": [],
+        "broll_requests": [],
+    }
+
+
+class TestAudioLevelCheck:
+    """Tests for validate_edl audio level broadcast-safe check."""
+
+    def test_levels_in_range_pass(self):
+        """Audio levels in [-24, 0] dB produce no audio errors."""
+        from autopilot.plan.validator import validate_edl
+
+        edl = _make_audio_edl(-12.0)
+        result = validate_edl(edl, _mock_db())
+        audio_errors = [e for e in result.errors if "audio" in e.lower() or "level" in e.lower()]
+        assert len(audio_errors) == 0
+
+    def test_level_below_minus_24_generates_warning(self):
+        """Audio level below -24 dB generates a warning."""
+        from autopilot.plan.validator import validate_edl
+
+        edl = _make_audio_edl(-30.0)
+        result = validate_edl(edl, _mock_db())
+        audio_warnings = [w for w in result.warnings if "audio" in w.lower() or "level" in w.lower()]
+        assert len(audio_warnings) >= 1
+
+    def test_level_above_0_generates_error(self):
+        """Audio level above 0 dB generates an error."""
+        from autopilot.plan.validator import validate_edl
+
+        edl = _make_audio_edl(6.0)
+        result = validate_edl(edl, _mock_db())
+        assert result.passed is False
+        audio_errors = [e for e in result.errors if "audio" in e.lower() or "level" in e.lower()]
+        assert len(audio_errors) >= 1
