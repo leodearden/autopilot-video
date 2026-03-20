@@ -42,7 +42,8 @@ class TestPublicAPI:
         from autopilot.render.crop import compute_crop_path
 
         sig = inspect.signature(compute_crop_path)
-        assert sig.return_annotation is np.ndarray
+        # With PEP 563 (from __future__ import annotations), annotations are strings
+        assert sig.return_annotation in (np.ndarray, "np.ndarray")
 
     def test_all_exports(self) -> None:
         """__all__ should export CropError and compute_crop_path."""
