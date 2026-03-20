@@ -161,7 +161,7 @@ class TestMusicGenEngine:
         }):
             if "autopilot.source.music" in sys.modules:
                 del sys.modules["autopilot.source.music"]
-            from autopilot.source.music import source_music, _musicgen_cache
+            from autopilot.source.music import _musicgen_cache, source_music
 
             # Clear cache to start fresh
             _musicgen_cache.clear()

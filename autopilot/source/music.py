@@ -7,7 +7,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from autopilot.config import ModelConfig
@@ -28,10 +28,10 @@ class MusicError(Exception):
 
 
 # Module-level cache for MusicGen model (avoids 10-30s reload per call).
-_musicgen_cache: dict[str, object] = {}
+_musicgen_cache: dict[str, Any] = {}
 
 
-def _get_musicgen_model(name: str) -> object:
+def _get_musicgen_model(name: str) -> Any:
     """Get or create a cached MusicGen model instance.
 
     Args:
@@ -103,8 +103,8 @@ def _generate_musicgen(request: MusicRequest, output_dir: Path) -> Path:
         MusicError: If generation fails.
     """
     try:
-        import torchaudio
         import audiocraft.models  # noqa: F401 — ensure audiocraft is importable
+        import torchaudio
     except ImportError as e:
         raise MusicError(f"MusicGen dependencies not installed: {e}") from e
 

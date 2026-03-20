@@ -247,7 +247,7 @@ class TestResolveDBIntegration:
         # Verify the edit plan was updated
         plan = catalog_db.get_edit_plan("narr-1")
         assert plan is not None
-        stored_edl = json.loads(plan["edl_json"])
+        stored_edl = json.loads(str(plan["edl_json"]))
         assert "music" in stored_edl
 
     def test_db_writes_committed_with_context_manager(self, tmp_path):
@@ -294,7 +294,7 @@ class TestResolveDBIntegration:
             "Edit plan not visible from second connection — "
             "resolve_edl_assets likely forgot `with db:` context manager"
         )
-        stored_edl = json.loads(plan["edl_json"])
+        stored_edl = json.loads(str(plan["edl_json"]))
         assert "music" in stored_edl
 
     def test_narrative_status_updated_to_sourced(self, tmp_path):
