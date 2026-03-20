@@ -293,3 +293,74 @@ class TestClipIdExistence:
         assert result.passed is False
         clip_errors = [e for e in result.errors if "v1" in e]
         assert len(clip_errors) >= 1
+
+
+# -- Step 9: In/out timecode bounds tests --------------------------------------
+
+
+def _make_bounded_edl(in_tc: str, out_tc: str, clip_duration: float) -> tuple[dict, MagicMock]:
+    """Create an EDL and mock DB with a clip of given duration."""
+    db = MagicMock()
+    db.get_media.return_value = {"id": "v1", "duration_seconds": clip_duration}
+    edl = {
+        "target_duration_seconds": 1000,  # generous to avoid duration errors
+        "clips": [
+            {
+                "clip_id": "v1",
+                "in_timecode": in_tc,
+                "out_timecode": out_tc,
+                "track": 1,
+            },
+        ],
+        "transitions": [],
+        "audio_settings": [],
+        "crop_modes": [],
+        "titles": [],
+        "music": [],
+        "voiceovers": [],
+        "broll_requests": [],
+    }
+    return edl, db
+
+
+class TestTimeccodeBounds:
+    """Tests for validate_edl in/out point bounds checking."""
+
+    def test_valid_in_out_within_duration_passes(self):
+        """In/out timecodes within clip duration produce no bounds errors."""
+        from autopilot.plan.validator import validate_edl
+
+        # Clip is 60s, use 0-30s
+        edl, db = _make_bounded_edl("00:00:00.000", "00:00:30.000", 60.0)
+        result = validate_edl(edl, db)
+        bounds_errors = [e for e in result.errors if "bound" in e.lower() or "exceed" in e.lower()]
+        assert len(bounds_errors) == 0
+
+    def test_out_timecode_exceeding_clip_duration_fails(self):
+        """Out timecode beyond clip duration produces an error."""
+        from autopilot.plan.validator import validate_edl
+
+        # Clip is 30s, out is 45s
+        edl, db = _make_bounded_edl("00:00:00.000", "00:00:45.000", 30.0)
+        result = validate_edl(edl, db)
+        assert result.passed is False
+        bounds_errors = [
+            e for e in result.errors
+            if "bound" in e.lower() or "exceed" in e.lower() or "beyond" in e.lower()
+        ]
+        assert len(bounds_errors) >= 1
+
+    def test_in_timecode_after_out_timecode_fails(self):
+        """In timecode after out timecode produces an error."""
+        from autopilot.plan.validator import validate_edl
+
+        # in=20s, out=10s -> invalid
+        edl, db = _make_bounded_edl("00:00:20.000", "00:00:10.000", 60.0)
+        result = validate_edl(edl, db)
+        assert result.passed is False
+        order_errors = [
+            e for e in result.errors
+            if "before" in e.lower() or "after" in e.lower() or "order" in e.lower()
+                or "in_timecode" in e.lower()
+        ]
+        assert len(order_errors) >= 1
