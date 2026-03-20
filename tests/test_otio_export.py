@@ -856,6 +856,23 @@ class TestErrorHandling:
         with pytest.raises(OtioExportError):
             export_otio(edl, output, db)
 
+    def test_db_get_media_exception_wrapped(self, tmp_path):
+        """db.get_media raising an exception is wrapped as OtioExportError."""
+        from autopilot.plan.otio_export import OtioExportError, export_otio
+
+        edl = _minimal_edl(clips=[{
+            "clip_id": "v1",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:10.000",
+            "track": 1,
+        }])
+        output = tmp_path / "test.otio"
+        db = MagicMock()
+        db.get_media.side_effect = RuntimeError("DB locked")
+
+        with pytest.raises(OtioExportError, match="v1"):
+            export_otio(edl, output, db)
+
 
 # -- Step 17: Integration test ------------------------------------------------
 
