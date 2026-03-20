@@ -580,3 +580,79 @@ class TestGenerateScriptLLM:
 
         with pytest.raises(ScriptError, match="[Nn]arrative.*not found"):
             generate_script("nonexistent", catalog_db, config)
+
+
+# -- Step 11: generate_script response parsing tests --------------------------
+
+
+class TestGenerateScriptParsing:
+    """Tests for JSON response parsing in generate_script."""
+
+    def test_valid_json_returns_dict(self, catalog_db):
+        """Valid JSON response returns dict with scenes/broll_needs/quality_flags."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.script import generate_script
+
+        config = LLMConfig()
+        _seed_minimal_narrative(catalog_db)
+
+        mock_anthropic, _ = _setup_mock_script_anthropic()
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            result = generate_script("n1", catalog_db, config)
+
+        assert isinstance(result, dict)
+        assert "scenes" in result
+        assert "broll_needs" in result
+        assert "quality_flags" in result
+        assert len(result["scenes"]) == 1
+        assert result["scenes"][0]["scene_number"] == 1
+
+    def test_json_in_code_block_extracted(self, catalog_db):
+        """JSON wrapped in ```json code block is correctly extracted."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.script import generate_script
+
+        config = LLMConfig()
+        _seed_minimal_narrative(catalog_db)
+
+        wrapped = f"Here's the script:\n```json\n{json.dumps(_SAMPLE_SCRIPT_JSON)}\n```"
+        mock_anthropic, _ = _setup_mock_script_anthropic()
+        # Override the response text
+        mock_client = mock_anthropic.Anthropic.return_value
+        mock_client.messages.create.return_value.content[0].text = wrapped
+
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            result = generate_script("n1", catalog_db, config)
+
+        assert isinstance(result, dict)
+        assert "scenes" in result
+
+    def test_malformed_json_raises_script_error(self, catalog_db):
+        """Malformed JSON in response raises ScriptError."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.script import ScriptError, generate_script
+
+        config = LLMConfig()
+        _seed_minimal_narrative(catalog_db)
+
+        mock_anthropic, mock_client = _setup_mock_script_anthropic()
+        mock_client.messages.create.return_value.content[0].text = "NOT VALID JSON {"
+
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            with pytest.raises(ScriptError, match="parse"):
+                generate_script("n1", catalog_db, config)
+
+    def test_empty_llm_response_raises_script_error(self, catalog_db):
+        """Empty LLM response (no content) raises ScriptError."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.script import ScriptError, generate_script
+
+        config = LLMConfig()
+        _seed_minimal_narrative(catalog_db)
+
+        mock_anthropic, mock_client = _setup_mock_script_anthropic()
+        mock_client.messages.create.return_value.content = []
+
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            with pytest.raises(ScriptError, match="[Ee]mpty"):
+                generate_script("n1", catalog_db, config)
