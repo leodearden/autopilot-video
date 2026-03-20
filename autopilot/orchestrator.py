@@ -16,6 +16,7 @@ from autopilot.ingest import dedup, normalizer, scanner
 from autopilot.organize import classify, cluster, narratives
 from autopilot.plan import edl as edl_mod
 from autopilot.plan import otio_export, script, validator
+from autopilot.source import resolve
 
 logger = logging.getLogger(__name__)
 
@@ -231,6 +232,32 @@ def _run_edl(*, config: Any, db: Any) -> None:
             logger.exception("EDL generation failed for narrative %s", nid)
 
     logger.info("EDL complete: %d/%d succeeded", successes, len(approved))
+
+
+def _run_source_assets(*, config: Any, db: Any) -> None:
+    """SOURCE_ASSETS stage: resolve assets for each narrative with an edit plan."""
+    import json as _json
+
+    approved = db.list_narratives("approved")
+    successes = 0
+    for narr in approved:
+        nid = narr["narrative_id"]
+        plan = db.get_edit_plan(nid)
+        if plan is None:
+            logger.warning("Skipping source for %s: no edit plan", nid)
+            continue
+        try:
+            edl = _json.loads(plan["edl_json"])
+            asset_dir = config.output_dir / "assets" / nid
+            asset_dir.mkdir(parents=True, exist_ok=True)
+            resolve.resolve_edl_assets(
+                edl, config.models, asset_dir, db, narrative_id=nid,
+            )
+            successes += 1
+        except Exception:
+            logger.exception("Source resolution failed for narrative %s", nid)
+
+    logger.info("Source complete: %d/%d succeeded", successes, len(approved))
 
 
 class PipelineOrchestrator:
