@@ -40,6 +40,15 @@ class Issue:
     message: str  # human-readable description
     measured_value: Any = None  # the measured value that triggered the issue
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to a plain dict for JSON output."""
+        return {
+            "severity": self.severity,
+            "check": self.check,
+            "message": self.message,
+            "measured_value": self.measured_value,
+        }
+
 
 @dataclass
 class ValidationReport:
@@ -48,6 +57,14 @@ class ValidationReport:
     passed: bool
     issues: list[Issue] = field(default_factory=list)
     measurements: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to a plain dict for JSON output."""
+        return {
+            "passed": self.passed,
+            "issues": [i.to_dict() for i in self.issues],
+            "measurements": self.measurements,
+        }
 
 
 def _run_ffprobe_json(path: Path) -> dict:
@@ -440,6 +457,37 @@ def validate_render(
     """
     issues: list[Issue] = []
     measurements: dict[str, Any] = {}
+
+    # Probe the rendered file once for metadata
+    probe_data = _run_ffprobe_json(rendered_path)
+
+    # Populate measurements from probe data
+    if "duration_seconds" in probe_data:
+        measurements["duration"] = probe_data["duration_seconds"]
+    if "resolution" in probe_data:
+        measurements["resolution"] = probe_data["resolution"]
+    if "video_codec" in probe_data:
+        measurements["codec"] = probe_data["video_codec"]
+    if "file_size_bytes" in probe_data:
+        measurements["file_size_mb"] = round(
+            probe_data["file_size_bytes"] / (1024 * 1024), 2
+        )
+
+    # Run individual checks
+    _check_duration(probe_data, edl, issues)
+    _check_resolution_codec(probe_data, config, issues)
+    _check_file_size(probe_data, config, issues)
+
+    # Loudness check (separate ffmpeg call)
+    lufs = _check_loudness(rendered_path, config, issues)
+    if lufs is not None:
+        measurements["loudness_lufs"] = lufs
+
+    # Black frame detection (separate ffmpeg call)
+    _check_black_frames(rendered_path, issues)
+
+    # Silence detection (separate ffmpeg call)
+    _check_silence(rendered_path, edl, issues)
 
     passed = not any(i.severity == "error" for i in issues)
     return ValidationReport(passed=passed, issues=issues, measurements=measurements)

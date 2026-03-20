@@ -74,15 +74,20 @@ class TestPublicAPI:
 
     def test_validate_render_returns_validation_report(self) -> None:
         """validate_render(rendered_path, edl, config) -> ValidationReport."""
-        from unittest.mock import patch
-
         from autopilot.render.validate import ValidationReport, validate_render
 
         config = OutputConfig()
         edl: dict = {"target_duration_seconds": 60}
 
-        # Mock all subprocess calls to prevent actual ffprobe/ffmpeg invocations
-        with patch("subprocess.run"):
+        # Mock all subprocess calls with proper return values
+        def _side_effect(*args, **kwargs):
+            mock = MagicMock()
+            mock.stdout = json.dumps(SAMPLE_FFPROBE_JSON)
+            mock.stderr = LOUDNORM_STDERR_OK
+            mock.returncode = 0
+            return mock
+
+        with patch("subprocess.run", side_effect=_side_effect):
             result = validate_render(Path("/fake/video.mp4"), edl, config)
 
         assert isinstance(result, ValidationReport)
