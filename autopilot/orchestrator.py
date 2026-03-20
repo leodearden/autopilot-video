@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import enum
+import functools
 import logging
 import time
 from collections.abc import Callable
@@ -316,60 +317,71 @@ def _run_upload(*, config: Any, db: Any) -> None:
 class PipelineOrchestrator:
     """Manages a DAG of pipeline stages and executes them in topological order."""
 
-    def __init__(self, budget_seconds: float | None = None) -> None:
+    def __init__(
+        self,
+        budget_seconds: float | None = None,
+        human_review_fn: Callable | None = None,
+    ) -> None:
         self.budget_seconds = budget_seconds
+        self.human_review_fn = human_review_fn
+
+        # Wrap _run_narrate with human_review_fn via partial
+        narrate_func = functools.partial(
+            _run_narrate, human_review_fn=human_review_fn,
+        )
+
         self.stages: list[StageDefinition] = [
             StageDefinition(
                 name="INGEST",
-                func=_stage_stub("INGEST"),
+                func=_run_ingest,
                 dependencies=[],
                 estimated_seconds=600,
             ),
             StageDefinition(
                 name="ANALYZE",
-                func=_stage_stub("ANALYZE"),
+                func=_run_analyze,
                 dependencies=["INGEST"],
                 estimated_seconds=1800,
             ),
             StageDefinition(
                 name="CLASSIFY",
-                func=_stage_stub("CLASSIFY"),
+                func=_run_classify,
                 dependencies=["ANALYZE"],
                 estimated_seconds=900,
             ),
             StageDefinition(
                 name="NARRATE",
-                func=_stage_stub("NARRATE"),
+                func=narrate_func,
                 dependencies=["CLASSIFY"],
                 estimated_seconds=300,
             ),
             StageDefinition(
                 name="SCRIPT",
-                func=_stage_stub("SCRIPT"),
+                func=_run_script,
                 dependencies=["NARRATE"],
                 estimated_seconds=300,
             ),
             StageDefinition(
                 name="EDL",
-                func=_stage_stub("EDL"),
+                func=_run_edl,
                 dependencies=["SCRIPT"],
                 estimated_seconds=120,
             ),
             StageDefinition(
                 name="SOURCE_ASSETS",
-                func=_stage_stub("SOURCE_ASSETS"),
+                func=_run_source_assets,
                 dependencies=["EDL"],
                 estimated_seconds=1200,
             ),
             StageDefinition(
                 name="RENDER",
-                func=_stage_stub("RENDER"),
+                func=_run_render,
                 dependencies=["EDL", "SOURCE_ASSETS"],
                 estimated_seconds=3600,
             ),
             StageDefinition(
                 name="UPLOAD",
-                func=_stage_stub("UPLOAD"),
+                func=_run_upload,
                 dependencies=["RENDER"],
                 estimated_seconds=600,
             ),

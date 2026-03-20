@@ -133,31 +133,36 @@ class TestTopologicalSort:
         assert order[-1] == "UPLOAD"
 
 
-class TestStageStubs:
-    """Tests for stage stub functions."""
+class TestStageFunctions:
+    """Tests for stage function registration (replaced stubs with real functions)."""
 
-    def test_stub_functions_log_not_implemented(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Each stub logs 'not yet implemented' with the stage name."""
+    def test_stage_functions_are_not_stubs(self) -> None:
+        """Each stage's func is a real function, not a stub."""
+        from autopilot.orchestrator import _stage_stub
+
         orch = PipelineOrchestrator()
         for stage in orch.stages:
-            caplog.clear()
-            with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
-                stage.func(config=MagicMock(), db=MagicMock())
-            assert any("not yet implemented" in r.message for r in caplog.records), (
-                f"{stage.name} stub did not log 'not yet implemented'"
-            )
-            assert any(stage.name in r.message for r in caplog.records), (
-                f"{stage.name} stub did not log stage name"
+            # For functools.partial, check the wrapped function
+            func = getattr(stage.func, "func", stage.func)
+            assert func is not _stage_stub, (
+                f"{stage.name} still uses _stage_stub"
             )
 
-    def test_stub_functions_accept_config_and_db(self) -> None:
-        """Each stub accepts config and db keyword arguments without error."""
+    def test_stage_functions_accept_config_and_db_kwargs(self) -> None:
+        """Each stage function's signature accepts config and db kwargs."""
+        import inspect
+
         orch = PipelineOrchestrator()
-        mock_config = MagicMock()
-        mock_db = MagicMock()
         for stage in orch.stages:
-            # Should not raise
-            stage.func(config=mock_config, db=mock_db)
+            func = getattr(stage.func, "func", stage.func)
+            sig = inspect.signature(func)
+            param_names = set(sig.parameters.keys())
+            assert "config" in param_names, (
+                f"{stage.name} func missing 'config' parameter"
+            )
+            assert "db" in param_names, (
+                f"{stage.name} func missing 'db' parameter"
+            )
 
 
 class TestRun:
@@ -998,19 +1003,15 @@ class TestUploadStage:
 class TestRealStageRegistration:
     """Tests for PipelineOrchestrator registering real stage functions."""
 
-    def test_orchestrator_registers_real_functions_not_stubs(
-        self, caplog
-    ):
-        """Each stage's func is not a stub (doesn't log 'not yet implemented')."""
+    def test_orchestrator_registers_real_functions_not_stubs(self):
+        """Each stage's func is not a stub."""
         orch = PipelineOrchestrator()
         for stage in orch.stages:
-            caplog.clear()
-            with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
-                # We can't actually call the real functions without deps,
-                # so check that the function is not the stub by name
-                assert "stub" not in stage.func.__name__.lower(), (
-                    f"{stage.name} still uses a stub function"
-                )
+            func = getattr(stage.func, "func", stage.func)
+            name = getattr(func, "__name__", "")
+            assert "stub" not in name.lower(), (
+                f"{stage.name} still uses a stub function"
+            )
 
     def test_orchestrator_accepts_human_review_fn_parameter(self):
         """PipelineOrchestrator(human_review_fn=callback) stores it."""
