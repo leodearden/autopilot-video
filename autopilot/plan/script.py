@@ -166,7 +166,8 @@ def _build_cluster_section(
             # Visual descriptions (captions) overlapping this shot
             shot_captions = [
                 str(c["caption"]) for c in captions
-                if float(c["start_time"]) < shot_end and float(c["end_time"]) > shot_start  # type: ignore[arg-type]
+                if c["start_time"] is not None and c["end_time"] is not None
+                and float(c["start_time"]) < shot_end and float(c["end_time"]) > shot_start  # type: ignore[arg-type]
             ]
             if shot_captions:
                 lines.append(f"- Visual: {'; '.join(shot_captions)}")
@@ -268,7 +269,11 @@ def _get_detections_in_range(
     classes: list[str] = []
     seen: set[str] = set()
     for det_row in all_detections:
-        frame = int(det_row["frame_number"])  # type: ignore[arg-type]
+        try:
+            frame = int(det_row["frame_number"])  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            logger.warning("Skipping detection with invalid frame_number: %s", det_row.get("frame_number"))
+            continue
         if frame < start_frame or frame > end_frame:
             continue
         try:
@@ -294,7 +299,11 @@ def _get_faces_in_range(
     labels: list[str] = []
     seen: set[str] = set()
     for face in all_faces:
-        frame = int(face["frame_number"])  # type: ignore[arg-type]
+        try:
+            frame = int(face["frame_number"])  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            logger.warning("Skipping face with invalid frame_number: %s", face.get("frame_number"))
+            continue
         if frame < start_frame or frame > end_frame:
             continue
         cid = face.get("cluster_id")
@@ -318,7 +327,11 @@ def _get_audio_in_range(
     classes: list[str] = []
     seen: set[str] = set()
     for ev_row in all_audio_events:
-        ts = float(ev_row["timestamp_seconds"])  # type: ignore[arg-type]
+        try:
+            ts = float(ev_row["timestamp_seconds"])  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            logger.warning("Skipping audio event with invalid timestamp_seconds: %s", ev_row.get("timestamp_seconds"))
+            continue
         if ts < start_time or ts > end_time:
             continue
         try:
