@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np  # type: ignore[reportMissingImports]
 
@@ -391,14 +391,14 @@ def compute_crop_path(
     if media is None:
         raise CropError(f"Media not found: {media_id!r}")
 
-    fps = float(media["fps"]) if media.get("fps") else 30.0
+    fps = float(cast(float, media["fps"])) if media.get("fps") else 30.0
     in_tc = edl_entry.get("in_timecode", "00:00:00.000")
     out_tc = edl_entry.get("out_timecode")
     start_sec = timecode_to_seconds(in_tc)
     if out_tc:
         end_sec = timecode_to_seconds(out_tc)
     else:
-        end_sec = float(media.get("duration_seconds") or 0.0)
+        end_sec = float(cast(float, media.get("duration_seconds") or 0.0))
 
     num_frames = max(1, int(math.ceil((end_sec - start_sec) * fps)))
 
@@ -443,8 +443,8 @@ def compute_crop_path(
         # Build per-frame detection lists
         det_by_frame: dict[int, list[dict]] = {}
         for row in det_rows:
-            fn = int(row["frame_number"])
-            det_by_frame[fn] = json.loads(row["detections_json"])
+            fn = int(cast(int, row["frame_number"]))
+            det_by_frame[fn] = json.loads(cast(str, row["detections_json"]))
 
         all_detections = [
             det_by_frame.get(frame_start + i, []) for i in range(num_frames)

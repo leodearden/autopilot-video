@@ -95,10 +95,11 @@ class TestSelectSubjectTrack:
         """EDL with explicit integer subject_track_id returns that ID."""
         from autopilot.render.crop import _select_subject_track
 
-        detections = [
-            [{"track_id": 1, "bbox_xywh": [100, 100, 50, 50], "class": "person", "confidence": 0.9}],
-            [{"track_id": 2, "bbox_xywh": [200, 200, 80, 80], "class": "car", "confidence": 0.8}],
-        ]
+        det1 = {"track_id": 1, "bbox_xywh": [100, 100, 50, 50],
+                "class": "person", "confidence": 0.9}
+        det2 = {"track_id": 2, "bbox_xywh": [200, 200, 80, 80],
+                "class": "car", "confidence": 0.8}
+        detections = [[det1], [det2]]
         edl_entry = {"subject_track_id": 5}
         assert _select_subject_track(detections, edl_entry) == 5
 
@@ -127,9 +128,9 @@ class TestSelectSubjectTrack:
         """subject_track_id=None triggers auto-selection."""
         from autopilot.render.crop import _select_subject_track
 
-        detections = [
-            [{"track_id": 7, "bbox_xywh": [100, 100, 60, 60], "class": "person", "confidence": 0.9}],
-        ]
+        det = {"track_id": 7, "bbox_xywh": [100, 100, 60, 60],
+               "class": "person", "confidence": 0.9}
+        detections = [[det]]
         edl_entry = {"subject_track_id": None}
         assert _select_subject_track(detections, edl_entry) == 7
 
@@ -230,12 +231,15 @@ class TestBuildRawPath:
         """Track present on every frame produces valid centers with correct shape."""
         from autopilot.render.crop import _build_raw_path
 
+        d = {"class": "person", "confidence": 0.9}
         detections = [
-            [{"track_id": 1, "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0], "class": "person", "confidence": 0.9}],
-            [{"track_id": 1, "bbox_xywh": [2100.0, 2048.0, 200.0, 400.0], "class": "person", "confidence": 0.9}],
-            [{"track_id": 1, "bbox_xywh": [2200.0, 2048.0, 200.0, 400.0], "class": "person", "confidence": 0.9}],
+            [{"track_id": 1, "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0], **d}],
+            [{"track_id": 1, "bbox_xywh": [2100.0, 2048.0, 200.0, 400.0], **d}],
+            [{"track_id": 1, "bbox_xywh": [2200.0, 2048.0, 200.0, 400.0], **d}],
         ]
-        result = _build_raw_path(detections, track_id=1, crop_w=4096, crop_h=2304)
+        result = _build_raw_path(
+            detections, track_id=1, crop_w=4096, crop_h=2304,
+        )
         assert result.shape == (3, 2)
         assert not np.any(np.isnan(result))
 
@@ -243,12 +247,16 @@ class TestBuildRawPath:
         """Track missing on middle frame -> NaN markers for gaps."""
         from autopilot.render.crop import _build_raw_path
 
+        p = {"class": "person", "confidence": 0.9}
+        c = {"class": "car", "confidence": 0.8}
         detections = [
-            [{"track_id": 1, "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0], "class": "person", "confidence": 0.9}],
-            [{"track_id": 2, "bbox_xywh": [1000.0, 1000.0, 100.0, 100.0], "class": "car", "confidence": 0.8}],
-            [{"track_id": 1, "bbox_xywh": [2200.0, 2048.0, 200.0, 400.0], "class": "person", "confidence": 0.9}],
+            [{"track_id": 1, "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0], **p}],
+            [{"track_id": 2, "bbox_xywh": [1000.0, 1000.0, 100.0, 100.0], **c}],
+            [{"track_id": 1, "bbox_xywh": [2200.0, 2048.0, 200.0, 400.0], **p}],
         ]
-        result = _build_raw_path(detections, track_id=1, crop_w=4096, crop_h=2304)
+        result = _build_raw_path(
+            detections, track_id=1, crop_w=4096, crop_h=2304,
+        )
         assert result.shape == (3, 2)
         # Frame 1 (middle) should be NaN
         assert np.all(np.isnan(result[1]))
@@ -261,10 +269,9 @@ class TestBuildRawPath:
         from autopilot.render.crop import _build_raw_path
 
         n_frames = 10
-        detections = [
-            [{"track_id": 1, "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0], "class": "person", "confidence": 0.9}]
-            for _ in range(n_frames)
-        ]
+        det = {"track_id": 1, "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0],
+               "class": "person", "confidence": 0.9}
+        detections = [[det] for _ in range(n_frames)]
         result = _build_raw_path(detections, track_id=1, crop_w=4096, crop_h=2304)
         assert result.shape == (n_frames, 2)
 
@@ -608,7 +615,8 @@ def _seed_tracking_media(catalog_db, media_id: str = "track1") -> None:
     for f in range(300):
         cx = 1000.0 + (3000.0 - 1000.0) * f / 299.0
         cy = 2048.0
-        det = [{"track_id": 1, "class": "person", "bbox_xywh": [cx, cy, 200.0, 400.0], "confidence": 0.95}]
+        det = [{"track_id": 1, "class": "person",
+                "bbox_xywh": [cx, cy, 200.0, 400.0], "confidence": 0.95}]
         rows.append((media_id, f, json.dumps(det)))
     catalog_db.batch_insert_detections(rows)
 
