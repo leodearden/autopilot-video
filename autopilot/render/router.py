@@ -230,20 +230,41 @@ def route_and_render(
         else:
             cmd.extend(["-c", "copy"])
 
-        # Subtitle support: generate SRT from ASR transcript if available
-        transcript = (
-            db.get_transcript(narrative_id)
-            if hasattr(db, "get_transcript")
-            else None
-        )
-        if transcript and transcript.get("segments_json"):
+        # Subtitle support: collect transcripts per clip and combine
+        all_subtitle_segs: list[dict] = []
+        cumulative_offset = 0.0
+        for clip in clips:
+            media_id = clip.get("clip_id", "")
+            transcript = db.get_transcript(media_id)
+            if transcript and transcript.get("segments_json"):
+                try:
+                    clip_segs = json.loads(str(transcript["segments_json"]))
+                    # Offset segment times by cumulative clip durations
+                    for seg in clip_segs:
+                        all_subtitle_segs.append({
+                            "start": seg.get("start", 0.0) + cumulative_offset,
+                            "end": seg.get("end", 0.0) + cumulative_offset,
+                            "text": seg.get("text", ""),
+                        })
+                except (json.JSONDecodeError, KeyError):
+                    logger.warning(
+                        "Failed to parse transcript for clip %s", media_id
+                    )
+            # Accumulate clip duration for timeline offset
+            in_tc = clip.get("in_timecode", "00:00:00.000")
+            out_tc = clip.get("out_timecode", in_tc)
+            from autopilot.plan.validator import timecode_to_seconds
+            in_sec = timecode_to_seconds(in_tc)
+            out_sec = timecode_to_seconds(out_tc)
+            cumulative_offset += out_sec - in_sec
+
+        if all_subtitle_segs:
             try:
-                segments_data = json.loads(str(transcript["segments_json"]))
                 srt_path = work_dir / "subtitles.srt"
-                _generate_srt(segments_data, srt_path)
+                _generate_srt(all_subtitle_segs, srt_path)
                 cmd.extend(["-vf", f"subtitles={srt_path}"])
-            except (json.JSONDecodeError, KeyError, OSError):
-                logger.warning("Failed to generate subtitles, skipping")
+            except OSError:
+                logger.warning("Failed to write subtitle file, skipping")
 
         cmd.append(str(final_output))
 
