@@ -195,7 +195,10 @@ def generate_edl(narrative_id: str, db: CatalogDB, config: LLMConfig) -> dict:
         raise EdlError(f"Corrupt script data: {e}") from e
 
     # Build storyboard
-    storyboard = build_narrative_storyboard(narrative_id, db)
+    try:
+        storyboard = build_narrative_storyboard(narrative_id, db)
+    except Exception as e:
+        raise EdlError(f"Failed to build storyboard: {e}") from e
 
     # Load prompt
     try:

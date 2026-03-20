@@ -214,14 +214,21 @@ def _check_audio_levels(
         level = entry.get("level_db")
         if level is None:
             continue
-        if level > 0:
+        try:
+            numeric_level = float(level)
+        except (TypeError, ValueError):
             errors.append(
-                f"Audio level for clip {clip_id}: {level} dB "
+                f"Audio level for clip {clip_id}: non-numeric level_db value '{level}'"
+            )
+            continue
+        if numeric_level > 0:
+            errors.append(
+                f"Audio level for clip {clip_id}: {numeric_level} dB "
                 f"exceeds 0 dB (clipping risk)"
             )
-        elif level < -24:
+        elif numeric_level < -24:
             warnings.append(
-                f"Audio level for clip {clip_id}: {level} dB "
+                f"Audio level for clip {clip_id}: {numeric_level} dB "
                 f"is below -24 dB (may be inaudible)"
             )
 
