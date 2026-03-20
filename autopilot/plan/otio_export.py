@@ -102,11 +102,15 @@ def _insert_transitions(
 
     # Build a list of transitions for this track, indexed by position
     # position is 0-indexed: transition at position N goes between clip N and N+1
+    # Only include transitions targeting this track (default to track 1)
     transitions_by_pos: dict[int, dict] = {}
     for trans_data in edl_transitions:
         trans_type = trans_data.get("type", "cut")
         if trans_type == "cut":
             continue  # cuts are implicit
+        trans_track = trans_data.get("track", 1)
+        if trans_track != track_num:
+            continue  # skip transitions for other tracks
         pos = trans_data.get("position", 0)
         transitions_by_pos[pos] = trans_data
 
