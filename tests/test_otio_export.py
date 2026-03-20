@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -100,3 +102,159 @@ class TestTcToRationalTime:
 
         rt = _tc_to_rational_time("00:00:10.000", 30.0)
         assert abs(otio.opentime.to_seconds(rt) - 10.0) < 0.001
+
+
+# -- Step 5: Basic clip conversion tests --------------------------------------
+
+
+def _mock_db_for_clips():
+    """Create a mock CatalogDB that returns media for known clip_ids."""
+    db = MagicMock()
+
+    def get_media(media_id):
+        media_map = {
+            "v1": {
+                "id": "v1",
+                "file_path": "/media/clip_v1.mp4",
+                "fps": 30.0,
+                "duration_seconds": 120.0,
+            },
+            "v2": {
+                "id": "v2",
+                "file_path": "/media/clip_v2.mp4",
+                "fps": 24.0,
+                "duration_seconds": 60.0,
+            },
+        }
+        return media_map.get(media_id)
+
+    db.get_media = MagicMock(side_effect=get_media)
+    return db
+
+
+def _minimal_edl(clips=None, transitions=None):
+    """Build a minimal EDL dict with defaults."""
+    return {
+        "clips": clips or [],
+        "transitions": transitions or [],
+        "crop_modes": [],
+        "titles": [],
+        "audio_settings": [],
+        "music": [],
+        "voiceovers": [],
+        "broll_requests": [],
+    }
+
+
+class TestBasicClipConversion:
+    """Verify export_otio creates valid .otio with clips."""
+
+    def test_single_clip_produces_otio_file(self, tmp_path):
+        """Single clip EDL exports to a .otio file that exists."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(clips=[{
+            "clip_id": "v1",
+            "in_timecode": "00:00:05.000",
+            "out_timecode": "00:00:15.000",
+            "track": 1,
+        }])
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+
+        result = export_otio(edl, output, db)
+        assert result == output
+        assert output.exists()
+
+    def test_single_clip_round_trips(self, tmp_path):
+        """Single clip .otio can be read back by OTIO."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(clips=[{
+            "clip_id": "v1",
+            "in_timecode": "00:00:05.000",
+            "out_timecode": "00:00:15.000",
+            "track": 1,
+        }])
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        assert tl is not None
+        assert isinstance(tl, otio.schema.Timeline)
+
+    def test_single_clip_has_video_track(self, tmp_path):
+        """Timeline has 1 video track with 1 clip."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(clips=[{
+            "clip_id": "v1",
+            "in_timecode": "00:00:05.000",
+            "out_timecode": "00:00:15.000",
+            "track": 1,
+        }])
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [
+            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
+        ]
+        assert len(video_tracks) == 1
+        clips = [c for c in video_tracks[0] if isinstance(c, otio.schema.Clip)]
+        assert len(clips) == 1
+
+    def test_clip_has_correct_source_range(self, tmp_path):
+        """Clip source_range covers in_timecode to out_timecode (10s duration)."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(clips=[{
+            "clip_id": "v1",
+            "in_timecode": "00:00:05.000",
+            "out_timecode": "00:00:15.000",
+            "track": 1,
+        }])
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [
+            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
+        ]
+        clips = [c for c in video_tracks[0] if isinstance(c, otio.schema.Clip)]
+        clip = clips[0]
+
+        # Source range start should be at 5.0 seconds
+        start_sec = otio.opentime.to_seconds(clip.source_range.start_time)
+        assert abs(start_sec - 5.0) < 0.01
+
+        # Duration should be 10.0 seconds
+        dur_sec = otio.opentime.to_seconds(clip.source_range.duration)
+        assert abs(dur_sec - 10.0) < 0.01
+
+    def test_clip_has_external_reference(self, tmp_path):
+        """Clip media_reference is ExternalReference with correct target_url."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(clips=[{
+            "clip_id": "v1",
+            "in_timecode": "00:00:05.000",
+            "out_timecode": "00:00:15.000",
+            "track": 1,
+        }])
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [
+            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
+        ]
+        clips = [c for c in video_tracks[0] if isinstance(c, otio.schema.Clip)]
+        clip = clips[0]
+
+        assert isinstance(clip.media_reference, otio.schema.ExternalReference)
+        assert clip.media_reference.target_url == "/media/clip_v1.mp4"
