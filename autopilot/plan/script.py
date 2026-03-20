@@ -81,7 +81,8 @@ def build_narrative_storyboard(narrative_id: str, db: CatalogDB) -> str:
     fc_label_map: dict[int, str] = {}
     for fc in all_face_clusters:
         try:
-            fc_label_map[int(fc["cluster_id"])] = str(fc.get("label") or f"Face #{fc['cluster_id']}")  # type: ignore[arg-type]
+            cid = fc["cluster_id"]
+            fc_label_map[int(cid)] = str(fc.get("label") or f"Face #{cid}")  # type: ignore[arg-type]
         except (ValueError, TypeError):
             pass
 
@@ -126,8 +127,10 @@ def _build_cluster_section(
     shot_counter = 0
     for clip_id in clip_ids:
         media = db.get_media(clip_id)
-        clip_duration = float(media["duration_seconds"]) if media and media.get("duration_seconds") else 0.0  # type: ignore[arg-type]
-        clip_fps = float(media["fps"]) if media and media.get("fps") else 30.0  # type: ignore[arg-type]
+        has_dur = media and media.get("duration_seconds")
+        clip_duration = float(media["duration_seconds"]) if has_dur else 0.0  # type: ignore[arg-type]
+        has_fps = media and media.get("fps")
+        clip_fps = float(media["fps"]) if has_fps else 30.0  # type: ignore[arg-type]
 
         shots = _get_shots_for_clip(clip_id, clip_duration, db)
 

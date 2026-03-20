@@ -87,6 +87,7 @@ EXPECTED_TABLES = sorted(
         "audio_events",
         "activity_clusters",
         "narratives",
+        "narrative_scripts",
         "edit_plans",
         "crop_paths",
         "captions",
@@ -138,7 +139,7 @@ class TestSchema:
         cur = catalog_db.conn.execute(
             "SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
         )
-        assert cur.fetchone()[0] == 14
+        assert cur.fetchone()[0] == 15
 
     def test_schema_foreign_keys(self, catalog_db):
         """Foreign key constraints exist on child tables."""
