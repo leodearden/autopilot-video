@@ -175,6 +175,41 @@ def _extract_best_frame(
     return thumb_path
 
 
+def _get_credentials_path() -> Path:
+    """Return the default YouTube OAuth2 credentials path."""
+    return Path("~/.config/autopilot/youtube_oauth.json").expanduser()
+
+
+def _upload_thumbnail_to_youtube(
+    thumb_path: Path,
+    youtube_video_id: str,
+    credentials_path: Path,
+) -> None:
+    """Upload a thumbnail image to YouTube via the thumbnails.set API.
+
+    Args:
+        thumb_path: Path to the JPEG thumbnail file.
+        youtube_video_id: YouTube video ID to set the thumbnail for.
+        credentials_path: Path to the OAuth2 credentials file.
+    """
+    from google.auth.transport.requests import Request  # lazy import
+    from google.oauth2.credentials import Credentials  # lazy import
+    from googleapiclient.discovery import build  # lazy import
+    from googleapiclient.http import MediaFileUpload  # lazy import
+
+    creds = Credentials.from_authorized_user_file(str(credentials_path))
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+
+    youtube = build("youtube", "v3", credentials=creds)
+    youtube.thumbnails().set(
+        videoId=youtube_video_id,
+        media_body=MediaFileUpload(
+            str(thumb_path), mimetype="image/jpeg"
+        ),
+    ).execute()
+
+
 def extract_best_thumbnail(
     narrative_id: str,
     video_path: Path,
@@ -217,5 +252,25 @@ def extract_best_thumbnail(
     if thumb_path is None:
         msg = f"Could not extract any frames from {video_path}"
         raise ThumbnailError(msg)
+
+    # Optionally upload thumbnail to YouTube
+    upload_rec = db.get_upload(narrative_id)
+    if upload_rec and upload_rec.get("youtube_video_id"):
+        credentials_path = _get_credentials_path()
+        try:
+            _upload_thumbnail_to_youtube(
+                thumb_path,
+                str(upload_rec["youtube_video_id"]),
+                credentials_path,
+            )
+            logger.info(
+                "Uploaded thumbnail for %s to YouTube", narrative_id
+            )
+        except Exception:
+            logger.warning(
+                "Failed to upload thumbnail for %s to YouTube",
+                narrative_id,
+                exc_info=True,
+            )
 
     return thumb_path
