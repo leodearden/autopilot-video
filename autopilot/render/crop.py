@@ -69,6 +69,47 @@ def _compute_crop_dimensions(
     return (crop_w, crop_h)
 
 
+def _select_subject_track(
+    all_detections: list[list[dict]], edl_entry: dict
+) -> int:
+    """Select the subject track to follow for auto-crop.
+
+    If edl_entry specifies an integer subject_track_id, return it directly.
+    Otherwise, auto-select the track with the highest cumulative bbox area
+    across all frames.
+
+    Args:
+        all_detections: Per-frame list of detection dicts, each with
+            'track_id', 'bbox_xywh' [cx, cy, w, h], etc.
+        edl_entry: EDL entry dict, may contain 'subject_track_id'.
+
+    Returns:
+        Integer track ID.
+
+    Raises:
+        CropError: If no detections are available for auto-selection.
+    """
+    track_id = edl_entry.get("subject_track_id")
+    if isinstance(track_id, int):
+        return track_id
+
+    # Auto-select: find track with largest cumulative bbox area
+    track_areas: dict[int, float] = {}
+    for frame_dets in all_detections:
+        for det in frame_dets:
+            tid = det.get("track_id")
+            if tid is None:
+                continue
+            bbox = det.get("bbox_xywh", [0, 0, 0, 0])
+            area = bbox[2] * bbox[3]  # width * height
+            track_areas[tid] = track_areas.get(tid, 0.0) + area
+
+    if not track_areas:
+        raise CropError("No detections with track IDs available for subject selection")
+
+    return max(track_areas, key=track_areas.get)  # type: ignore[arg-type]
+
+
 def compute_crop_path(
     media_id: str,
     target_aspect: str,
