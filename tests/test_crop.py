@@ -86,3 +86,56 @@ class TestComputeCropDimensions:
 
         with pytest.raises(CropError, match="aspect"):
             _compute_crop_dimensions(4096, 4096, "potato")
+
+
+class TestSelectSubjectTrack:
+    """Tests for _select_subject_track helper."""
+
+    def test_explicit_track_id_returned(self) -> None:
+        """EDL with explicit integer subject_track_id returns that ID."""
+        from autopilot.render.crop import _select_subject_track
+
+        detections = [
+            [{"track_id": 1, "bbox_xywh": [100, 100, 50, 50], "class": "person", "confidence": 0.9}],
+            [{"track_id": 2, "bbox_xywh": [200, 200, 80, 80], "class": "car", "confidence": 0.8}],
+        ]
+        edl_entry = {"subject_track_id": 5}
+        assert _select_subject_track(detections, edl_entry) == 5
+
+    def test_auto_selects_largest_track(self) -> None:
+        """Without explicit ID, selects track with highest cumulative bbox area * frame count."""
+        from autopilot.render.crop import _select_subject_track
+
+        # Track 1: present on 3 frames, bbox area = 50*50 = 2500 each -> total 7500
+        # Track 2: present on 2 frames, bbox area = 100*100 = 10000 each -> total 20000
+        det_frame1 = [
+            {"track_id": 1, "bbox_xywh": [100, 100, 50, 50], "class": "person", "confidence": 0.9},
+            {"track_id": 2, "bbox_xywh": [200, 200, 100, 100], "class": "car", "confidence": 0.8},
+        ]
+        det_frame2 = [
+            {"track_id": 1, "bbox_xywh": [110, 110, 50, 50], "class": "person", "confidence": 0.9},
+            {"track_id": 2, "bbox_xywh": [210, 210, 100, 100], "class": "car", "confidence": 0.8},
+        ]
+        det_frame3 = [
+            {"track_id": 1, "bbox_xywh": [120, 120, 50, 50], "class": "person", "confidence": 0.9},
+        ]
+        detections = [det_frame1, det_frame2, det_frame3]
+        edl_entry: dict = {}
+        assert _select_subject_track(detections, edl_entry) == 2
+
+    def test_none_track_id_triggers_auto(self) -> None:
+        """subject_track_id=None triggers auto-selection."""
+        from autopilot.render.crop import _select_subject_track
+
+        detections = [
+            [{"track_id": 7, "bbox_xywh": [100, 100, 60, 60], "class": "person", "confidence": 0.9}],
+        ]
+        edl_entry = {"subject_track_id": None}
+        assert _select_subject_track(detections, edl_entry) == 7
+
+    def test_empty_detections_raises_crop_error(self) -> None:
+        """Empty detections list raises CropError."""
+        from autopilot.render.crop import CropError, _select_subject_track
+
+        with pytest.raises(CropError, match="[Nn]o.*detect"):
+            _select_subject_track([], {})
