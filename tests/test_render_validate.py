@@ -479,3 +479,63 @@ class TestLoudnessCheck:
         assert len(issues) == 1
         assert issues[0].severity == "error"
         assert issues[0].check == "loudness"
+
+
+# ---------------------------------------------------------------------------
+# TestBlackFrameCheck — _check_black_frames
+# ---------------------------------------------------------------------------
+
+BLACKDETECT_STDERR_FOUND = """\
+[blackdetect @ 0x5555] black_start:0 black_end:0.5 black_duration:0.5
+[blackdetect @ 0x5555] black_start:58.2 black_end:58.8 black_duration:0.6
+"""
+
+BLACKDETECT_STDERR_NONE = """\
+frame=  100 fps=0.0 q=0.0 size=N/A time=00:00:04.00 bitrate=N/A
+"""
+
+
+class TestBlackFrameCheck:
+    """Tests for _check_black_frames internal helper."""
+
+    def test_pass_when_no_black_frames(self) -> None:
+        from autopilot.render.validate import Issue, _check_black_frames
+
+        mock = MagicMock()
+        mock.stderr = BLACKDETECT_STDERR_NONE
+        mock.returncode = 0
+
+        issues: list[Issue] = []
+
+        with patch("subprocess.run", return_value=mock):
+            _check_black_frames(Path("/fake/video.mp4"), issues)
+
+        assert len(issues) == 0
+
+    def test_warning_when_black_frames_found(self) -> None:
+        from autopilot.render.validate import Issue, _check_black_frames
+
+        mock = MagicMock()
+        mock.stderr = BLACKDETECT_STDERR_FOUND
+        mock.returncode = 0
+
+        issues: list[Issue] = []
+
+        with patch("subprocess.run", return_value=mock):
+            _check_black_frames(Path("/fake/video.mp4"), issues)
+
+        assert len(issues) == 2
+        assert all(i.severity == "warning" for i in issues)
+        assert all(i.check == "black_frames" for i in issues)
+
+    def test_graceful_handling_on_ffmpeg_failure(self) -> None:
+        from autopilot.render.validate import Issue, _check_black_frames
+
+        issues: list[Issue] = []
+
+        with patch("subprocess.run", side_effect=subprocess.CalledProcessError(1, "ffmpeg")):
+            _check_black_frames(Path("/fake/video.mp4"), issues)
+
+        # Should add a warning, not crash
+        assert len(issues) == 1
+        assert issues[0].severity == "warning"
