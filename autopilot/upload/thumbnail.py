@@ -172,7 +172,10 @@ def _extract_best_frame(
         return None
 
     thumb_path = video_path.parent / f"{video_path.stem}_thumbnail.jpg"
-    cv2.imwrite(str(thumb_path), best_frame)
+    ok = cv2.imwrite(str(thumb_path), best_frame)
+    if not ok:
+        logger.warning("Failed to write thumbnail: %s", thumb_path)
+        return None
     return thumb_path
 
 
