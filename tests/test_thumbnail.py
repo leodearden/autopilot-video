@@ -234,3 +234,160 @@ class TestFrameExtraction:
         assert result is not None
         assert isinstance(result, Path)
         assert result.parent == tmp_path
+
+
+# ---------------------------------------------------------------------------
+# Google API mock helpers
+# ---------------------------------------------------------------------------
+
+
+def _setup_google_mocks():
+    """Install mock google.* modules in sys.modules for testing."""
+    mods = {
+        "google": MagicMock(),
+        "google.auth": MagicMock(),
+        "google.auth.transport": MagicMock(),
+        "google.auth.transport.requests": MagicMock(),
+        "google.oauth2": MagicMock(),
+        "google.oauth2.credentials": MagicMock(),
+        "googleapiclient": MagicMock(),
+        "googleapiclient.discovery": MagicMock(),
+        "googleapiclient.errors": MagicMock(),
+        "googleapiclient.http": MagicMock(),
+    }
+    return mods
+
+
+# ---------------------------------------------------------------------------
+# Thumbnail upload to YouTube tests
+# ---------------------------------------------------------------------------
+
+
+class TestThumbnailUpload:
+    """Verify YouTube thumbnail upload via thumbnails().set() API."""
+
+    def _make_extract_env(self, tmp_path):
+        """Set up cv2 mock + video file for frame extraction."""
+        mock_cv2 = _setup_cv2_mock()
+        mock_cap = MagicMock()
+        mock_cap.get.side_effect = lambda prop: {
+            7: 30.0,  # FRAME_COUNT
+            5: 30.0,  # FPS
+        }.get(prop, 0.0)
+        mock_cap.isOpened.return_value = True
+        frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        mock_cap.read.return_value = (True, frame)
+        mock_cv2.VideoCapture.return_value = mock_cap
+        mock_cv2.Laplacian.return_value = np.zeros((10, 10))
+        mock_cv2.imwrite.return_value = True
+
+        video_path = tmp_path / "test.mp4"
+        video_path.write_bytes(b"\x00" * 100)
+
+        return mock_cv2, video_path
+
+    def test_uploads_thumbnail_via_api(self, catalog_db, tmp_path):
+        """Calls thumbnails().set() with youtube_video_id from DB."""
+        from autopilot.upload.thumbnail import extract_best_thumbnail
+
+        catalog_db.insert_narrative("n1", title="Test", description="desc")
+        catalog_db.insert_upload(
+            "n1",
+            youtube_video_id="abc123",
+            youtube_url="https://youtu.be/abc123",
+        )
+
+        mock_cv2, video_path = self._make_extract_env(tmp_path)
+        google_mods = _setup_google_mocks()
+
+        mock_creds = MagicMock()
+        mock_creds.expired = False
+        google_mods["google.oauth2.credentials"].Credentials \
+            .from_authorized_user_file.return_value = mock_creds
+
+        mock_youtube = MagicMock()
+        google_mods["googleapiclient.discovery"].build.return_value = (
+            mock_youtube
+        )
+
+        # Create a fake credentials file
+        creds_file = tmp_path / "creds.json"
+        creds_file.write_text("{}")
+
+        all_mods = {"cv2": mock_cv2, **google_mods}
+        with patch.dict(sys.modules, all_mods):
+            with patch(
+                "autopilot.upload.thumbnail._get_credentials_path",
+                return_value=creds_file,
+            ):
+                result = extract_best_thumbnail(
+                    "n1", video_path, catalog_db
+                )
+
+        mock_youtube.thumbnails.return_value.set.assert_called_once()
+        call_kwargs = (
+            mock_youtube.thumbnails.return_value.set.call_args
+        )
+        assert call_kwargs[1]["videoId"] == "abc123"
+        assert result is not None
+
+    def test_thumbnail_upload_error_logged_not_raised(
+        self, catalog_db, tmp_path
+    ):
+        """API error is logged as warning, does not raise."""
+        from autopilot.upload.thumbnail import extract_best_thumbnail
+
+        catalog_db.insert_narrative("n1", title="Test", description="desc")
+        catalog_db.insert_upload(
+            "n1",
+            youtube_video_id="abc123",
+            youtube_url="https://youtu.be/abc123",
+        )
+
+        mock_cv2, video_path = self._make_extract_env(tmp_path)
+        google_mods = _setup_google_mocks()
+
+        mock_creds = MagicMock()
+        mock_creds.expired = False
+        google_mods["google.oauth2.credentials"].Credentials \
+            .from_authorized_user_file.return_value = mock_creds
+
+        mock_youtube = MagicMock()
+        mock_youtube.thumbnails.return_value.set.return_value \
+            .execute.side_effect = Exception("Thumbnail API error")
+        google_mods["googleapiclient.discovery"].build.return_value = (
+            mock_youtube
+        )
+
+        creds_file = tmp_path / "creds.json"
+        creds_file.write_text("{}")
+
+        all_mods = {"cv2": mock_cv2, **google_mods}
+        with patch.dict(sys.modules, all_mods):
+            with patch(
+                "autopilot.upload.thumbnail._get_credentials_path",
+                return_value=creds_file,
+            ):
+                # Should not raise - thumbnail upload errors are non-fatal
+                result = extract_best_thumbnail(
+                    "n1", video_path, catalog_db
+                )
+
+        assert result is not None
+
+    def test_no_youtube_upload_skips_thumbnail_upload(
+        self, catalog_db, tmp_path
+    ):
+        """No upload record in DB -> still returns thumbnail path."""
+        from autopilot.upload.thumbnail import extract_best_thumbnail
+
+        catalog_db.insert_narrative("n1", title="Test", description="desc")
+        # No upload record inserted
+
+        mock_cv2, video_path = self._make_extract_env(tmp_path)
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            result = extract_best_thumbnail("n1", video_path, catalog_db)
+
+        assert result is not None
+        assert isinstance(result, Path)
