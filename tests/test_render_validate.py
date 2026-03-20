@@ -193,3 +193,60 @@ class TestRunFfprobeJson:
             result = _run_ffprobe_json(Path("/fake/video.mp4"))
 
         assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# TestDurationCheck — _check_duration
+# ---------------------------------------------------------------------------
+
+
+class TestDurationCheck:
+    """Tests for _check_duration internal helper."""
+
+    def test_pass_when_within_tolerance(self) -> None:
+        from autopilot.render.validate import Issue, _check_duration
+
+        probe = {"duration_seconds": 60.5}
+        edl = {"target_duration_seconds": 60}
+        issues: list[Issue] = []
+
+        _check_duration(probe, edl, issues)
+
+        assert len(issues) == 0
+
+    def test_error_when_duration_off_by_more_than_1s(self) -> None:
+        from autopilot.render.validate import Issue, _check_duration
+
+        probe = {"duration_seconds": 65.0}
+        edl = {"target_duration_seconds": 60}
+        issues: list[Issue] = []
+
+        _check_duration(probe, edl, issues)
+
+        assert len(issues) == 1
+        assert issues[0].severity == "error"
+        assert issues[0].check == "duration"
+        assert issues[0].measured_value == 65.0
+
+    def test_skip_when_no_target_duration(self) -> None:
+        from autopilot.render.validate import Issue, _check_duration
+
+        probe = {"duration_seconds": 120.0}
+        edl: dict = {}
+        issues: list[Issue] = []
+
+        _check_duration(probe, edl, issues)
+
+        assert len(issues) == 0
+
+    def test_error_when_duration_too_short(self) -> None:
+        from autopilot.render.validate import Issue, _check_duration
+
+        probe = {"duration_seconds": 55.0}
+        edl = {"target_duration_seconds": 60}
+        issues: list[Issue] = []
+
+        _check_duration(probe, edl, issues)
+
+        assert len(issues) == 1
+        assert issues[0].severity == "error"
