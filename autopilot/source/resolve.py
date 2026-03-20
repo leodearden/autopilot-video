@@ -155,7 +155,9 @@ def resolve_edl_assets(
     # --- Persist updated EDL ---
     if narrative_id is not None:
         try:
-            db.upsert_edit_plan(narrative_id, json.dumps(edl))
+            with db:
+                db.upsert_edit_plan(narrative_id, json.dumps(edl))
+                db.update_narrative_status(narrative_id, "sourced")
             logger.info("Updated edit plan for narrative %s", narrative_id)
         except Exception as e:
             logger.warning("Failed to persist updated EDL: %s", e)
