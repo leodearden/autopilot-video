@@ -1225,6 +1225,51 @@ class TestUploadStage:
 
     @patch("autopilot.orchestrator.thumbnail")
     @patch("autopilot.orchestrator.youtube")
+    def test_upload_reads_render_path_from_db(
+        self, mock_youtube, mock_thumbnail, minimal_config
+    ):
+        """_run_upload reads render_path from DB instead of filesystem convention."""
+        from autopilot.orchestrator import _run_upload
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_edit_plan.return_value = {
+            "narrative_id": "n1",
+            "edl_json": '{}',
+            "render_path": "/db/stored/path.mp4",
+        }
+        mock_youtube.upload_video.return_value = "https://youtu.be/abc"
+        mock_thumbnail.extract_best_thumbnail.return_value = Path("/thumb.jpg")
+
+        _run_upload(config=minimal_config, db=db)
+
+        # Verify upload_video was called with the DB-stored path
+        call_args = mock_youtube.upload_video.call_args
+        assert call_args[0][1] == Path("/db/stored/path.mp4")
+
+    @patch("autopilot.orchestrator.thumbnail")
+    @patch("autopilot.orchestrator.youtube")
+    def test_upload_skips_narrative_when_no_render_path(
+        self, mock_youtube, mock_thumbnail, minimal_config, caplog
+    ):
+        """Narrative is skipped with warning when no render_path in edit_plan."""
+        from autopilot.orchestrator import _run_upload
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_edit_plan.return_value = {
+            "narrative_id": "n1",
+            "edl_json": '{}',
+        }
+
+        with caplog.at_level(logging.WARNING, logger="autopilot.orchestrator"):
+            _run_upload(config=minimal_config, db=db)
+
+        mock_youtube.upload_video.assert_not_called()
+        assert any("n1" in r.message for r in caplog.records)
+
+    @patch("autopilot.orchestrator.thumbnail")
+    @patch("autopilot.orchestrator.youtube")
     def test_upload_raises_if_all_narratives_fail(
         self, mock_youtube, mock_thumbnail, minimal_config
     ):
