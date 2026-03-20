@@ -162,4 +162,38 @@ def upload_video(
     Raises:
         UploadError: If the upload fails for any reason.
     """
-    raise NotImplementedError
+    from googleapiclient.discovery import build  # lazy import
+    from googleapiclient.http import MediaFileUpload  # lazy import
+
+    creds = _load_credentials(config.credentials_path)
+    metadata = _build_upload_metadata(narrative_id, db, config)
+
+    youtube = build("youtube", "v3", credentials=creds)
+    media = MediaFileUpload(str(video_path), resumable=True)
+
+    request = youtube.videos().insert(
+        part="snippet,status",
+        body=metadata,
+        media_body=media,
+    )
+
+    try:
+        response = None
+        while response is None:
+            _, response = request.next_chunk()
+    except Exception as exc:
+        msg = f"YouTube upload failed: {exc}"
+        raise UploadError(msg) from exc
+
+    video_id = response["id"]
+    youtube_url = f"https://youtu.be/{video_id}"
+
+    db.insert_upload(
+        narrative_id,
+        youtube_video_id=video_id,
+        youtube_url=youtube_url,
+        privacy_status=config.privacy_status,
+    )
+    logger.info("Uploaded %s -> %s", narrative_id, youtube_url)
+
+    return youtube_url
