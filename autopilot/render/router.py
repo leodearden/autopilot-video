@@ -218,19 +218,7 @@ def route_and_render(
                 audio_inputs.append(f"[{input_idx}:a]")
                 input_idx += 1
 
-        # Audio mixing filter
-        has_audio_mix = bool(audio_inputs)
-        if has_audio_mix:
-            # Mix source audio with additional tracks
-            all_audio = ["[0:a]"] + audio_inputs
-            mix_filter = (
-                "".join(all_audio)
-                + f"amix=inputs={len(all_audio)}:duration=longest[aout]"
-            )
-            cmd.extend(["-filter_complex", mix_filter])
-            cmd.extend(["-map", "0:v", "-map", "[aout]"])
-
-        # Subtitle support: collect transcripts per clip and combine
+        # -- Collect subtitle segments from per-clip transcripts ----------------
         all_subtitle_segs: list[dict] = []
         cumulative_offset = 0.0
         for clip in clips:
@@ -239,7 +227,6 @@ def route_and_render(
             if transcript and transcript.get("segments_json"):
                 try:
                     clip_segs = json.loads(str(transcript["segments_json"]))
-                    # Offset segment times by cumulative clip durations
                     for seg in clip_segs:
                         all_subtitle_segs.append({
                             "start": seg.get("start", 0.0) + cumulative_offset,
@@ -250,7 +237,6 @@ def route_and_render(
                     logger.warning(
                         "Failed to parse transcript for clip %s", media_id
                     )
-            # Accumulate clip duration for timeline offset
             in_tc = clip.get("in_timecode", "00:00:00.000")
             out_tc = clip.get("out_timecode", in_tc)
             from autopilot.plan.validator import timecode_to_seconds
@@ -258,13 +244,45 @@ def route_and_render(
             out_sec = timecode_to_seconds(out_tc)
             cumulative_offset += out_sec - in_sec
 
+        # Generate SRT file if we have subtitle segments
+        srt_path: Path | None = None
         if all_subtitle_segs:
             try:
                 srt_path = work_dir / "subtitles.srt"
                 _generate_srt(all_subtitle_segs, srt_path)
-                cmd.extend(["-vf", f"subtitles={srt_path}"])
             except OSError:
                 logger.warning("Failed to write subtitle file, skipping")
+                srt_path = None
+
+        # -- Build filter/codec section ----------------------------------------
+        has_audio_mix = bool(audio_inputs)
+        has_video_filter = srt_path is not None
+
+        if has_audio_mix and has_video_filter:
+            # Both audio mixing and video filter — single filter_complex
+            all_audio = ["[0:a]"] + audio_inputs
+            fc = (
+                f"[0:v]subtitles={srt_path}[vout];"
+                + "".join(all_audio)
+                + f"amix=inputs={len(all_audio)}:duration=longest[aout]"
+            )
+            cmd.extend(["-filter_complex", fc])
+            cmd.extend(["-map", "[vout]", "-map", "[aout]"])
+        elif has_audio_mix:
+            # Audio mixing only
+            all_audio = ["[0:a]"] + audio_inputs
+            mix_filter = (
+                "".join(all_audio)
+                + f"amix=inputs={len(all_audio)}:duration=longest[aout]"
+            )
+            cmd.extend(["-filter_complex", mix_filter])
+            cmd.extend(["-map", "0:v", "-map", "[aout]"])
+        elif has_video_filter:
+            # Video filter only (subtitles), no audio mixing
+            cmd.extend(["-vf", f"subtitles={srt_path}"])
+        else:
+            # Pure concat — no filters at all, stream copy
+            cmd.extend(["-c", "copy"])
 
         cmd.append(str(final_output))
 
