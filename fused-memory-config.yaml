@@ -1,10 +1,10 @@
 # Fused Memory MCP Server Configuration for autopilot-video project
-# Port 8001 — xxx1 range to avoid collisions with reify (xxx0) and dark-factory (xxx2)
+# NOTE: autopilot-video now uses the shared fused-memory HTTP server on port 8002.
 
 server:
   transport: "http"
   host: "0.0.0.0"
-  port: 8001
+  port: 8002
 
 llm:
   provider: "openai"
