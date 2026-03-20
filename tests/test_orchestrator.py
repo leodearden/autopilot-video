@@ -694,3 +694,61 @@ class TestNarrateStage:
 
         db.update_narrative_status.assert_any_call("n1", "approved")
         db.update_narrative_status.assert_any_call("n2", "rejected")
+
+
+class TestScriptStage:
+    """Tests for the real _run_script stage function."""
+
+    @patch("autopilot.orchestrator.script")
+    def test_script_generates_per_approved_narrative(
+        self, mock_script, minimal_config
+    ):
+        """_run_script calls generate_script once per approved narrative."""
+        from autopilot.orchestrator import _run_script
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        mock_script.generate_script.return_value = {"scenes": []}
+
+        _run_script(config=minimal_config, db=db)
+
+        assert mock_script.generate_script.call_count == 2
+
+    @patch("autopilot.orchestrator.script")
+    def test_script_continues_on_per_narrative_error(
+        self, mock_script, minimal_config
+    ):
+        """First narrative raises ScriptError, second still gets generated."""
+        from autopilot.orchestrator import _run_script
+        from autopilot.plan.script import ScriptError
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        mock_script.generate_script.side_effect = [
+            ScriptError("failed"), {"scenes": []},
+        ]
+
+        _run_script(config=minimal_config, db=db)
+
+        assert mock_script.generate_script.call_count == 2
+
+    @patch("autopilot.orchestrator.script")
+    def test_script_raises_if_all_narratives_fail(
+        self, mock_script, minimal_config
+    ):
+        """If every narrative fails, stage itself raises RuntimeError."""
+        from autopilot.orchestrator import _run_script
+        from autopilot.plan.script import ScriptError
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        mock_script.generate_script.side_effect = ScriptError("fail")
+
+        with pytest.raises(RuntimeError, match="All narratives failed"):
+            _run_script(config=minimal_config, db=db)
