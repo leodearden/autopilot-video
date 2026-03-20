@@ -747,3 +747,59 @@ class TestValidateRenderE2E:
         assert "passed" in report_dict
         assert "issues" in report_dict
         assert "measurements" in report_dict
+
+
+# ---------------------------------------------------------------------------
+# TestReportWriting — validation_report.json file output
+# ---------------------------------------------------------------------------
+
+
+class TestReportWriting:
+    """Tests for validation_report.json file writing."""
+
+    def test_writes_report_file(self, tmp_path: Path) -> None:
+        from autopilot.render.validate import validate_render
+
+        config = OutputConfig()
+        edl: dict = {}
+        rendered = tmp_path / "output" / "my_narrative" / "final.mp4"
+        rendered.parent.mkdir(parents=True)
+        rendered.touch()
+
+        side_effect = _make_subprocess_side_effect(
+            ffprobe_data=SAMPLE_FFPROBE_JSON,
+            loudnorm_stderr=LOUDNORM_STDERR_OK,
+            blackdetect_stderr=BLACKDETECT_STDERR_NONE,
+            silence_stderr=SILENCE_STDERR_NONE,
+        )
+
+        with patch("subprocess.run", side_effect=side_effect):
+            report = validate_render(rendered, edl, config)
+
+        report_file = rendered.parent / "validation_report.json"
+        assert report_file.exists()
+        data = json.loads(report_file.read_text())
+        assert data["passed"] == report.passed
+        assert isinstance(data["issues"], list)
+        assert isinstance(data["measurements"], dict)
+
+    def test_creates_missing_directory(self, tmp_path: Path) -> None:
+        from autopilot.render.validate import validate_render
+
+        config = OutputConfig()
+        edl: dict = {}
+        rendered = tmp_path / "new_dir" / "final.mp4"
+        # Do NOT create the directory — validate_render should create it
+
+        side_effect = _make_subprocess_side_effect(
+            ffprobe_data=SAMPLE_FFPROBE_JSON,
+            loudnorm_stderr=LOUDNORM_STDERR_OK,
+            blackdetect_stderr=BLACKDETECT_STDERR_NONE,
+            silence_stderr=SILENCE_STDERR_NONE,
+        )
+
+        with patch("subprocess.run", side_effect=side_effect):
+            validate_render(rendered, edl, config)
+
+        report_file = rendered.parent / "validation_report.json"
+        assert report_file.exists()
