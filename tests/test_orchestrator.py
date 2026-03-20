@@ -1023,3 +1023,44 @@ class TestRealStageRegistration:
         """PipelineOrchestrator() defaults human_review_fn to None."""
         orch = PipelineOrchestrator()
         assert orch.human_review_fn is None
+
+
+class TestEnhancedProgress:
+    """Tests for enhanced progress reporting in run()."""
+
+    def test_run_logs_cumulative_elapsed_per_stage(
+        self, caplog: pytest.LogCaptureFixture
+    ):
+        """After each stage, log shows cumulative time and remaining budget."""
+        orch = PipelineOrchestrator(budget_seconds=3600)
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            orch.run(config=MagicMock(), db=MagicMock())
+
+        progress_lines = [
+            r.message for r in caplog.records if "[PROGRESS]" in r.message
+        ]
+        # Should have one progress line per stage
+        assert len(progress_lines) == 9
+        # Each should contain budget info
+        for line in progress_lines:
+            assert "budget" in line.lower() or "%" in line
+
+    def test_run_logs_summary_table_at_end(
+        self, caplog: pytest.LogCaptureFixture
+    ):
+        """Final log message includes all stage names with their elapsed times."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            orch.run(config=MagicMock(), db=MagicMock())
+
+        # Look for summary that mentions all stage names
+        all_text = " ".join(r.message for r in caplog.records)
+        for stage_name in ["INGEST", "ANALYZE", "CLASSIFY", "NARRATE",
+                           "SCRIPT", "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD"]:
+            assert stage_name in all_text
