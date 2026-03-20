@@ -250,3 +250,60 @@ class TestDurationCheck:
 
         assert len(issues) == 1
         assert issues[0].severity == "error"
+
+
+# ---------------------------------------------------------------------------
+# TestResolutionCodecCheck — _check_resolution_codec
+# ---------------------------------------------------------------------------
+
+
+class TestResolutionCodecCheck:
+    """Tests for _check_resolution_codec internal helper."""
+
+    def test_pass_when_matches(self) -> None:
+        from autopilot.render.validate import Issue, _check_resolution_codec
+
+        probe = {"resolution": (1920, 1080), "video_codec": "h264"}
+        config = OutputConfig(resolution=(1920, 1080), codec="h264")
+        issues: list[Issue] = []
+
+        _check_resolution_codec(probe, config, issues)
+
+        assert len(issues) == 0
+
+    def test_error_on_resolution_mismatch(self) -> None:
+        from autopilot.render.validate import Issue, _check_resolution_codec
+
+        probe = {"resolution": (1280, 720), "video_codec": "h264"}
+        config = OutputConfig(resolution=(1920, 1080), codec="h264")
+        issues: list[Issue] = []
+
+        _check_resolution_codec(probe, config, issues)
+
+        assert len(issues) == 1
+        assert issues[0].severity == "error"
+        assert issues[0].check == "resolution"
+
+    def test_error_on_codec_mismatch(self) -> None:
+        from autopilot.render.validate import Issue, _check_resolution_codec
+
+        probe = {"resolution": (1920, 1080), "video_codec": "vp9"}
+        config = OutputConfig(resolution=(1920, 1080), codec="h264")
+        issues: list[Issue] = []
+
+        _check_resolution_codec(probe, config, issues)
+
+        assert len(issues) == 1
+        assert issues[0].severity == "error"
+        assert issues[0].check == "codec"
+
+    def test_both_mismatch_produces_two_issues(self) -> None:
+        from autopilot.render.validate import Issue, _check_resolution_codec
+
+        probe = {"resolution": (1280, 720), "video_codec": "vp9"}
+        config = OutputConfig(resolution=(1920, 1080), codec="h264")
+        issues: list[Issue] = []
+
+        _check_resolution_codec(probe, config, issues)
+
+        assert len(issues) == 2
