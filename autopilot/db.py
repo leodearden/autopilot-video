@@ -663,8 +663,14 @@ class CatalogDB:
         existing = self.get_edit_plan(narrative_id)
         if existing is not None:
             # Merge: keep existing values for fields not explicitly provided
-            edl_json = edl_json if edl_json is not None else cast("str | None", existing.get("edl_json"))
-            otio_path = otio_path if otio_path is not None else cast("str | None", existing.get("otio_path"))
+            edl_json = (
+                edl_json if edl_json is not None
+                else cast("str | None", existing.get("edl_json"))
+            )
+            otio_path = (
+                otio_path if otio_path is not None
+                else cast("str | None", existing.get("otio_path"))
+            )
             validation_json = (
                 validation_json
                 if validation_json is not None
