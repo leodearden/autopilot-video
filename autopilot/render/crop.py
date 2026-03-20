@@ -154,6 +154,34 @@ def _compute_raw_center(
     return (crop_center_x, crop_center_y)
 
 
+def _compute_multi_subject_center(
+    subject_bboxes: list[list[float]],
+    crop_w: int,
+    crop_h: int,
+) -> tuple[float, float]:
+    """Compute crop center for multiple subjects by centering on their bounding box.
+
+    Args:
+        subject_bboxes: List of [cx, cy, w, h] bboxes in source pixel coordinates.
+        crop_w: Crop window width (unused, reserved for future aspect-aware logic).
+        crop_h: Crop window height (unused, reserved for future aspect-aware logic).
+
+    Returns:
+        (crop_center_x, crop_center_y) centered on the bounding box of all subjects.
+    """
+    if not subject_bboxes:
+        return (crop_w / 2.0, crop_h / 2.0)
+
+    # Compute the bounding box containing all subject centers
+    centers_x = [bbox[0] for bbox in subject_bboxes]
+    centers_y = [bbox[1] for bbox in subject_bboxes]
+
+    group_cx = (min(centers_x) + max(centers_x)) / 2.0
+    group_cy = (min(centers_y) + max(centers_y)) / 2.0
+
+    return (group_cx, group_cy)
+
+
 def compute_crop_path(
     media_id: str,
     target_aspect: str,
