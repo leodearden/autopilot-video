@@ -47,6 +47,14 @@ def _tc_to_rational_time(tc: str, fps: float) -> "otio.opentime.RationalTime":
 
 _DEFAULT_FPS = 30.0
 
+# EDL transition type -> OTIO transition type mapping
+_TRANSITION_TYPE_MAP = {
+    "crossfade": "SMPTE_Dissolve",
+    "dissolve": "SMPTE_Dissolve",
+    "wipe": "SMPTE_Dissolve",
+    # 'cut' is implicit (no Transition object)
+}
+
 
 def _get_media_info(clip_id: str, db: CatalogDB) -> tuple[str, float]:
     """Look up file_path and fps for a clip from the catalog DB.
@@ -62,6 +70,68 @@ def _get_media_info(clip_id: str, db: CatalogDB) -> tuple[str, float]:
     file_path = str(media.get("file_path") or clip_id)
     fps = float(media.get("fps") or _DEFAULT_FPS)
     return file_path, fps
+
+
+def _insert_transitions(
+    track: "otio.schema.Track",
+    edl_transitions: list[dict],
+    track_num: int,
+) -> None:
+    """Insert OTIO Transition objects between clips on a track.
+
+    Args:
+        track: The OTIO Track to insert transitions into.
+        edl_transitions: List of EDL transition dicts.
+        track_num: The track number (1-indexed) for filtering transitions.
+    """
+    import opentimelineio as otio  # type: ignore[import-untyped]
+
+    # Build a list of transitions for this track, indexed by position
+    # position is 0-indexed: transition at position N goes between clip N and N+1
+    transitions_by_pos: dict[int, dict] = {}
+    for trans_data in edl_transitions:
+        trans_type = trans_data.get("type", "cut")
+        if trans_type == "cut":
+            continue  # cuts are implicit
+        pos = trans_data.get("position", 0)
+        transitions_by_pos[pos] = trans_data
+
+    if not transitions_by_pos:
+        return
+
+    # Count existing clips to determine fps for duration conversion
+    clips_in_track = [
+        item for item in track if isinstance(item, otio.schema.Clip)
+    ]
+    if not clips_in_track:
+        return
+
+    # Use the fps from the first clip's source_range
+    fps = clips_in_track[0].source_range.start_time.rate if clips_in_track else _DEFAULT_FPS
+
+    # Insert transitions in reverse order to avoid index shifting
+    for pos in sorted(transitions_by_pos.keys(), reverse=True):
+        trans_data = transitions_by_pos[pos]
+        trans_type = trans_data.get("type", "cut")
+        duration_secs = float(trans_data.get("duration", 0.5))
+
+        otio_type = _TRANSITION_TYPE_MAP.get(trans_type, "SMPTE_Dissolve")
+        half_dur = otio.opentime.RationalTime.from_seconds(duration_secs / 2.0, fps)
+
+        transition = otio.schema.Transition(
+            name=trans_type,
+            transition_type=otio_type,
+            in_offset=half_dur,
+            out_offset=half_dur,
+        )
+
+        # Insert after clip at 'position' (which is index position + 1 in the track
+        # because we're inserting between clip[pos] and clip[pos+1])
+        insert_idx = pos + 1
+        if insert_idx <= len(track):
+            track.insert(insert_idx, transition)
+
+    return
 
 
 def export_otio(edl: dict, output_path: Path, db: CatalogDB) -> Path:
@@ -132,6 +202,9 @@ def export_otio(edl: dict, output_path: Path, db: CatalogDB) -> Path:
             )
 
             track.append(otio_clip)
+
+        # Insert transitions for this track (applied after all clips are added)
+        _insert_transitions(track, edl.get("transitions", []), track_num)
 
         timeline.tracks.append(track)
 
