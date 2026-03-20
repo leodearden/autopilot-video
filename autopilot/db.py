@@ -53,7 +53,7 @@ class CatalogDB:
             self.conn.rollback()
 
     def _create_schema(self) -> None:
-        """Create all 14 catalog tables if they don't already exist."""
+        """Create all 15 catalog tables if they don't already exist."""
         self.conn.executescript(
             """\
             CREATE TABLE IF NOT EXISTS media_files (
@@ -172,6 +172,13 @@ class CatalogDB:
                 caption TEXT,
                 model_name TEXT,
                 PRIMARY KEY (media_id, start_time, end_time)
+            );
+
+            CREATE TABLE IF NOT EXISTS narrative_scripts (
+                narrative_id TEXT REFERENCES narratives(narrative_id),
+                script_json TEXT,
+                created_at TEXT,
+                PRIMARY KEY (narrative_id)
             );
 
             CREATE TABLE IF NOT EXISTS uploads (
@@ -657,6 +664,35 @@ class CatalogDB:
         """Get an edit plan by narrative_id, or None if not found."""
         cur = self.conn.execute(
             "SELECT * FROM edit_plans WHERE narrative_id = ?",
+            (narrative_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+    # -- narrative_scripts CRUD -------------------------------------------------
+
+    def upsert_narrative_script(
+        self,
+        narrative_id: str,
+        script_json: str,
+        *,
+        created_at: str | None = None,
+    ) -> None:
+        """Insert or replace a narrative script."""
+        if created_at is None:
+            from datetime import datetime, timezone
+
+            created_at = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            "INSERT OR REPLACE INTO narrative_scripts "
+            "(narrative_id, script_json, created_at) VALUES (?, ?, ?)",
+            (narrative_id, script_json, created_at),
+        )
+
+    def get_narrative_script(self, narrative_id: str) -> dict[str, object] | None:
+        """Get a narrative script by narrative_id, or None if not found."""
+        cur = self.conn.execute(
+            "SELECT * FROM narrative_scripts WHERE narrative_id = ?",
             (narrative_id,),
         )
         row = cur.fetchone()
