@@ -201,3 +201,85 @@ class TestRenderComplex:
             result = render_complex(edl_entry, crop_path, output, config)
 
         assert result == output
+
+
+# ---------------------------------------------------------------------------
+# Edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestRenderComplexEdgeCases:
+    """Verify render_complex handles edge cases correctly."""
+
+    def test_empty_crop_path_raises_error(self, tmp_path: Path) -> None:
+        """Empty crop_path (shape (0,2)) should raise ComplexRenderError."""
+        from autopilot.render.moviepy_render import ComplexRenderError
+
+        config = _make_config()
+        edl_entry = _make_edl_entry()
+        output = tmp_path / "out.mp4"
+        crop_path = np.empty((0, 2), dtype=np.float64)
+
+        mock_clip = MagicMock()
+        mock_clip.subclipped.return_value = mock_clip
+        mock_clip.with_effects.return_value = mock_clip
+        mock_clip.transform.return_value = mock_clip
+        mock_clip.duration = 10.0
+        mock_clip.fps = 30
+        mock_clip.size = (1920, 1080)
+
+        with (
+            patch(
+                "autopilot.render.moviepy_render.VideoFileClip",
+                return_value=mock_clip,
+            ),
+            pytest.raises(ComplexRenderError, match="Empty crop_path"),
+        ):
+            from autopilot.render.moviepy_render import render_complex
+
+            render_complex(edl_entry, crop_path, output, config)
+
+    def test_output_directory_creation(self, tmp_path: Path) -> None:
+        """render_complex should create output directory if it doesn't exist."""
+        config = _make_config()
+        edl_entry = _make_edl_entry()
+        output = tmp_path / "deep" / "nested" / "out.mp4"
+        crop_path = np.full((30, 2), [100, 50], dtype=np.float64)
+
+        mock_clip = MagicMock()
+        mock_clip.subclipped.return_value = mock_clip
+        mock_clip.with_effects.return_value = mock_clip
+        mock_clip.transform.return_value = mock_clip
+        mock_clip.duration = 10.0
+        mock_clip.fps = 30
+        mock_clip.size = (1920, 1080)
+
+        with patch(
+            "autopilot.render.moviepy_render.VideoFileClip",
+            return_value=mock_clip,
+        ):
+            from autopilot.render.moviepy_render import render_complex
+
+            render_complex(edl_entry, crop_path, output, config)
+
+        assert output.parent.exists()
+
+    def test_moviepy_error_wrapped(self, tmp_path: Path) -> None:
+        """MoviePy exceptions should be wrapped in ComplexRenderError."""
+        from autopilot.render.moviepy_render import ComplexRenderError
+
+        config = _make_config()
+        edl_entry = _make_edl_entry()
+        output = tmp_path / "out.mp4"
+        crop_path = np.full((30, 2), [100, 50], dtype=np.float64)
+
+        with (
+            patch(
+                "autopilot.render.moviepy_render.VideoFileClip",
+                side_effect=OSError("file not found"),
+            ),
+            pytest.raises(ComplexRenderError, match="MoviePy render failed"),
+        ):
+            from autopilot.render.moviepy_render import render_complex
+
+            render_complex(edl_entry, crop_path, output, config)
