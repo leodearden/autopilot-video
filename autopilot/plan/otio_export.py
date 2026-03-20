@@ -152,6 +152,15 @@ def export_otio(edl: dict, output_path: Path, db: CatalogDB) -> Path:
 
     clips = edl.get("clips", [])
 
+    # Build per-clip metadata lookup dicts
+    crop_by_clip: dict[str, str] = {}
+    for cm in edl.get("crop_modes", []):
+        crop_by_clip[cm["clip_id"]] = cm.get("mode", "")
+
+    audio_by_clip: dict[str, float] = {}
+    for au in edl.get("audio_settings", []):
+        audio_by_clip[au["clip_id"]] = au.get("level_db", 0.0)
+
     # Build timeline
     timeline = otio.schema.Timeline(name="autopilot_edit")
 
@@ -201,12 +210,32 @@ def export_otio(edl: dict, output_path: Path, db: CatalogDB) -> Path:
                 media_reference=media_ref,
             )
 
+            # Attach per-clip metadata
+            clip_meta: dict = {}
+            if clip_id in crop_by_clip:
+                clip_meta["crop_mode"] = crop_by_clip[clip_id]
+            if clip_id in audio_by_clip:
+                clip_meta["level_db"] = audio_by_clip[clip_id]
+            if clip_meta:
+                otio_clip.metadata["autopilot"] = clip_meta
+
             track.append(otio_clip)
 
         # Insert transitions for this track (applied after all clips are added)
         _insert_transitions(track, edl.get("transitions", []), track_num)
 
         timeline.tracks.append(track)
+
+    # Attach timeline-level metadata
+    tl_meta: dict = {}
+    for key in ("titles", "music", "voiceovers", "broll_requests"):
+        val = edl.get(key)
+        if val:
+            tl_meta[key] = val
+    if "target_duration_seconds" in edl:
+        tl_meta["target_duration_seconds"] = edl["target_duration_seconds"]
+    if tl_meta:
+        timeline.metadata["autopilot"] = tl_meta
 
     # Write to file
     try:
