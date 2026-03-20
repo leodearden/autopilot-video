@@ -512,6 +512,76 @@ class TestSubtitleSupport:
 
 
 # ---------------------------------------------------------------------------
+# Transcript lookup by media_id
+# ---------------------------------------------------------------------------
+
+
+class TestTranscriptByMediaId:
+    """Verify transcripts are fetched per-clip by media_id, not narrative_id."""
+
+    def test_transcript_fetched_by_media_id(self) -> None:
+        """db.get_transcript should be called with media_id (=clip_id), not narrative_id."""
+        from autopilot.render.router import route_and_render
+
+        segments = [{"start": 0.0, "end": 2.5, "text": "Hello"}]
+        edl = _make_edl()
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = {"segments_json": json.dumps(segments)}
+        config = _make_config()
+
+        with patch("autopilot.render.router.render_simple") as mock_rs, \
+             patch("subprocess.run"):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config)
+
+        # Should have been called with clip_id ("clip_1"), not "n1"
+        transcript_calls = db.get_transcript.call_args_list
+        called_ids = [c[0][0] for c in transcript_calls]
+        assert "clip_1" in called_ids
+        assert "n1" not in called_ids
+
+    def test_multiple_clips_transcripts_combined(self) -> None:
+        """With 2 clips, transcripts from both should be combined in SRT."""
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {"clip_id": "c1", "source_path": "/a.mp4",
+             "in_timecode": "00:00:00.000", "out_timecode": "00:00:05.000", "track": 1},
+            {"clip_id": "c2", "source_path": "/b.mp4",
+             "in_timecode": "00:00:00.000", "out_timecode": "00:00:05.000", "track": 1},
+        ]
+        edl = _make_edl(clips=clips)
+        seg1 = [{"start": 0.0, "end": 2.0, "text": "First clip"}]
+        seg2 = [{"start": 0.0, "end": 2.0, "text": "Second clip"}]
+
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+
+        def _get_transcript(media_id: str):
+            if media_id == "c1":
+                return {"segments_json": json.dumps(seg1)}
+            elif media_id == "c2":
+                return {"segments_json": json.dumps(seg2)}
+            return None
+
+        db.get_transcript.side_effect = _get_transcript
+        config = _make_config()
+
+        with patch("autopilot.render.router.render_simple") as mock_rs, \
+             patch("subprocess.run") as mock_run:
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config)
+
+        # Verify subtitles filter is in the concat command
+        concat_cmd = mock_run.call_args[0][0]
+        cmd_str = " ".join(concat_cmd)
+        assert "subtitles=" in cmd_str
+
+
+# ---------------------------------------------------------------------------
 # Error handling
 # ---------------------------------------------------------------------------
 
