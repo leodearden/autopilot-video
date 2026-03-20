@@ -162,6 +162,8 @@ def export_otio(edl: dict, output_path: Path, db: CatalogDB) -> Path:
     import opentimelineio as otio  # type: ignore[import-untyped]
 
     clips = edl.get("clips", [])
+    if not clips:
+        raise OtioExportError("No clips in EDL — cannot export empty timeline")
 
     # Build per-clip metadata lookup dicts
     crop_by_clip: dict[str, str] = {}
