@@ -752,3 +752,76 @@ class TestScriptStage:
 
         with pytest.raises(RuntimeError, match="All narratives failed"):
             _run_script(config=minimal_config, db=db)
+
+
+class TestEdlStage:
+    """Tests for the real _run_edl stage function."""
+
+    @patch("autopilot.orchestrator.otio_export")
+    @patch("autopilot.orchestrator.validator")
+    @patch("autopilot.orchestrator.edl_mod")
+    def test_edl_generates_validates_exports_per_narrative(
+        self, mock_edl, mock_validator, mock_otio, minimal_config
+    ):
+        """_run_edl calls generate_edl, validate_edl, export_otio for each narrative."""
+        from autopilot.orchestrator import _run_edl
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_narrative_script.return_value = {"scenes": []}
+        mock_edl.generate_edl.return_value = {"timeline": []}
+        mock_validator.validate_edl.return_value = MagicMock(passed=True)
+        mock_otio.export_otio.return_value = Path("/out/timeline.otio")
+
+        _run_edl(config=minimal_config, db=db)
+
+        mock_edl.generate_edl.assert_called_once()
+        mock_validator.validate_edl.assert_called_once()
+        mock_otio.export_otio.assert_called_once()
+
+    @patch("autopilot.orchestrator.otio_export")
+    @patch("autopilot.orchestrator.validator")
+    @patch("autopilot.orchestrator.edl_mod")
+    def test_edl_stores_validation_result(
+        self, mock_edl, mock_validator, mock_otio, minimal_config
+    ):
+        """_run_edl stores validation result via db.upsert_edit_plan."""
+        from autopilot.orchestrator import _run_edl
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_narrative_script.return_value = {"scenes": []}
+        mock_edl.generate_edl.return_value = {"timeline": []}
+        val_result = MagicMock(passed=True)
+        mock_validator.validate_edl.return_value = val_result
+        mock_otio.export_otio.return_value = Path("/out/timeline.otio")
+
+        _run_edl(config=minimal_config, db=db)
+
+        db.upsert_edit_plan.assert_called_once()
+
+    @patch("autopilot.orchestrator.otio_export")
+    @patch("autopilot.orchestrator.validator")
+    @patch("autopilot.orchestrator.edl_mod")
+    def test_edl_continues_on_failure(
+        self, mock_edl, mock_validator, mock_otio, minimal_config
+    ):
+        """One narrative fails EDL, others still processed."""
+        from autopilot.orchestrator import _run_edl
+        from autopilot.plan.edl import EdlError
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        db.get_narrative_script.return_value = {"scenes": []}
+        mock_edl.generate_edl.side_effect = [
+            EdlError("fail"), {"timeline": []},
+        ]
+        mock_validator.validate_edl.return_value = MagicMock(passed=True)
+        mock_otio.export_otio.return_value = Path("/out/timeline.otio")
+
+        _run_edl(config=minimal_config, db=db)
+
+        # Second narrative should still be processed
+        assert mock_edl.generate_edl.call_count == 2
