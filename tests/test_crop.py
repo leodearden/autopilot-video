@@ -324,3 +324,66 @@ class TestSmoothPath:
         # Frame 5 should hold from frame 4
         assert not np.any(np.isnan(smoothed[5]))
         assert smoothed[5, 0] == pytest.approx(2048.0, abs=1.0)
+
+
+class TestHandleDetectionGaps:
+    """Tests for _handle_detection_gaps: fill NaN gaps with hold/drift/center."""
+
+    def test_gap_under_hold_threshold_holds(self) -> None:
+        """Gap shorter than hold_seconds holds last valid position."""
+        from autopilot.render.crop import _handle_detection_gaps
+
+        # 30fps, gap of 1 second (30 frames) with hold_seconds=2
+        path = np.full((90, 2), [1000.0, 1000.0])
+        path[30:60, :] = np.nan  # 1-second gap
+
+        filled = _handle_detection_gaps(
+            path, fps=30.0, source_w=4096, source_h=4096,
+            hold_seconds=2.0, drift_seconds=1.0,
+        )
+        # Gap should hold at 1000, 1000
+        np.testing.assert_allclose(filled[45], [1000.0, 1000.0], atol=1.0)
+
+    def test_gap_drifts_toward_center(self) -> None:
+        """Gap between hold and hold+drift thresholds drifts toward frame center."""
+        from autopilot.render.crop import _handle_detection_gaps
+
+        # 30fps, gap of 3 seconds (90 frames) with hold_seconds=1, drift_seconds=1
+        path = np.full((150, 2), [1000.0, 1000.0])
+        path[30:120, :] = np.nan  # 3-second gap
+
+        filled = _handle_detection_gaps(
+            path, fps=30.0, source_w=4096, source_h=4096,
+            hold_seconds=1.0, drift_seconds=1.0,
+        )
+        # During hold phase (first 30 NaN frames = 1s), should stay at 1000
+        np.testing.assert_allclose(filled[45], [1000.0, 1000.0], atol=1.0)
+        # During drift phase (next 30 frames), should move toward center (2048, 2048)
+        assert filled[75, 0] > 1000.0  # started drifting
+        # After drift complete (2s into gap), should be at center
+        np.testing.assert_allclose(filled[90, 0], 2048.0, atol=5.0)
+
+    def test_long_gap_at_center(self) -> None:
+        """Gap longer than hold+drift settles at frame center."""
+        from autopilot.render.crop import _handle_detection_gaps
+
+        path = np.full((300, 2), [500.0, 500.0])
+        path[30:270, :] = np.nan  # 8-second gap
+
+        filled = _handle_detection_gaps(
+            path, fps=30.0, source_w=4096, source_h=4096,
+            hold_seconds=1.0, drift_seconds=1.0,
+        )
+        # Well past drift phase, should be at center
+        np.testing.assert_allclose(filled[200], [2048.0, 2048.0], atol=5.0)
+
+    def test_no_gaps_unchanged(self) -> None:
+        """Path with no NaN values passes through unchanged."""
+        from autopilot.render.crop import _handle_detection_gaps
+
+        path = np.full((30, 2), [2048.0, 1152.0])
+        filled = _handle_detection_gaps(
+            path, fps=30.0, source_w=4096, source_h=4096,
+            hold_seconds=2.0, drift_seconds=1.0,
+        )
+        np.testing.assert_allclose(filled, path)
