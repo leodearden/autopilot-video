@@ -217,7 +217,7 @@ def _build_raw_path(
         subject_bbox = None
         for det in frame_dets:
             if det.get("track_id") == track_id:
-                subject_bbox = det["bbox_xywh"]
+                subject_bbox = det.get("bbox_xywh")
                 break
 
         if subject_bbox is not None:
