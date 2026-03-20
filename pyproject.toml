@@ -6,6 +6,7 @@ build-backend = "hatchling.build"
 name = "autopilot-video"
 version = "0.1.0"
 description = "Automated video editing pipeline — from raw footage to published video"
+license = "AGPL-3.0-or-later"
 requires-python = ">=3.11"
 dependencies = [
     # Core

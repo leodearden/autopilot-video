@@ -53,22 +53,22 @@ queue:
   max_attempts: ${QUEUE_MAX_ATTEMPTS:5}
   retry_base_seconds: ${QUEUE_RETRY_BASE:5}
   write_timeout_seconds: ${QUEUE_WRITE_TIMEOUT:120}
-  data_dir: "${PROJECT_ROOT:./data}/.orchestrator/queue"
+  data_dir: "${PROJECT_ROOT:/home/leo/src/autopilot-video}/data/.orchestrator/queue"
 
 taskmaster:
   transport: "stdio"
   command: "node"
-  args: ["${TASKMASTER_DIR:./taskmaster-ai}/dist/mcp-server.js"]
-  project_root: "${PROJECT_ROOT:.}"
-  tool_mode: "standard"
+  args: ["${TASKMASTER_DIR:/home/leo/src/dark-factory/taskmaster-ai}/dist/mcp-server.js"]
+  project_root: "${PROJECT_ROOT:/home/leo/src/autopilot-video}"
+  tool_mode: "all"
 
 reconciliation:
   enabled: true
-  data_dir: "${PROJECT_ROOT:./data}/.orchestrator/reconciliation"
+  data_dir: "${PROJECT_ROOT:/home/leo/src/autopilot-video}/data/.orchestrator/reconciliation"
   buffer_size_threshold: 10
   max_staleness_seconds: 1800
   agent_llm_provider: "anthropic"
   agent_llm_model: "claude-sonnet-4-20250514"
   agent_max_steps: 50
   judge_enabled: true
-  explore_codebase_root: "${PROJECT_ROOT:.}"
+  explore_codebase_root: "${PROJECT_ROOT:/home/leo/src/autopilot-video}"

@@ -2,7 +2,7 @@
 # Overrides dark-factory defaults
 
 # Concurrency
-max_concurrent_tasks: 8
+max_concurrent_tasks: 12
 max_per_module: 1
 lock_depth: 3
 module_overrides:
@@ -46,7 +46,7 @@ type_check_command: "pyright"
 fused_memory:
   url: "http://localhost:8001"
   project_id: "autopilot_video"
-  config_path: "fused-memory-config.yaml"
+  config_path: "/home/leo/src/autopilot-video/fused-memory-config.yaml"
   server_command:
     - "uv"
     - "run"
