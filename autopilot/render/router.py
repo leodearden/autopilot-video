@@ -114,95 +114,104 @@ def route_and_render(
 
     # -- Render each clip ------------------------------------------------------
     segments: list[Path] = []
-    work_dir = Path(tempfile.mkdtemp(prefix="render_"))
 
-    for i, clip in enumerate(clips):
-        clip_id = clip.get("clip_id", f"clip_{i}")
-        classification = _classify_clip(clip, crop_modes)
-        segment_path = work_dir / f"segment_{i:04d}.mp4"
+    with tempfile.TemporaryDirectory(prefix="render_") as work_dir_str:
+        work_dir = Path(work_dir_str)
 
-        # Get crop path if applicable
-        crop_path = None
-        # TODO: Load crop_path from DB when available
+        for i, clip in enumerate(clips):
+            clip_id = clip.get("clip_id", f"clip_{i}")
+            classification = _classify_clip(clip, crop_modes)
+            segment_path = work_dir / f"segment_{i:04d}.mp4"
+
+            # Get crop path if applicable
+            crop_path = None
+            # TODO: Load crop_path from DB when available
+
+            try:
+                if classification == "fast":
+                    render_simple(clip, crop_path, segment_path, config)
+                else:
+                    render_complex(clip, crop_path, segment_path, config)
+                segments.append(segment_path)
+            except RenderError as e:
+                raise RoutingError(
+                    f"Fast-path render failed for clip {clip_id}: {e}"
+                ) from e
+            except ComplexRenderError as e:
+                raise RoutingError(
+                    f"Complex render failed for clip {clip_id}: {e}"
+                ) from e
+
+        if not segments:
+            raise RoutingError("No clips to render")
+
+        # -- Concatenate segments ----------------------------------------------
+        output_dir = Path("output") / narrative_title
+        output_dir.mkdir(parents=True, exist_ok=True)
+        final_output = output_dir / "final.mp4"
+
+        # Build concat file list
+        concat_list = work_dir / "concat.txt"
+        with open(concat_list, "w") as f:
+            for seg in segments:
+                f.write(f"file '{seg}'\n")
+
+        # Build final ffmpeg command for concatenation + audio mixing
+        cmd: list[str] = ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                           "-i", str(concat_list)]
+
+        # Add music and voiceover inputs
+        audio_inputs: list[str] = []
+        input_idx = 1  # 0 is the concat input
+        for music in music_tracks:
+            music_path = music.get("path", "")
+            if music_path:
+                cmd.extend(["-i", music_path])
+                audio_inputs.append(f"[{input_idx}:a]")
+                input_idx += 1
+
+        for vo in voiceovers:
+            vo_path = vo.get("path", "")
+            if vo_path:
+                cmd.extend(["-i", vo_path])
+                audio_inputs.append(f"[{input_idx}:a]")
+                input_idx += 1
+
+        # Audio mixing filter
+        if audio_inputs:
+            # Mix source audio with additional tracks
+            all_audio = ["[0:a]"] + audio_inputs
+            mix_filter = (
+                "".join(all_audio)
+                + f"amix=inputs={len(all_audio)}:duration=longest"
+            )
+            cmd.extend(["-filter_complex", mix_filter])
+        else:
+            cmd.extend(["-c", "copy"])
+
+        # Subtitle support: generate SRT from ASR transcript if available
+        transcript = (
+            db.get_transcript(narrative_id)
+            if hasattr(db, "get_transcript")
+            else None
+        )
+        if transcript and transcript.get("segments_json"):
+            try:
+                segments_data = json.loads(str(transcript["segments_json"]))
+                srt_path = work_dir / "subtitles.srt"
+                _generate_srt(segments_data, srt_path)
+                cmd.extend(["-vf", f"subtitles={srt_path}"])
+            except (json.JSONDecodeError, KeyError, OSError):
+                logger.warning("Failed to generate subtitles, skipping")
+
+        cmd.append(str(final_output))
 
         try:
-            if classification == "fast":
-                render_simple(clip, crop_path, segment_path, config)
-            else:
-                render_complex(clip, crop_path, segment_path, config)
-            segments.append(segment_path)
-        except RenderError as e:
+            subprocess.run(cmd, check=True)
+        except subprocess.CalledProcessError as e:
             raise RoutingError(
-                f"Fast-path render failed for clip {clip_id}: {e}"
+                f"Final concatenation failed: {e}"
             ) from e
-        except ComplexRenderError as e:
-            raise RoutingError(
-                f"Complex render failed for clip {clip_id}: {e}"
-            ) from e
-
-    if not segments:
-        raise RoutingError("No clips to render")
-
-    # -- Concatenate segments --------------------------------------------------
-    output_dir = Path("output") / narrative_title
-    output_dir.mkdir(parents=True, exist_ok=True)
-    final_output = output_dir / "final.mp4"
-
-    # Build concat file list
-    concat_list = work_dir / "concat.txt"
-    with open(concat_list, "w") as f:
-        for seg in segments:
-            f.write(f"file '{seg}'\n")
-
-    # Build final ffmpeg command for concatenation + audio mixing
-    cmd: list[str] = ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                       "-i", str(concat_list)]
-
-    # Add music and voiceover inputs
-    audio_inputs: list[str] = []
-    input_idx = 1  # 0 is the concat input
-    for music in music_tracks:
-        music_path = music.get("path", "")
-        if music_path:
-            cmd.extend(["-i", music_path])
-            audio_inputs.append(f"[{input_idx}:a]")
-            input_idx += 1
-
-    for vo in voiceovers:
-        vo_path = vo.get("path", "")
-        if vo_path:
-            cmd.extend(["-i", vo_path])
-            audio_inputs.append(f"[{input_idx}:a]")
-            input_idx += 1
-
-    # Audio mixing filter
-    if audio_inputs:
-        # Mix source audio with additional tracks
-        all_audio = ["[0:a]"] + audio_inputs
-        mix_filter = "".join(all_audio) + f"amix=inputs={len(all_audio)}:duration=longest"
-        cmd.extend(["-filter_complex", mix_filter])
-    else:
-        cmd.extend(["-c", "copy"])
-
-    # Subtitle support: generate SRT from ASR transcript if available
-    transcript = db.get_transcript(narrative_id) if hasattr(db, "get_transcript") else None
-    if transcript and transcript.get("segments_json"):
-        try:
-            segments_data = json.loads(str(transcript["segments_json"]))
-            srt_path = work_dir / "subtitles.srt"
-            _generate_srt(segments_data, srt_path)
-            cmd.extend(["-vf", f"subtitles={srt_path}"])
-        except (json.JSONDecodeError, KeyError, OSError):
-            logger.warning("Failed to generate subtitles, skipping")
-
-    cmd.append(str(final_output))
-
-    try:
-        subprocess.run(cmd, check=True)
-    except subprocess.CalledProcessError as e:
-        raise RoutingError(
-            f"Final concatenation failed: {e}"
-        ) from e
 
     return final_output
 
