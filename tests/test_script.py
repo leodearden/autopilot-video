@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import inspect
 import json
+import sys
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
 
@@ -126,3 +130,191 @@ class TestBuildStoryboardBasic:
         assert len(result) > 0
         # Should mention the narrative title or indicate it's empty
         assert "Empty Narrative" in result or "no" in result.lower()
+
+
+# -- Step 5: build_narrative_storyboard with full data -------------------------
+
+
+def _seed_full_storyboard_data(db):
+    """Seed DB with complete data for storyboard assembly tests.
+
+    Creates media files, transcripts, shot boundaries, detections, faces,
+    audio events, captions, activity clusters, and a narrative.
+    """
+    # Media files
+    db.insert_media(
+        "v1", "/tmp/v1.mp4",
+        duration_seconds=60.0, fps=30.0,
+        created_at="2025-01-01T10:00:00",
+    )
+    db.insert_media(
+        "v2", "/tmp/v2.mp4",
+        duration_seconds=90.0, fps=30.0,
+        created_at="2025-01-01T10:05:00",
+    )
+
+    # Shot boundaries for v1: two shots [0-30] and [30-60] seconds
+    db.upsert_boundaries(
+        "v1",
+        json.dumps([
+            {"start_frame": 0, "end_frame": 900, "start_time": 0.0, "end_time": 30.0},
+            {"start_frame": 900, "end_frame": 1800, "start_time": 30.0, "end_time": 60.0},
+        ]),
+        "transnetv2",
+    )
+
+    # Shot boundaries for v2: single shot [0-90]
+    db.upsert_boundaries(
+        "v2",
+        json.dumps([
+            {"start_frame": 0, "end_frame": 2700, "start_time": 0.0, "end_time": 90.0},
+        ]),
+        "transnetv2",
+    )
+
+    # Transcripts
+    db.upsert_transcript(
+        "v1",
+        json.dumps([
+            {"text": "Look at the beautiful temple!", "start": 5.0, "end": 8.0},
+            {"text": "The architecture is stunning.", "start": 35.0, "end": 38.0},
+        ]),
+        "en",
+    )
+    db.upsert_transcript(
+        "v2",
+        json.dumps([
+            {"text": "The monks are chanting.", "start": 10.0, "end": 13.0},
+        ]),
+        "en",
+    )
+
+    # Captions (visual descriptions)
+    db.upsert_caption("v1", 0.0, 30.0, "Wide shot of golden temple at sunrise", "qwen-vl")
+    db.upsert_caption("v1", 30.0, 60.0, "Close-up of ornate door carvings", "qwen-vl")
+    db.upsert_caption("v2", 0.0, 90.0, "Monks walking in procession", "qwen-vl")
+
+    # YOLO detections
+    db.batch_insert_detections([
+        ("v1", 0, json.dumps([
+            {"class": "person", "confidence": 0.95, "track_id": 1},
+            {"class": "building", "confidence": 0.88},
+        ])),
+        ("v1", 900, json.dumps([
+            {"class": "person", "confidence": 0.92, "track_id": 1},
+        ])),
+        ("v2", 0, json.dumps([
+            {"class": "person", "confidence": 0.90, "track_id": 2},
+            {"class": "person", "confidence": 0.85, "track_id": 3},
+        ])),
+    ])
+
+    # Faces with clusters
+    emb = np.zeros(512, dtype=np.float32).tobytes()
+    db.batch_insert_faces([
+        ("v1", 0, 0, json.dumps({"x": 10, "y": 10, "w": 50, "h": 50}), emb, 1),
+        ("v2", 0, 0, json.dumps({"x": 20, "y": 20, "w": 60, "h": 60}), emb, 1),
+        ("v2", 0, 1, json.dumps({"x": 80, "y": 20, "w": 60, "h": 60}), emb, 2),
+    ])
+    db.insert_face_cluster(1, label="Alice")
+    db.insert_face_cluster(2, label="Bob")
+
+    # Audio events
+    db.batch_insert_audio_events([
+        ("v1", 5.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
+        ("v1", 35.0, json.dumps([{"class": "Speech", "probability": 0.85}])),
+        ("v2", 10.0, json.dumps([
+            {"class": "Chanting", "probability": 0.88},
+            {"class": "Music", "probability": 0.4},
+        ])),
+    ])
+
+    # Activity cluster
+    db.insert_activity_cluster(
+        "c1",
+        label="Temple visit",
+        description="Exploring a Buddhist temple",
+        time_start="2025-01-01T10:00:00",
+        time_end="2025-01-01T10:10:00",
+        clip_ids_json=json.dumps(["v1", "v2"]),
+    )
+
+    # Narrative referencing the cluster
+    db.insert_narrative(
+        "n1",
+        title="A Morning at the Temple",
+        description="Documentary of a peaceful morning temple visit",
+        proposed_duration_seconds=600.0,
+        activity_cluster_ids_json=json.dumps(["c1"]),
+        arc_notes=json.dumps({
+            "beginning": "Arrival at dawn",
+            "middle": "Exploring the grounds",
+            "end": "Quiet reflection",
+        }),
+        emotional_journey="Curiosity to wonder to peace",
+    )
+
+
+class TestBuildStoryboardFull:
+    """Tests for build_narrative_storyboard with fully seeded data."""
+
+    def test_contains_transcript_text(self, catalog_db):
+        """Storyboard contains transcript text from clips."""
+        from autopilot.plan.script import build_narrative_storyboard
+
+        _seed_full_storyboard_data(catalog_db)
+        result = build_narrative_storyboard("n1", catalog_db)
+
+        assert "beautiful temple" in result
+        assert "architecture is stunning" in result
+        assert "monks are chanting" in result
+
+    def test_contains_detected_objects(self, catalog_db):
+        """Storyboard mentions detected objects (YOLO classes)."""
+        from autopilot.plan.script import build_narrative_storyboard
+
+        _seed_full_storyboard_data(catalog_db)
+        result = build_narrative_storyboard("n1", catalog_db)
+
+        assert "person" in result.lower()
+        assert "building" in result.lower()
+
+    def test_contains_people_labels(self, catalog_db):
+        """Storyboard mentions face cluster labels."""
+        from autopilot.plan.script import build_narrative_storyboard
+
+        _seed_full_storyboard_data(catalog_db)
+        result = build_narrative_storyboard("n1", catalog_db)
+
+        assert "Alice" in result
+        assert "Bob" in result
+
+    def test_contains_audio_events(self, catalog_db):
+        """Storyboard mentions audio event classes."""
+        from autopilot.plan.script import build_narrative_storyboard
+
+        _seed_full_storyboard_data(catalog_db)
+        result = build_narrative_storyboard("n1", catalog_db)
+
+        assert "Speech" in result
+        assert "Chanting" in result
+
+    def test_contains_duration_info(self, catalog_db):
+        """Storyboard includes shot duration information."""
+        from autopilot.plan.script import build_narrative_storyboard
+
+        _seed_full_storyboard_data(catalog_db)
+        result = build_narrative_storyboard("n1", catalog_db)
+
+        # Should mention duration numbers from the shot boundaries
+        assert "30" in result or "60" in result or "90" in result
+
+    def test_contains_timestamps(self, catalog_db):
+        """Storyboard includes source timestamps for shots."""
+        from autopilot.plan.script import build_narrative_storyboard
+
+        _seed_full_storyboard_data(catalog_db)
+        result = build_narrative_storyboard("n1", catalog_db)
+
+        # Should contain timecodes or time references
+        assert "0.0" in result or "00:00" in result or "0s" in result
