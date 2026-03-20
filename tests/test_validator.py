@@ -546,3 +546,62 @@ class TestMalformedTimecodes:
             if "v2" in e or "timecode" in e.lower() or "invalid" in e.lower()
         ]
         assert len(malformed_errors) >= 1
+
+
+# -- Step 27: Non-numeric catalog duration tests ------------------------------
+
+
+class TestMalformedCatalogData:
+    """Tests that validate_edl handles non-numeric duration_seconds from
+    catalog data gracefully — always returning ValidationResult, never raising."""
+
+    def test_duration_seconds_none_returns_error_not_raises(self):
+        """db.get_media returns {'duration_seconds': None} — validate_edl
+        returns ValidationResult with error, never raises TypeError."""
+        from autopilot.plan.validator import validate_edl
+
+        db = MagicMock()
+        db.get_media.return_value = {"id": "v1", "duration_seconds": None}
+
+        edl, _ = _make_bounded_edl("00:00:00.000", "00:00:10.000", 60.0)
+        # Override db with our broken-duration mock
+        result = validate_edl(edl, db)
+        # Should not raise TypeError; should have an error about non-numeric duration
+        assert result.passed is False
+        duration_errors = [
+            e for e in result.errors
+            if "duration" in e.lower() or "non-numeric" in e.lower()
+        ]
+        assert len(duration_errors) >= 1
+
+    def test_duration_seconds_bad_string_returns_error_not_raises(self):
+        """db.get_media returns {'duration_seconds': 'bad'} — returns error,
+        never raises ValueError."""
+        from autopilot.plan.validator import validate_edl
+
+        db = MagicMock()
+        db.get_media.return_value = {"id": "v1", "duration_seconds": "bad"}
+
+        edl, _ = _make_bounded_edl("00:00:00.000", "00:00:10.000", 60.0)
+        result = validate_edl(edl, db)
+        assert result.passed is False
+        duration_errors = [
+            e for e in result.errors
+            if "duration" in e.lower() or "non-numeric" in e.lower()
+        ]
+        assert len(duration_errors) >= 1
+
+    def test_duration_seconds_missing_key_handles_gracefully(self):
+        """db.get_media returns {} (missing duration_seconds key) — returns
+        error or gracefully handles, never raises."""
+        from autopilot.plan.validator import validate_edl
+
+        db = MagicMock()
+        db.get_media.return_value = {"id": "v1"}  # no duration_seconds
+
+        edl, _ = _make_bounded_edl("00:00:00.000", "00:00:10.000", 60.0)
+        result = validate_edl(edl, db)
+        # Should not raise KeyError.
+        # The default of 0 from get("duration_seconds", 0) is valid for float(),
+        # so out_timecode 10s > duration 0s will trigger a "exceeds" error.
+        assert result.passed is False
