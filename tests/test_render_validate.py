@@ -307,3 +307,87 @@ class TestResolutionCodecCheck:
         _check_resolution_codec(probe, config, issues)
 
         assert len(issues) == 2
+
+
+# ---------------------------------------------------------------------------
+# TestFileSizeCheck — _check_file_size
+# ---------------------------------------------------------------------------
+
+
+class TestFileSizeCheck:
+    """Tests for _check_file_size internal helper."""
+
+    def test_pass_when_within_range(self) -> None:
+        """10 MB/min for 2 minutes = 20 MB total -> in 8-15 MB/min range."""
+        from autopilot.render.validate import Issue, _check_file_size
+
+        # 2 minutes, 20 MB = 10 MB/min -> in range
+        probe = {
+            "duration_seconds": 120.0,
+            "file_size_bytes": 20 * 1024 * 1024,
+            "resolution": (1920, 1080),
+            "video_codec": "h264",
+        }
+        config = OutputConfig(resolution=(1920, 1080), codec="h264")
+        issues: list[Issue] = []
+
+        _check_file_size(probe, config, issues)
+
+        assert len(issues) == 0
+
+    def test_warning_when_below_minimum(self) -> None:
+        """5 MB/min for 2 minutes = 10 MB total -> below 8 MB/min."""
+        from autopilot.render.validate import Issue, _check_file_size
+
+        # 2 minutes, 10 MB = 5 MB/min -> below 8 MB/min
+        probe = {
+            "duration_seconds": 120.0,
+            "file_size_bytes": 10 * 1024 * 1024,
+            "resolution": (1920, 1080),
+            "video_codec": "h264",
+        }
+        config = OutputConfig(resolution=(1920, 1080), codec="h264")
+        issues: list[Issue] = []
+
+        _check_file_size(probe, config, issues)
+
+        assert len(issues) == 1
+        assert issues[0].severity == "warning"
+        assert issues[0].check == "file_size"
+
+    def test_warning_when_above_maximum(self) -> None:
+        """20 MB/min for 2 minutes = 40 MB total -> above 15 MB/min."""
+        from autopilot.render.validate import Issue, _check_file_size
+
+        # 2 minutes, 40 MB = 20 MB/min -> above 15 MB/min
+        probe = {
+            "duration_seconds": 120.0,
+            "file_size_bytes": 40 * 1024 * 1024,
+            "resolution": (1920, 1080),
+            "video_codec": "h264",
+        }
+        config = OutputConfig(resolution=(1920, 1080), codec="h264")
+        issues: list[Issue] = []
+
+        _check_file_size(probe, config, issues)
+
+        assert len(issues) == 1
+        assert issues[0].severity == "warning"
+        assert issues[0].check == "file_size"
+
+    def test_skip_when_not_1080p_h264(self) -> None:
+        """Non-1080p or non-h264 should skip the check."""
+        from autopilot.render.validate import Issue, _check_file_size
+
+        probe = {
+            "duration_seconds": 120.0,
+            "file_size_bytes": 1 * 1024 * 1024,  # very small, would warn otherwise
+            "resolution": (3840, 2160),
+            "video_codec": "h265",
+        }
+        config = OutputConfig(resolution=(3840, 2160), codec="h265")
+        issues: list[Issue] = []
+
+        _check_file_size(probe, config, issues)
+
+        assert len(issues) == 0
