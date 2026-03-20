@@ -9,6 +9,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from autopilot.ingest import dedup, normalizer, scanner
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -70,6 +72,37 @@ def _stage_stub(name: str) -> Callable[..., Any]:
     _stub.__name__ = f"_stage_{name.lower()}"
     _stub.__qualname__ = f"_stage_{name.lower()}"
     return _stub
+
+
+def _run_ingest(*, config: Any, db: Any) -> None:
+    """INGEST stage: scan directory, insert media, normalize audio, mark duplicates."""
+    files = scanner.scan_directory(config.input_dir, max_workers=None)
+    norm_dir = config.output_dir / "normalized"
+    norm_dir.mkdir(parents=True, exist_ok=True)
+
+    for mf in files:
+        media_id = mf.sha256_prefix or mf.file_path.stem
+        db.insert_media(
+            media_id,
+            str(mf.file_path),
+            sha256_prefix=mf.sha256_prefix,
+            codec=mf.codec,
+            resolution_w=mf.resolution_w,
+            resolution_h=mf.resolution_h,
+            fps=mf.fps,
+            duration_seconds=mf.duration_seconds,
+            created_at=mf.created_at,
+            gps_lat=mf.gps_lat,
+            gps_lon=mf.gps_lon,
+            audio_channels=mf.audio_channels,
+            metadata_json=mf.metadata_json,
+        )
+        normalizer.normalize_audio(
+            mf.file_path, norm_dir, root_dir=config.input_dir
+        )
+
+    dedup.mark_duplicates(db)
+    logger.info("Ingest complete: %d files scanned", len(files))
 
 
 class PipelineOrchestrator:
