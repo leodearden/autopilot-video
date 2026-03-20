@@ -304,6 +304,56 @@ def _check_loudness(
     return measured_lufs
 
 
+def _check_black_frames(rendered_path: Path, issues: list[Issue]) -> None:
+    """Detect black frames via ffmpeg blackdetect filter."""
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-i",
+                str(rendered_path),
+                "-vf",
+                "blackdetect=d=0.1:pix_th=5",
+                "-f",
+                "null",
+                "-",
+            ],
+            capture_output=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, OSError) as exc:
+        issues.append(
+            Issue(
+                severity="warning",
+                check="black_frames",
+                message=f"ffmpeg blackdetect failed: {exc}",
+            )
+        )
+        return
+
+    stderr = result.stderr or ""
+    for match in re.finditer(
+        r"black_start:(\S+)\s+black_end:(\S+)\s+black_duration:(\S+)",
+        stderr,
+    ):
+        start, end, duration = match.group(1), match.group(2), match.group(3)
+        issues.append(
+            Issue(
+                severity="warning",
+                check="black_frames",
+                message=(
+                    f"Black frame detected: {start}s–{end}s "
+                    f"(duration: {duration}s)"
+                ),
+                measured_value={
+                    "start": float(start),
+                    "end": float(end),
+                    "duration": float(duration),
+                },
+            )
+        )
+
+
 def validate_render(
     rendered_path: Path,
     edl: dict,
