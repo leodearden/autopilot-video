@@ -353,19 +353,34 @@ def _check_black_frames(rendered_path: Path, issues: list[Issue]) -> None:
         r"black_start:(\S+)\s+black_end:(\S+)\s+black_duration:(\S+)",
         stderr,
     ):
-        start, end, duration = match.group(1), match.group(2), match.group(3)
+        start_s, end_s, dur_s = match.group(1), match.group(2), match.group(3)
+        try:
+            start_f = float(start_s)
+            end_f = float(end_s)
+            dur_f = float(dur_s)
+        except ValueError:
+            issues.append(
+                Issue(
+                    severity="warning",
+                    check="black_frames",
+                    message=(
+                        f"Could not parse blackdetect values: {match.group()}"
+                    ),
+                )
+            )
+            continue
         issues.append(
             Issue(
                 severity="warning",
                 check="black_frames",
                 message=(
-                    f"Black frame detected: {start}s–{end}s "
-                    f"(duration: {duration}s)"
+                    f"Black frame detected: {start_s}s–{end_s}s "
+                    f"(duration: {dur_s}s)"
                 ),
                 measured_value={
-                    "start": float(start),
-                    "end": float(end),
-                    "duration": float(duration),
+                    "start": start_f,
+                    "end": end_f,
+                    "duration": dur_f,
                 },
             )
         )
