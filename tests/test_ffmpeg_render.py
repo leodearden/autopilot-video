@@ -282,3 +282,64 @@ class TestRenderSimpleCommand:
             render_simple(edl_entry, None, output, config)
 
         assert mock_run.call_args[1].get("check") is True
+
+
+# ---------------------------------------------------------------------------
+# Static crop
+# ---------------------------------------------------------------------------
+
+
+class TestRenderSimpleStaticCrop:
+    """Verify render_simple applies static crop filter when crop_path provided."""
+
+    def test_static_crop_in_vf(self, tmp_path: Path) -> None:
+        """When crop_path is static (all rows same), add crop filter to ffmpeg."""
+        config = _make_config(resolution=(1920, 1080))
+        edl_entry = _make_edl_entry()
+        output = tmp_path / "out.mp4"
+        # Static crop: all rows identical (x=100, y=50)
+        crop_path = np.full((30, 2), [100, 50], dtype=np.float64)
+
+        with patch("subprocess.run") as mock_run:
+            from autopilot.render.ffmpeg_render import render_simple
+
+            render_simple(edl_entry, crop_path, output, config)
+
+        cmd = mock_run.call_args[0][0]
+        # Should have a video filter with crop
+        cmd_str = " ".join(cmd)
+        assert "crop=" in cmd_str
+
+    def test_static_crop_values(self, tmp_path: Path) -> None:
+        """Static crop filter should include correct x, y and output resolution w, h."""
+        config = _make_config(resolution=(1280, 720))
+        edl_entry = _make_edl_entry()
+        output = tmp_path / "out.mp4"
+        crop_path = np.full((30, 2), [200, 100], dtype=np.float64)
+
+        with patch("subprocess.run") as mock_run:
+            from autopilot.render.ffmpeg_render import render_simple
+
+            render_simple(edl_entry, crop_path, output, config)
+
+        cmd = mock_run.call_args[0][0]
+        # Find the vf or filter_complex arg containing crop
+        cmd_str = " ".join(cmd)
+        # crop=w:h:x:y format
+        assert "crop=1280:720:200:100" in cmd_str
+
+    def test_single_frame_crop(self, tmp_path: Path) -> None:
+        """A single-frame crop_path should still be treated as static."""
+        config = _make_config(resolution=(1920, 1080))
+        edl_entry = _make_edl_entry()
+        output = tmp_path / "out.mp4"
+        crop_path = np.array([[300, 150]], dtype=np.float64)
+
+        with patch("subprocess.run") as mock_run:
+            from autopilot.render.ffmpeg_render import render_simple
+
+            render_simple(edl_entry, crop_path, output, config)
+
+        cmd = mock_run.call_args[0][0]
+        cmd_str = " ".join(cmd)
+        assert "crop=" in cmd_str
