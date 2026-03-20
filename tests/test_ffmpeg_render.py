@@ -343,3 +343,51 @@ class TestRenderSimpleStaticCrop:
         cmd = mock_run.call_args[0][0]
         cmd_str = " ".join(cmd)
         assert "crop=" in cmd_str
+
+
+# ---------------------------------------------------------------------------
+# No crop and error handling
+# ---------------------------------------------------------------------------
+
+
+class TestRenderSimpleNoCrop:
+    """Verify render_simple handles None crop_path correctly."""
+
+    def test_no_crop_filter_when_none(self, tmp_path: Path) -> None:
+        """When crop_path is None, no crop filter should appear."""
+        config = _make_config()
+        edl_entry = _make_edl_entry()
+        output = tmp_path / "out.mp4"
+
+        with patch("subprocess.run") as mock_run:
+            from autopilot.render.ffmpeg_render import render_simple
+
+            render_simple(edl_entry, None, output, config)
+
+        cmd = mock_run.call_args[0][0]
+        cmd_str = " ".join(cmd)
+        assert "crop=" not in cmd_str
+
+
+class TestRenderSimpleErrors:
+    """Verify render_simple error handling."""
+
+    def test_subprocess_error_wrapped_in_render_error(self, tmp_path: Path) -> None:
+        """CalledProcessError should be wrapped in RenderError."""
+        from autopilot.render.ffmpeg_render import RenderError, render_simple
+
+        config = _make_config()
+        edl_entry = _make_edl_entry()
+        output = tmp_path / "out.mp4"
+
+        with (
+            patch(
+                "subprocess.run",
+                side_effect=subprocess.CalledProcessError(1, "ffmpeg"),
+            ),
+            pytest.raises(RenderError) as exc_info,
+        ):
+            render_simple(edl_entry, None, output, config)
+
+        assert "clip_1" in str(exc_info.value)
+        assert exc_info.value.__cause__ is not None
