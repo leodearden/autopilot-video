@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -173,6 +174,7 @@ def _search_freesound(request: MusicRequest, output_dir: Path) -> Path | None:
                 "token": api_key,
                 "page_size": 5,
             },
+            timeout=(10, 60),
         )
         response.raise_for_status()
         data = response.json()
@@ -189,10 +191,11 @@ def _search_freesound(request: MusicRequest, output_dir: Path) -> Path | None:
             logger.warning("No preview URL for Freesound result %s", top.get("id"))
             return None
 
-        dl_response = _requests.get(preview_url)
+        dl_response = _requests.get(preview_url, timeout=(10, 60))
         dl_response.raise_for_status()
 
-        filename = f"freesound_{top['id']}_{top.get('name', 'track')}"
+        safe_name = re.sub(r'[^\w\-. ]', '_', top.get('name', 'track'))[:50]
+        filename = f"freesound_{top['id']}_{safe_name}"
         output_path = output_dir / filename
         output_path.write_bytes(dl_response.content)
 
