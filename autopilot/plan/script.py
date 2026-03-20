@@ -253,7 +253,7 @@ def _parse_transcript_segments(
         segments = json.loads(str(transcript["segments_json"]))
         return [
             s for s in segments
-            if isinstance(s, dict) and "text" in s
+            if isinstance(s, dict) and "text" in s and "start" in s and "end" in s
         ]
     except json.JSONDecodeError:
         logger.warning("Corrupt segments_json for media %s, skipping", clip_id)
