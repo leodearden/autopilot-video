@@ -267,3 +267,60 @@ class TestBuildRawPath:
         ]
         result = _build_raw_path(detections, track_id=1, crop_w=4096, crop_h=2304)
         assert result.shape == (n_frames, 2)
+
+
+class TestSmoothPath:
+    """Tests for _smooth_path EMA smoother."""
+
+    def test_constant_input_unchanged(self) -> None:
+        """Constant input should produce constant output."""
+        from autopilot.render.crop import _smooth_path
+
+        path = np.full((30, 2), [2048.0, 1152.0])
+        smoothed = _smooth_path(path, fps=30.0, tau=0.5)
+        np.testing.assert_allclose(smoothed, path, atol=1e-6)
+
+    def test_step_function_converges(self) -> None:
+        """Step function with tau=0.5s at 30fps should converge exponentially."""
+        from autopilot.render.crop import _smooth_path
+
+        n = 60
+        path = np.zeros((n, 2))
+        path[:, 0] = 1000.0
+        path[:, 1] = 1000.0
+        # Step at frame 30
+        path[30:, 0] = 2000.0
+        path[30:, 1] = 2000.0
+
+        smoothed = _smooth_path(path, fps=30.0, tau=0.5)
+        # Right after step (frame 30), should start moving toward 2000
+        assert smoothed[30, 0] > 1000.0
+        assert smoothed[30, 0] < 2000.0
+        # After several tau periods (frame 59, ~1s after step), should be close to 2000
+        assert smoothed[59, 0] > 1900.0
+
+    def test_different_tau_different_smoothing(self) -> None:
+        """Larger tau should produce more smoothing (slower convergence)."""
+        from autopilot.render.crop import _smooth_path
+
+        n = 60
+        path = np.zeros((n, 2))
+        path[:30, 0] = 1000.0
+        path[30:, 0] = 2000.0
+        path[:, 1] = 1000.0
+
+        smooth_fast = _smooth_path(path, fps=30.0, tau=0.2)
+        smooth_slow = _smooth_path(path, fps=30.0, tau=1.0)
+        # At frame 35 (5 frames after step), fast should be closer to 2000
+        assert smooth_fast[35, 0] > smooth_slow[35, 0]
+
+    def test_nan_values_skipped(self) -> None:
+        """NaN values in input should be skipped (hold last valid)."""
+        from autopilot.render.crop import _smooth_path
+
+        path = np.full((10, 2), [2048.0, 1152.0])
+        path[5, :] = np.nan
+        smoothed = _smooth_path(path, fps=30.0, tau=0.5)
+        # Frame 5 should hold from frame 4
+        assert not np.any(np.isnan(smoothed[5]))
+        assert smoothed[5, 0] == pytest.approx(2048.0, abs=1.0)
