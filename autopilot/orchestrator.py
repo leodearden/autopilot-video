@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import enum
 import functools
+import json
 import logging
 import time
 from collections.abc import Callable
@@ -221,13 +222,12 @@ def _run_edl(*, config: Any, db: Any) -> None:
             otio_path.parent.mkdir(parents=True, exist_ok=True)
             otio_export.export_otio(edl, otio_path, db)
 
-            import json as _json
 
             db.upsert_edit_plan(
                 nid,
-                _json.dumps(edl),
+                json.dumps(edl),
                 otio_path=str(otio_path),
-                validation_json=_json.dumps(
+                validation_json=json.dumps(
                     {"passed": val_result.passed}
                 ),
             )
@@ -251,7 +251,7 @@ def _run_source_assets(*, config: Any, db: Any) -> None:
             logger.warning("Skipping source for %s: no edit plan", nid)
             continue
         try:
-            edl = _json.loads(plan["edl_json"])
+            edl = json.loads(plan["edl_json"])
             asset_dir = config.output_dir / "assets" / nid
             asset_dir.mkdir(parents=True, exist_ok=True)
             resolve.resolve_edl_assets(
@@ -278,7 +278,7 @@ def _run_render(*, config: Any, db: Any) -> None:
             continue
         try:
             output_path = router.route_and_render(nid, db, config.output)
-            edl = _json.loads(plan["edl_json"])
+            edl = json.loads(plan["edl_json"])
             report = render_validate.validate_render(output_path, edl, config.output)
             for issue in report.issues:
                 logger.warning(
