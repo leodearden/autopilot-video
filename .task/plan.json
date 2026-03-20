@@ -10,8 +10,11 @@
     "tests/test_moviepy_render.py",
     "tests/test_render_router.py"
   ],
-  "modules": ["autopilot/render", "tests"],
-  "analysis": "Task 20 requires implementing three modules in autopilot/render/: ffmpeg_render.py (GPU-accelerated fast path via FFmpeg subprocess), moviepy_render.py (frame-by-frame complex compositions via MoviePy 2.x), and router.py (routing logic that selects fast vs slow path per clip and orchestrates final output assembly).\n\nThe existing codebase establishes clear patterns:\n1. Each module has a custom Exception subclass (e.g. CropError, EdlError)\n2. Modules use __all__ exports and TYPE_CHECKING guards for type hints\n3. External tools (ffmpeg) are called via subprocess.run and tested by mocking subprocess.run\n4. Tests follow a pattern: public API surface tests first (imports, signatures, __all__), then unit tests for helpers, then integration tests\n5. CatalogDB provides all data access with get_edit_plan(), get_narrative(), get_media(), get_transcript(), get_crop_path()\n6. OutputConfig has resolution, codec, quality_crf, audio_bitrate, target_loudness_lufs\n7. EDL structure has clips (with clip_id, in_timecode, out_timecode, track), transitions, crop_modes, audio_settings, music, voiceovers, broll_requests\n8. crop.py's compute_crop_path returns np.ndarray of shape (N,2) with per-frame crop coordinates\n\nFor ffmpeg_render.py: Build FFmpeg command lines with filter_complex for NVENC encode, loudnorm audio, xfade transitions. Test by mocking subprocess.run and verifying command structure.\n\nFor moviepy_render.py: Use MoviePy 2.x APIs for frame-by-frame crop application. Test by mocking moviepy imports and verifying composition logic.\n\nFor router.py: Load EDL from DB, classify each clip as simple/complex based on crop mode and overlay presence, dispatch to appropriate renderer, concatenate final output. Test with mocked renderers and DB fixtures.\n\nKey design: The crop_modes in the EDL tell us which path to use. 'center', 'manual_offset', 'stabilize_only' are static crops (FFmpeg fast path). 'auto_subject' produces dynamic per-frame crops (MoviePy slow path). Additionally, any clip with PiP or complex overlays goes to MoviePy.",
+  "modules": [
+    "autopilot/render",
+    "tests"
+  ],
+  "analysis": "Task 20 requires implementing three modules in autopilot/render/: ffmpeg_render.py (GPU-accelerated fast path via FFmpeg subprocess), moviepy_render.py (frame-by-frame complex compositions via MoviePy 2.x), and router.py (routing logic that selects fast vs slow path per clip and orchestrates final output assembly).\n\nThe existing codebase establishes clear patterns:\n1. Each module has a custom Exception subclass (e.g. CropError, EdlError)\n2. Modules use __all__ exports and TYPE_CHECKING guards for type hints\n3. External tools (ffmpeg) are called via subprocess.run and tested by mocking subprocess.run\n4. Tests follow a pattern: public API surface tests first (imports, signatures, __all__), then unit tests for helpers, then integration tests\n5. CatalogDB provides all data access with get_edit_plan(), get_narrative(), get_media(), get_transcript(), get_crop_path()\n6. OutputConfig has resolution, codec, quality_crf, audio_bitrate, target_loudness_lufs\n7. EDL structure has clips (with clip_id, in_timecode, out_timecode, track), transitions, crop_modes, audio_settings, music, voiceovers, broll_requests\n8. crop.py's compute_crop_path returns np.ndarray of shape (N,2) with per-frame crop coordinates\n\nFor ffmpeg_render.py: Build FFmpeg command lines with filter_complex for NVENC encode, loudnorm audio, xfade transitions. Test by mocking subprocess.run and verifying command structure.\n\nFor moviepy_render.py: Use MoviePy 2.x APIs for frame-by-frame crop application. Test by mocking moviepy imports and verifying composition logic.\n\nFor router.py: Load EDL from DB, classify each clip as simple/complex based on crop mode and overlay presence, dispatch to appropriate renderer, concatenate final output. Test with mocked renderers and DB fixtures.\n\nKey design: The crop_modes in the EDL tell us which path to use. 'center', 'manual_offset', 'stabilize_only' are static crops (FFmpeg fast path). 'auto_subject' produces dynamic per-frame crops (MoviePy slow path). Additionally, any clip with PiP or complex overlays goes to MoviePy.\n\n--- POST-REVIEW ANALYSIS (steps 31-48) ---\n\nReview found 15 blocking issues (some duplicates across reviewers). 10 unique issues requiring fixes:\n\n1. **api_contract_violation (router.py:188)**: db.get_transcript(narrative_id) is wrong — transcripts are keyed by media_id. Must collect media_ids (= clip_ids) from EDL clips and call db.get_transcript(media_id) per source file.\n\n2. **invalid_ffmpeg_command (router.py:179-194)**: -filter_complex and -vf cannot coexist in FFmpeg. When audio mixing is active (filter_complex with amix), subtitle filter must be merged into the same filter_complex graph as a labeled video node.\n\n3. **incomplete_implementation (router.py:125-132)**: crop_path hardcoded to None for every clip. Must load from DB via db.get_crop_path(media_id, target_aspect, subject_track_id). clip_id in EDL IS the media_id (confirmed via otio_export.py pattern: db.get_media(clip_id)).\n\n4. **invalid_ffmpeg_command (router.py:181-183)**: amix filter_complex missing output label [aout] and corresponding -map 0:v -map '[aout]' arguments. Without these FFmpeg may silently drop audio or error.\n\n5. **resource_cleanup (router.py:117)**: tempfile.mkdtemp never cleaned up on any path. Replace with TemporaryDirectory context manager for automatic cleanup.\n\n6. **resource_cleanup (moviepy_render.py:104-130)**: VideoFileClip.close() never called — leaks file handles. Add try/finally.\n\n7. **-c copy vs -vf conflict (router.py:184-194)**: -c copy with -vf subtitles is invalid because stream copy bypasses decode/encode. Must not emit -c copy when any video filter is present.\n\n8. **missing_behavioral_assertion (tests)**: No test asserts clip.transform() is called — the entire purpose of render_complex is untested.\n\n9. **test_cannot_fail (test_render_router.py:175-196)**: Broad try/except makes test always pass regardless of code behavior.\n\n10. **incorrect_timing (ffmpeg_render.py:93-99)**: Fade-out st parameter uses zero-based offset but with -ss before -i, PTS is not reset. Need setpts=PTS-STARTPTS and -t duration instead of -to.",
   "prerequisites": [
     {
       "id": "pre-1",
@@ -231,6 +234,132 @@
       "description": "Implement comprehensive error handling in route_and_render: catch RenderError/ComplexRenderError from child renderers and wrap in RoutingError with clip context, validate narrative and EDL existence",
       "status": "done",
       "commit": "c8cb45c"
+    },
+    {
+      "id": "step-31",
+      "type": "test",
+      "description": "[REVIEW FIX: test_cannot_fail] Rewrite test_loads_edl_from_edit_plan to remove the broad try/except (except Exception: pass) that makes it unfailable. Mock render_simple to return a valid Path and subprocess.run to succeed, so route_and_render completes normally. Assert db.get_edit_plan was called with the correct narrative_id and that the parsed EDL data was used (e.g. verify render_simple received the clip from the EDL).",
+      "status": "done",
+      "commit": "3ffbad5"
+    },
+    {
+      "id": "step-32",
+      "type": "test",
+      "description": "[REVIEW FIX: missing_behavioral_assertion] Add test_transform_called_with_crop_path in TestRenderComplex: when crop_path is provided, assert mock_clip.transform.assert_called_once(). Add test_transform_not_called_without_crop_path: when crop_path is None, assert mock_clip.transform was NOT called. These verify the per-frame crop logic that is the core purpose of render_complex.",
+      "status": "done",
+      "commit": "e1dbff3"
+    },
+    {
+      "id": "step-33",
+      "type": "test",
+      "description": "[REVIEW FIX: resource_cleanup] Write test_work_dir_cleaned_up_on_success: verify that after route_and_render completes, the temporary work directory is removed (no lingering render segments). Write test_work_dir_cleaned_up_on_error: verify cleanup also happens when a render fails and RoutingError is raised. Use mock on tempfile.TemporaryDirectory to verify it's used as a context manager.",
+      "status": "done",
+      "commit": "15c3b1c"
+    },
+    {
+      "id": "step-34",
+      "type": "impl",
+      "description": "[REVIEW FIX: resource_cleanup] Replace tempfile.mkdtemp(prefix='render_') with tempfile.TemporaryDirectory(prefix='render_') used as a context manager via 'with' block. Move the entire render loop and concatenation logic inside the context manager so cleanup is automatic on success, exception, or early return.",
+      "status": "done",
+      "commit": "2c7b67c"
+    },
+    {
+      "id": "step-35",
+      "type": "test",
+      "description": "[REVIEW FIX: resource_leak] Write test_clip_closed_on_success: after render_complex completes normally, assert mock_clip.close() was called. Write test_clip_closed_on_error: when write_videofile raises, assert mock_clip.close() was still called before ComplexRenderError propagates. These prevent file descriptor leaks in multi-clip renders.",
+      "status": "done",
+      "commit": "063d205"
+    },
+    {
+      "id": "step-36",
+      "type": "impl",
+      "description": "[REVIEW FIX: resource_leak] Restructure render_complex to guarantee clip.close(): clip = VideoFileClip(source_path); try: <subclip, crop, write logic>; finally: clip.close(). Keep the existing except ComplexRenderError/except Exception blocks inside the try so close() runs regardless of outcome.",
+      "status": "done",
+      "commit": "df514e9"
+    },
+    {
+      "id": "step-37",
+      "type": "test",
+      "description": "[REVIEW FIX: incomplete_implementation] Write test_crop_path_loaded_from_db_for_slow_clip: set up a slow-path clip (auto_subject), mock db.get_crop_path to return crop data, verify render_complex receives the deserialized ndarray. Write test_slow_clip_no_crop_raises_routing_error: when db.get_crop_path returns None for a slow-path clip, verify RoutingError is raised (not silent None passthrough).",
+      "status": "done",
+      "commit": "97c98ac"
+    },
+    {
+      "id": "step-38",
+      "type": "impl",
+      "description": "[REVIEW FIX: incomplete_implementation] Implement crop_path loading in route_and_render: parse crop_modes list into a dict keyed by clip_id (following otio_export.py pattern). For each clip, use clip_id as media_id. For slow-path clips, call db.get_crop_path(media_id, target_aspect, subject_track_id), deserialize path_data to ndarray. Raise RoutingError if slow-path clip has no crop_path. For fast-path clips, load crop_path when available for static crop support.",
+      "status": "done",
+      "commit": "5406bf8"
+    },
+    {
+      "id": "step-39",
+      "type": "test",
+      "description": "[REVIEW FIX: api_contract_violation] Write test_transcript_fetched_by_media_id: verify db.get_transcript is called with media_id (clip_id from EDL clips), NOT narrative_id. Write test_multiple_clips_transcripts_combined: with 2 clips having transcripts, verify SRT contains segments from both with adjusted timestamps. Remove any assumption about hasattr guard.",
+      "status": "done",
+      "commit": "6cedce8"
+    },
+    {
+      "id": "step-40",
+      "type": "impl",
+      "description": "[REVIEW FIX: api_contract_violation] Fix transcript lookup: collect unique media_ids from EDL clips. Call db.get_transcript(media_id) for each. Combine segments with timeline-adjusted timestamps (offset by cumulative clip durations). Remove the hasattr(db, 'get_transcript') guard (CatalogDB always has it). Generate a unified SRT from combined segments.",
+      "status": "done",
+      "commit": "ff8caac"
+    },
+    {
+      "id": "step-41",
+      "type": "test",
+      "description": "[REVIEW FIX: malformed_command] Write test_amix_has_output_label_and_map: when music tracks are present, verify the filter_complex string ends with [aout] label (e.g. 'amix=inputs=2:duration=longest[aout]'), and the command includes -map 0:v -map '[aout]' before the output path.",
+      "status": "done",
+      "commit": "cf04bdc"
+    },
+    {
+      "id": "step-42",
+      "type": "impl",
+      "description": "[REVIEW FIX: malformed_command] Fix amix filter_complex: append [aout] to the mix_filter string. Add -map 0:v -map '[aout]' to the command before the output path. This ensures FFmpeg correctly routes both video and mixed audio streams to the output file.",
+      "status": "done",
+      "commit": "16eafc4"
+    },
+    {
+      "id": "step-43",
+      "type": "test",
+      "description": "[REVIEW FIX: mutually_exclusive_options] Write test_no_stream_copy_when_subtitles_present: when there are no extra audio inputs but subtitles are active, verify the command does NOT contain '-c copy'. It should use explicit codec flags so the subtitle -vf filter can re-encode. Write test_stream_copy_when_no_filters: verify -c copy IS used when no subtitle, no audio mixing (pure concat).",
+      "status": "done",
+      "commit": "1302070"
+    },
+    {
+      "id": "step-44",
+      "type": "impl",
+      "description": "[REVIEW FIX: mutually_exclusive_options] Fix -c copy logic: determine up front whether any video filter (subtitle or otherwise) will be applied. Only emit -c copy when no video filters AND no audio filters are present. When subtitle or other filter is active, omit -c copy to allow FFmpeg to re-encode through the filter pipeline.",
+      "status": "done",
+      "commit": "c839cbb"
+    },
+    {
+      "id": "step-45",
+      "type": "test",
+      "description": "[REVIEW FIX: invalid_ffmpeg_command] Write test_subtitles_in_filter_complex_with_audio_mixing: when both amix (audio mixing) and subtitles are active simultaneously, verify that (1) there is only ONE -filter_complex arg (no -vf), (2) the filter_complex contains a video filter node like [0:v]subtitles=...[vout], (3) -map references both [vout] and [aout].",
+      "status": "done",
+      "commit": "9da42cc"
+    },
+    {
+      "id": "step-46",
+      "type": "impl",
+      "description": "[REVIEW FIX: invalid_ffmpeg_command] Merge subtitle filter into filter_complex when audio_inputs are present: build video chain as [0:v]subtitles=<srt>[vout] and append to filter_complex alongside amix graph. Use -map '[vout]' -map '[aout]'. When no audio_inputs, continue using standalone -vf for subtitles (no conflict). Update -map in amix-only case to use -map 0:v.",
+      "status": "done",
+      "commit": "2462e29"
+    },
+    {
+      "id": "step-47",
+      "type": "test",
+      "description": "[REVIEW FIX: incorrect_timing] Write test_fade_out_uses_zero_based_pts: for a clip with in_tc='00:01:00.000', out_tc='00:01:30.000' and 0.5s crossfade, verify (1) the -vf chain includes setpts=PTS-STARTPTS, (2) fade-out st=29.5 (zero-based, not 89.5), (3) command uses -t 30.0 (duration) instead of -to 00:01:30.000 (absolute time).",
+      "status": "done",
+      "commit": "cad896d"
+    },
+    {
+      "id": "step-48",
+      "type": "impl",
+      "description": "[REVIEW FIX: incorrect_timing] Fix ffmpeg_render.py timing: (1) prepend setpts=PTS-STARTPTS to the vf_parts list to reset PTS after fast seek, (2) replace '-to out_tc' with '-t duration' where duration = out_sec - in_sec (seek-position-independent), (3) keep fade_out_start = clip_dur - duration which is now correct with zero-based PTS from setpts.",
+      "status": "done",
+      "commit": "816bfb0"
     }
   ],
   "design_decisions": [
@@ -261,6 +390,34 @@
     {
       "decision": "Subtitles generated as SRT file from ASR transcript segments",
       "rationale": "SRT is universally supported by FFmpeg's subtitles filter. ASR segments from the DB (via get_transcript) already have start/end times and text, making SRT generation straightforward"
+    },
+    {
+      "decision": "Use tempfile.TemporaryDirectory context manager instead of mkdtemp",
+      "rationale": "Review found that mkdtemp creates dirs that are never cleaned up, leaking GB of rendered segments across runs. TemporaryDirectory as a context manager guarantees cleanup on both success and exception paths automatically"
+    },
+    {
+      "decision": "Guarantee VideoFileClip.close() via try/finally",
+      "rationale": "Review found MoviePy clips leak file handles and reader buffers on both success and error paths. MoviePy docs warn against relying on GC for cleanup in long-running processes. try/finally ensures close() runs regardless of outcome"
+    },
+    {
+      "decision": "All filters in a single -filter_complex when audio mixing is active",
+      "rationale": "FFmpeg rejects commands mixing -filter_complex and -vf. When amix is needed for audio mixing, subtitle filters must be merged into the same filter_complex graph as labeled video nodes (e.g. [0:v]subtitles=...[vout]) with explicit -map routing for both streams"
+    },
+    {
+      "decision": "Add setpts=PTS-STARTPTS to video filter chain in render_simple",
+      "rationale": "With -ss before -i (fast seek), FFmpeg preserves original PTS. Filter timing parameters (fade st=) use stream PTS, so fade-out fires at wrong time without PTS reset. setpts=PTS-STARTPTS resets to zero-based while keeping fast seek performance benefits"
+    },
+    {
+      "decision": "Replace -to with -t duration in render_simple",
+      "rationale": "With -ss before -i and setpts=PTS-STARTPTS, using -to with absolute timestamps is unreliable. -t (duration) is seek-position-independent and matches the zero-based PTS from setpts reset"
+    },
+    {
+      "decision": "clip_id in EDL equals media_id in database",
+      "rationale": "Confirmed via otio_export.py which calls db.get_media(clip_id). This means transcripts and crop_paths can be looked up directly using clip_id from EDL entries as the media_id parameter"
+    },
+    {
+      "decision": "Raise RoutingError for slow-path clips with no crop data instead of silent skip",
+      "rationale": "Review found crop_path=None is silently passed to render_complex, producing uncropped output from an expensive frame-by-frame renderer. Failing fast with a clear error is better than silently wrong output"
     }
   ],
   "reuse": [
@@ -277,7 +434,7 @@
     {
       "what": "CatalogDB CRUD methods",
       "where": "autopilot/db.py",
-      "how": "Use db.get_edit_plan(narrative_id) for EDL, db.get_narrative() for metadata, db.get_media() for source file paths/fps, db.get_transcript() for subtitles, db.get_crop_path() for pre-computed crop paths"
+      "how": "Use db.get_edit_plan(narrative_id) for EDL, db.get_narrative() for metadata, db.get_media() for source file paths/fps, db.get_transcript(media_id) for subtitles, db.get_crop_path(media_id, target_aspect, subject_track_id) for pre-computed crop paths"
     },
     {
       "what": "timecode_to_seconds utility",
@@ -303,6 +460,16 @@
       "what": "crop_path np.ndarray format",
       "where": "autopilot/render/crop.py compute_crop_path",
       "how": "crop_path is ndarray shape (N,2) with per-frame (crop_x, crop_y) top-left coordinates. Used by render_simple for static crop and render_complex for dynamic per-frame crop"
+    },
+    {
+      "what": "clip_id as media_id pattern",
+      "where": "autopilot/plan/otio_export.py _get_media_info",
+      "how": "otio_export calls db.get_media(clip_id), confirming clip_id in EDL is the same as media_id in DB. Reuse this pattern for crop_path and transcript lookups in the router"
+    },
+    {
+      "what": "crop_modes list-to-dict conversion",
+      "where": "autopilot/plan/otio_export.py lines 178-180",
+      "how": "otio_export converts crop_modes list to dict: for cm in edl.get('crop_modes', []): crop_by_clip[cm['clip_id']] = cm.get('mode', ''). Reuse same pattern in router for extracting both mode and subject_track_id per clip"
     }
   ]
 }
