@@ -14,6 +14,7 @@ from autopilot.analyze import asr, audio_events, embeddings, faces, objects, sce
 from autopilot.analyze.gpu_scheduler import GPUScheduler
 from autopilot.ingest import dedup, normalizer, scanner
 from autopilot.organize import classify, cluster, narratives
+from autopilot.plan import script
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +178,24 @@ def _run_narrate(
         len(proposed),
         len(approved_ids),
     )
+
+
+def _run_script(*, config: Any, db: Any) -> None:
+    """SCRIPT stage: generate scripts for each approved narrative."""
+    approved = db.list_narratives("approved")
+    successes = 0
+    for narr in approved:
+        nid = narr["narrative_id"]
+        try:
+            script.generate_script(nid, db, config.llm)
+            successes += 1
+        except Exception:
+            logger.exception("Script generation failed for narrative %s", nid)
+
+    if approved and successes == 0:
+        raise RuntimeError("All narratives failed script generation")
+
+    logger.info("Script complete: %d/%d succeeded", successes, len(approved))
 
 
 class PipelineOrchestrator:
