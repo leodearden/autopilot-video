@@ -14,7 +14,8 @@ from autopilot.analyze import asr, audio_events, embeddings, faces, objects, sce
 from autopilot.analyze.gpu_scheduler import GPUScheduler
 from autopilot.ingest import dedup, normalizer, scanner
 from autopilot.organize import classify, cluster, narratives
-from autopilot.plan import script
+from autopilot.plan import edl as edl_mod
+from autopilot.plan import otio_export, script, validator
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +197,40 @@ def _run_script(*, config: Any, db: Any) -> None:
         raise RuntimeError("All narratives failed script generation")
 
     logger.info("Script complete: %d/%d succeeded", successes, len(approved))
+
+
+def _run_edl(*, config: Any, db: Any) -> None:
+    """EDL stage: generate EDL, validate, and export OTIO per narrative."""
+    approved = db.list_narratives("approved")
+    successes = 0
+    for narr in approved:
+        nid = narr["narrative_id"]
+        # Skip narratives without scripts
+        if db.get_narrative_script(nid) is None:
+            logger.warning("Skipping EDL for %s: no script", nid)
+            continue
+        try:
+            edl = edl_mod.generate_edl(nid, db, config.llm)
+            val_result = validator.validate_edl(edl, db)
+            otio_path = config.output_dir / nid / "timeline.otio"
+            otio_path.parent.mkdir(parents=True, exist_ok=True)
+            otio_export.export_otio(edl, otio_path, db)
+
+            import json as _json
+
+            db.upsert_edit_plan(
+                nid,
+                _json.dumps(edl),
+                otio_path=str(otio_path),
+                validation_json=_json.dumps(
+                    {"passed": val_result.passed}
+                ),
+            )
+            successes += 1
+        except Exception:
+            logger.exception("EDL generation failed for narrative %s", nid)
+
+    logger.info("EDL complete: %d/%d succeeded", successes, len(approved))
 
 
 class PipelineOrchestrator:
