@@ -391,3 +391,72 @@ class TestRenderSimpleErrors:
 
         assert "clip_1" in str(exc_info.value)
         assert exc_info.value.__cause__ is not None
+
+
+# ---------------------------------------------------------------------------
+# Xfade transitions
+# ---------------------------------------------------------------------------
+
+
+class TestRenderSimpleTransitions:
+    """Verify render_simple handles xfade transitions."""
+
+    @staticmethod
+    def _get_vf_value(cmd: list[str]) -> str | None:
+        """Extract the -vf filter argument value, or None if not present."""
+        if "-vf" in cmd:
+            return cmd[cmd.index("-vf") + 1]
+        return None
+
+    def test_crossfade_transition_adds_fade(self, tmp_path: Path) -> None:
+        """When edl_entry has transition with type='crossfade', fade filter added."""
+        config = _make_config()
+        edl_entry = _make_edl_entry(
+            transition={"type": "crossfade", "duration": 0.5},
+        )
+        output = tmp_path / "out.mp4"
+
+        with patch("subprocess.run") as mock_run:
+            from autopilot.render.ffmpeg_render import render_simple
+
+            render_simple(edl_entry, None, output, config)
+
+        cmd = mock_run.call_args[0][0]
+        vf = self._get_vf_value(cmd)
+        assert vf is not None, "Expected -vf flag with fade filter"
+        assert "fade" in vf.lower()
+
+    def test_crossfade_duration(self, tmp_path: Path) -> None:
+        """Crossfade transition should include specified duration."""
+        config = _make_config()
+        edl_entry = _make_edl_entry(
+            transition={"type": "crossfade", "duration": 1.0},
+        )
+        output = tmp_path / "out.mp4"
+
+        with patch("subprocess.run") as mock_run:
+            from autopilot.render.ffmpeg_render import render_simple
+
+            render_simple(edl_entry, None, output, config)
+
+        cmd = mock_run.call_args[0][0]
+        vf = self._get_vf_value(cmd)
+        assert vf is not None, "Expected -vf flag with fade filter"
+        assert "duration=1.0" in vf or "d=1.0" in vf
+
+    def test_no_transition_no_fade(self, tmp_path: Path) -> None:
+        """Without transition in edl_entry, no fade filter should appear."""
+        config = _make_config()
+        edl_entry = _make_edl_entry()  # no transition key
+        output = tmp_path / "out.mp4"
+
+        with patch("subprocess.run") as mock_run:
+            from autopilot.render.ffmpeg_render import render_simple
+
+            render_simple(edl_entry, None, output, config)
+
+        cmd = mock_run.call_args[0][0]
+        vf = self._get_vf_value(cmd)
+        # Either no -vf at all, or if present, no fade filter
+        if vf is not None:
+            assert "fade" not in vf.lower()
