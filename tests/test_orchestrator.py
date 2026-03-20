@@ -1120,6 +1120,30 @@ class TestRenderStage:
 
     @patch("autopilot.orchestrator.render_validate")
     @patch("autopilot.orchestrator.router")
+    def test_render_persists_render_path_to_db(
+        self, mock_router, mock_validate, minimal_config
+    ):
+        """_run_render persists render output path to DB via upsert_edit_plan."""
+        from autopilot.orchestrator import _run_render
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_edit_plan.return_value = {
+            "narrative_id": "n1", "edl_json": '{"timeline": []}',
+        }
+        mock_router.route_and_render.return_value = Path("/out/renders/n1/output.mp4")
+        mock_validate.validate_render.return_value = MagicMock(
+            passed=True, issues=[]
+        )
+
+        _run_render(config=minimal_config, db=db)
+
+        db.upsert_edit_plan.assert_called_once()
+        call_kwargs = db.upsert_edit_plan.call_args
+        assert call_kwargs[1]["render_path"] == "/out/renders/n1/output.mp4"
+
+    @patch("autopilot.orchestrator.render_validate")
+    @patch("autopilot.orchestrator.router")
     def test_render_raises_if_all_narratives_fail(
         self, mock_router, mock_validate, minimal_config
     ):
