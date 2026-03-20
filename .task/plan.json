@@ -9,7 +9,7 @@
     "autopilot/plan",
     "tests"
   ],
-  "analysis": "This task implements autopilot/plan/otio_export.py to convert the JSON EDL structure (produced by edl.py) to an OpenTimelineIO .otio file for NLE review.\n\nKey observations from codebase exploration:\n1. The EDL dict structure (from edl.py _collect_tool_calls) has: clips, transitions, crop_modes, titles, audio_settings, music, voiceovers, broll_requests, and target_duration_seconds.\n2. Each clip has: clip_id, in_timecode (HH:MM:SS.mmm), out_timecode (HH:MM:SS.mmm), track.\n3. Each transition has: type, duration, position.\n4. The edit_plans DB table already has an otio_path column (ready for this feature).\n5. CatalogDB.upsert_edit_plan already accepts otio_path parameter.\n6. CatalogDB.get_media returns file_path, duration_seconds, fps for media files.\n7. validator.py has timecode_to_seconds(tc) helper we can reuse.\n8. opentimelineio is already a declared dependency in pyproject.toml.\n9. The test pattern uses pytest with catalog_db fixture from conftest.py (in-memory SQLite).\n10. The function signature should be: export_otio(edl: dict, output_path: Path, db: CatalogDB) -> Path.\n\nOTIO mapping strategy:\n- Timeline with video and audio tracks\n- EDL clips -> otio.schema.Clip with ExternalReference to source file_path\n- EDL transitions -> otio.schema.Transition (CrossDissolve, etc.)\n- Timecodes -> otio.opentime.RationalTime (use fps from media or default 30.0)\n- Metadata (crop_mode, audio_levels, titles, music, voiceovers, broll) preserved as OTIO metadata dicts on clips/timeline\n- Round-trip fidelity: store a content hash of the EDL in timeline metadata so we can detect if someone edited the .otio externally\n\nSince opentimelineio is not installed in this environment, tests must mock the otio import or use it conditionally. However, since the PRD explicitly lists it as a dependency, we should write tests that work with the real library when present and skip gracefully when not. Looking at other tests in the codebase (e.g., test_edl.py mocking anthropic), the pattern is to mock external deps. For OTIO, we can test the logic by mocking otio, but better to install it or mark tests as requiring it. Given the pattern in the codebase, we'll install it in a prerequisite step.",
+  "analysis": "This task implements autopilot/plan/otio_export.py to convert the JSON EDL structure (produced by edl.py) to an OpenTimelineIO .otio file for NLE review.\n\nKey observations from codebase exploration:\n1. The EDL dict structure (from edl.py _collect_tool_calls) has: clips, transitions, crop_modes, titles, audio_settings, music, voiceovers, broll_requests, and target_duration_seconds.\n2. Each clip has: clip_id, in_timecode (HH:MM:SS.mmm), out_timecode (HH:MM:SS.mmm), track.\n3. Each transition has: type, duration, position.\n4. The edit_plans DB table already has an otio_path column (ready for this feature).\n5. CatalogDB.upsert_edit_plan already accepts otio_path parameter.\n6. CatalogDB.get_media returns file_path, duration_seconds, fps for media files.\n7. validator.py has timecode_to_seconds(tc) helper we can reuse.\n8. opentimelineio is already a declared dependency in pyproject.toml.\n9. The test pattern uses pytest with catalog_db fixture from conftest.py (in-memory SQLite).\n10. The function signature should be: export_otio(edl: dict, output_path: Path, db: CatalogDB) -> Path.\n\nOTIO mapping strategy:\n- Timeline with video and audio tracks\n- EDL clips -> otio.schema.Clip with ExternalReference to source file_path\n- EDL transitions -> otio.schema.Transition (CrossDissolve, etc.)\n- Timecodes -> otio.opentime.RationalTime (use fps from media or default 30.0)\n- Metadata (crop_mode, audio_levels, titles, music, voiceovers, broll) preserved as OTIO metadata dicts on clips/timeline\n- Round-trip fidelity: store a content hash of the EDL in timeline metadata so we can detect if someone edited the .otio externally\n\nSince opentimelineio is not installed in this environment, tests must mock the otio import or use it conditionally. However, since the PRD explicitly lists it as a dependency, we should write tests that work with the real library when present and skip gracefully when not. Looking at other tests in the codebase (e.g., test_edl.py mocking anthropic), the pattern is to mock external deps. For OTIO, we can test the logic by mocking otio, but better to install it or mark tests as requiring it. Given the pattern in the codebase, we'll install it in a prerequisite step.\n\nREVIEW FIX (post step-18): Five blocking issues identified by reviewers:\n1. TestTransitionMapping tests use position:1 with 2 clips (invalid), and never verify transition placement between clips.\n2. _insert_transitions ignores track_num — transitions bleed into all tracks.\n3. db.get_media exceptions propagate as raw DB errors, not OtioExportError.\n4. Bare bracket access on cm['clip_id']/au['clip_id'] in metadata loops can raise unwrapped KeyError.\n5. Bare bracket access on clip_data['clip_id']/['in_timecode']/['out_timecode'] can raise unwrapped KeyError.",
   "prerequisites": [
     {
       "id": "pre-1",
@@ -145,6 +145,55 @@
       "description": "Final polish: ensure integration test passes, add proper logging, verify all edge cases handled. Clean up any remaining issues.",
       "status": "done",
       "commit": "7922c7f"
+    },
+    {
+      "id": "step-19",
+      "type": "test",
+      "description": "REVIEW FIX [test_does_not_test_what_it_claims]: Fix TestTransitionMapping tests (test_crossfade_creates_smpte_dissolve, test_crossfade_duration_correct) to use position: 0 instead of position: 1 (the only valid between-clip position for a 2-clip track in 0-indexed semantics). Add assertions verifying the Transition is positioned BETWEEN the two Clips in the track: assert isinstance(video_tracks[0][0], otio.schema.Clip), assert isinstance(video_tracks[0][1], otio.schema.Transition), assert isinstance(video_tracks[0][2], otio.schema.Clip). This is a test correction — the implementation already handles position: 0 correctly so the fixed tests should pass immediately.",
+      "status": "done",
+      "commit": "05162c9"
+    },
+    {
+      "id": "step-20",
+      "type": "test",
+      "description": "REVIEW FIX [missing_test_for_known_failure_mode]: Write a failing test for multi-track transition isolation. Create an EDL with clips on track 1 (two clips with a crossfade transition at position 0 with track: 1) and one clip on track 2 (no transition). After export, assert that track 1 (V1) contains exactly 1 Transition object between its 2 clips, and track 2 (V2) contains 0 Transition objects. This test WILL FAIL because _insert_transitions currently ignores track_num and applies all transitions to every track.",
+      "status": "done",
+      "commit": "26ee4fe"
+    },
+    {
+      "id": "step-21",
+      "type": "impl",
+      "description": "REVIEW FIX [missing_test_for_known_failure_mode]: Fix _insert_transitions to filter transitions by track_num. Add track filtering logic: only process transitions where trans_data.get('track', 1) == track_num. Transitions without a 'track' field default to track 1 for backward compatibility. Make step-20 test pass.",
+      "status": "done",
+      "commit": "cc9ed9f"
+    },
+    {
+      "id": "step-22",
+      "type": "test",
+      "description": "REVIEW FIX [unhandled_exception_at_boundary]: Write a failing test where db.get_media raises an exception (e.g., sqlite3.OperationalError or RuntimeError). Assert that export_otio wraps this as OtioExportError with a descriptive message mentioning the clip_id, rather than letting the raw DB exception propagate. Use unittest.mock to make db.get_media raise RuntimeError('DB locked').",
+      "status": "done",
+      "commit": "91a3cd8"
+    },
+    {
+      "id": "step-23",
+      "type": "impl",
+      "description": "REVIEW FIX [unhandled_exception_at_boundary]: Wrap db.get_media(clip_id) call in _get_media_info with try/except Exception, re-raise as OtioExportError(f'DB lookup failed for {clip_id}: {e}') from e. Make step-22 test pass.",
+      "status": "done",
+      "commit": "5d491a6"
+    },
+    {
+      "id": "step-24",
+      "type": "test",
+      "description": "REVIEW FIX [unhandled_key_error]: Write failing tests for KeyError wrapping in two scenarios: (a) crop_modes entry missing 'clip_id' key — export_otio should raise OtioExportError, not KeyError. (b) clip dict in EDL missing required 'clip_id' key — export_otio should raise OtioExportError, not KeyError. (c) clip dict missing 'in_timecode' key — export_otio should raise OtioExportError, not KeyError. All three tests assert pytest.raises(OtioExportError) and use match= to verify a descriptive message.",
+      "status": "done",
+      "commit": "754ca9c"
+    },
+    {
+      "id": "step-25",
+      "type": "impl",
+      "description": "REVIEW FIX [unhandled_key_error]: Wrap all bare bracket access in export_otio with proper error handling. (a) For metadata loops (crop_modes, audio_settings): use .get('clip_id') with a guard — skip entries with missing clip_id and log a warning, or raise OtioExportError. (b) For clip_data['clip_id']/['in_timecode']/['out_timecode']: wrap the inner track loop body in try/except KeyError, re-raise as OtioExportError(f'Malformed clip in EDL: missing {e}'). Make step-24 tests pass.",
+      "status": "done",
+      "commit": "083be7a"
     }
   ],
   "design_decisions": [
@@ -175,6 +224,18 @@
     {
       "decision": "Map 'crossfade' to SMPTE_Dissolve, 'cut' to no transition, others to SMPTE_Dissolve as default",
       "rationale": "OTIO has limited built-in transition types. SMPTE_Dissolve is the most universally supported. Cut transitions are implicit (no Transition object needed). This provides reasonable NLE compatibility."
+    },
+    {
+      "decision": "Transitions use 'track' field for track targeting, defaulting to track 1",
+      "rationale": "Review revealed _insert_transitions accepted track_num but never filtered by it, causing transitions to bleed into all tracks. Adding a 'track' field to transition dicts (defaulting to 1 for backward compatibility) allows proper per-track filtering."
+    },
+    {
+      "decision": "All bare bracket access on EDL dicts wrapped in OtioExportError",
+      "rationale": "Review revealed that KeyErrors from missing required keys (clip_id, in_timecode, out_timecode) and from metadata entries (crop_modes, audio_settings) would propagate as raw KeyErrors, violating the documented OtioExportError-only contract. Wrapping ensures callers need only catch OtioExportError."
+    },
+    {
+      "decision": "DB exceptions from get_media wrapped in OtioExportError",
+      "rationale": "Review revealed db.get_media could throw raw DB exceptions (connection errors, SQLite lock contention) that would bypass the OtioExportError contract. Wrapping in _get_media_info ensures consistent error handling."
     }
   ],
   "reuse": [
