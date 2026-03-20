@@ -162,8 +162,20 @@ def upload_video(
     Raises:
         UploadError: If the upload fails for any reason.
     """
+    import time  # noqa: E402
+
     from googleapiclient.discovery import build  # lazy import
     from googleapiclient.http import MediaFileUpload  # lazy import
+
+    # Input validation
+    narrative = db.get_narrative(narrative_id)
+    if narrative is None:
+        msg = f"Narrative not found: {narrative_id}"
+        raise UploadError(msg)
+
+    if not video_path.exists():
+        msg = f"Video file not found: {video_path}"
+        raise UploadError(msg)
 
     creds = _load_credentials(config.credentials_path)
     metadata = _build_upload_metadata(narrative_id, db, config)
@@ -177,13 +189,25 @@ def upload_video(
         media_body=media,
     )
 
-    try:
-        response = None
-        while response is None:
-            _, response = request.next_chunk()
-    except Exception as exc:
-        msg = f"YouTube upload failed: {exc}"
-        raise UploadError(msg) from exc
+    max_retries = 3
+    response = None
+    for attempt in range(max_retries):
+        try:
+            while response is None:
+                _, response = request.next_chunk()
+        except Exception as exc:
+            if attempt < max_retries - 1:
+                wait = 2 ** attempt
+                logger.warning(
+                    "Upload attempt %d failed: %s. Retrying in %ds...",
+                    attempt + 1,
+                    exc,
+                    wait,
+                )
+                time.sleep(wait)
+            else:
+                msg = f"YouTube upload failed: {exc}"
+                raise UploadError(msg) from exc
 
     video_id = response["id"]
     youtube_url = f"https://youtu.be/{video_id}"
