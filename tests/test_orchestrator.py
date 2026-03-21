@@ -3757,3 +3757,117 @@ class TestIngestJobTracking:
         _run_ingest(config=minimal_config, db=db)
 
         db.insert_job.assert_not_called()
+
+
+class TestAnalyzeJobTracking:
+    """Tests for per-job tracking in _run_analyze."""
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_creates_job_per_media_per_analysis(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """Creates one job per (media x analysis_type) + face_clustering."""
+        from autopilot.orchestrator import _run_analyze
+
+        media1 = {"id": "m1", "file_path": "/fake/v1.mp4", "status": "ingested"}
+        db = MagicMock()
+        db.list_all_media.return_value = [media1]
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(
+            config=minimal_config, db=db,
+            run_id="run_xyz", emit_fn=MagicMock(),
+        )
+
+        # 6 analysis types for 1 media + 1 face_clustering = 7 jobs
+        assert db.insert_job.call_count == 7
+
+        # Check analysis job types present
+        job_types = [c[0][2] for c in db.insert_job.call_args_list]
+        for expected in ["asr", "scenes", "objects", "faces", "embeddings", "audio_events"]:
+            assert expected in job_types
+        assert "face_clustering" in job_types
+
+        # All should have stage='ANALYZE'
+        for call in db.insert_job.call_args_list:
+            assert call[0][1] == "ANALYZE"
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_gpu_worker_for_analysis_jobs(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """Analysis jobs have worker='gpu', face_clustering has worker='cpu'."""
+        from autopilot.orchestrator import _run_analyze
+
+        media1 = {"id": "m1", "file_path": "/fake/v1.mp4", "status": "ingested"}
+        db = MagicMock()
+        db.list_all_media.return_value = [media1]
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(
+            config=minimal_config, db=db,
+            run_id="run_xyz", emit_fn=MagicMock(),
+        )
+
+        for call in db.insert_job.call_args_list:
+            job_type = call[0][2]
+            if job_type == "face_clustering":
+                assert call[1]["worker"] == "cpu"
+            else:
+                assert call[1]["worker"] == "gpu"
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_no_jobs_when_no_run_id(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """When run_id=None (default), no insert_job calls made."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = MagicMock()
+        db.list_all_media.return_value = [
+            {"id": "m1", "file_path": "/fake/v1.mp4", "status": "ingested"},
+        ]
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(config=minimal_config, db=db)
+
+        db.insert_job.assert_not_called()
