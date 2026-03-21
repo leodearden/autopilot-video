@@ -317,7 +317,14 @@ def _run_ingest(
     logger.info("Ingest complete: %d/%d files ingested", ingested, len(files))
 
 
-def _run_analyze(*, config: Any, db: Any, force: bool = False) -> None:
+def _run_analyze(
+    *,
+    config: Any,
+    db: Any,
+    force: bool = False,
+    run_id: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
+) -> None:
     """ANALYZE stage: run all analysis passes on each media file."""
     scheduler = GPUScheduler(
         total_vram=0,
@@ -348,6 +355,9 @@ def _run_analyze(*, config: Any, db: Any, force: bool = False) -> None:
                     done_count, len(media_list), label,
                 )
 
+    # Helper to optionally wrap a call in _track_job
+    _jkw: dict[str, Any] = {"run_id": run_id, "emit_fn": emit_fn}
+
     successes = 0
     try:
         for media in media_list:
@@ -358,32 +368,100 @@ def _run_analyze(*, config: Any, db: Any, force: bool = False) -> None:
             audio_path = file_path  # audio extracted from same file
             try:
                 if force or not db.has_transcript(media_id):
-                    asr.transcribe_media(
-                        media_id, audio_path, db, scheduler, config.models,
-                        batch_size=config.processing.batch_size_whisper,
-                    )
+                    if run_id is not None:
+                        with _track_job(
+                            db, "ANALYZE", "asr",
+                            target_id=media_id, worker="gpu", **_jkw,
+                        ):
+                            asr.transcribe_media(
+                                media_id, audio_path, db, scheduler,
+                                config.models,
+                                batch_size=config.processing.batch_size_whisper,
+                            )
+                    else:
+                        asr.transcribe_media(
+                            media_id, audio_path, db, scheduler, config.models,
+                            batch_size=config.processing.batch_size_whisper,
+                        )
                 if force or not db.has_boundaries(media_id):
-                    scenes.detect_shots(media_id, file_path, db, scheduler)
+                    if run_id is not None:
+                        with _track_job(
+                            db, "ANALYZE", "scenes",
+                            target_id=media_id, worker="gpu", **_jkw,
+                        ):
+                            scenes.detect_shots(
+                                media_id, file_path, db, scheduler,
+                            )
+                    else:
+                        scenes.detect_shots(media_id, file_path, db, scheduler)
                 if force or not db.has_detections(media_id):
-                    objects.detect_objects(
-                        media_id, file_path, db, scheduler, config.models,
-                        sparse=False,
-                    )
+                    if run_id is not None:
+                        with _track_job(
+                            db, "ANALYZE", "objects",
+                            target_id=media_id, worker="gpu", **_jkw,
+                        ):
+                            objects.detect_objects(
+                                media_id, file_path, db, scheduler,
+                                config.models, sparse=False,
+                            )
+                    else:
+                        objects.detect_objects(
+                            media_id, file_path, db, scheduler, config.models,
+                            sparse=False,
+                        )
                 if force or not db.has_faces(media_id):
-                    faces.detect_faces(media_id, file_path, db, scheduler, config.models)
+                    if run_id is not None:
+                        with _track_job(
+                            db, "ANALYZE", "faces",
+                            target_id=media_id, worker="gpu", **_jkw,
+                        ):
+                            faces.detect_faces(
+                                media_id, file_path, db, scheduler,
+                                config.models,
+                            )
+                    else:
+                        faces.detect_faces(
+                            media_id, file_path, db, scheduler, config.models,
+                        )
                 if force or not db.has_embeddings(media_id):
-                    embeddings.compute_embeddings(
-                        media_id, file_path, db, scheduler, config.models,
-                    )
+                    if run_id is not None:
+                        with _track_job(
+                            db, "ANALYZE", "embeddings",
+                            target_id=media_id, worker="gpu", **_jkw,
+                        ):
+                            embeddings.compute_embeddings(
+                                media_id, file_path, db, scheduler,
+                                config.models,
+                            )
+                    else:
+                        embeddings.compute_embeddings(
+                            media_id, file_path, db, scheduler, config.models,
+                        )
                 if force or not db.has_audio_events(media_id):
-                    audio_events.classify_audio_events(
-                        media_id, audio_path, db, scheduler,
-                    )
+                    if run_id is not None:
+                        with _track_job(
+                            db, "ANALYZE", "audio_events",
+                            target_id=media_id, worker="gpu", **_jkw,
+                        ):
+                            audio_events.classify_audio_events(
+                                media_id, audio_path, db, scheduler,
+                            )
+                    else:
+                        audio_events.classify_audio_events(
+                            media_id, audio_path, db, scheduler,
+                        )
                 successes += 1
             except Exception:
                 logger.exception("Analysis failed for media %s", media_id)
 
-        faces.cluster_faces(db, eps=0.5, min_samples=3)
+        if run_id is not None:
+            with _track_job(
+                db, "ANALYZE", "face_clustering",
+                worker="cpu", **_jkw,
+            ):
+                faces.cluster_faces(db, eps=0.5, min_samples=3)
+        else:
+            faces.cluster_faces(db, eps=0.5, min_samples=3)
         logger.info(
             "Analyze complete: %d/%d media processed",
             successes, len(media_list),
