@@ -218,7 +218,14 @@ def _track_job(
     return _inner()
 
 
-def _run_ingest(*, config: Any, db: Any, force: bool = False) -> None:
+def _run_ingest(
+    *,
+    config: Any,
+    db: Any,
+    force: bool = False,
+    run_id: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
+) -> None:
     """INGEST stage: scan directory, insert media, normalize audio, mark duplicates."""
     files = scanner.scan_directory(config.input_dir, max_workers=None)
     norm_dir = config.output_dir / "normalized"
@@ -248,30 +255,65 @@ def _run_ingest(*, config: Any, db: Any, force: bool = False) -> None:
             break
         media_id = mf.sha256_prefix or mf.file_path.stem
         try:
-            db.insert_media(
-                media_id,
-                str(mf.file_path),
-                sha256_prefix=mf.sha256_prefix,
-                codec=mf.codec,
-                resolution_w=mf.resolution_w,
-                resolution_h=mf.resolution_h,
-                fps=mf.fps,
-                duration_seconds=mf.duration_seconds,
-                created_at=mf.created_at,
-                gps_lat=mf.gps_lat,
-                gps_lon=mf.gps_lon,
-                audio_channels=mf.audio_channels,
-                metadata_json=mf.metadata_json,
-            )
-            normalizer.normalize_audio(
-                mf.file_path, norm_dir, root_dir=config.input_dir
-            )
+            if run_id is not None:
+                with _track_job(
+                    db, "INGEST", "ingest_file",
+                    target_id=media_id,
+                    target_label=str(mf.file_path.name),
+                    worker="cpu",
+                    run_id=run_id,
+                    emit_fn=emit_fn,
+                ):
+                    db.insert_media(
+                        media_id,
+                        str(mf.file_path),
+                        sha256_prefix=mf.sha256_prefix,
+                        codec=mf.codec,
+                        resolution_w=mf.resolution_w,
+                        resolution_h=mf.resolution_h,
+                        fps=mf.fps,
+                        duration_seconds=mf.duration_seconds,
+                        created_at=mf.created_at,
+                        gps_lat=mf.gps_lat,
+                        gps_lon=mf.gps_lon,
+                        audio_channels=mf.audio_channels,
+                        metadata_json=mf.metadata_json,
+                    )
+                    normalizer.normalize_audio(
+                        mf.file_path, norm_dir, root_dir=config.input_dir
+                    )
+            else:
+                db.insert_media(
+                    media_id,
+                    str(mf.file_path),
+                    sha256_prefix=mf.sha256_prefix,
+                    codec=mf.codec,
+                    resolution_w=mf.resolution_w,
+                    resolution_h=mf.resolution_h,
+                    fps=mf.fps,
+                    duration_seconds=mf.duration_seconds,
+                    created_at=mf.created_at,
+                    gps_lat=mf.gps_lat,
+                    gps_lon=mf.gps_lon,
+                    audio_channels=mf.audio_channels,
+                    metadata_json=mf.metadata_json,
+                )
+                normalizer.normalize_audio(
+                    mf.file_path, norm_dir, root_dir=config.input_dir
+                )
             ingested += 1
         except Exception as exc:
             logger.error("Failed to ingest %s: %s", mf.file_path, exc)
             continue
 
-    dedup.mark_duplicates(db)
+    if run_id is not None:
+        with _track_job(
+            db, "INGEST", "dedup",
+            worker="cpu", run_id=run_id, emit_fn=emit_fn,
+        ):
+            dedup.mark_duplicates(db)
+    else:
+        dedup.mark_duplicates(db)
     logger.info("Ingest complete: %d/%d files ingested", ingested, len(files))
 
 
