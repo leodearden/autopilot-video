@@ -4696,23 +4696,28 @@ class TestGateInitInRun:
         orch.run(config=MagicMock(), db=catalog_db)
         assert call_count == 1
 
-    def test_run_resets_gate_statuses_to_idle(self, catalog_db) -> None:
+    def test_run_resets_gate_statuses_to_idle(self) -> None:
         """run() resets all gate statuses to 'idle' at start."""
-        # Pre-set a gate to approved
-        catalog_db.init_default_gates()
-        catalog_db.update_gate("ingest", status="approved")
+        mock_db = MagicMock()
+        mock_db._PIPELINE_STAGES = (
+            "ingest", "analyze", "classify", "narrate", "script",
+            "edl", "source", "render", "upload",
+        )
+        mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
 
         orch = PipelineOrchestrator()
         for stage in orch.stages:
             stage.func = MagicMock()
 
-        orch.run(config=MagicMock(), db=catalog_db)
+        orch.run(config=MagicMock(), db=mock_db)
 
-        # After run, gate should have been reset to idle (then set to approved by auto mode)
-        # But the reset happens before stage loop, so we verify by checking the gate was processed
-        gate = catalog_db.get_gate("ingest")
-        # After run, auto mode sets it to 'approved'
-        assert gate["status"] == "approved"
+        # Verify update_gate was called with status='idle' for each stage
+        idle_calls = [
+            c for c in mock_db.update_gate.call_args_list
+            if c.kwargs.get("status") == "idle" or
+               (len(c.args) >= 1 and any(kw == "idle" for kw in c.kwargs.values()))
+        ]
+        assert len(idle_calls) == 9
 
     def test_run_proceeds_when_init_gates_raises(self, catalog_db) -> None:
         """Pipeline still runs if init_default_gates() raises."""

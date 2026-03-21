@@ -1160,6 +1160,14 @@ class PipelineOrchestrator:
             logger.warning("Run tracking unavailable: %s", exc)
             self._run_id = None
 
+        # --- Gate initialization ---
+        try:
+            db.init_default_gates()
+            for gate_stage in db._PIPELINE_STAGES:
+                db.update_gate(gate_stage, status="idle")
+        except Exception as exc:
+            logger.warning("Gate initialization failed: %s", exc)
+
         for stage_name in order:
             if shutdown_requested():
                 for remaining in order:
