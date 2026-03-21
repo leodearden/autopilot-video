@@ -3581,3 +3581,97 @@ class TestTrackJobContextManager:
         # Should not raise anything
         with _track_job(mock_db, "INGEST", "ingest_file"):
             pass  # clean exit, but db calls fail silently
+
+
+class TestJobHelperResilience:
+    """Tests for _start_job/_finish_job resilience and emit_fn callbacks."""
+
+    def test_start_job_returns_job_id_when_db_raises(self) -> None:
+        """When db.insert_job raises, _start_job still returns a job_id."""
+        from autopilot.orchestrator import _start_job
+
+        mock_db = MagicMock()
+        mock_db.insert_job.side_effect = RuntimeError("db down")
+        job_id, start_mono = _start_job(mock_db, "INGEST", "ingest_file")
+        # Should still return valid job_id
+        assert len(job_id) == 32
+        assert isinstance(start_mono, float)
+
+    def test_start_job_logs_warning_when_db_raises(
+        self, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """_start_job logs WARNING when db.insert_job fails."""
+        from autopilot.orchestrator import _start_job
+
+        mock_db = MagicMock()
+        mock_db.insert_job.side_effect = RuntimeError("db error")
+        with caplog.at_level(logging.WARNING, logger="autopilot.orchestrator"):
+            _start_job(mock_db, "INGEST", "ingest_file")
+        assert any("insert job" in r.message.lower() for r in caplog.records)
+
+    def test_finish_job_doesnt_crash_when_db_raises(self) -> None:
+        """When db.update_job raises, _finish_job doesn't crash."""
+        from autopilot.orchestrator import _finish_job
+        import time
+
+        mock_db = MagicMock()
+        mock_db.update_job.side_effect = RuntimeError("db error")
+        # Should not raise
+        _finish_job(mock_db, "job_abc", time.monotonic())
+
+    def test_finish_job_logs_warning_when_db_raises(
+        self, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """_finish_job logs WARNING when db.update_job fails."""
+        from autopilot.orchestrator import _finish_job
+        import time
+
+        mock_db = MagicMock()
+        mock_db.update_job.side_effect = RuntimeError("db err")
+        with caplog.at_level(logging.WARNING, logger="autopilot.orchestrator"):
+            _finish_job(mock_db, "job_abc", time.monotonic())
+        assert any("update job" in r.message.lower() for r in caplog.records)
+
+    def test_start_job_calls_emit_fn(self) -> None:
+        """_start_job calls emit_fn('job_started', stage=..., job_id=...)."""
+        from autopilot.orchestrator import _start_job
+
+        mock_db = MagicMock()
+        mock_emit = MagicMock()
+        job_id, _ = _start_job(
+            mock_db, "INGEST", "ingest_file", emit_fn=mock_emit,
+        )
+        mock_emit.assert_called_once_with(
+            "job_started", stage="INGEST", job_id=job_id,
+        )
+
+    def test_finish_job_calls_emit_fn_on_done(self) -> None:
+        """_finish_job calls emit_fn('job_completed', ...) on done."""
+        from autopilot.orchestrator import _finish_job
+        import time
+
+        mock_db = MagicMock()
+        mock_emit = MagicMock()
+        _finish_job(
+            mock_db, "job_abc", time.monotonic(),
+            emit_fn=mock_emit, stage="INGEST",
+        )
+        mock_emit.assert_called_once_with(
+            "job_completed", stage="INGEST", job_id="job_abc",
+        )
+
+    def test_finish_job_calls_emit_fn_on_error(self) -> None:
+        """_finish_job calls emit_fn('job_error', ...) on error."""
+        from autopilot.orchestrator import _finish_job
+        import time
+
+        mock_db = MagicMock()
+        mock_emit = MagicMock()
+        _finish_job(
+            mock_db, "job_abc", time.monotonic(),
+            status="error", error_message="oops",
+            emit_fn=mock_emit, stage="ANALYZE",
+        )
+        mock_emit.assert_called_once_with(
+            "job_error", stage="ANALYZE", job_id="job_abc",
+        )
