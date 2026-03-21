@@ -4820,3 +4820,58 @@ class TestGateIntegrationInRun:
         # RENDER depends on SOURCE_ASSETS but should still run (gate skip != error skip)
         mock_funcs["RENDER"].assert_called_once()
         assert results["RENDER"].status == StageStatus.DONE
+
+
+class TestGateBackwardsCompat:
+    """Tests for backwards compatibility of gate system with human_review_fn."""
+
+    @patch("autopilot.orchestrator.narratives")
+    def test_human_review_fn_still_invoked_with_auto_gate(self, mock_narratives) -> None:
+        """With human_review_fn and NARRATE gate mode='auto', callback is still used."""
+        narr = MagicMock()
+        narr.narrative_id = "n1"
+        mock_narratives.build_master_storyboard.return_value = "sb"
+        mock_narratives.propose_narratives.return_value = [narr]
+        mock_narratives.format_for_review.return_value = "review text"
+
+        review_fn = MagicMock(return_value=["n1"])
+        orch = PipelineOrchestrator(human_review_fn=review_fn)
+
+        # Replace all non-NARRATE stages with mocks
+        for stage in orch.stages:
+            if stage.name != "NARRATE":
+                stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        mock_db._PIPELINE_STAGES = (
+            "ingest", "analyze", "classify", "narrate", "script",
+            "edl", "source", "render", "upload",
+        )
+        mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
+
+        results = orch.run(config=MagicMock(), db=mock_db)
+
+        # The human_review_fn callback should still have been invoked
+        review_fn.assert_called_once()
+        assert results["NARRATE"].status == StageStatus.DONE
+
+    def test_existing_narrate_test_still_passes(self) -> None:
+        """The existing test_narrate_calls_human_review_callback pattern still works.
+
+        This is a meta-test confirming the gate system doesn't break
+        _run_narrate's internal human_review_fn logic.
+        """
+        from autopilot.orchestrator import _run_narrate
+
+        with patch("autopilot.orchestrator.narratives") as mock_narratives:
+            narr = MagicMock()
+            narr.narrative_id = "n1"
+            mock_narratives.build_master_storyboard.return_value = "sb"
+            mock_narratives.propose_narratives.return_value = [narr]
+            mock_narratives.format_for_review.return_value = "review text"
+            db = MagicMock()
+
+            review_fn = MagicMock(return_value=["n1"])
+            _run_narrate(config=MagicMock(), db=db, human_review_fn=review_fn)
+
+            review_fn.assert_called_once_with("review text", [narr])
