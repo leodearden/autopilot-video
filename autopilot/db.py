@@ -1103,6 +1103,38 @@ class CatalogDB:
         cur = self.conn.execute(sql, params)
         return {row[0]: row[1] for row in cur.fetchall()}
 
+    # -- pipeline_events CRUD --------------------------------------------------
+
+    def insert_event(
+        self,
+        event_type: str,
+        *,
+        stage: str | None = None,
+        job_id: str | None = None,
+        payload_json: str | None = None,
+    ) -> int:
+        """Insert a pipeline event and return the generated event_id."""
+        cur = self.conn.execute(
+            "INSERT INTO pipeline_events (event_type, stage, job_id, payload_json) "
+            "VALUES (?, ?, ?, ?)",
+            (event_type, stage, job_id, payload_json),
+        )
+        return cast(int, cur.lastrowid)
+
+    def get_events_since(self, event_id: int) -> list[dict[str, object]]:
+        """Return events with event_id > *event_id*, ordered ascending."""
+        cur = self.conn.execute(
+            "SELECT * FROM pipeline_events WHERE event_id > ? ORDER BY event_id",
+            (event_id,),
+        )
+        return [dict(row) for row in cur.fetchall()]
+
+    def prune_events(self, *, hours: int = 24) -> None:
+        """Delete events older than *hours* hours."""
+        self.conn.execute(
+            f"DELETE FROM pipeline_events WHERE created_at < datetime('now', '-{hours} hours')"  # noqa: S608
+        )
+
     def close(self) -> None:
         """Close the underlying database connection."""
         self.conn.close()
