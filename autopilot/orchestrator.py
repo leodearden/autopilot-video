@@ -231,7 +231,8 @@ def _run_classify(*, config: Any, db: Any, force: bool = False) -> None:
 
 
 def _run_narrate(
-    *, config: Any, db: Any, human_review_fn: Callable | None = None,
+    *, config: Any, db: Any, force: bool = False,
+    human_review_fn: Callable | None = None,
 ) -> None:
     """NARRATE stage: build storyboard, propose narratives, human review."""
     storyboard = narratives.build_master_storyboard(db)
