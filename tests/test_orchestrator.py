@@ -2007,3 +2007,176 @@ class TestShutdownSkipDetails:
         # Both should be processed despite existing in DB
         assert db.insert_media.call_count == 2
         assert mock_normalizer.normalize_audio.call_count == 2
+
+
+# -- Checkpoint/resume tests for _run_analyze --------------------------------
+
+
+class TestAnalyzeResume:
+    """Tests for _run_analyze per-pass checkpoint/resume logic."""
+
+    ANALYZE_PATCHES = [
+        "autopilot.orchestrator.GPUScheduler",
+        "autopilot.orchestrator.faces",
+        "autopilot.orchestrator.audio_events",
+        "autopilot.orchestrator.embeddings",
+        "autopilot.orchestrator.objects",
+        "autopilot.orchestrator.scenes",
+        "autopilot.orchestrator.asr",
+    ]
+
+    def _make_db_with_media(self, media_ids, **has_overrides):
+        """Create a MagicMock db with specified media and has_* defaults."""
+        db = MagicMock()
+        db.list_all_media.return_value = [
+            {"id": mid, "file_path": f"/fake/{mid}.mp4", "status": "ingested"}
+            for mid in media_ids
+        ]
+        # Default: nothing completed
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
+        # Apply overrides
+        for k, v in has_overrides.items():
+            getattr(db, k).return_value = v
+        return db
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_skips_transcribed_media(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """_run_analyze skips asr.transcribe_media when has_transcript is True."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = self._make_db_with_media(["m1", "m2"])
+        # m1 already transcribed
+        db.has_transcript.side_effect = lambda mid: mid == "m1"
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(config=minimal_config, db=db)
+
+        # Only m2 should get transcribed
+        assert mock_asr.transcribe_media.call_count == 1
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_skips_detected_media(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """_run_analyze skips objects.detect_objects when has_detections is True."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = self._make_db_with_media(["m1"])
+        db.has_detections.return_value = True  # already detected
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(config=minimal_config, db=db)
+
+        mock_objects.detect_objects.assert_not_called()
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_skips_boundaries_faces_embeddings_audio(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """_run_analyze skips each pass independently when has_* returns True."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = self._make_db_with_media(["m1"])
+        db.has_boundaries.return_value = True
+        db.has_faces.return_value = True
+        db.has_embeddings.return_value = True
+        db.has_audio_events.return_value = True
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(config=minimal_config, db=db)
+
+        mock_scenes.detect_shots.assert_not_called()
+        mock_faces.detect_faces.assert_not_called()
+        mock_embeddings.compute_embeddings.assert_not_called()
+        mock_audio_events.classify_audio_events.assert_not_called()
+        # transcript and detections should still be called (not skipped)
+        mock_asr.transcribe_media.assert_called_once()
+        mock_objects.detect_objects.assert_called_once()
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_logs_resume_counts(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+        caplog,
+    ):
+        """_run_analyze logs per-pass resume counts."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = self._make_db_with_media(["m1", "m2", "m3"])
+        # 2 of 3 already transcribed
+        db.has_transcript.side_effect = lambda mid: mid in ("m1", "m2")
+        mock_gpu_cls.return_value = MagicMock()
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            _run_analyze(config=minimal_config, db=db)
+
+        assert any("transcri" in r.message.lower() and "2/3" in r.message
+                    for r in caplog.records)
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_force_reprocesses_all(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """_run_analyze with force=True ignores has_* checks."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = self._make_db_with_media(["m1"])
+        # Everything already done
+        db.has_transcript.return_value = True
+        db.has_boundaries.return_value = True
+        db.has_detections.return_value = True
+        db.has_faces.return_value = True
+        db.has_embeddings.return_value = True
+        db.has_audio_events.return_value = True
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(config=minimal_config, db=db, force=True)
+
+        # All passes should run despite has_* returning True
+        assert mock_asr.transcribe_media.call_count == 1
+        assert mock_scenes.detect_shots.call_count == 1
+        assert mock_objects.detect_objects.call_count == 1
+        assert mock_faces.detect_faces.call_count == 1
+        assert mock_embeddings.compute_embeddings.call_count == 1
+        assert mock_audio_events.classify_audio_events.call_count == 1
