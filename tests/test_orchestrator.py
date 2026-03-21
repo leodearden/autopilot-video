@@ -2422,3 +2422,97 @@ class TestEdlResume:
 
         # Both should get generate_edl called
         assert mock_edl.generate_edl.call_count == 2
+
+
+# -- Checkpoint/resume tests for _run_source_assets ---------------------------
+
+
+class TestSourceResume:
+    """Tests for _run_source_assets checkpoint/resume logic."""
+
+    @patch("autopilot.orchestrator.resolve")
+    def test_source_skips_narrative_with_resolved_assets(
+        self, mock_resolve, minimal_config, tmp_path,
+    ):
+        """_run_source_assets skips when asset_dir exists and is non-empty."""
+        from autopilot.orchestrator import _run_source_assets
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        db.get_edit_plan.return_value = {
+            "narrative_id": "n1",
+            "edl_json": '{"timeline": []}',
+        }
+
+        # Create non-empty asset dir for n1
+        asset_dir_n1 = minimal_config.output_dir / "assets" / "n1"
+        asset_dir_n1.mkdir(parents=True)
+        (asset_dir_n1 / "clip.mp4").touch()
+
+        mock_resolve.resolve_edl_assets.return_value = {"edl": {}, "unresolved": []}
+
+        _run_source_assets(config=minimal_config, db=db)
+
+        # Only n2 should get resolve_edl_assets called
+        assert mock_resolve.resolve_edl_assets.call_count == 1
+
+    @patch("autopilot.orchestrator.resolve")
+    def test_source_logs_resume_counts(
+        self, mock_resolve, minimal_config, caplog,
+    ):
+        """_run_source_assets logs 'Resuming SOURCE_ASSETS: N/M ...'."""
+        from autopilot.orchestrator import _run_source_assets
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"}, {"narrative_id": "n3"},
+        ]
+        db.get_edit_plan.return_value = {
+            "narrative_id": "n1",
+            "edl_json": '{"timeline": []}',
+        }
+
+        # Create non-empty asset dirs for n1 and n2
+        for nid in ("n1", "n2"):
+            asset_dir = minimal_config.output_dir / "assets" / nid
+            asset_dir.mkdir(parents=True)
+            (asset_dir / "clip.mp4").touch()
+
+        mock_resolve.resolve_edl_assets.return_value = {"edl": {}, "unresolved": []}
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            _run_source_assets(config=minimal_config, db=db)
+
+        assert any("Resuming SOURCE_ASSETS" in r.message and "2/3" in r.message
+                    for r in caplog.records)
+
+    @patch("autopilot.orchestrator.resolve")
+    def test_source_force_re_resolves_all(
+        self, mock_resolve, minimal_config,
+    ):
+        """_run_source_assets with force=True re-resolves even with existing assets."""
+        from autopilot.orchestrator import _run_source_assets
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        db.get_edit_plan.return_value = {
+            "narrative_id": "n1",
+            "edl_json": '{"timeline": []}',
+        }
+
+        # Create non-empty asset dir for both
+        for nid in ("n1", "n2"):
+            asset_dir = minimal_config.output_dir / "assets" / nid
+            asset_dir.mkdir(parents=True)
+            (asset_dir / "clip.mp4").touch()
+
+        mock_resolve.resolve_edl_assets.return_value = {"edl": {}, "unresolved": []}
+
+        _run_source_assets(config=minimal_config, db=db, force=True)
+
+        # Both should get resolve_edl_assets called
+        assert mock_resolve.resolve_edl_assets.call_count == 2
