@@ -42,6 +42,7 @@ def _common_options(f: Any) -> Any:
     )(f)
     f = click.option("--verbose", is_flag=True, help="Enable debug logging.")(f)
     f = click.option("--dry-run", is_flag=True, help="Show what would run without executing.")(f)
+    f = click.option("--force", is_flag=True, help="Bypass checkpoint/resume: reprocess all items.")(f)
     return f
 
 
@@ -114,13 +115,14 @@ def ingest(
     output_dir: str | None,
     verbose: bool,
     dry_run: bool,
+    force: bool,
 ) -> None:
     """Run the ingest stage."""
     db = None
     try:
         config, db = _setup_context(ctx, input_dir, output_dir, verbose)
         orch = PipelineOrchestrator()
-        orch._stage_map["INGEST"].func(config=config, db=db)
+        orch._stage_map["INGEST"].func(config=config, db=db, force=force)
     except click.ClickException:
         raise
     except Exception as e:
@@ -139,14 +141,15 @@ def analyze(
     output_dir: str | None,
     verbose: bool,
     dry_run: bool,
+    force: bool,
 ) -> None:
     """Run the analyze and classify stages."""
     db = None
     try:
         config, db = _setup_context(ctx, input_dir, output_dir, verbose)
         orch = PipelineOrchestrator()
-        orch._stage_map["ANALYZE"].func(config=config, db=db)
-        orch._stage_map["CLASSIFY"].func(config=config, db=db)
+        orch._stage_map["ANALYZE"].func(config=config, db=db, force=force)
+        orch._stage_map["CLASSIFY"].func(config=config, db=db, force=force)
     except click.ClickException:
         raise
     except Exception as e:
@@ -165,14 +168,15 @@ def plan(
     output_dir: str | None,
     verbose: bool,
     dry_run: bool,
+    force: bool,
 ) -> None:
     """Run the narrate and script stages."""
     db = None
     try:
         config, db = _setup_context(ctx, input_dir, output_dir, verbose)
         orch = PipelineOrchestrator()
-        orch._stage_map["NARRATE"].func(config=config, db=db)
-        orch._stage_map["SCRIPT"].func(config=config, db=db)
+        orch._stage_map["NARRATE"].func(config=config, db=db, force=force)
+        orch._stage_map["SCRIPT"].func(config=config, db=db, force=force)
     except click.ClickException:
         raise
     except Exception as e:
@@ -191,14 +195,15 @@ def edit(
     output_dir: str | None,
     verbose: bool,
     dry_run: bool,
+    force: bool,
 ) -> None:
     """Run the EDL and source_assets stages."""
     db = None
     try:
         config, db = _setup_context(ctx, input_dir, output_dir, verbose)
         orch = PipelineOrchestrator()
-        orch._stage_map["EDL"].func(config=config, db=db)
-        orch._stage_map["SOURCE_ASSETS"].func(config=config, db=db)
+        orch._stage_map["EDL"].func(config=config, db=db, force=force)
+        orch._stage_map["SOURCE_ASSETS"].func(config=config, db=db, force=force)
     except click.ClickException:
         raise
     except Exception as e:
@@ -217,13 +222,14 @@ def render(
     output_dir: str | None,
     verbose: bool,
     dry_run: bool,
+    force: bool,
 ) -> None:
     """Run the render stage."""
     db = None
     try:
         config, db = _setup_context(ctx, input_dir, output_dir, verbose)
         orch = PipelineOrchestrator()
-        orch._stage_map["RENDER"].func(config=config, db=db)
+        orch._stage_map["RENDER"].func(config=config, db=db, force=force)
     except click.ClickException:
         raise
     except Exception as e:
@@ -242,13 +248,14 @@ def upload(
     output_dir: str | None,
     verbose: bool,
     dry_run: bool,
+    force: bool,
 ) -> None:
     """Run the upload stage."""
     db = None
     try:
         config, db = _setup_context(ctx, input_dir, output_dir, verbose)
         orch = PipelineOrchestrator()
-        orch._stage_map["UPLOAD"].func(config=config, db=db)
+        orch._stage_map["UPLOAD"].func(config=config, db=db, force=force)
     except click.ClickException:
         raise
     except Exception as e:
@@ -267,6 +274,7 @@ def run(
     output_dir: str | None,
     verbose: bool,
     dry_run: bool,
+    force: bool,
 ) -> None:
     """Run the full pipeline (all stages)."""
     def _shutdown_handler(signum: int, frame: Any) -> None:
@@ -284,6 +292,7 @@ def run(
         orch = PipelineOrchestrator(
             budget_seconds=config.processing.max_wall_clock_hours * 3600,
             human_review_fn=_cli_human_review,
+            force=force,
         )
         orch.run(config=config, db=db, dry_run=dry_run)
 

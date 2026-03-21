@@ -168,14 +168,14 @@
       "type": "test",
       "description": "Write failing tests for CLI --force flag: test_run_command_has_force_option, test_run_command_passes_force_to_orchestrator, test_individual_subcommands_have_force_option (ingest, analyze, plan, edit, render, upload all accept --force). test_force_in_common_options.",
       "status": "done",
-      "commit": "PENDING"
+      "commit": "192417a"
     },
     {
       "id": "step-20",
       "type": "impl",
       "description": "Add --force flag to _common_options decorator in cli.py. Wire it through to PipelineOrchestrator(force=True) in the 'run' command and to individual stage calls in subcommands.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "PENDING"
     }
   ],
   "design_decisions": [
