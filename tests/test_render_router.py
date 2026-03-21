@@ -736,7 +736,7 @@ class TestErrorHandling:
             pytest.raises(RoutingError) as exc_info,
         ):
             mock_rs.return_value = Path("/tmp/seg.mp4")
-            route_and_render("n1", db, config)
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         assert exc_info.value.__cause__ is timeout_exc
 
@@ -754,7 +754,7 @@ class TestErrorHandling:
         with patch("autopilot.render.router.render_simple") as mock_rs, \
              patch("subprocess.run") as mock_run:
             mock_rs.return_value = Path("/tmp/seg.mp4")
-            route_and_render("n1", db, config)
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         # The concat subprocess.run call should have timeout kwarg
         assert mock_run.call_args[1].get("timeout") == CONCAT_TIMEOUT_SECONDS
@@ -783,7 +783,7 @@ class TestErrorHandling:
             pytest.raises(RoutingError) as exc_info,
         ):
             mock_rs.return_value = Path("/tmp/seg.mp4")
-            route_and_render("n1", db, config)
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         msg = str(exc_info.value).lower()
         assert "timeout" in msg or "timed out" in msg
