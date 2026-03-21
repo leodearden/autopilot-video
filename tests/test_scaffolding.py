@@ -317,7 +317,9 @@ def test_stable_deps_not_overconstrained(project_root: pathlib.Path) -> None:
             continue  # not listed, that's fine for this test
         spec = dep_map[pkg]
         # Remove the package name to get just the version specifier part
-        version_part = spec[len(spec.split(">")[0].split("<")[0].split("=")[0].split("!")[0].split("[")[0]):]
+        name_end = spec.split(">")[0].split("<")[0]
+        name_end = name_end.split("=")[0].split("!")[0].split("[")[0]
+        version_part = spec[len(name_end):]
         # Check there's no standalone < (not <=, not part of >=)
         assert "<" not in version_part.replace("<=", "").replace("<<", ""), (
             f"Stable dep {pkg} should NOT have upper-bound constraint, got: {spec}"
