@@ -4424,3 +4424,49 @@ class TestGateStageNameMapping:
         """_gate_stage_name is a static method — no instance needed."""
         result = PipelineOrchestrator._gate_stage_name("INGEST")
         assert result == "ingest"
+
+
+class TestCheckGateAuto:
+    """Tests for _check_gate() in 'auto' mode (default)."""
+
+    def test_gate_auto_returns_approved(self, catalog_db) -> None:
+        """Auto mode should return 'approved'."""
+        catalog_db.init_default_gates()
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+        result = orch._check_gate("INGEST")
+        assert result == "approved"
+
+    def test_gate_auto_updates_status_to_approved(self, catalog_db) -> None:
+        """Auto mode updates the gate status to 'approved' with decided_by='system'."""
+        catalog_db.init_default_gates()
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+        orch._check_gate("INGEST")
+        gate = catalog_db.get_gate("ingest")
+        assert gate["status"] == "approved"
+        assert gate["decided_by"] == "system"
+
+    def test_gate_auto_emits_gate_passed_event(self, catalog_db) -> None:
+        """Auto mode emits a 'gate_passed' event."""
+        catalog_db.init_default_gates()
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+        orch._check_gate("INGEST")
+        events = catalog_db.get_events_since(0)
+        gate_events = [e for e in events if e["event_type"] == "gate_passed"]
+        assert len(gate_events) == 1
+        assert gate_events[0]["stage"] == "INGEST"
+
+    def test_gate_auto_fetches_by_mapped_name(self, catalog_db) -> None:
+        """Gate is fetched using the mapped name (SOURCE_ASSETS -> source)."""
+        catalog_db.init_default_gates()
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+        orch._check_gate("SOURCE_ASSETS")
+        gate = catalog_db.get_gate("source")
+        assert gate["status"] == "approved"
