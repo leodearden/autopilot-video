@@ -160,7 +160,7 @@ class TestServeCommand:
         mock_uvicorn_run = MagicMock()
 
         with (
-            patch("autopilot.cli.create_app", mock_create_app, create=True),
+            patch("autopilot.web.app.create_app", mock_create_app),
             patch("uvicorn.run", mock_uvicorn_run),
         ):
             runner = CliRunner()
@@ -184,7 +184,7 @@ class TestServeCommand:
         mock_uvicorn_run = MagicMock()
 
         with (
-            patch("autopilot.cli.create_app", mock_create_app, create=True),
+            patch("autopilot.web.app.create_app", mock_create_app),
             patch("uvicorn.run", mock_uvicorn_run),
         ):
             runner = CliRunner()
