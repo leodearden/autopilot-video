@@ -10,8 +10,10 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from autopilot.analyze import asr, audio_events, embeddings, faces, objects, scenes
 from autopilot.analyze.gpu_scheduler import GPUScheduler
@@ -659,6 +661,19 @@ class PipelineOrchestrator:
         results: dict[str, StageResult] = {}
         errored_stages: set[str] = set()
         pipeline_start = time.monotonic()
+
+        # --- Run tracking: create pipeline_runs record ---
+        run_id = uuid4().hex
+        started_at = datetime.now(timezone.utc).isoformat()
+        self._run_id = run_id
+        self._db = db
+        db.insert_run(
+            run_id,
+            started_at=started_at,
+            config_snapshot=str(config),
+            status="running",
+            budget_remaining_seconds=self.budget_seconds,
+        )
 
         for stage_name in order:
             if shutdown_requested():
