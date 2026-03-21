@@ -177,6 +177,47 @@ def _finish_job(
         emit_fn(event_type, stage=stage, job_id=job_id)
 
 
+@functools.wraps(_start_job)  # type: ignore[arg-type]
+def _track_job(
+    db: Any,
+    stage: str,
+    job_type: str,
+    **kwargs: Any,
+):
+    """Context manager that wraps _start_job/_finish_job for clean job tracking.
+
+    Usage::
+
+        with _track_job(db, 'INGEST', 'ingest_file', run_id=run_id) as job_id:
+            # do work
+    """
+    from contextlib import contextmanager as _cm
+
+    @_cm
+    def _inner():
+        job_id, start_mono = _start_job(db, stage, job_type, **kwargs)
+        try:
+            yield job_id
+        except Exception as exc:
+            _finish_job(
+                db, job_id, start_mono,
+                status="error",
+                error_message=str(exc),
+                emit_fn=kwargs.get("emit_fn"),
+                stage=stage,
+            )
+            raise
+        else:
+            _finish_job(
+                db, job_id, start_mono,
+                status="done",
+                emit_fn=kwargs.get("emit_fn"),
+                stage=stage,
+            )
+
+    return _inner()
+
+
 def _run_ingest(*, config: Any, db: Any, force: bool = False) -> None:
     """INGEST stage: scan directory, insert media, normalize audio, mark duplicates."""
     files = scanner.scan_directory(config.input_dir, max_workers=None)
