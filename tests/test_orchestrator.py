@@ -4699,10 +4699,12 @@ class TestGateInitInRun:
     def test_run_resets_gate_statuses_to_idle(self) -> None:
         """run() resets all gate statuses to 'idle' at start."""
         mock_db = MagicMock()
-        mock_db._PIPELINE_STAGES = (
-            "ingest", "analyze", "classify", "narrate", "script",
-            "edl", "source", "render", "upload",
-        )
+        mock_db.get_all_gates.return_value = [
+            {"stage": s} for s in (
+                "ingest", "analyze", "classify", "narrate", "script",
+                "edl", "source", "render", "upload",
+            )
+        ]
         mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
 
         orch = PipelineOrchestrator()
@@ -4751,10 +4753,12 @@ class TestGateIntegrationInRun:
         orch._check_gate = spy_check
 
         mock_db = MagicMock()
-        mock_db._PIPELINE_STAGES = (
-            "ingest", "analyze", "classify", "narrate", "script",
-            "edl", "source", "render", "upload",
-        )
+        mock_db.get_all_gates.return_value = [
+            {"stage": s} for s in (
+                "ingest", "analyze", "classify", "narrate", "script",
+                "edl", "source", "render", "upload",
+            )
+        ]
         mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
         orch.run(config=MagicMock(), db=mock_db)
 
@@ -4779,10 +4783,12 @@ class TestGateIntegrationInRun:
         orch._check_gate = selective_gate
 
         mock_db = MagicMock()
-        mock_db._PIPELINE_STAGES = (
-            "ingest", "analyze", "classify", "narrate", "script",
-            "edl", "source", "render", "upload",
-        )
+        mock_db.get_all_gates.return_value = [
+            {"stage": s} for s in (
+                "ingest", "analyze", "classify", "narrate", "script",
+                "edl", "source", "render", "upload",
+            )
+        ]
         mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
         results = orch.run(config=MagicMock(), db=mock_db)
 
@@ -4807,10 +4813,12 @@ class TestGateIntegrationInRun:
         orch._check_gate = selective_gate
 
         mock_db = MagicMock()
-        mock_db._PIPELINE_STAGES = (
-            "ingest", "analyze", "classify", "narrate", "script",
-            "edl", "source", "render", "upload",
-        )
+        mock_db.get_all_gates.return_value = [
+            {"stage": s} for s in (
+                "ingest", "analyze", "classify", "narrate", "script",
+                "edl", "source", "render", "upload",
+            )
+        ]
         mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
         results = orch.run(config=MagicMock(), db=mock_db)
 
@@ -4842,10 +4850,12 @@ class TestGateBackwardsCompat:
                 stage.func = MagicMock()
 
         mock_db = MagicMock()
-        mock_db._PIPELINE_STAGES = (
-            "ingest", "analyze", "classify", "narrate", "script",
-            "edl", "source", "render", "upload",
-        )
+        mock_db.get_all_gates.return_value = [
+            {"stage": s} for s in (
+                "ingest", "analyze", "classify", "narrate", "script",
+                "edl", "source", "render", "upload",
+            )
+        ]
         mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
 
         results = orch.run(config=MagicMock(), db=mock_db)

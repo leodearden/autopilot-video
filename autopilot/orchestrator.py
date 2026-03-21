@@ -1167,8 +1167,8 @@ class PipelineOrchestrator:
         # --- Gate initialization ---
         try:
             db.init_default_gates()
-            for gate_stage in db._PIPELINE_STAGES:
-                db.update_gate(gate_stage, status="idle")
+            for gate in db.get_all_gates():
+                db.update_gate(gate["stage"], status="idle")
         except Exception as exc:
             logger.warning("Gate initialization failed: %s", exc)
 
