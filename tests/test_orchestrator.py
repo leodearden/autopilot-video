@@ -4611,3 +4611,31 @@ class TestCheckGateTimeout:
         assert len(approved_events) == 1
         payload = json.loads(approved_events[0]["payload_json"])
         assert payload["reason"] == "timeout"
+
+
+class TestCheckGateShutdown:
+    """Tests for _check_gate() pause mode with shutdown."""
+
+    def setup_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+        _reset_shutdown()
+
+    def teardown_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+        _reset_shutdown()
+
+    def test_gate_pause_returns_skipped_on_shutdown(self, catalog_db) -> None:
+        """When shutdown is requested, _check_gate returns 'skipped' immediately."""
+        from autopilot.orchestrator import request_shutdown
+
+        catalog_db.init_default_gates()
+        catalog_db.update_gate("ingest", mode="pause")
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+
+        # Request shutdown before calling _check_gate
+        request_shutdown()
+
+        result = orch._check_gate("INGEST")
+        assert result == "skipped"
