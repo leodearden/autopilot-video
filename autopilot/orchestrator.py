@@ -1000,7 +1000,7 @@ class PipelineOrchestrator:
 
         mode = gate.get("mode", "auto")
 
-        if mode == "auto":
+        if mode in ("auto", "notify"):
             decided_at = datetime.now(timezone.utc).isoformat()
             self._db.update_gate(
                 gate_name,
