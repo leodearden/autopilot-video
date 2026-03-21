@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import enum
-import threading
 import functools
 import json
 import logging
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
