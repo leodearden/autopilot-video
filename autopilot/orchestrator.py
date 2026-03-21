@@ -110,7 +110,122 @@ def _stage_stub(name: str) -> Callable[..., Any]:
     return _stub
 
 
-def _run_ingest(*, config: Any, db: Any, force: bool = False) -> None:
+def _start_job(
+    db: Any,
+    stage: str,
+    job_type: str,
+    *,
+    target_id: str | None = None,
+    target_label: str | None = None,
+    worker: str | None = None,
+    run_id: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
+) -> tuple[str, float]:
+    """Create a pipeline_jobs record with status='running' and return (job_id, start_mono).
+
+    All db calls are wrapped in try/except for resilience — job tracking must
+    never break the pipeline.
+    """
+    job_id = uuid4().hex
+    start_mono = time.monotonic()
+    started_at = datetime.now(timezone.utc).isoformat()
+    try:
+        db.insert_job(
+            job_id, stage, job_type,
+            target_id=target_id,
+            target_label=target_label,
+            status="running",
+            started_at=started_at,
+            worker=worker,
+            run_id=run_id,
+        )
+    except Exception as exc:
+        logger.warning("Failed to insert job %s: %s", job_id, exc)
+    if emit_fn is not None:
+        emit_fn("job_started", stage=stage, job_id=job_id)
+    return job_id, start_mono
+
+
+def _finish_job(
+    db: Any,
+    job_id: str,
+    start_mono: float,
+    *,
+    status: str = "done",
+    error_message: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
+    stage: str | None = None,
+) -> None:
+    """Update a pipeline_jobs record with final status and duration.
+
+    All db calls are wrapped in try/except for resilience.
+    """
+    duration = time.monotonic() - start_mono
+    finished_at = datetime.now(timezone.utc).isoformat()
+    try:
+        db.update_job(
+            job_id,
+            status=status,
+            finished_at=finished_at,
+            duration_seconds=duration,
+            error_message=error_message,
+        )
+    except Exception as exc:
+        logger.warning("Failed to update job %s: %s", job_id, exc)
+    if emit_fn is not None:
+        event_type = "job_completed" if status == "done" else "job_error"
+        emit_fn(event_type, stage=stage, job_id=job_id)
+
+
+@functools.wraps(_start_job)  # type: ignore[arg-type]
+def _track_job(
+    db: Any,
+    stage: str,
+    job_type: str,
+    **kwargs: Any,
+):
+    """Context manager that wraps _start_job/_finish_job for clean job tracking.
+
+    Usage::
+
+        with _track_job(db, 'INGEST', 'ingest_file', run_id=run_id) as job_id:
+            # do work
+    """
+    from contextlib import contextmanager as _cm
+
+    @_cm
+    def _inner():
+        job_id, start_mono = _start_job(db, stage, job_type, **kwargs)
+        try:
+            yield job_id
+        except Exception as exc:
+            _finish_job(
+                db, job_id, start_mono,
+                status="error",
+                error_message=str(exc),
+                emit_fn=kwargs.get("emit_fn"),
+                stage=stage,
+            )
+            raise
+        else:
+            _finish_job(
+                db, job_id, start_mono,
+                status="done",
+                emit_fn=kwargs.get("emit_fn"),
+                stage=stage,
+            )
+
+    return _inner()
+
+
+def _run_ingest(
+    *,
+    config: Any,
+    db: Any,
+    force: bool = False,
+    run_id: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
+) -> None:
     """INGEST stage: scan directory, insert media, normalize audio, mark duplicates."""
     files = scanner.scan_directory(config.input_dir, max_workers=None)
     norm_dir = config.output_dir / "normalized"
@@ -140,34 +255,76 @@ def _run_ingest(*, config: Any, db: Any, force: bool = False) -> None:
             break
         media_id = mf.sha256_prefix or mf.file_path.stem
         try:
-            db.insert_media(
-                media_id,
-                str(mf.file_path),
-                sha256_prefix=mf.sha256_prefix,
-                codec=mf.codec,
-                resolution_w=mf.resolution_w,
-                resolution_h=mf.resolution_h,
-                fps=mf.fps,
-                duration_seconds=mf.duration_seconds,
-                created_at=mf.created_at,
-                gps_lat=mf.gps_lat,
-                gps_lon=mf.gps_lon,
-                audio_channels=mf.audio_channels,
-                metadata_json=mf.metadata_json,
-            )
-            normalizer.normalize_audio(
-                mf.file_path, norm_dir, root_dir=config.input_dir
-            )
+            if run_id is not None:
+                with _track_job(
+                    db, "INGEST", "ingest_file",
+                    target_id=media_id,
+                    target_label=str(mf.file_path.name),
+                    worker="cpu",
+                    run_id=run_id,
+                    emit_fn=emit_fn,
+                ):
+                    db.insert_media(
+                        media_id,
+                        str(mf.file_path),
+                        sha256_prefix=mf.sha256_prefix,
+                        codec=mf.codec,
+                        resolution_w=mf.resolution_w,
+                        resolution_h=mf.resolution_h,
+                        fps=mf.fps,
+                        duration_seconds=mf.duration_seconds,
+                        created_at=mf.created_at,
+                        gps_lat=mf.gps_lat,
+                        gps_lon=mf.gps_lon,
+                        audio_channels=mf.audio_channels,
+                        metadata_json=mf.metadata_json,
+                    )
+                    normalizer.normalize_audio(
+                        mf.file_path, norm_dir, root_dir=config.input_dir
+                    )
+            else:
+                db.insert_media(
+                    media_id,
+                    str(mf.file_path),
+                    sha256_prefix=mf.sha256_prefix,
+                    codec=mf.codec,
+                    resolution_w=mf.resolution_w,
+                    resolution_h=mf.resolution_h,
+                    fps=mf.fps,
+                    duration_seconds=mf.duration_seconds,
+                    created_at=mf.created_at,
+                    gps_lat=mf.gps_lat,
+                    gps_lon=mf.gps_lon,
+                    audio_channels=mf.audio_channels,
+                    metadata_json=mf.metadata_json,
+                )
+                normalizer.normalize_audio(
+                    mf.file_path, norm_dir, root_dir=config.input_dir
+                )
             ingested += 1
         except Exception as exc:
             logger.error("Failed to ingest %s: %s", mf.file_path, exc)
             continue
 
-    dedup.mark_duplicates(db)
+    if run_id is not None:
+        with _track_job(
+            db, "INGEST", "dedup",
+            worker="cpu", run_id=run_id, emit_fn=emit_fn,
+        ):
+            dedup.mark_duplicates(db)
+    else:
+        dedup.mark_duplicates(db)
     logger.info("Ingest complete: %d/%d files ingested", ingested, len(files))
 
 
-def _run_analyze(*, config: Any, db: Any, force: bool = False) -> None:
+def _run_analyze(
+    *,
+    config: Any,
+    db: Any,
+    force: bool = False,
+    run_id: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
+) -> None:
     """ANALYZE stage: run all analysis passes on each media file."""
     scheduler = GPUScheduler(
         total_vram=0,
@@ -198,6 +355,9 @@ def _run_analyze(*, config: Any, db: Any, force: bool = False) -> None:
                     done_count, len(media_list), label,
                 )
 
+    # Helper to optionally wrap a call in _track_job
+    _jkw: dict[str, Any] = {"run_id": run_id, "emit_fn": emit_fn}
+
     successes = 0
     try:
         for media in media_list:
@@ -208,32 +368,100 @@ def _run_analyze(*, config: Any, db: Any, force: bool = False) -> None:
             audio_path = file_path  # audio extracted from same file
             try:
                 if force or not db.has_transcript(media_id):
-                    asr.transcribe_media(
-                        media_id, audio_path, db, scheduler, config.models,
-                        batch_size=config.processing.batch_size_whisper,
-                    )
+                    if run_id is not None:
+                        with _track_job(
+                            db, "ANALYZE", "asr",
+                            target_id=media_id, worker="gpu", **_jkw,
+                        ):
+                            asr.transcribe_media(
+                                media_id, audio_path, db, scheduler,
+                                config.models,
+                                batch_size=config.processing.batch_size_whisper,
+                            )
+                    else:
+                        asr.transcribe_media(
+                            media_id, audio_path, db, scheduler, config.models,
+                            batch_size=config.processing.batch_size_whisper,
+                        )
                 if force or not db.has_boundaries(media_id):
-                    scenes.detect_shots(media_id, file_path, db, scheduler)
+                    if run_id is not None:
+                        with _track_job(
+                            db, "ANALYZE", "scenes",
+                            target_id=media_id, worker="gpu", **_jkw,
+                        ):
+                            scenes.detect_shots(
+                                media_id, file_path, db, scheduler,
+                            )
+                    else:
+                        scenes.detect_shots(media_id, file_path, db, scheduler)
                 if force or not db.has_detections(media_id):
-                    objects.detect_objects(
-                        media_id, file_path, db, scheduler, config.models,
-                        sparse=False,
-                    )
+                    if run_id is not None:
+                        with _track_job(
+                            db, "ANALYZE", "objects",
+                            target_id=media_id, worker="gpu", **_jkw,
+                        ):
+                            objects.detect_objects(
+                                media_id, file_path, db, scheduler,
+                                config.models, sparse=False,
+                            )
+                    else:
+                        objects.detect_objects(
+                            media_id, file_path, db, scheduler, config.models,
+                            sparse=False,
+                        )
                 if force or not db.has_faces(media_id):
-                    faces.detect_faces(media_id, file_path, db, scheduler, config.models)
+                    if run_id is not None:
+                        with _track_job(
+                            db, "ANALYZE", "faces",
+                            target_id=media_id, worker="gpu", **_jkw,
+                        ):
+                            faces.detect_faces(
+                                media_id, file_path, db, scheduler,
+                                config.models,
+                            )
+                    else:
+                        faces.detect_faces(
+                            media_id, file_path, db, scheduler, config.models,
+                        )
                 if force or not db.has_embeddings(media_id):
-                    embeddings.compute_embeddings(
-                        media_id, file_path, db, scheduler, config.models,
-                    )
+                    if run_id is not None:
+                        with _track_job(
+                            db, "ANALYZE", "embeddings",
+                            target_id=media_id, worker="gpu", **_jkw,
+                        ):
+                            embeddings.compute_embeddings(
+                                media_id, file_path, db, scheduler,
+                                config.models,
+                            )
+                    else:
+                        embeddings.compute_embeddings(
+                            media_id, file_path, db, scheduler, config.models,
+                        )
                 if force or not db.has_audio_events(media_id):
-                    audio_events.classify_audio_events(
-                        media_id, audio_path, db, scheduler,
-                    )
+                    if run_id is not None:
+                        with _track_job(
+                            db, "ANALYZE", "audio_events",
+                            target_id=media_id, worker="gpu", **_jkw,
+                        ):
+                            audio_events.classify_audio_events(
+                                media_id, audio_path, db, scheduler,
+                            )
+                    else:
+                        audio_events.classify_audio_events(
+                            media_id, audio_path, db, scheduler,
+                        )
                 successes += 1
             except Exception:
                 logger.exception("Analysis failed for media %s", media_id)
 
-        faces.cluster_faces(db, eps=0.5, min_samples=3)
+        if run_id is not None:
+            with _track_job(
+                db, "ANALYZE", "face_clustering",
+                worker="cpu", **_jkw,
+            ):
+                faces.cluster_faces(db, eps=0.5, min_samples=3)
+        else:
+            faces.cluster_faces(db, eps=0.5, min_samples=3)
         logger.info(
             "Analyze complete: %d/%d media processed",
             successes, len(media_list),
@@ -242,7 +470,14 @@ def _run_analyze(*, config: Any, db: Any, force: bool = False) -> None:
         scheduler.force_unload_all()
 
 
-def _run_classify(*, config: Any, db: Any, force: bool = False) -> None:
+def _run_classify(
+    *,
+    config: Any,
+    db: Any,
+    force: bool = False,
+    run_id: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
+) -> None:
     """CLASSIFY stage: cluster and label activities."""
     if not force:
         existing = db.get_activity_clusters()
@@ -253,18 +488,34 @@ def _run_classify(*, config: Any, db: Any, force: bool = False) -> None:
             )
             return
 
-    cluster.cluster_activities(db)
-    classify.label_activities(db, config.llm)
+    _jkw: dict[str, Any] = {"run_id": run_id, "emit_fn": emit_fn}
+    if run_id is not None:
+        with _track_job(db, "CLASSIFY", "cluster_activities", worker="cpu", **_jkw):
+            cluster.cluster_activities(db)
+        with _track_job(db, "CLASSIFY", "label_activities", worker="cpu", **_jkw):
+            classify.label_activities(db, config.llm)
+    else:
+        cluster.cluster_activities(db)
+        classify.label_activities(db, config.llm)
     logger.info("Classify complete")
 
 
 def _run_narrate(
     *, config: Any, db: Any, force: bool = False,
     human_review_fn: Callable | None = None,
+    run_id: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
 ) -> None:
     """NARRATE stage: build storyboard, propose narratives, human review."""
-    storyboard = narratives.build_master_storyboard(db)
-    proposed = narratives.propose_narratives(storyboard, db, config)
+    _jkw: dict[str, Any] = {"run_id": run_id, "emit_fn": emit_fn}
+    if run_id is not None:
+        with _track_job(db, "NARRATE", "build_storyboard", worker="cpu", **_jkw):
+            storyboard = narratives.build_master_storyboard(db)
+        with _track_job(db, "NARRATE", "propose_narratives", worker="cpu", **_jkw):
+            proposed = narratives.propose_narratives(storyboard, db, config)
+    else:
+        storyboard = narratives.build_master_storyboard(db)
+        proposed = narratives.propose_narratives(storyboard, db, config)
     formatted = narratives.format_for_review(proposed)
 
     if human_review_fn is not None:
@@ -286,7 +537,14 @@ def _run_narrate(
     )
 
 
-def _run_script(*, config: Any, db: Any, force: bool = False) -> None:
+def _run_script(
+    *,
+    config: Any,
+    db: Any,
+    force: bool = False,
+    run_id: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
+) -> None:
     """SCRIPT stage: generate scripts for each approved narrative."""
     approved = db.list_narratives("approved")
 
@@ -308,13 +566,21 @@ def _run_script(*, config: Any, db: Any, force: bool = False) -> None:
     else:
         to_process = list(approved)
 
+    _jkw: dict[str, Any] = {"run_id": run_id, "emit_fn": emit_fn}
     successes = 0
     for narr in to_process:
         if shutdown_requested():
             break
         nid = narr["narrative_id"]
         try:
-            script.generate_script(nid, db, config.llm)
+            if run_id is not None:
+                with _track_job(
+                    db, "SCRIPT", "generate_script",
+                    target_id=nid, worker="cpu", **_jkw,
+                ):
+                    script.generate_script(nid, db, config.llm)
+            else:
+                script.generate_script(nid, db, config.llm)
             successes += 1
         except Exception:
             logger.exception("Script generation failed for narrative %s", nid)
@@ -325,7 +591,14 @@ def _run_script(*, config: Any, db: Any, force: bool = False) -> None:
     logger.info("Script complete: %d/%d succeeded", successes, len(approved))
 
 
-def _run_edl(*, config: Any, db: Any, force: bool = False) -> None:
+def _run_edl(
+    *,
+    config: Any,
+    db: Any,
+    force: bool = False,
+    run_id: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
+) -> None:
     """EDL stage: generate EDL, validate, and export OTIO per narrative."""
     approved = db.list_narratives("approved")
 
@@ -348,6 +621,7 @@ def _run_edl(*, config: Any, db: Any, force: bool = False) -> None:
     else:
         to_process = list(approved)
 
+    _jkw: dict[str, Any] = {"run_id": run_id, "emit_fn": emit_fn}
     successes = 0
     for narr in to_process:
         if shutdown_requested():
@@ -358,12 +632,30 @@ def _run_edl(*, config: Any, db: Any, force: bool = False) -> None:
             logger.warning("Skipping EDL for %s: no script", nid)
             continue
         try:
-            edl = edl_mod.generate_edl(nid, db, config.llm)
-            val_result = validator.validate_edl(edl, db)
-            otio_path = config.output_dir / nid / "timeline.otio"
-            otio_path.parent.mkdir(parents=True, exist_ok=True)
-            otio_export.export_otio(edl, otio_path, db)
-
+            if run_id is not None:
+                with _track_job(
+                    db, "EDL", "generate_edl",
+                    target_id=nid, worker="cpu", **_jkw,
+                ):
+                    edl = edl_mod.generate_edl(nid, db, config.llm)
+                with _track_job(
+                    db, "EDL", "validate_edl",
+                    target_id=nid, worker="cpu", **_jkw,
+                ):
+                    val_result = validator.validate_edl(edl, db)
+                otio_path = config.output_dir / nid / "timeline.otio"
+                otio_path.parent.mkdir(parents=True, exist_ok=True)
+                with _track_job(
+                    db, "EDL", "otio_export",
+                    target_id=nid, worker="cpu", **_jkw,
+                ):
+                    otio_export.export_otio(edl, otio_path, db)
+            else:
+                edl = edl_mod.generate_edl(nid, db, config.llm)
+                val_result = validator.validate_edl(edl, db)
+                otio_path = config.output_dir / nid / "timeline.otio"
+                otio_path.parent.mkdir(parents=True, exist_ok=True)
+                otio_export.export_otio(edl, otio_path, db)
 
             db.upsert_edit_plan(
                 nid,
@@ -383,7 +675,14 @@ def _run_edl(*, config: Any, db: Any, force: bool = False) -> None:
     logger.info("EDL complete: %d/%d succeeded", successes, len(approved))
 
 
-def _run_source_assets(*, config: Any, db: Any, force: bool = False) -> None:
+def _run_source_assets(
+    *,
+    config: Any,
+    db: Any,
+    force: bool = False,
+    run_id: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
+) -> None:
     """SOURCE_ASSETS stage: resolve assets for each narrative with an edit plan."""
     approved = db.list_narratives("approved")
 
@@ -406,6 +705,7 @@ def _run_source_assets(*, config: Any, db: Any, force: bool = False) -> None:
     else:
         to_process = list(approved)
 
+    _jkw: dict[str, Any] = {"run_id": run_id, "emit_fn": emit_fn}
     successes = 0
     for narr in to_process:
         if shutdown_requested():
@@ -416,12 +716,24 @@ def _run_source_assets(*, config: Any, db: Any, force: bool = False) -> None:
             logger.warning("Skipping source for %s: no edit plan", nid)
             continue
         try:
-            edl = json.loads(plan["edl_json"])
-            asset_dir = config.output_dir / "assets" / nid
-            asset_dir.mkdir(parents=True, exist_ok=True)
-            resolve.resolve_edl_assets(
-                edl, config.models, asset_dir, db, narrative_id=nid,
-            )
+            if run_id is not None:
+                with _track_job(
+                    db, "SOURCE_ASSETS", "resolve_assets",
+                    target_id=nid, worker="cpu", **_jkw,
+                ):
+                    edl = json.loads(plan["edl_json"])
+                    asset_dir = config.output_dir / "assets" / nid
+                    asset_dir.mkdir(parents=True, exist_ok=True)
+                    resolve.resolve_edl_assets(
+                        edl, config.models, asset_dir, db, narrative_id=nid,
+                    )
+            else:
+                edl = json.loads(plan["edl_json"])
+                asset_dir = config.output_dir / "assets" / nid
+                asset_dir.mkdir(parents=True, exist_ok=True)
+                resolve.resolve_edl_assets(
+                    edl, config.models, asset_dir, db, narrative_id=nid,
+                )
             successes += 1
         except Exception:
             logger.exception("Source resolution failed for narrative %s", nid)
@@ -432,7 +744,14 @@ def _run_source_assets(*, config: Any, db: Any, force: bool = False) -> None:
     logger.info("Source complete: %d/%d succeeded", successes, len(approved))
 
 
-def _run_render(*, config: Any, db: Any, force: bool = False) -> None:
+def _run_render(
+    *,
+    config: Any,
+    db: Any,
+    force: bool = False,
+    run_id: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
+) -> None:
     """RENDER stage: route, render, and validate per narrative."""
     approved = db.list_narratives("approved")
 
@@ -456,6 +775,7 @@ def _run_render(*, config: Any, db: Any, force: bool = False) -> None:
     else:
         to_process = list(approved)
 
+    _jkw: dict[str, Any] = {"run_id": run_id, "emit_fn": emit_fn}
     successes = 0
     for narr in to_process:
         if shutdown_requested():
@@ -466,11 +786,30 @@ def _run_render(*, config: Any, db: Any, force: bool = False) -> None:
             logger.warning("Skipping render for %s: no edit plan", nid)
             continue
         try:
-            output_path = router.route_and_render(
-                nid, db, config.output, config.output_dir,
-            )
-            edl = json.loads(plan["edl_json"])
-            report = render_validate.validate_render(output_path, edl, config.output)
+            if run_id is not None:
+                with _track_job(
+                    db, "RENDER", "render",
+                    target_id=nid, worker="gpu", **_jkw,
+                ):
+                    output_path = router.route_and_render(
+                        nid, db, config.output, config.output_dir,
+                    )
+                edl = json.loads(plan["edl_json"])
+                with _track_job(
+                    db, "RENDER", "validate_render",
+                    target_id=nid, worker="cpu", **_jkw,
+                ):
+                    report = render_validate.validate_render(
+                        output_path, edl, config.output,
+                    )
+            else:
+                output_path = router.route_and_render(
+                    nid, db, config.output, config.output_dir,
+                )
+                edl = json.loads(plan["edl_json"])
+                report = render_validate.validate_render(
+                    output_path, edl, config.output,
+                )
             for issue in report.issues:
                 logger.warning(
                     "Render validation [%s] %s: %s",
@@ -487,7 +826,14 @@ def _run_render(*, config: Any, db: Any, force: bool = False) -> None:
     logger.info("Render complete: %d/%d succeeded", successes, len(approved))
 
 
-def _run_upload(*, config: Any, db: Any, force: bool = False) -> None:
+def _run_upload(
+    *,
+    config: Any,
+    db: Any,
+    force: bool = False,
+    run_id: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
+) -> None:
     """UPLOAD stage: upload video and extract thumbnail per narrative."""
     approved = db.list_narratives("approved")
 
@@ -509,6 +855,7 @@ def _run_upload(*, config: Any, db: Any, force: bool = False) -> None:
     else:
         to_process = list(approved)
 
+    _jkw: dict[str, Any] = {"run_id": run_id, "emit_fn": emit_fn}
     successes = 0
     for narr in to_process:
         if shutdown_requested():
@@ -524,8 +871,20 @@ def _run_upload(*, config: Any, db: Any, force: bool = False) -> None:
             continue
         video_path = Path(render_path)
         try:
-            youtube.upload_video(nid, video_path, db, config.youtube)
-            thumbnail.extract_best_thumbnail(nid, video_path, db)
+            if run_id is not None:
+                with _track_job(
+                    db, "UPLOAD", "upload_video",
+                    target_id=nid, worker="cpu", **_jkw,
+                ):
+                    youtube.upload_video(nid, video_path, db, config.youtube)
+                with _track_job(
+                    db, "UPLOAD", "extract_thumbnail",
+                    target_id=nid, worker="cpu", **_jkw,
+                ):
+                    thumbnail.extract_best_thumbnail(nid, video_path, db)
+            else:
+                youtube.upload_video(nid, video_path, db, config.youtube)
+                thumbnail.extract_best_thumbnail(nid, video_path, db)
             successes += 1
         except Exception:
             logger.exception("Upload failed for narrative %s", nid)
@@ -759,7 +1118,10 @@ class PipelineOrchestrator:
                     logger.warning("Run tracking update failed: %s", exc)
             t0 = time.monotonic()
             try:
-                stage.func(config=config, db=db, force=self.force)
+                stage.func(
+                    config=config, db=db, force=self.force,
+                    run_id=self._run_id, emit_fn=self._emit_event,
+                )
                 elapsed = time.monotonic() - t0
                 results[stage_name] = StageResult(
                     status=StageStatus.DONE,

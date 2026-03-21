@@ -200,7 +200,11 @@ class TestRun:
         orch.run(config=mock_config, db=mock_db)
 
         for name, mock_fn in mocks.items():
-            mock_fn.assert_called_once_with(config=mock_config, db=mock_db, force=False)
+            mock_fn.assert_called_once()
+            call_kwargs = mock_fn.call_args[1]
+            assert call_kwargs["config"] is mock_config
+            assert call_kwargs["db"] is mock_db
+            assert call_kwargs["force"] is False
 
     def test_run_returns_results_dict(self) -> None:
         """run() returns a dict mapping stage names to StageResult."""
@@ -2811,9 +2815,11 @@ class TestForceFlagPropagation:
         orch.run(config=mock_config, db=mock_db)
 
         for name, mock_fn in mocks.items():
-            mock_fn.assert_called_once_with(
-                config=mock_config, db=mock_db, force=True,
-            )
+            mock_fn.assert_called_once()
+            call_kwargs = mock_fn.call_args[1]
+            assert call_kwargs["config"] is mock_config
+            assert call_kwargs["db"] is mock_db
+            assert call_kwargs["force"] is True
 
     def test_orchestrator_run_passes_force_false_to_stages(self) -> None:
         """run() passes force=False to each stage when orchestrator has force=False."""
@@ -2829,9 +2835,11 @@ class TestForceFlagPropagation:
         orch.run(config=mock_config, db=mock_db)
 
         for name, mock_fn in mocks.items():
-            mock_fn.assert_called_once_with(
-                config=mock_config, db=mock_db, force=False,
-            )
+            mock_fn.assert_called_once()
+            call_kwargs = mock_fn.call_args[1]
+            assert call_kwargs["config"] is mock_config
+            assert call_kwargs["db"] is mock_db
+            assert call_kwargs["force"] is False
 
 
 # --- Run Tracking & Event Emission tests (Task 37) ---
@@ -3425,3 +3433,956 @@ class TestTrackingCallResilience:
             and "tracking" in r.message.lower()
         ]
         assert len(warning_records) >= 1
+
+
+class TestStartJob:
+    """Tests for the module-level _start_job helper."""
+
+    def test_start_job_returns_job_id_and_start_mono(self) -> None:
+        """_start_job returns (job_id, start_mono) tuple with 32-char hex job_id."""
+        from autopilot.orchestrator import _start_job
+
+        mock_db = MagicMock()
+        job_id, start_mono = _start_job(mock_db, "INGEST", "ingest_file")
+        assert isinstance(job_id, str)
+        assert len(job_id) == 32
+        assert all(c in "0123456789abcdef" for c in job_id)
+        assert isinstance(start_mono, float)
+
+    def test_start_job_calls_insert_job_with_running_status(self) -> None:
+        """_start_job calls db.insert_job with status='running' and correct fields."""
+        from autopilot.orchestrator import _start_job
+
+        mock_db = MagicMock()
+        job_id, _ = _start_job(
+            mock_db, "INGEST", "ingest_file",
+            target_id="media_123", target_label="video.mp4",
+            worker="cpu", run_id="abc123",
+        )
+        mock_db.insert_job.assert_called_once()
+        call_kwargs = mock_db.insert_job.call_args
+        assert call_kwargs[0][0] == job_id  # positional: job_id
+        assert call_kwargs[0][1] == "INGEST"  # positional: stage
+        assert call_kwargs[0][2] == "ingest_file"  # positional: job_type
+        assert call_kwargs[1]["status"] == "running"
+        assert call_kwargs[1]["target_id"] == "media_123"
+        assert call_kwargs[1]["target_label"] == "video.mp4"
+        assert call_kwargs[1]["worker"] == "cpu"
+        assert call_kwargs[1]["run_id"] == "abc123"
+        assert "started_at" in call_kwargs[1]
+
+    def test_start_job_started_at_is_utc_iso(self) -> None:
+        """_start_job sets started_at as a UTC ISO string."""
+        from autopilot.orchestrator import _start_job
+
+        mock_db = MagicMock()
+        _start_job(mock_db, "ANALYZE", "asr")
+        started_at = mock_db.insert_job.call_args[1]["started_at"]
+        # Should be parseable as ISO format and contain timezone info
+        assert "T" in started_at
+        assert "+" in started_at or "Z" in started_at
+
+
+class TestFinishJob:
+    """Tests for the module-level _finish_job helper."""
+
+    def test_finish_job_updates_with_done_status(self) -> None:
+        """_finish_job calls db.update_job with status='done' by default."""
+        import time
+
+        from autopilot.orchestrator import _finish_job
+
+        mock_db = MagicMock()
+        start_mono = time.monotonic() - 1.5  # simulate 1.5s elapsed
+        _finish_job(mock_db, "job_abc", start_mono)
+        mock_db.update_job.assert_called_once()
+        call_kwargs = mock_db.update_job.call_args[1]
+        assert call_kwargs["status"] == "done"
+        assert "finished_at" in call_kwargs
+        assert isinstance(call_kwargs["duration_seconds"], float)
+        assert call_kwargs["duration_seconds"] >= 1.0
+
+    def test_finish_job_error_status_and_message(self) -> None:
+        """_finish_job with status='error' passes error_message."""
+        import time
+
+        from autopilot.orchestrator import _finish_job
+
+        mock_db = MagicMock()
+        start_mono = time.monotonic()
+        _finish_job(
+            mock_db, "job_xyz", start_mono,
+            status="error", error_message="disk full",
+        )
+        call_kwargs = mock_db.update_job.call_args[1]
+        assert call_kwargs["status"] == "error"
+        assert call_kwargs["error_message"] == "disk full"
+
+    def test_finish_job_calculates_duration_from_monotonic(self) -> None:
+        """_finish_job duration_seconds is calculated from monotonic clock."""
+        import time
+
+        from autopilot.orchestrator import _finish_job
+
+        mock_db = MagicMock()
+        start_mono = time.monotonic() - 2.0
+        _finish_job(mock_db, "job_dur", start_mono)
+        duration = mock_db.update_job.call_args[1]["duration_seconds"]
+        assert duration >= 2.0
+
+
+class TestTrackJobContextManager:
+    """Tests for the _track_job context manager."""
+
+    def test_track_job_yields_job_id(self) -> None:
+        """_track_job yields a 32-char hex job_id."""
+        from autopilot.orchestrator import _track_job
+
+        mock_db = MagicMock()
+        with _track_job(mock_db, "INGEST", "ingest_file") as job_id:
+            assert isinstance(job_id, str)
+            assert len(job_id) == 32
+
+    def test_track_job_calls_finish_with_done_on_success(self) -> None:
+        """On clean exit, _track_job calls db.update_job with status='done'."""
+        from autopilot.orchestrator import _track_job
+
+        mock_db = MagicMock()
+        with _track_job(mock_db, "INGEST", "ingest_file"):
+            pass  # no error
+
+        mock_db.update_job.assert_called_once()
+        call_kwargs = mock_db.update_job.call_args[1]
+        assert call_kwargs["status"] == "done"
+
+    def test_track_job_calls_finish_with_error_on_exception(self) -> None:
+        """On exception, _track_job calls db.update_job with status='error' and re-raises."""
+        from autopilot.orchestrator import _track_job
+
+        mock_db = MagicMock()
+        with pytest.raises(ValueError, match="test error"):
+            with _track_job(mock_db, "ANALYZE", "asr") as _job_id:
+                raise ValueError("test error")
+
+        call_kwargs = mock_db.update_job.call_args[1]
+        assert call_kwargs["status"] == "error"
+        assert call_kwargs["error_message"] == "test error"
+
+    def test_track_job_resilient_to_db_errors(self) -> None:
+        """When db fails, _track_job doesn't mask the original exception."""
+        from autopilot.orchestrator import _track_job
+
+        mock_db = MagicMock()
+        mock_db.insert_job.side_effect = RuntimeError("db connection lost")
+        mock_db.update_job.side_effect = RuntimeError("db connection lost")
+
+        # Should not raise a db error, the original ValueError should propagate
+        with pytest.raises(ValueError, match="original"):
+            with _track_job(mock_db, "INGEST", "ingest_file"):
+                raise ValueError("original")
+
+    def test_track_job_no_error_when_db_fails_on_success(self) -> None:
+        """When db fails on success path, _track_job doesn't raise."""
+        from autopilot.orchestrator import _track_job
+
+        mock_db = MagicMock()
+        mock_db.insert_job.side_effect = RuntimeError("db error")
+        mock_db.update_job.side_effect = RuntimeError("db error")
+
+        # Should not raise anything
+        with _track_job(mock_db, "INGEST", "ingest_file"):
+            pass  # clean exit, but db calls fail silently
+
+
+class TestJobHelperResilience:
+    """Tests for _start_job/_finish_job resilience and emit_fn callbacks."""
+
+    def test_start_job_returns_job_id_when_db_raises(self) -> None:
+        """When db.insert_job raises, _start_job still returns a job_id."""
+        from autopilot.orchestrator import _start_job
+
+        mock_db = MagicMock()
+        mock_db.insert_job.side_effect = RuntimeError("db down")
+        job_id, start_mono = _start_job(mock_db, "INGEST", "ingest_file")
+        # Should still return valid job_id
+        assert len(job_id) == 32
+        assert isinstance(start_mono, float)
+
+    def test_start_job_logs_warning_when_db_raises(
+        self, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """_start_job logs WARNING when db.insert_job fails."""
+        from autopilot.orchestrator import _start_job
+
+        mock_db = MagicMock()
+        mock_db.insert_job.side_effect = RuntimeError("db error")
+        with caplog.at_level(logging.WARNING, logger="autopilot.orchestrator"):
+            _start_job(mock_db, "INGEST", "ingest_file")
+        assert any("insert job" in r.message.lower() for r in caplog.records)
+
+    def test_finish_job_doesnt_crash_when_db_raises(self) -> None:
+        """When db.update_job raises, _finish_job doesn't crash."""
+        import time
+
+        from autopilot.orchestrator import _finish_job
+
+        mock_db = MagicMock()
+        mock_db.update_job.side_effect = RuntimeError("db error")
+        # Should not raise
+        _finish_job(mock_db, "job_abc", time.monotonic())
+
+    def test_finish_job_logs_warning_when_db_raises(
+        self, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """_finish_job logs WARNING when db.update_job fails."""
+        import time
+
+        from autopilot.orchestrator import _finish_job
+
+        mock_db = MagicMock()
+        mock_db.update_job.side_effect = RuntimeError("db err")
+        with caplog.at_level(logging.WARNING, logger="autopilot.orchestrator"):
+            _finish_job(mock_db, "job_abc", time.monotonic())
+        assert any("update job" in r.message.lower() for r in caplog.records)
+
+    def test_start_job_calls_emit_fn(self) -> None:
+        """_start_job calls emit_fn('job_started', stage=..., job_id=...)."""
+        from autopilot.orchestrator import _start_job
+
+        mock_db = MagicMock()
+        mock_emit = MagicMock()
+        job_id, _ = _start_job(
+            mock_db, "INGEST", "ingest_file", emit_fn=mock_emit,
+        )
+        mock_emit.assert_called_once_with(
+            "job_started", stage="INGEST", job_id=job_id,
+        )
+
+    def test_finish_job_calls_emit_fn_on_done(self) -> None:
+        """_finish_job calls emit_fn('job_completed', ...) on done."""
+        import time
+
+        from autopilot.orchestrator import _finish_job
+
+        mock_db = MagicMock()
+        mock_emit = MagicMock()
+        _finish_job(
+            mock_db, "job_abc", time.monotonic(),
+            emit_fn=mock_emit, stage="INGEST",
+        )
+        mock_emit.assert_called_once_with(
+            "job_completed", stage="INGEST", job_id="job_abc",
+        )
+
+    def test_finish_job_calls_emit_fn_on_error(self) -> None:
+        """_finish_job calls emit_fn('job_error', ...) on error."""
+        import time
+
+        from autopilot.orchestrator import _finish_job
+
+        mock_db = MagicMock()
+        mock_emit = MagicMock()
+        _finish_job(
+            mock_db, "job_abc", time.monotonic(),
+            status="error", error_message="oops",
+            emit_fn=mock_emit, stage="ANALYZE",
+        )
+        mock_emit.assert_called_once_with(
+            "job_error", stage="ANALYZE", job_id="job_abc",
+        )
+
+
+class TestIngestJobTracking:
+    """Tests for per-job tracking in _run_ingest."""
+
+    @patch("autopilot.orchestrator.dedup")
+    @patch("autopilot.orchestrator.normalizer")
+    @patch("autopilot.orchestrator.scanner")
+    def test_ingest_creates_ingest_file_job_per_file(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+    ):
+        """When run_id is provided, creates one 'ingest_file' job per file."""
+        from autopilot.orchestrator import _run_ingest
+
+        mock_file1 = MagicMock()
+        mock_file1.file_path = Path("/fake/v1.mp4")
+        mock_file1.sha256_prefix = "aaa111"
+        mock_file2 = MagicMock()
+        mock_file2.file_path = Path("/fake/v2.mp4")
+        mock_file2.sha256_prefix = "bbb222"
+        mock_scanner.scan_directory.return_value = [mock_file1, mock_file2]
+        db = MagicMock()
+        db.get_media.return_value = None
+
+        _run_ingest(
+            config=minimal_config, db=db,
+            run_id="run_abc", emit_fn=MagicMock(),
+        )
+
+        # Should have insert_job calls for ingest_file (2 files) + dedup (1)
+        ingest_file_calls = [
+            c for c in db.insert_job.call_args_list
+            if c[0][2] == "ingest_file"
+        ]
+        assert len(ingest_file_calls) == 2
+        # Check stage is INGEST
+        for call in ingest_file_calls:
+            assert call[0][1] == "INGEST"
+            assert call[1]["worker"] == "cpu"
+
+    @patch("autopilot.orchestrator.dedup")
+    @patch("autopilot.orchestrator.normalizer")
+    @patch("autopilot.orchestrator.scanner")
+    def test_ingest_creates_dedup_job(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+    ):
+        """When run_id is provided, creates one 'dedup' job."""
+        from autopilot.orchestrator import _run_ingest
+
+        mock_scanner.scan_directory.return_value = []
+        db = MagicMock()
+
+        _run_ingest(
+            config=minimal_config, db=db,
+            run_id="run_abc", emit_fn=MagicMock(),
+        )
+
+        dedup_calls = [
+            c for c in db.insert_job.call_args_list
+            if c[0][2] == "dedup"
+        ]
+        assert len(dedup_calls) == 1
+        assert dedup_calls[0][0][1] == "INGEST"
+
+    @patch("autopilot.orchestrator.dedup")
+    @patch("autopilot.orchestrator.normalizer")
+    @patch("autopilot.orchestrator.scanner")
+    def test_ingest_no_jobs_when_no_run_id(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+    ):
+        """When run_id=None (default), no insert_job calls made."""
+        from autopilot.orchestrator import _run_ingest
+
+        mock_file = MagicMock()
+        mock_file.file_path = Path("/fake/v1.mp4")
+        mock_scanner.scan_directory.return_value = [mock_file]
+        db = MagicMock()
+        db.get_media.return_value = None
+
+        _run_ingest(config=minimal_config, db=db)
+
+        db.insert_job.assert_not_called()
+
+
+class TestAnalyzeJobTracking:
+    """Tests for per-job tracking in _run_analyze."""
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_creates_job_per_media_per_analysis(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """Creates one job per (media x analysis_type) + face_clustering."""
+        from autopilot.orchestrator import _run_analyze
+
+        media1 = {"id": "m1", "file_path": "/fake/v1.mp4", "status": "ingested"}
+        db = MagicMock()
+        db.list_all_media.return_value = [media1]
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(
+            config=minimal_config, db=db,
+            run_id="run_xyz", emit_fn=MagicMock(),
+        )
+
+        # 6 analysis types for 1 media + 1 face_clustering = 7 jobs
+        assert db.insert_job.call_count == 7
+
+        # Check analysis job types present
+        job_types = [c[0][2] for c in db.insert_job.call_args_list]
+        for expected in ["asr", "scenes", "objects", "faces", "embeddings", "audio_events"]:
+            assert expected in job_types
+        assert "face_clustering" in job_types
+
+        # All should have stage='ANALYZE'
+        for call in db.insert_job.call_args_list:
+            assert call[0][1] == "ANALYZE"
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_gpu_worker_for_analysis_jobs(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """Analysis jobs have worker='gpu', face_clustering has worker='cpu'."""
+        from autopilot.orchestrator import _run_analyze
+
+        media1 = {"id": "m1", "file_path": "/fake/v1.mp4", "status": "ingested"}
+        db = MagicMock()
+        db.list_all_media.return_value = [media1]
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(
+            config=minimal_config, db=db,
+            run_id="run_xyz", emit_fn=MagicMock(),
+        )
+
+        for call in db.insert_job.call_args_list:
+            job_type = call[0][2]
+            if job_type == "face_clustering":
+                assert call[1]["worker"] == "cpu"
+            else:
+                assert call[1]["worker"] == "gpu"
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_no_jobs_when_no_run_id(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """When run_id=None (default), no insert_job calls made."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = MagicMock()
+        db.list_all_media.return_value = [
+            {"id": "m1", "file_path": "/fake/v1.mp4", "status": "ingested"},
+        ]
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(config=minimal_config, db=db)
+
+        db.insert_job.assert_not_called()
+
+
+class TestClassifyJobTracking:
+    """Tests for per-job tracking in _run_classify."""
+
+    @patch("autopilot.orchestrator.classify")
+    @patch("autopilot.orchestrator.cluster")
+    def test_classify_creates_two_jobs(
+        self, mock_cluster, mock_classify, minimal_config,
+    ):
+        """Creates 'cluster_activities' and 'label_activities' jobs."""
+        from autopilot.orchestrator import _run_classify
+
+        db = MagicMock()
+        db.get_activity_clusters.return_value = []
+
+        _run_classify(
+            config=minimal_config, db=db,
+            run_id="run_c", emit_fn=MagicMock(),
+        )
+
+        assert db.insert_job.call_count == 2
+        job_types = [c[0][2] for c in db.insert_job.call_args_list]
+        assert "cluster_activities" in job_types
+        assert "label_activities" in job_types
+        for call in db.insert_job.call_args_list:
+            assert call[0][1] == "CLASSIFY"
+            assert call[1]["worker"] == "cpu"
+
+    @patch("autopilot.orchestrator.classify")
+    @patch("autopilot.orchestrator.cluster")
+    def test_classify_no_jobs_when_no_run_id(
+        self, mock_cluster, mock_classify, minimal_config,
+    ):
+        """When run_id=None, no insert_job calls."""
+        from autopilot.orchestrator import _run_classify
+
+        db = MagicMock()
+        db.get_activity_clusters.return_value = []
+
+        _run_classify(config=minimal_config, db=db)
+
+        db.insert_job.assert_not_called()
+
+
+class TestNarrateJobTracking:
+    """Tests for per-job tracking in _run_narrate."""
+
+    @patch("autopilot.orchestrator.narratives")
+    def test_narrate_creates_two_jobs(
+        self, mock_narratives, minimal_config,
+    ):
+        """Creates 'build_storyboard' and 'propose_narratives' jobs."""
+        from autopilot.orchestrator import _run_narrate
+
+        mock_narratives.build_master_storyboard.return_value = MagicMock()
+        mock_narratives.propose_narratives.return_value = []
+        mock_narratives.format_for_review.return_value = ""
+        db = MagicMock()
+
+        _run_narrate(
+            config=minimal_config, db=db,
+            run_id="run_n", emit_fn=MagicMock(),
+        )
+
+        assert db.insert_job.call_count == 2
+        job_types = [c[0][2] for c in db.insert_job.call_args_list]
+        assert "build_storyboard" in job_types
+        assert "propose_narratives" in job_types
+        for call in db.insert_job.call_args_list:
+            assert call[0][1] == "NARRATE"
+            assert call[1]["worker"] == "cpu"
+
+    @patch("autopilot.orchestrator.narratives")
+    def test_narrate_no_jobs_when_no_run_id(
+        self, mock_narratives, minimal_config,
+    ):
+        """When run_id=None, no insert_job calls."""
+        from autopilot.orchestrator import _run_narrate
+
+        mock_narratives.build_master_storyboard.return_value = MagicMock()
+        mock_narratives.propose_narratives.return_value = []
+        mock_narratives.format_for_review.return_value = ""
+        db = MagicMock()
+
+        _run_narrate(config=minimal_config, db=db)
+
+        db.insert_job.assert_not_called()
+
+
+class TestScriptJobTracking:
+    """Tests for per-job tracking in _run_script."""
+
+    @patch("autopilot.orchestrator.script")
+    def test_script_creates_job_per_narrative(
+        self, mock_script, minimal_config,
+    ):
+        """Creates one 'generate_script' job per narrative."""
+        from autopilot.orchestrator import _run_script
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
+        ]
+        db.get_narrative_script.return_value = None
+
+        _run_script(
+            config=minimal_config, db=db,
+            run_id="run_s", emit_fn=MagicMock(),
+        )
+
+        assert db.insert_job.call_count == 2
+        for call in db.insert_job.call_args_list:
+            assert call[0][1] == "SCRIPT"
+            assert call[0][2] == "generate_script"
+            assert call[1]["worker"] == "cpu"
+
+        target_ids = [c[1]["target_id"] for c in db.insert_job.call_args_list]
+        assert "n1" in target_ids
+        assert "n2" in target_ids
+
+    @patch("autopilot.orchestrator.script")
+    def test_script_no_jobs_when_no_run_id(
+        self, mock_script, minimal_config,
+    ):
+        """When run_id=None, no insert_job calls."""
+        from autopilot.orchestrator import _run_script
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_narrative_script.return_value = None
+
+        _run_script(config=minimal_config, db=db)
+
+        db.insert_job.assert_not_called()
+
+
+class TestEdlJobTracking:
+    """Tests for per-job tracking in _run_edl."""
+
+    @patch("autopilot.orchestrator.otio_export")
+    @patch("autopilot.orchestrator.validator")
+    @patch("autopilot.orchestrator.edl_mod")
+    def test_edl_creates_three_jobs_per_narrative(
+        self, mock_edl, mock_validator, mock_otio, minimal_config,
+    ):
+        """Creates 'generate_edl', 'validate_edl', 'otio_export' per narrative."""
+        from autopilot.orchestrator import _run_edl
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_edit_plan.return_value = None
+        db.get_narrative_script.return_value = "some script"
+        mock_edl.generate_edl.return_value = {"cuts": []}
+        mock_validator.validate_edl.return_value = MagicMock(passed=True)
+
+        _run_edl(
+            config=minimal_config, db=db,
+            run_id="run_e", emit_fn=MagicMock(),
+        )
+
+        assert db.insert_job.call_count == 3
+        job_types = [c[0][2] for c in db.insert_job.call_args_list]
+        assert "generate_edl" in job_types
+        assert "validate_edl" in job_types
+        assert "otio_export" in job_types
+        for call in db.insert_job.call_args_list:
+            assert call[0][1] == "EDL"
+            assert call[1]["worker"] == "cpu"
+
+    @patch("autopilot.orchestrator.otio_export")
+    @patch("autopilot.orchestrator.validator")
+    @patch("autopilot.orchestrator.edl_mod")
+    def test_edl_no_jobs_when_no_run_id(
+        self, mock_edl, mock_validator, mock_otio, minimal_config,
+    ):
+        """When run_id=None, no insert_job calls."""
+        from autopilot.orchestrator import _run_edl
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_edit_plan.return_value = None
+        db.get_narrative_script.return_value = "some script"
+        mock_edl.generate_edl.return_value = {"cuts": []}
+        mock_validator.validate_edl.return_value = MagicMock(passed=True)
+
+        _run_edl(config=minimal_config, db=db)
+
+        db.insert_job.assert_not_called()
+
+
+class TestSourceAssetsJobTracking:
+    """Tests for per-job tracking in _run_source_assets."""
+
+    @patch("autopilot.orchestrator.resolve")
+    def test_source_creates_job_per_narrative(
+        self, mock_resolve, minimal_config,
+    ):
+        """Creates one 'resolve_assets' job per narrative."""
+        from autopilot.orchestrator import _run_source_assets
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_edit_plan.return_value = {"edl_json": '{"cuts": []}'}
+
+        _run_source_assets(
+            config=minimal_config, db=db,
+            run_id="run_sa", emit_fn=MagicMock(),
+        )
+
+        job_calls = [c for c in db.insert_job.call_args_list if c[0][2] == "resolve_assets"]
+        assert len(job_calls) == 1
+        assert job_calls[0][0][1] == "SOURCE_ASSETS"
+        assert job_calls[0][1]["worker"] == "cpu"
+        assert job_calls[0][1]["target_id"] == "n1"
+
+    @patch("autopilot.orchestrator.resolve")
+    def test_source_no_jobs_when_no_run_id(
+        self, mock_resolve, minimal_config,
+    ):
+        """When run_id=None, no insert_job calls."""
+        from autopilot.orchestrator import _run_source_assets
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_edit_plan.return_value = {"edl_json": '{"cuts": []}'}
+
+        _run_source_assets(config=minimal_config, db=db)
+
+        db.insert_job.assert_not_called()
+
+
+class TestRenderJobTracking:
+    """Tests for per-job tracking in _run_render."""
+
+    @patch("autopilot.orchestrator.render_validate")
+    @patch("autopilot.orchestrator.router")
+    def test_render_creates_two_jobs_per_narrative(
+        self, mock_router, mock_rv, minimal_config,
+    ):
+        """Creates 'render' (gpu) and 'validate_render' (cpu) per narrative."""
+        from autopilot.orchestrator import _run_render
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_edit_plan.return_value = {"edl_json": '{"cuts": []}'}
+        mock_router.route_and_render.return_value = Path("/out/n1.mp4")
+        mock_rv.validate_render.return_value = MagicMock(issues=[])
+
+        _run_render(
+            config=minimal_config, db=db,
+            run_id="run_r", emit_fn=MagicMock(),
+        )
+
+        assert db.insert_job.call_count == 2
+        job_types = [c[0][2] for c in db.insert_job.call_args_list]
+        assert "render" in job_types
+        assert "validate_render" in job_types
+        for call in db.insert_job.call_args_list:
+            assert call[0][1] == "RENDER"
+            assert call[1]["target_id"] == "n1"
+
+        # Check workers
+        workers = {c[0][2]: c[1]["worker"] for c in db.insert_job.call_args_list}
+        assert workers["render"] == "gpu"
+        assert workers["validate_render"] == "cpu"
+
+    @patch("autopilot.orchestrator.render_validate")
+    @patch("autopilot.orchestrator.router")
+    def test_render_no_jobs_when_no_run_id(
+        self, mock_router, mock_rv, minimal_config,
+    ):
+        """When run_id=None, no insert_job calls."""
+        from autopilot.orchestrator import _run_render
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_edit_plan.return_value = {"edl_json": '{"cuts": []}'}
+        mock_router.route_and_render.return_value = Path("/out/n1.mp4")
+        mock_rv.validate_render.return_value = MagicMock(issues=[])
+
+        _run_render(config=minimal_config, db=db)
+
+        db.insert_job.assert_not_called()
+
+
+class TestUploadJobTracking:
+    """Tests for per-job tracking in _run_upload."""
+
+    @patch("autopilot.orchestrator.thumbnail")
+    @patch("autopilot.orchestrator.youtube")
+    def test_upload_creates_two_jobs_per_narrative(
+        self, mock_yt, mock_thumb, minimal_config,
+    ):
+        """Creates 'upload_video' and 'extract_thumbnail' per narrative."""
+        from autopilot.orchestrator import _run_upload
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_upload.return_value = None
+        db.get_edit_plan.return_value = {"render_path": "/out/n1.mp4"}
+
+        _run_upload(
+            config=minimal_config, db=db,
+            run_id="run_u", emit_fn=MagicMock(),
+        )
+
+        assert db.insert_job.call_count == 2
+        job_types = [c[0][2] for c in db.insert_job.call_args_list]
+        assert "upload_video" in job_types
+        assert "extract_thumbnail" in job_types
+        for call in db.insert_job.call_args_list:
+            assert call[0][1] == "UPLOAD"
+            assert call[1]["worker"] == "cpu"
+            assert call[1]["target_id"] == "n1"
+
+    @patch("autopilot.orchestrator.thumbnail")
+    @patch("autopilot.orchestrator.youtube")
+    def test_upload_no_jobs_when_no_run_id(
+        self, mock_yt, mock_thumb, minimal_config,
+    ):
+        """When run_id=None, no insert_job calls."""
+        from autopilot.orchestrator import _run_upload
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_upload.return_value = None
+        db.get_edit_plan.return_value = {"render_path": "/out/n1.mp4"}
+
+        _run_upload(config=minimal_config, db=db)
+
+        db.insert_job.assert_not_called()
+
+
+class TestOrchestratorPassesJobKwargs:
+    """Test that PipelineOrchestrator.run() passes run_id and emit_fn to stages."""
+
+    def test_run_passes_run_id_to_stage_funcs(self) -> None:
+        """Each stage.func is called with run_id=self._run_id."""
+        orch = PipelineOrchestrator()
+        mock_funcs = []
+        for stage in orch.stages:
+            mf = MagicMock()
+            stage.func = mf
+            mock_funcs.append((stage.name, mf))
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        for stage_name, mf in mock_funcs:
+            mf.assert_called_once()
+            call_kwargs = mf.call_args[1]
+            assert "run_id" in call_kwargs, f"{stage_name} missing run_id"
+            assert call_kwargs["run_id"] == orch._run_id
+
+    def test_run_passes_emit_fn_to_stage_funcs(self) -> None:
+        """Each stage.func is called with emit_fn=self._emit_event."""
+        orch = PipelineOrchestrator()
+        mock_funcs = []
+        for stage in orch.stages:
+            mf = MagicMock()
+            stage.func = mf
+            mock_funcs.append((stage.name, mf))
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        for stage_name, mf in mock_funcs:
+            call_kwargs = mf.call_args[1]
+            assert "emit_fn" in call_kwargs, f"{stage_name} missing emit_fn"
+            assert call_kwargs["emit_fn"] == orch._emit_event
+
+    def test_run_passes_none_run_id_when_insert_run_fails(self) -> None:
+        """When insert_run fails, stages get run_id=None."""
+        orch = PipelineOrchestrator()
+        mock_funcs = []
+        for stage in orch.stages:
+            mf = MagicMock()
+            stage.func = mf
+            mock_funcs.append(mf)
+
+        mock_db = MagicMock()
+        mock_db.insert_run.side_effect = RuntimeError("db error")
+        orch.run(config=MagicMock(), db=mock_db)
+
+        for mf in mock_funcs:
+            assert mf.call_args[1]["run_id"] is None
+
+
+class TestJobTrackingIntegration:
+    """Integration tests: run pipeline with real CatalogDB and stub stages that
+    create jobs via _track_job.  Verify pipeline_jobs + pipeline_events records."""
+
+    def test_jobs_created_in_db_with_correct_run_id(self, catalog_db) -> None:
+        """Stub stages create jobs via _track_job; verify pipeline_jobs records."""
+        from autopilot.orchestrator import _track_job
+
+        orch = PipelineOrchestrator()
+
+        # Replace all stages with no-ops except INGEST which creates 2 jobs
+        def fake_ingest(*, config, db, force, run_id=None, emit_fn=None):
+            with _track_job(db, "INGEST", "ingest_file",
+                            target_id="media_001", worker="cpu",
+                            run_id=run_id, emit_fn=emit_fn):
+                pass  # simulate work
+            with _track_job(db, "INGEST", "dedup",
+                            worker="cpu", run_id=run_id, emit_fn=emit_fn):
+                pass
+
+        for stage in orch.stages:
+            if stage.name == "INGEST":
+                stage.func = fake_ingest
+            else:
+                stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=catalog_db)
+
+        jobs = catalog_db.list_jobs(run_id=orch._run_id)
+        assert len(jobs) == 2
+
+        ingest_file_jobs = [j for j in jobs if j["job_type"] == "ingest_file"]
+        assert len(ingest_file_jobs) == 1
+        j = ingest_file_jobs[0]
+        assert j["stage"] == "INGEST"
+        assert j["status"] == "done"
+        assert j["target_id"] == "media_001"
+        assert j["worker"] == "cpu"
+        assert j["run_id"] == orch._run_id
+        assert float(j["duration_seconds"]) >= 0
+
+        dedup_jobs = [j for j in jobs if j["job_type"] == "dedup"]
+        assert len(dedup_jobs) == 1
+        assert dedup_jobs[0]["status"] == "done"
+
+    def test_job_events_appear_in_pipeline_events(self, catalog_db) -> None:
+        """job_started and job_completed events appear in pipeline_events."""
+        from autopilot.orchestrator import _track_job
+
+        orch = PipelineOrchestrator()
+
+        def fake_analyze(*, config, db, force, run_id=None, emit_fn=None):
+            with _track_job(db, "ANALYZE", "asr",
+                            target_id="m1", worker="gpu",
+                            run_id=run_id, emit_fn=emit_fn):
+                pass
+
+        for stage in orch.stages:
+            if stage.name == "ANALYZE":
+                stage.func = fake_analyze
+            else:
+                stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=catalog_db)
+
+        events = catalog_db.get_events_since(0)
+        event_types = [e["event_type"] for e in events]
+
+        assert "job_started" in event_types
+        assert "job_completed" in event_types
+
+        # Find the job_started event for ANALYZE
+        job_started_events = [
+            e for e in events
+            if e["event_type"] == "job_started" and e["stage"] == "ANALYZE"
+        ]
+        assert len(job_started_events) >= 1
+
+    def test_job_error_recorded_on_stage_failure(self, catalog_db) -> None:
+        """A failing job within a stage records status='error' in pipeline_jobs."""
+        from autopilot.orchestrator import _track_job
+
+        orch = PipelineOrchestrator()
+
+        def fake_script(*, config, db, force, run_id=None, emit_fn=None):
+            with _track_job(db, "SCRIPT", "generate_script",
+                            target_id="n1", worker="cpu",
+                            run_id=run_id, emit_fn=emit_fn):
+                raise ValueError("script generation failed")
+
+        for stage in orch.stages:
+            if stage.name == "SCRIPT":
+                stage.func = fake_script
+            else:
+                stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=catalog_db)
+
+        jobs = catalog_db.list_jobs(run_id=orch._run_id, stage="SCRIPT")
+        assert len(jobs) == 1
+        assert jobs[0]["status"] == "error"
+        assert "script generation failed" in jobs[0]["error_message"]
+
+        # job_error event should also be emitted
+        events = catalog_db.get_events_since(0)
+        job_error_events = [
+            e for e in events
+            if e["event_type"] == "job_error" and e["stage"] == "SCRIPT"
+        ]
+        assert len(job_error_events) >= 1
