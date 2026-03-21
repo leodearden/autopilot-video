@@ -3025,3 +3025,92 @@ class TestStageTransitionEvents:
         ]
         stages_set = [c[1]["current_stage"] for c in current_stage_calls]
         assert stages_set == EXPECTED_STAGES
+
+
+class TestRunFinalization:
+    """Tests for run finalization — status update and run_completed/run_failed events."""
+
+    def test_run_completed_status_on_success(self) -> None:
+        """When all stages pass, final update_run has status='completed' and wall_clock_seconds."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        update_calls = mock_db.update_run.call_args_list
+        # The last update_run call should finalize the run
+        final_calls = [
+            c for c in update_calls
+            if "status" in c[1] and c[1]["status"] in ("completed", "failed")
+        ]
+        assert len(final_calls) >= 1
+        final = final_calls[-1][1]
+        assert final["status"] == "completed"
+        assert "finished_at" in final
+        assert isinstance(final["finished_at"], str)
+        assert "T" in final["finished_at"]
+        assert "wall_clock_seconds" in final
+        assert isinstance(final["wall_clock_seconds"], float)
+        assert final["wall_clock_seconds"] >= 0
+
+    def test_run_failed_status_on_error(self) -> None:
+        """When a stage errors, final update_run has status='failed'."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            if stage.name == "INGEST":
+                stage.func = MagicMock(side_effect=RuntimeError("boom"))
+            else:
+                stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        update_calls = mock_db.update_run.call_args_list
+        final_calls = [
+            c for c in update_calls
+            if "status" in c[1] and c[1]["status"] in ("completed", "failed")
+        ]
+        assert len(final_calls) >= 1
+        assert final_calls[-1][1]["status"] == "failed"
+
+    def test_run_completed_event_emitted(self) -> None:
+        """'run_completed' event emitted on successful run with duration in payload."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        insert_event_calls = mock_db.insert_event.call_args_list
+        completed_calls = [
+            c for c in insert_event_calls
+            if c[1].get("event_type") == "run_completed"
+        ]
+        assert len(completed_calls) == 1
+        payload = json.loads(completed_calls[0][1]["payload_json"])
+        assert "duration" in payload
+        assert isinstance(payload["duration"], float)
+
+    def test_run_failed_event_emitted(self) -> None:
+        """'run_failed' event emitted when pipeline has errors."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            if stage.name == "ANALYZE":
+                stage.func = MagicMock(side_effect=ValueError("analyze fail"))
+            else:
+                stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        insert_event_calls = mock_db.insert_event.call_args_list
+        failed_calls = [
+            c for c in insert_event_calls
+            if c[1].get("event_type") == "run_failed"
+        ]
+        assert len(failed_calls) == 1
+        payload = json.loads(failed_calls[0][1]["payload_json"])
+        assert "duration" in payload
