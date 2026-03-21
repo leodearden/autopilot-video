@@ -6,7 +6,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -2840,7 +2840,7 @@ class TestRunTrackingInit:
     """Tests for pipeline run record creation at start of run()."""
 
     def test_run_creates_pipeline_run_record(self) -> None:
-        """run() calls db.insert_run once with a 32-char hex run_id, ISO started_at, status='running'."""
+        """run() calls db.insert_run once with correct args."""
         orch = PipelineOrchestrator()
         for stage in orch.stages:
             stage.func = MagicMock()
@@ -3120,7 +3120,7 @@ class TestBudgetRemainingTracking:
     """Tests for budget_remaining_seconds updates after each stage."""
 
     def test_budget_remaining_written_after_each_stage(self) -> None:
-        """With budget_seconds=3600, update_run is called with budget_remaining_seconds after each stage."""
+        """With budget_seconds=3600, update_run includes budget_remaining."""
         orch = PipelineOrchestrator(budget_seconds=3600)
         for stage in orch.stages:
             stage.func = MagicMock()
@@ -3143,7 +3143,7 @@ class TestBudgetRemainingTracking:
             assert remaining <= 3600
 
     def test_no_budget_remaining_when_no_budget(self) -> None:
-        """With budget_seconds=None, update_run is NOT called with budget_remaining_seconds for per-stage updates."""
+        """With budget_seconds=None, no budget_remaining updates."""
         orch = PipelineOrchestrator(budget_seconds=None)
         for stage in orch.stages:
             stage.func = MagicMock()
@@ -3196,8 +3196,16 @@ class TestRunTrackingIntegration:
 
         # Verify each stage has both started and completed events
         for stage_name in EXPECTED_STAGES:
-            stage_started = [e for e in events if e["event_type"] == "stage_started" and e["stage"] == stage_name]
-            stage_completed = [e for e in events if e["event_type"] == "stage_completed" and e["stage"] == stage_name]
+            stage_started = [
+                e for e in events
+                if e["event_type"] == "stage_started"
+                and e["stage"] == stage_name
+            ]
+            stage_completed = [
+                e for e in events
+                if e["event_type"] == "stage_completed"
+                and e["stage"] == stage_name
+            ]
             assert len(stage_started) == 1, f"Missing stage_started for {stage_name}"
             assert len(stage_completed) == 1, f"Missing stage_completed for {stage_name}"
 

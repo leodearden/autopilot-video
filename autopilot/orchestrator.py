@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import enum
-import threading
 import functools
 import json
 import logging
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -466,7 +466,9 @@ def _run_render(*, config: Any, db: Any, force: bool = False) -> None:
             logger.warning("Skipping render for %s: no edit plan", nid)
             continue
         try:
-            output_path = router.route_and_render(nid, db, config.output)
+            output_path = router.route_and_render(
+                nid, db, config.output, config.output_dir,
+            )
             edl = json.loads(plan["edl_json"])
             report = render_validate.validate_render(output_path, edl, config.output)
             for issue in report.issues:
