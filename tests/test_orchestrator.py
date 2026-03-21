@@ -3488,8 +3488,9 @@ class TestFinishJob:
 
     def test_finish_job_updates_with_done_status(self) -> None:
         """_finish_job calls db.update_job with status='done' by default."""
-        from autopilot.orchestrator import _finish_job
         import time
+
+        from autopilot.orchestrator import _finish_job
 
         mock_db = MagicMock()
         start_mono = time.monotonic() - 1.5  # simulate 1.5s elapsed
@@ -3503,8 +3504,9 @@ class TestFinishJob:
 
     def test_finish_job_error_status_and_message(self) -> None:
         """_finish_job with status='error' passes error_message."""
-        from autopilot.orchestrator import _finish_job
         import time
+
+        from autopilot.orchestrator import _finish_job
 
         mock_db = MagicMock()
         start_mono = time.monotonic()
@@ -3518,8 +3520,9 @@ class TestFinishJob:
 
     def test_finish_job_calculates_duration_from_monotonic(self) -> None:
         """_finish_job duration_seconds is calculated from monotonic clock."""
-        from autopilot.orchestrator import _finish_job
         import time
+
+        from autopilot.orchestrator import _finish_job
 
         mock_db = MagicMock()
         start_mono = time.monotonic() - 2.0
@@ -3558,7 +3561,7 @@ class TestTrackJobContextManager:
 
         mock_db = MagicMock()
         with pytest.raises(ValueError, match="test error"):
-            with _track_job(mock_db, "ANALYZE", "asr") as job_id:
+            with _track_job(mock_db, "ANALYZE", "asr") as _job_id:
                 raise ValueError("test error")
 
         call_kwargs = mock_db.update_job.call_args[1]
@@ -3619,8 +3622,9 @@ class TestJobHelperResilience:
 
     def test_finish_job_doesnt_crash_when_db_raises(self) -> None:
         """When db.update_job raises, _finish_job doesn't crash."""
-        from autopilot.orchestrator import _finish_job
         import time
+
+        from autopilot.orchestrator import _finish_job
 
         mock_db = MagicMock()
         mock_db.update_job.side_effect = RuntimeError("db error")
@@ -3631,8 +3635,9 @@ class TestJobHelperResilience:
         self, caplog: pytest.LogCaptureFixture,
     ) -> None:
         """_finish_job logs WARNING when db.update_job fails."""
-        from autopilot.orchestrator import _finish_job
         import time
+
+        from autopilot.orchestrator import _finish_job
 
         mock_db = MagicMock()
         mock_db.update_job.side_effect = RuntimeError("db err")
@@ -3655,8 +3660,9 @@ class TestJobHelperResilience:
 
     def test_finish_job_calls_emit_fn_on_done(self) -> None:
         """_finish_job calls emit_fn('job_completed', ...) on done."""
-        from autopilot.orchestrator import _finish_job
         import time
+
+        from autopilot.orchestrator import _finish_job
 
         mock_db = MagicMock()
         mock_emit = MagicMock()
@@ -3670,8 +3676,9 @@ class TestJobHelperResilience:
 
     def test_finish_job_calls_emit_fn_on_error(self) -> None:
         """_finish_job calls emit_fn('job_error', ...) on error."""
-        from autopilot.orchestrator import _finish_job
         import time
+
+        from autopilot.orchestrator import _finish_job
 
         mock_db = MagicMock()
         mock_emit = MagicMock()
