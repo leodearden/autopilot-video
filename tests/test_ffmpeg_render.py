@@ -372,6 +372,28 @@ class TestRenderSimpleNoCrop:
 class TestRenderSimpleErrors:
     """Verify render_simple error handling."""
 
+    def test_subprocess_timeout_raises_render_error(self, tmp_path: Path) -> None:
+        """TimeoutExpired should be wrapped in RenderError with clip_id and timeout."""
+        from autopilot.render.ffmpeg_render import RenderError, render_simple
+
+        config = _make_config()
+        edl_entry = _make_edl_entry()
+        output = tmp_path / "out.mp4"
+
+        with (
+            patch(
+                "subprocess.run",
+                side_effect=subprocess.TimeoutExpired(
+                    cmd="ffmpeg", timeout=600,
+                ),
+            ),
+            pytest.raises(RenderError, match="clip_1") as exc_info,
+        ):
+            render_simple(edl_entry, None, output, config)
+
+        assert "timeout" in str(exc_info.value).lower() or "timed out" in str(exc_info.value).lower()
+        assert "600" in str(exc_info.value)
+
     def test_subprocess_error_wrapped_in_render_error(self, tmp_path: Path) -> None:
         """CalledProcessError should be wrapped in RenderError."""
         from autopilot.render.ffmpeg_render import RenderError, render_simple
