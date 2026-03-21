@@ -629,14 +629,17 @@ class PipelineOrchestrator:
             job_id: Optional job identifier.
             payload: Optional dict to serialize as JSON payload.
         """
-        payload_json = json.dumps(payload) if payload is not None else None
-        self._db.insert_event(
-            event_type=event_type,
-            stage=stage,
-            job_id=job_id,
-            payload_json=payload_json,
-        )
-        logger.debug("Event: %s stage=%s", event_type, stage)
+        try:
+            payload_json = json.dumps(payload) if payload is not None else None
+            self._db.insert_event(
+                event_type=event_type,
+                stage=stage,
+                job_id=job_id,
+                payload_json=payload_json,
+            )
+            logger.debug("Event: %s stage=%s", event_type, stage)
+        except Exception as exc:
+            logger.warning("Failed to emit event %s: %s", event_type, exc)
 
     def execution_order(self) -> list[str]:
         """Return stage names in topologically sorted execution order.
