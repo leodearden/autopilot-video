@@ -197,7 +197,7 @@ class TestRun:
         orch.run(config=mock_config, db=mock_db)
 
         for name, mock_fn in mocks.items():
-            mock_fn.assert_called_once_with(config=mock_config, db=mock_db)
+            mock_fn.assert_called_once_with(config=mock_config, db=mock_db, force=False)
 
     def test_run_returns_results_dict(self) -> None:
         """run() returns a dict mapping stage names to StageResult."""
@@ -438,6 +438,7 @@ class TestIngestStage:
         mock_file2.file_path = Path("/fake/v2.mp4")
         mock_scanner.scan_directory.return_value = [mock_file1, mock_file2]
         db = MagicMock()
+        db.get_media.return_value = None  # nothing ingested yet
 
         _run_ingest(config=minimal_config, db=db)
 
@@ -456,6 +457,7 @@ class TestIngestStage:
         mock_file.file_path = Path("/fake/video.mp4")
         mock_scanner.scan_directory.return_value = [mock_file]
         db = MagicMock()
+        db.get_media.return_value = None  # nothing ingested yet
 
         _run_ingest(config=minimal_config, db=db)
 
@@ -520,6 +522,12 @@ class TestAnalyzeStage:
         media2 = {"id": "m2", "file_path": "/fake/v2.mp4", "status": "ingested"}
         db = MagicMock()
         db.list_all_media.return_value = [media1, media2]
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
         mock_gpu_cls.return_value = MagicMock()
 
         _run_analyze(config=minimal_config, db=db)
@@ -575,6 +583,12 @@ class TestAnalyzeStage:
         ]
         db = MagicMock()
         db.list_all_media.return_value = media
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
         mock_gpu_cls.return_value = MagicMock()
 
         _run_analyze(config=minimal_config, db=db)
@@ -655,6 +669,12 @@ class TestAnalyzeStage:
             {"id": "m2", "file_path": "/fake/v2.mp4", "status": "ingested"},
             {"id": "m3", "file_path": "/fake/v3.mp4", "status": "ingested"},
         ]
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
         mock_scheduler = MagicMock()
         mock_gpu_cls.return_value = mock_scheduler
         # First media's ASR fails
@@ -685,6 +705,12 @@ class TestAnalyzeStage:
         db.list_all_media.return_value = [
             {"id": "m1", "file_path": "/fake/v1.mp4", "status": "ingested"},
         ]
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
         mock_scheduler = MagicMock()
         mock_gpu_cls.return_value = mock_scheduler
         mock_asr.transcribe_media.side_effect = RuntimeError("ASR failed")
@@ -714,6 +740,12 @@ class TestAnalyzeStage:
             {"id": "m2", "file_path": "/fake/v2.mp4", "status": "ingested"},
             {"id": "m3", "file_path": "/fake/v3.mp4", "status": "ingested"},
         ]
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
         mock_scheduler = MagicMock()
         mock_gpu_cls.return_value = mock_scheduler
         mock_asr.transcribe_media.side_effect = [
@@ -738,6 +770,7 @@ class TestClassifyStage:
         from autopilot.orchestrator import _run_classify
 
         db = MagicMock()
+        db.get_activity_clusters.return_value = []  # nothing classified yet
         _run_classify(config=minimal_config, db=db)
 
         mock_cluster.cluster_activities.assert_called_once_with(db)
@@ -751,6 +784,7 @@ class TestClassifyStage:
         from autopilot.orchestrator import _run_classify
 
         db = MagicMock()
+        db.get_activity_clusters.return_value = []  # nothing classified yet
         _run_classify(config=minimal_config, db=db)
 
         mock_classify.label_activities.assert_called_once_with(db, minimal_config.llm)
@@ -858,6 +892,7 @@ class TestScriptStage:
         db.list_narratives.return_value = [
             {"narrative_id": "n1"}, {"narrative_id": "n2"},
         ]
+        db.get_narrative_script.return_value = None
         mock_script.generate_script.return_value = {"scenes": []}
 
         _run_script(config=minimal_config, db=db)
@@ -876,6 +911,7 @@ class TestScriptStage:
         db.list_narratives.return_value = [
             {"narrative_id": "n1"}, {"narrative_id": "n2"},
         ]
+        db.get_narrative_script.return_value = None
         mock_script.generate_script.side_effect = [
             ScriptError("failed"), {"scenes": []},
         ]
@@ -896,6 +932,7 @@ class TestScriptStage:
         db.list_narratives.return_value = [
             {"narrative_id": "n1"}, {"narrative_id": "n2"},
         ]
+        db.get_narrative_script.return_value = None
         mock_script.generate_script.side_effect = ScriptError("fail")
 
         with pytest.raises(RuntimeError, match="All narratives failed"):
@@ -917,6 +954,7 @@ class TestEdlStage:
         db = MagicMock()
         db.list_narratives.return_value = [{"narrative_id": "n1"}]
         db.get_narrative_script.return_value = {"scenes": []}
+        db.get_edit_plan.return_value = None
         mock_edl.generate_edl.return_value = {"timeline": []}
         mock_validator.validate_edl.return_value = MagicMock(passed=True)
         mock_otio.export_otio.return_value = Path("/out/timeline.otio")
@@ -939,6 +977,7 @@ class TestEdlStage:
         db = MagicMock()
         db.list_narratives.return_value = [{"narrative_id": "n1"}]
         db.get_narrative_script.return_value = {"scenes": []}
+        db.get_edit_plan.return_value = None
         mock_edl.generate_edl.return_value = {"timeline": []}
         val_result = MagicMock(passed=True)
         mock_validator.validate_edl.return_value = val_result
@@ -963,6 +1002,7 @@ class TestEdlStage:
             {"narrative_id": "n1"}, {"narrative_id": "n2"},
         ]
         db.get_narrative_script.return_value = {"scenes": []}
+        db.get_edit_plan.return_value = None
         mock_edl.generate_edl.side_effect = [
             EdlError("fail"), {"timeline": []},
         ]
@@ -988,6 +1028,7 @@ class TestEdlStage:
             {"narrative_id": "n1"}, {"narrative_id": "n2"},
         ]
         db.get_narrative_script.return_value = {"scenes": []}
+        db.get_edit_plan.return_value = None
         mock_edl.generate_edl.side_effect = RuntimeError("fail")
 
         with pytest.raises(RuntimeError, match="All narratives failed"):
@@ -1181,6 +1222,7 @@ class TestUploadStage:
             "edl_json": '{}',
             "render_path": "/out/renders/n1/output.mp4",
         }
+        db.get_upload.return_value = None
 
         mock_youtube.upload_video.return_value = "https://youtu.be/abc"
         mock_thumbnail.extract_best_thumbnail.return_value = Path("/thumb.jpg")
@@ -1207,6 +1249,7 @@ class TestUploadStage:
             "edl_json": '{}',
             "render_path": "/out/renders/output.mp4",
         }
+        db.get_upload.return_value = None
 
         mock_youtube.upload_video.side_effect = [
             UploadError("fail"), "https://youtu.be/def",
@@ -1232,6 +1275,7 @@ class TestUploadStage:
             "edl_json": '{}',
             "render_path": "/db/stored/path.mp4",
         }
+        db.get_upload.return_value = None
         mock_youtube.upload_video.return_value = "https://youtu.be/abc"
         mock_thumbnail.extract_best_thumbnail.return_value = Path("/thumb.jpg")
 
@@ -1255,6 +1299,7 @@ class TestUploadStage:
             "narrative_id": "n1",
             "edl_json": '{}',
         }
+        db.get_upload.return_value = None
 
         with caplog.at_level(logging.WARNING, logger="autopilot.orchestrator"):
             with pytest.raises(RuntimeError, match="All narratives failed"):
@@ -1279,6 +1324,7 @@ class TestUploadStage:
             "edl_json": '{}',
             "render_path": "/out/renders/output.mp4",
         }
+        db.get_upload.return_value = None
 
         mock_youtube.upload_video.side_effect = RuntimeError("fail")
 
@@ -1493,6 +1539,11 @@ class TestIngestShutdown:
         from autopilot.orchestrator import _reset_shutdown
 
         _reset_shutdown()
+# -- Checkpoint/resume tests for _run_ingest ---------------------------------
+
+
+class TestIngestResume:
+    """Tests for _run_ingest checkpoint/resume logic."""
 
     @patch("autopilot.orchestrator.dedup")
     @patch("autopilot.orchestrator.normalizer")
@@ -1521,13 +1572,36 @@ class TestIngestShutdown:
             if call_count == 1:
                 request_shutdown()
 
-        db.insert_media.side_effect = insert_and_shutdown
+        mock_normalizer.normalize_audio.side_effect = insert_and_shutdown
 
         _run_ingest(config=minimal_config, db=db)
 
         # Only the first file should be fully processed; second iteration
         # should see shutdown and break before processing
+        assert mock_normalizer.normalize_audio.call_count == 1
+    def test_ingest_skips_already_ingested_media(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+    ):
+        """_run_ingest skips insert+normalize for media already in the DB."""
+        from autopilot.orchestrator import _run_ingest
+
+        mock_file1 = MagicMock()
+        mock_file1.sha256_prefix = "hash1"
+        mock_file1.file_path = Path("/fake/v1.mp4")
+        mock_file2 = MagicMock()
+        mock_file2.sha256_prefix = "hash2"
+        mock_file2.file_path = Path("/fake/v2.mp4")
+        mock_scanner.scan_directory.return_value = [mock_file1, mock_file2]
+
+        db = MagicMock()
+        # hash1 already exists, hash2 is new
+        db.get_media.side_effect = lambda mid: {"id": mid} if mid == "hash1" else None
+
+        _run_ingest(config=minimal_config, db=db)
+
+        # Only hash2 should get insert_media + normalize_audio
         assert db.insert_media.call_count == 1
+        assert mock_normalizer.normalize_audio.call_count == 1
 
     @patch("autopilot.orchestrator.dedup")
     @patch("autopilot.orchestrator.normalizer")
@@ -1928,3 +2002,786 @@ class TestShutdownSkipDetails:
             assert any(
                 name in r.message for r in shutdown_logs
             ), f"Missing [SHUTDOWN] log for {name}"
+    def test_ingest_logs_resume_counts(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+        caplog,
+    ):
+        """_run_ingest logs 'Resuming INGEST: N/M files already ingested'."""
+        from autopilot.orchestrator import _run_ingest
+
+        mock_file1 = MagicMock()
+        mock_file1.sha256_prefix = "hash1"
+        mock_file1.file_path = Path("/fake/v1.mp4")
+        mock_file2 = MagicMock()
+        mock_file2.sha256_prefix = "hash2"
+        mock_file2.file_path = Path("/fake/v2.mp4")
+        mock_scanner.scan_directory.return_value = [mock_file1, mock_file2]
+
+        db = MagicMock()
+        db.get_media.side_effect = lambda mid: {"id": mid} if mid == "hash1" else None
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            _run_ingest(config=minimal_config, db=db)
+
+        assert any("Resuming INGEST" in r.message and "1/2" in r.message
+                    for r in caplog.records)
+
+    @patch("autopilot.orchestrator.dedup")
+    @patch("autopilot.orchestrator.normalizer")
+    @patch("autopilot.orchestrator.scanner")
+    def test_ingest_force_reprocesses_all(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+    ):
+        """_run_ingest with force=True reprocesses even existing media."""
+        from autopilot.orchestrator import _run_ingest
+
+        mock_file1 = MagicMock()
+        mock_file1.sha256_prefix = "hash1"
+        mock_file1.file_path = Path("/fake/v1.mp4")
+        mock_file2 = MagicMock()
+        mock_file2.sha256_prefix = "hash2"
+        mock_file2.file_path = Path("/fake/v2.mp4")
+        mock_scanner.scan_directory.return_value = [mock_file1, mock_file2]
+
+        db = MagicMock()
+        db.get_media.return_value = {"id": "existing"}
+
+        _run_ingest(config=minimal_config, db=db, force=True)
+
+        # Both should be processed despite existing in DB
+        assert db.insert_media.call_count == 2
+        assert mock_normalizer.normalize_audio.call_count == 2
+
+
+# -- Checkpoint/resume tests for _run_analyze --------------------------------
+
+
+class TestAnalyzeResume:
+    """Tests for _run_analyze per-pass checkpoint/resume logic."""
+
+    ANALYZE_PATCHES = [
+        "autopilot.orchestrator.GPUScheduler",
+        "autopilot.orchestrator.faces",
+        "autopilot.orchestrator.audio_events",
+        "autopilot.orchestrator.embeddings",
+        "autopilot.orchestrator.objects",
+        "autopilot.orchestrator.scenes",
+        "autopilot.orchestrator.asr",
+    ]
+
+    def _make_db_with_media(self, media_ids, **has_overrides):
+        """Create a MagicMock db with specified media and has_* defaults."""
+        db = MagicMock()
+        db.list_all_media.return_value = [
+            {"id": mid, "file_path": f"/fake/{mid}.mp4", "status": "ingested"}
+            for mid in media_ids
+        ]
+        # Default: nothing completed
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
+        # Apply overrides
+        for k, v in has_overrides.items():
+            getattr(db, k).return_value = v
+        return db
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_skips_transcribed_media(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """_run_analyze skips asr.transcribe_media when has_transcript is True."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = self._make_db_with_media(["m1", "m2"])
+        # m1 already transcribed
+        db.has_transcript.side_effect = lambda mid: mid == "m1"
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(config=minimal_config, db=db)
+
+        # Only m2 should get transcribed
+        assert mock_asr.transcribe_media.call_count == 1
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_skips_detected_media(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """_run_analyze skips objects.detect_objects when has_detections is True."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = self._make_db_with_media(["m1"])
+        db.has_detections.return_value = True  # already detected
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(config=minimal_config, db=db)
+
+        mock_objects.detect_objects.assert_not_called()
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_skips_boundaries_faces_embeddings_audio(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """_run_analyze skips each pass independently when has_* returns True."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = self._make_db_with_media(["m1"])
+        db.has_boundaries.return_value = True
+        db.has_faces.return_value = True
+        db.has_embeddings.return_value = True
+        db.has_audio_events.return_value = True
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(config=minimal_config, db=db)
+
+        mock_scenes.detect_shots.assert_not_called()
+        mock_faces.detect_faces.assert_not_called()
+        mock_embeddings.compute_embeddings.assert_not_called()
+        mock_audio_events.classify_audio_events.assert_not_called()
+        # transcript and detections should still be called (not skipped)
+        mock_asr.transcribe_media.assert_called_once()
+        mock_objects.detect_objects.assert_called_once()
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_logs_resume_counts(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+        caplog,
+    ):
+        """_run_analyze logs per-pass resume counts."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = self._make_db_with_media(["m1", "m2", "m3"])
+        # 2 of 3 already transcribed
+        db.has_transcript.side_effect = lambda mid: mid in ("m1", "m2")
+        mock_gpu_cls.return_value = MagicMock()
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            _run_analyze(config=minimal_config, db=db)
+
+        assert any("transcri" in r.message.lower() and "2/3" in r.message
+                    for r in caplog.records)
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_force_reprocesses_all(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ):
+        """_run_analyze with force=True ignores has_* checks."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = self._make_db_with_media(["m1"])
+        # Everything already done
+        db.has_transcript.return_value = True
+        db.has_boundaries.return_value = True
+        db.has_detections.return_value = True
+        db.has_faces.return_value = True
+        db.has_embeddings.return_value = True
+        db.has_audio_events.return_value = True
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(config=minimal_config, db=db, force=True)
+
+        # All passes should run despite has_* returning True
+        assert mock_asr.transcribe_media.call_count == 1
+        assert mock_scenes.detect_shots.call_count == 1
+        assert mock_objects.detect_objects.call_count == 1
+        assert mock_faces.detect_faces.call_count == 1
+        assert mock_embeddings.compute_embeddings.call_count == 1
+        assert mock_audio_events.classify_audio_events.call_count == 1
+
+
+# -- Checkpoint/resume tests for _run_classify --------------------------------
+
+
+class TestClassifyResume:
+    """Tests for _run_classify checkpoint/resume logic."""
+
+    @patch("autopilot.orchestrator.classify")
+    @patch("autopilot.orchestrator.cluster")
+    def test_classify_skips_when_clusters_exist(
+        self, mock_cluster, mock_classify, minimal_config,
+    ):
+        """_run_classify skips when activity clusters already exist and have labels."""
+        from autopilot.orchestrator import _run_classify
+
+        db = MagicMock()
+        db.get_activity_clusters.return_value = [
+            {"cluster_id": "ac1", "label": "Beach Day"},
+            {"cluster_id": "ac2", "label": "Dinner"},
+        ]
+
+        _run_classify(config=minimal_config, db=db)
+
+        mock_cluster.cluster_activities.assert_not_called()
+        mock_classify.label_activities.assert_not_called()
+
+    @patch("autopilot.orchestrator.classify")
+    @patch("autopilot.orchestrator.cluster")
+    def test_classify_force_clears_and_reprocesses(
+        self, mock_cluster, mock_classify, minimal_config,
+    ):
+        """_run_classify with force=True re-runs even when clusters exist."""
+        from autopilot.orchestrator import _run_classify
+
+        db = MagicMock()
+        db.get_activity_clusters.return_value = [
+            {"cluster_id": "ac1", "label": "Beach Day"},
+        ]
+
+        _run_classify(config=minimal_config, db=db, force=True)
+
+        mock_cluster.cluster_activities.assert_called_once()
+        mock_classify.label_activities.assert_called_once()
+
+
+# -- Checkpoint/resume tests for _run_script ----------------------------------
+
+
+class TestScriptResume:
+    """Tests for _run_script checkpoint/resume logic."""
+
+    @patch("autopilot.orchestrator.script")
+    def test_script_skips_narrative_with_existing_script(
+        self, mock_script, minimal_config,
+    ):
+        """_run_script skips generate_script when narrative already has a script."""
+        from autopilot.orchestrator import _run_script
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        # n1 already has a script, n2 does not
+        db.get_narrative_script.side_effect = lambda nid: (
+            {"narrative_id": "n1", "script_json": "{}"} if nid == "n1" else None
+        )
+        mock_script.generate_script.return_value = {"scenes": []}
+
+        _run_script(config=minimal_config, db=db)
+
+        # Only n2 should get generate_script called
+        assert mock_script.generate_script.call_count == 1
+        mock_script.generate_script.assert_called_once_with("n2", db, minimal_config.llm)
+
+    @patch("autopilot.orchestrator.script")
+    def test_script_logs_resume_counts(
+        self, mock_script, minimal_config, caplog,
+    ):
+        """_run_script logs 'Resuming SCRIPT: N/M narratives already scripted'."""
+        from autopilot.orchestrator import _run_script
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"}, {"narrative_id": "n3"},
+        ]
+        # n1 and n2 already have scripts
+        db.get_narrative_script.side_effect = lambda nid: (
+            {"narrative_id": nid, "script_json": "{}"} if nid in ("n1", "n2") else None
+        )
+        mock_script.generate_script.return_value = {"scenes": []}
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            _run_script(config=minimal_config, db=db)
+
+        assert any("Resuming SCRIPT" in r.message and "2/3" in r.message
+                    for r in caplog.records)
+
+    @patch("autopilot.orchestrator.script")
+    def test_script_force_regenerates_all(
+        self, mock_script, minimal_config,
+    ):
+        """_run_script with force=True regenerates even narratives with existing scripts."""
+        from autopilot.orchestrator import _run_script
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        # Both already have scripts
+        db.get_narrative_script.return_value = {"narrative_id": "n1", "script_json": "{}"}
+        mock_script.generate_script.return_value = {"scenes": []}
+
+        _run_script(config=minimal_config, db=db, force=True)
+
+        # Both should get generate_script called
+        assert mock_script.generate_script.call_count == 2
+
+
+# -- Checkpoint/resume tests for _run_edl ------------------------------------
+
+
+class TestEdlResume:
+    """Tests for _run_edl checkpoint/resume logic."""
+
+    @patch("autopilot.orchestrator.otio_export")
+    @patch("autopilot.orchestrator.validator")
+    @patch("autopilot.orchestrator.edl_mod")
+    def test_edl_skips_narrative_with_existing_edit_plan(
+        self, mock_edl, mock_validator, mock_otio, minimal_config,
+    ):
+        """_run_edl skips EDL generation when narrative already has an edit plan with edl_json."""
+        from autopilot.orchestrator import _run_edl
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        db.get_narrative_script.return_value = {"scenes": []}
+        # n1 already has an edit plan with edl_json, n2 does not
+        db.get_edit_plan.side_effect = lambda nid: (
+            {"narrative_id": "n1", "edl_json": '{"timeline": []}'} if nid == "n1"
+            else None
+        )
+        mock_edl.generate_edl.return_value = {"timeline": []}
+        mock_validator.validate_edl.return_value = MagicMock(passed=True)
+
+        _run_edl(config=minimal_config, db=db)
+
+        # Only n2 should get generate_edl called
+        assert mock_edl.generate_edl.call_count == 1
+
+    @patch("autopilot.orchestrator.otio_export")
+    @patch("autopilot.orchestrator.validator")
+    @patch("autopilot.orchestrator.edl_mod")
+    def test_edl_logs_resume_counts(
+        self, mock_edl, mock_validator, mock_otio, minimal_config, caplog,
+    ):
+        """_run_edl logs 'Resuming EDL: N/M narratives already have edit plans'."""
+        from autopilot.orchestrator import _run_edl
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"}, {"narrative_id": "n3"},
+        ]
+        db.get_narrative_script.return_value = {"scenes": []}
+        # n1 and n2 already have edit plans
+        db.get_edit_plan.side_effect = lambda nid: (
+            {"narrative_id": nid, "edl_json": '{"timeline": []}'} if nid in ("n1", "n2")
+            else None
+        )
+        mock_edl.generate_edl.return_value = {"timeline": []}
+        mock_validator.validate_edl.return_value = MagicMock(passed=True)
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            _run_edl(config=minimal_config, db=db)
+
+        assert any("Resuming EDL" in r.message and "2/3" in r.message
+                    for r in caplog.records)
+
+    @patch("autopilot.orchestrator.otio_export")
+    @patch("autopilot.orchestrator.validator")
+    @patch("autopilot.orchestrator.edl_mod")
+    def test_edl_force_regenerates_all(
+        self, mock_edl, mock_validator, mock_otio, minimal_config,
+    ):
+        """_run_edl with force=True regenerates even narratives with existing edit plans."""
+        from autopilot.orchestrator import _run_edl
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        db.get_narrative_script.return_value = {"scenes": []}
+        # Both already have edit plans
+        db.get_edit_plan.return_value = {"narrative_id": "n1", "edl_json": '{"timeline": []}'}
+        mock_edl.generate_edl.return_value = {"timeline": []}
+        mock_validator.validate_edl.return_value = MagicMock(passed=True)
+
+        _run_edl(config=minimal_config, db=db, force=True)
+
+        # Both should get generate_edl called
+        assert mock_edl.generate_edl.call_count == 2
+
+
+# -- Checkpoint/resume tests for _run_source_assets ---------------------------
+
+
+class TestSourceResume:
+    """Tests for _run_source_assets checkpoint/resume logic."""
+
+    @patch("autopilot.orchestrator.resolve")
+    def test_source_skips_narrative_with_resolved_assets(
+        self, mock_resolve, minimal_config, tmp_path,
+    ):
+        """_run_source_assets skips when asset_dir exists and is non-empty."""
+        from autopilot.orchestrator import _run_source_assets
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        db.get_edit_plan.return_value = {
+            "narrative_id": "n1",
+            "edl_json": '{"timeline": []}',
+        }
+
+        # Create non-empty asset dir for n1
+        asset_dir_n1 = minimal_config.output_dir / "assets" / "n1"
+        asset_dir_n1.mkdir(parents=True)
+        (asset_dir_n1 / "clip.mp4").touch()
+
+        mock_resolve.resolve_edl_assets.return_value = {"edl": {}, "unresolved": []}
+
+        _run_source_assets(config=minimal_config, db=db)
+
+        # Only n2 should get resolve_edl_assets called
+        assert mock_resolve.resolve_edl_assets.call_count == 1
+
+    @patch("autopilot.orchestrator.resolve")
+    def test_source_logs_resume_counts(
+        self, mock_resolve, minimal_config, caplog,
+    ):
+        """_run_source_assets logs 'Resuming SOURCE_ASSETS: N/M ...'."""
+        from autopilot.orchestrator import _run_source_assets
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"}, {"narrative_id": "n3"},
+        ]
+        db.get_edit_plan.return_value = {
+            "narrative_id": "n1",
+            "edl_json": '{"timeline": []}',
+        }
+
+        # Create non-empty asset dirs for n1 and n2
+        for nid in ("n1", "n2"):
+            asset_dir = minimal_config.output_dir / "assets" / nid
+            asset_dir.mkdir(parents=True)
+            (asset_dir / "clip.mp4").touch()
+
+        mock_resolve.resolve_edl_assets.return_value = {"edl": {}, "unresolved": []}
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            _run_source_assets(config=minimal_config, db=db)
+
+        assert any("Resuming SOURCE_ASSETS" in r.message and "2/3" in r.message
+                    for r in caplog.records)
+
+    @patch("autopilot.orchestrator.resolve")
+    def test_source_force_re_resolves_all(
+        self, mock_resolve, minimal_config,
+    ):
+        """_run_source_assets with force=True re-resolves even with existing assets."""
+        from autopilot.orchestrator import _run_source_assets
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        db.get_edit_plan.return_value = {
+            "narrative_id": "n1",
+            "edl_json": '{"timeline": []}',
+        }
+
+        # Create non-empty asset dir for both
+        for nid in ("n1", "n2"):
+            asset_dir = minimal_config.output_dir / "assets" / nid
+            asset_dir.mkdir(parents=True)
+            (asset_dir / "clip.mp4").touch()
+
+        mock_resolve.resolve_edl_assets.return_value = {"edl": {}, "unresolved": []}
+
+        _run_source_assets(config=minimal_config, db=db, force=True)
+
+        # Both should get resolve_edl_assets called
+        assert mock_resolve.resolve_edl_assets.call_count == 2
+
+
+# -- Checkpoint/resume tests for _run_render ----------------------------------
+
+
+class TestRenderResume:
+    """Tests for _run_render checkpoint/resume logic."""
+
+    @patch("autopilot.orchestrator.render_validate")
+    @patch("autopilot.orchestrator.router")
+    def test_render_skips_narrative_with_existing_render_path(
+        self, mock_router, mock_validate, minimal_config,
+    ):
+        """_run_render skips when edit_plan has render_path and file exists on disk."""
+        from autopilot.orchestrator import _run_render
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+
+        # Create render file on disk for n1
+        render_path_n1 = minimal_config.output_dir / "renders" / "n1" / "output.mp4"
+        render_path_n1.parent.mkdir(parents=True)
+        render_path_n1.touch()
+
+        # n1 has render_path in edit plan pointing to existing file, n2 does not
+        def get_edit_plan(nid):
+            if nid == "n1":
+                return {
+                    "narrative_id": "n1",
+                    "edl_json": '{"timeline": []}',
+                    "render_path": str(render_path_n1),
+                }
+            return {
+                "narrative_id": "n2",
+                "edl_json": '{"timeline": []}',
+            }
+        db.get_edit_plan.side_effect = get_edit_plan
+
+        mock_router.route_and_render.return_value = Path("/out/video.mp4")
+        mock_validate.validate_render.return_value = MagicMock(passed=True, issues=[])
+
+        _run_render(config=minimal_config, db=db)
+
+        # Only n2 should get route_and_render called
+        assert mock_router.route_and_render.call_count == 1
+
+    @patch("autopilot.orchestrator.render_validate")
+    @patch("autopilot.orchestrator.router")
+    def test_render_logs_resume_counts(
+        self, mock_router, mock_validate, minimal_config, caplog,
+    ):
+        """_run_render logs 'Resuming RENDER: N/M ...'."""
+        from autopilot.orchestrator import _run_render
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"}, {"narrative_id": "n3"},
+        ]
+
+        # Create render files for n1 and n2
+        for nid in ("n1", "n2"):
+            rpath = minimal_config.output_dir / "renders" / nid / "output.mp4"
+            rpath.parent.mkdir(parents=True)
+            rpath.touch()
+
+        def get_edit_plan(nid):
+            if nid in ("n1", "n2"):
+                return {
+                    "narrative_id": nid,
+                    "edl_json": '{"timeline": []}',
+                    "render_path": str(minimal_config.output_dir / "renders" / nid / "output.mp4"),
+                }
+            return {
+                "narrative_id": nid,
+                "edl_json": '{"timeline": []}',
+            }
+        db.get_edit_plan.side_effect = get_edit_plan
+
+        mock_router.route_and_render.return_value = Path("/out/video.mp4")
+        mock_validate.validate_render.return_value = MagicMock(passed=True, issues=[])
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            _run_render(config=minimal_config, db=db)
+
+        assert any("Resuming RENDER" in r.message and "2/3" in r.message
+                    for r in caplog.records)
+
+    @patch("autopilot.orchestrator.render_validate")
+    @patch("autopilot.orchestrator.router")
+    def test_render_force_re_renders_all(
+        self, mock_router, mock_validate, minimal_config,
+    ):
+        """_run_render with force=True re-renders even with existing render output."""
+        from autopilot.orchestrator import _run_render
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+
+        # Create render files for both
+        for nid in ("n1", "n2"):
+            rpath = minimal_config.output_dir / "renders" / nid / "output.mp4"
+            rpath.parent.mkdir(parents=True)
+            rpath.touch()
+
+        db.get_edit_plan.return_value = {
+            "narrative_id": "n1",
+            "edl_json": '{"timeline": []}',
+            "render_path": str(minimal_config.output_dir / "renders" / "n1" / "output.mp4"),
+        }
+
+        mock_router.route_and_render.return_value = Path("/out/video.mp4")
+        mock_validate.validate_render.return_value = MagicMock(passed=True, issues=[])
+
+        _run_render(config=minimal_config, db=db, force=True)
+
+        # Both should get route_and_render called
+        assert mock_router.route_and_render.call_count == 2
+
+
+# -- Checkpoint/resume tests for _run_upload ----------------------------------
+
+
+class TestUploadResume:
+    """Tests for _run_upload checkpoint/resume logic."""
+
+    @patch("autopilot.orchestrator.thumbnail")
+    @patch("autopilot.orchestrator.youtube")
+    def test_upload_skips_narrative_with_existing_upload(
+        self, mock_youtube, mock_thumbnail, minimal_config,
+    ):
+        """_run_upload skips when db.get_upload returns non-None for a narrative."""
+        from autopilot.orchestrator import _run_upload
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        db.get_edit_plan.return_value = {
+            "edl_json": '{}',
+            "render_path": "/out/renders/output.mp4",
+        }
+        # n1 already uploaded, n2 not
+        db.get_upload.side_effect = lambda nid: (
+            {"narrative_id": "n1", "video_id": "abc"} if nid == "n1" else None
+        )
+
+        mock_youtube.upload_video.return_value = "https://youtu.be/def"
+        mock_thumbnail.extract_best_thumbnail.return_value = Path("/thumb.jpg")
+
+        _run_upload(config=minimal_config, db=db)
+
+        # Only n2 should get upload_video called
+        assert mock_youtube.upload_video.call_count == 1
+
+    @patch("autopilot.orchestrator.thumbnail")
+    @patch("autopilot.orchestrator.youtube")
+    def test_upload_logs_resume_counts(
+        self, mock_youtube, mock_thumbnail, minimal_config, caplog,
+    ):
+        """_run_upload logs 'Resuming UPLOAD: N/M ...'."""
+        from autopilot.orchestrator import _run_upload
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"}, {"narrative_id": "n3"},
+        ]
+        db.get_edit_plan.return_value = {
+            "edl_json": '{}',
+            "render_path": "/out/renders/output.mp4",
+        }
+        # n1 and n2 already uploaded
+        db.get_upload.side_effect = lambda nid: (
+            {"narrative_id": nid, "video_id": "abc"} if nid in ("n1", "n2") else None
+        )
+
+        mock_youtube.upload_video.return_value = "https://youtu.be/def"
+        mock_thumbnail.extract_best_thumbnail.return_value = Path("/thumb.jpg")
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            _run_upload(config=minimal_config, db=db)
+
+        assert any("Resuming UPLOAD" in r.message and "2/3" in r.message
+                    for r in caplog.records)
+
+    @patch("autopilot.orchestrator.thumbnail")
+    @patch("autopilot.orchestrator.youtube")
+    def test_upload_force_re_uploads_all(
+        self, mock_youtube, mock_thumbnail, minimal_config,
+    ):
+        """_run_upload with force=True re-uploads even with existing uploads."""
+        from autopilot.orchestrator import _run_upload
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        db.get_edit_plan.return_value = {
+            "edl_json": '{}',
+            "render_path": "/out/renders/output.mp4",
+        }
+        # Both already uploaded
+        db.get_upload.return_value = {"narrative_id": "n1", "video_id": "abc"}
+
+        mock_youtube.upload_video.return_value = "https://youtu.be/def"
+        mock_thumbnail.extract_best_thumbnail.return_value = Path("/thumb.jpg")
+
+        _run_upload(config=minimal_config, db=db, force=True)
+
+        # Both should get upload_video called
+        assert mock_youtube.upload_video.call_count == 2
+
+
+class TestForceFlagPropagation:
+    """Tests for force flag propagation through PipelineOrchestrator."""
+
+    def test_orchestrator_init_accepts_force(self) -> None:
+        """PipelineOrchestrator.__init__ accepts a force parameter."""
+        orch = PipelineOrchestrator(force=True)
+        assert orch.force is True
+
+    def test_orchestrator_init_defaults_force_false(self) -> None:
+        """PipelineOrchestrator defaults force to False."""
+        orch = PipelineOrchestrator()
+        assert orch.force is False
+
+    def test_orchestrator_run_passes_force_true_to_stages(self) -> None:
+        """run() passes force=True to each stage when orchestrator has force=True."""
+        orch = PipelineOrchestrator(force=True)
+        mocks: dict[str, MagicMock] = {}
+        for stage in orch.stages:
+            mock_fn = MagicMock()
+            mocks[stage.name] = mock_fn
+            stage.func = mock_fn
+
+        mock_config = MagicMock()
+        mock_db = MagicMock()
+        orch.run(config=mock_config, db=mock_db)
+
+        for name, mock_fn in mocks.items():
+            mock_fn.assert_called_once_with(
+                config=mock_config, db=mock_db, force=True,
+            )
+
+    def test_orchestrator_run_passes_force_false_to_stages(self) -> None:
+        """run() passes force=False to each stage when orchestrator has force=False."""
+        orch = PipelineOrchestrator(force=False)
+        mocks: dict[str, MagicMock] = {}
+        for stage in orch.stages:
+            mock_fn = MagicMock()
+            mocks[stage.name] = mock_fn
+            stage.func = mock_fn
+
+        mock_config = MagicMock()
+        mock_db = MagicMock()
+        orch.run(config=mock_config, db=mock_db)
+
+        for name, mock_fn in mocks.items():
+            mock_fn.assert_called_once_with(
+                config=mock_config, db=mock_db, force=False,
+            )

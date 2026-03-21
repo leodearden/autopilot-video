@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import enum
+import threading
 import functools
 import json
 import logging
-import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -108,21 +108,36 @@ def _stage_stub(name: str) -> Callable[..., Any]:
     return _stub
 
 
-def _run_ingest(*, config: Any, db: Any) -> None:
+def _run_ingest(*, config: Any, db: Any, force: bool = False) -> None:
     """INGEST stage: scan directory, insert media, normalize audio, mark duplicates."""
     files = scanner.scan_directory(config.input_dir, max_workers=None)
     norm_dir = config.output_dir / "normalized"
     norm_dir.mkdir(parents=True, exist_ok=True)
 
+    # Checkpoint/resume: skip media already in the DB
+    skipped = 0
+    if not force:
+        to_process = []
+        for mf in files:
+            media_id = mf.sha256_prefix or mf.file_path.stem
+            if db.get_media(media_id) is not None:
+                skipped += 1
+            else:
+                to_process.append(mf)
+        if skipped > 0:
+            logger.info(
+                "Resuming INGEST: %d/%d files already ingested",
+                skipped, len(files),
+            )
+    else:
+        to_process = list(files)
+
     ingested = 0
-    for mf in files:
+    for mf in to_process:
         if shutdown_requested():
             break
         media_id = mf.sha256_prefix or mf.file_path.stem
         try:
-            normalizer.normalize_audio(
-                mf.file_path, norm_dir, root_dir=config.input_dir
-            )
             db.insert_media(
                 media_id,
                 str(mf.file_path),
@@ -138,6 +153,9 @@ def _run_ingest(*, config: Any, db: Any) -> None:
                 audio_channels=mf.audio_channels,
                 metadata_json=mf.metadata_json,
             )
+            normalizer.normalize_audio(
+                mf.file_path, norm_dir, root_dir=config.input_dir
+            )
             ingested += 1
         except Exception as exc:
             logger.error("Failed to ingest %s: %s", mf.file_path, exc)
@@ -147,7 +165,7 @@ def _run_ingest(*, config: Any, db: Any) -> None:
     logger.info("Ingest complete: %d/%d files ingested", ingested, len(files))
 
 
-def _run_analyze(*, config: Any, db: Any) -> None:
+def _run_analyze(*, config: Any, db: Any, force: bool = False) -> None:
     """ANALYZE stage: run all analysis passes on each media file."""
     scheduler = GPUScheduler(
         total_vram=0,
@@ -156,6 +174,27 @@ def _run_analyze(*, config: Any, db: Any) -> None:
 
     all_media = db.list_all_media()
     media_list = [m for m in all_media if m.get("status") != "duplicate"]
+
+    # Per-pass checkpoint mapping: (has_method, label)
+    pass_checks: list[tuple[str, str]] = [
+        ("has_transcript", "transcribed"),
+        ("has_boundaries", "shot-detected"),
+        ("has_detections", "object-detected"),
+        ("has_faces", "face-detected"),
+        ("has_embeddings", "embedded"),
+        ("has_audio_events", "audio-classified"),
+    ]
+
+    # Log resume counts per pass
+    if not force:
+        for has_method, label in pass_checks:
+            checker = getattr(db, has_method)
+            done_count = sum(1 for m in media_list if checker(m["id"]))
+            if done_count > 0:
+                logger.info(
+                    "Resuming ANALYZE: %d/%d media already %s",
+                    done_count, len(media_list), label,
+                )
 
     successes = 0
     try:
@@ -166,22 +205,28 @@ def _run_analyze(*, config: Any, db: Any) -> None:
             file_path = Path(media["file_path"])
             audio_path = file_path  # audio extracted from same file
             try:
-                asr.transcribe_media(
-                    media_id, audio_path, db, scheduler, config.models,
-                    batch_size=config.processing.batch_size_whisper,
-                )
-                scenes.detect_shots(media_id, file_path, db, scheduler)
-                objects.detect_objects(
-                    media_id, file_path, db, scheduler, config.models,
-                    sparse=False,
-                )
-                faces.detect_faces(media_id, file_path, db, scheduler, config.models)
-                embeddings.compute_embeddings(
-                    media_id, file_path, db, scheduler, config.models,
-                )
-                audio_events.classify_audio_events(
-                    media_id, audio_path, db, scheduler,
-                )
+                if force or not db.has_transcript(media_id):
+                    asr.transcribe_media(
+                        media_id, audio_path, db, scheduler, config.models,
+                        batch_size=config.processing.batch_size_whisper,
+                    )
+                if force or not db.has_boundaries(media_id):
+                    scenes.detect_shots(media_id, file_path, db, scheduler)
+                if force or not db.has_detections(media_id):
+                    objects.detect_objects(
+                        media_id, file_path, db, scheduler, config.models,
+                        sparse=False,
+                    )
+                if force or not db.has_faces(media_id):
+                    faces.detect_faces(media_id, file_path, db, scheduler, config.models)
+                if force or not db.has_embeddings(media_id):
+                    embeddings.compute_embeddings(
+                        media_id, file_path, db, scheduler, config.models,
+                    )
+                if force or not db.has_audio_events(media_id):
+                    audio_events.classify_audio_events(
+                        media_id, audio_path, db, scheduler,
+                    )
                 successes += 1
             except Exception:
                 logger.exception("Analysis failed for media %s", media_id)
@@ -195,15 +240,25 @@ def _run_analyze(*, config: Any, db: Any) -> None:
         scheduler.force_unload_all()
 
 
-def _run_classify(*, config: Any, db: Any) -> None:
+def _run_classify(*, config: Any, db: Any, force: bool = False) -> None:
     """CLASSIFY stage: cluster and label activities."""
+    if not force:
+        existing = db.get_activity_clusters()
+        if existing and all(c.get("label") for c in existing):
+            logger.info(
+                "Resuming CLASSIFY: %d labeled clusters already exist, skipping",
+                len(existing),
+            )
+            return
+
     cluster.cluster_activities(db)
     classify.label_activities(db, config.llm)
     logger.info("Classify complete")
 
 
 def _run_narrate(
-    *, config: Any, db: Any, human_review_fn: Callable | None = None,
+    *, config: Any, db: Any, force: bool = False,
+    human_review_fn: Callable | None = None,
 ) -> None:
     """NARRATE stage: build storyboard, propose narratives, human review."""
     storyboard = narratives.build_master_storyboard(db)
@@ -229,11 +284,30 @@ def _run_narrate(
     )
 
 
-def _run_script(*, config: Any, db: Any) -> None:
+def _run_script(*, config: Any, db: Any, force: bool = False) -> None:
     """SCRIPT stage: generate scripts for each approved narrative."""
     approved = db.list_narratives("approved")
+
+    # Checkpoint/resume: skip narratives that already have a script
+    skipped = 0
+    if not force:
+        to_process = []
+        for narr in approved:
+            nid = narr["narrative_id"]
+            if db.get_narrative_script(nid) is not None:
+                skipped += 1
+            else:
+                to_process.append(narr)
+        if skipped > 0:
+            logger.info(
+                "Resuming SCRIPT: %d/%d narratives already scripted",
+                skipped, len(approved),
+            )
+    else:
+        to_process = list(approved)
+
     successes = 0
-    for narr in approved:
+    for narr in to_process:
         if shutdown_requested():
             break
         nid = narr["narrative_id"]
@@ -243,17 +317,37 @@ def _run_script(*, config: Any, db: Any) -> None:
         except Exception:
             logger.exception("Script generation failed for narrative %s", nid)
 
-    if approved and successes == 0:
+    if approved and successes == 0 and skipped == 0:
         raise RuntimeError("All narratives failed script generation")
 
     logger.info("Script complete: %d/%d succeeded", successes, len(approved))
 
 
-def _run_edl(*, config: Any, db: Any) -> None:
+def _run_edl(*, config: Any, db: Any, force: bool = False) -> None:
     """EDL stage: generate EDL, validate, and export OTIO per narrative."""
     approved = db.list_narratives("approved")
+
+    # Checkpoint/resume: skip narratives that already have an edit plan with edl_json
+    skipped = 0
+    if not force:
+        to_process = []
+        for narr in approved:
+            nid = narr["narrative_id"]
+            existing = db.get_edit_plan(nid)
+            if existing is not None and existing.get("edl_json"):
+                skipped += 1
+            else:
+                to_process.append(narr)
+        if skipped > 0:
+            logger.info(
+                "Resuming EDL: %d/%d narratives already have edit plans",
+                skipped, len(approved),
+            )
+    else:
+        to_process = list(approved)
+
     successes = 0
-    for narr in approved:
+    for narr in to_process:
         if shutdown_requested():
             break
         nid = narr["narrative_id"]
@@ -281,17 +375,37 @@ def _run_edl(*, config: Any, db: Any) -> None:
         except Exception:
             logger.exception("EDL generation failed for narrative %s", nid)
 
-    if approved and successes == 0:
+    if approved and successes == 0 and skipped == 0:
         raise RuntimeError("All narratives failed EDL generation")
 
     logger.info("EDL complete: %d/%d succeeded", successes, len(approved))
 
 
-def _run_source_assets(*, config: Any, db: Any) -> None:
+def _run_source_assets(*, config: Any, db: Any, force: bool = False) -> None:
     """SOURCE_ASSETS stage: resolve assets for each narrative with an edit plan."""
     approved = db.list_narratives("approved")
+
+    # Checkpoint/resume: skip narratives where asset directory exists and is non-empty
+    skipped = 0
+    if not force:
+        to_process = []
+        for narr in approved:
+            nid = narr["narrative_id"]
+            asset_dir = config.output_dir / "assets" / nid
+            if asset_dir.exists() and any(asset_dir.iterdir()):
+                skipped += 1
+            else:
+                to_process.append(narr)
+        if skipped > 0:
+            logger.info(
+                "Resuming SOURCE_ASSETS: %d/%d narratives already have assets",
+                skipped, len(approved),
+            )
+    else:
+        to_process = list(approved)
+
     successes = 0
-    for narr in approved:
+    for narr in to_process:
         if shutdown_requested():
             break
         nid = narr["narrative_id"]
@@ -310,17 +424,38 @@ def _run_source_assets(*, config: Any, db: Any) -> None:
         except Exception:
             logger.exception("Source resolution failed for narrative %s", nid)
 
-    if approved and successes == 0:
+    if approved and successes == 0 and skipped == 0:
         raise RuntimeError("All narratives failed source resolution")
 
     logger.info("Source complete: %d/%d succeeded", successes, len(approved))
 
 
-def _run_render(*, config: Any, db: Any) -> None:
+def _run_render(*, config: Any, db: Any, force: bool = False) -> None:
     """RENDER stage: route, render, and validate per narrative."""
     approved = db.list_narratives("approved")
+
+    # Checkpoint/resume: skip narratives with existing render output on disk
+    skipped = 0
+    if not force:
+        to_process = []
+        for narr in approved:
+            nid = narr["narrative_id"]
+            plan = db.get_edit_plan(nid)
+            render_path = plan.get("render_path") if plan else None
+            if render_path and Path(render_path).exists():
+                skipped += 1
+            else:
+                to_process.append(narr)
+        if skipped > 0:
+            logger.info(
+                "Resuming RENDER: %d/%d narratives already rendered",
+                skipped, len(approved),
+            )
+    else:
+        to_process = list(approved)
+
     successes = 0
-    for narr in approved:
+    for narr in to_process:
         if shutdown_requested():
             break
         nid = narr["narrative_id"]
@@ -329,7 +464,7 @@ def _run_render(*, config: Any, db: Any) -> None:
             logger.warning("Skipping render for %s: no edit plan", nid)
             continue
         try:
-            output_path = router.route_and_render(nid, db, config.output, config.output_dir)
+            output_path = router.route_and_render(nid, db, config.output)
             edl = json.loads(plan["edl_json"])
             report = render_validate.validate_render(output_path, edl, config.output)
             for issue in report.issues:
@@ -342,17 +477,36 @@ def _run_render(*, config: Any, db: Any) -> None:
         except Exception:
             logger.exception("Render failed for narrative %s", nid)
 
-    if approved and successes == 0:
+    if approved and successes == 0 and skipped == 0:
         raise RuntimeError("All narratives failed render")
 
     logger.info("Render complete: %d/%d succeeded", successes, len(approved))
 
 
-def _run_upload(*, config: Any, db: Any) -> None:
+def _run_upload(*, config: Any, db: Any, force: bool = False) -> None:
     """UPLOAD stage: upload video and extract thumbnail per narrative."""
     approved = db.list_narratives("approved")
+
+    # Checkpoint/resume: skip narratives that already have uploads
+    skipped = 0
+    if not force:
+        to_process = []
+        for narr in approved:
+            nid = narr["narrative_id"]
+            if db.get_upload(nid) is not None:
+                skipped += 1
+            else:
+                to_process.append(narr)
+        if skipped > 0:
+            logger.info(
+                "Resuming UPLOAD: %d/%d narratives already uploaded",
+                skipped, len(approved),
+            )
+    else:
+        to_process = list(approved)
+
     successes = 0
-    for narr in approved:
+    for narr in to_process:
         if shutdown_requested():
             break
         nid = narr["narrative_id"]
@@ -372,7 +526,7 @@ def _run_upload(*, config: Any, db: Any) -> None:
         except Exception:
             logger.exception("Upload failed for narrative %s", nid)
 
-    if approved and successes == 0:
+    if approved and successes == 0 and skipped == 0:
         raise RuntimeError("All narratives failed upload")
 
     logger.info("Upload complete: %d/%d succeeded", successes, len(approved))
@@ -385,9 +539,11 @@ class PipelineOrchestrator:
         self,
         budget_seconds: float | None = None,
         human_review_fn: Callable | None = None,
+        force: bool = False,
     ) -> None:
         self.budget_seconds = budget_seconds
         self.human_review_fn = human_review_fn
+        self.force = force
 
         # Wrap _run_narrate with human_review_fn via partial
         narrate_func = functools.partial(
@@ -505,18 +661,14 @@ class PipelineOrchestrator:
         pipeline_start = time.monotonic()
 
         for stage_name in order:
-            # Check for graceful shutdown before starting next stage
             if shutdown_requested():
                 for remaining in order:
                     if remaining not in results:
                         results[remaining] = StageResult(
                             status=StageStatus.SKIPPED,
                             elapsed_seconds=0.0,
-                            error_message="shutdown requested",
                         )
-                        logger.info(
-                            "[SHUTDOWN] Skipping %s", remaining,
-                        )
+                logger.info("Shutdown requested — skipping remaining stages")
                 break
 
             stage = self._stage_map[stage_name]
@@ -552,7 +704,7 @@ class PipelineOrchestrator:
             logger.info("[RUNNING] %s", stage_name)
             t0 = time.monotonic()
             try:
-                stage.func(config=config, db=db)
+                stage.func(config=config, db=db, force=self.force)
                 elapsed = time.monotonic() - t0
                 results[stage_name] = StageResult(
                     status=StageStatus.DONE,

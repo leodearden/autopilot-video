@@ -184,7 +184,7 @@ class TestEndToEnd:
         )
 
         # ---- Run the full pipeline ----
-        orch = PipelineOrchestrator(budget_seconds=3600)
+        orch = PipelineOrchestrator(budget_seconds=3600, force=True)
         results = orch.run(config=minimal_config, db=catalog_db)
 
         # ---- Verify all stages completed ----
