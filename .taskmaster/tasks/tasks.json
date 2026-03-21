@@ -54,7 +54,7 @@
         "id": "4",
         "title": "CLI entry point and pipeline orchestrator skeleton",
         "description": "Implement cli.py with Click subcommands and orchestrator.py DAG runner skeleton.",
-        "details": "Create autopilot/cli.py with Click:\n1. Main group: `autopilot` with --config option (default: config.yaml)\n2. Subcommands: `ingest`, `analyze`, `plan`, `edit`, `render`, `upload`, `run` (full pipeline)\n3. Each subcommand loads config, opens the catalog DB, and delegates to the appropriate stage function.\n4. `run` executes all stages in sequence with progress reporting.\n5. Common options: --input-dir (override), --output-dir (override), --verbose, --dry-run.\n\nCreate autopilot/orchestrator.py:\n1. A PipelineOrchestrator class that defines the stage DAG.\n2. Stages: INGEST -> ANALYZE -> CLASSIFY -> NARRATE -> SCRIPT -> EDL -> SOURCE_ASSETS -> RENDER -> UPLOAD\n3. Each stage has: name, function reference, dependencies, estimated_time.\n4. run() method executes stages in topological order, tracking elapsed time vs the wall-clock budget.\n5. Stage functions are initially stubs that log 'Stage X not yet implemented' — they'll be filled in by later tasks.\n6. Progress reporting: print stage name, status (running/done/skipped/error), elapsed time.",
+        "details": "Create autopilot/cli.py with Click:\n1. Main group: `autopilot` with --config option (default: config.yaml)\n2. Subcommands: `ingest`, `analyze`, `plan`, `edit`, `render`, `upload`, `run` (full pipeline)\n3. Each subcommand loads config, opens the catalog DB, and delegates to the appropriate stage function.\n4. `run` executes all stages in sequence with progress reporting.\n5. Common options: --input-dir (override), --output-dir (override), --verbose, --dry-run.\n\nCreate autopilot/orchestrator.py:\n1. A PipelineOrchestrator class that defines the stage DAG.\n2. Stages: INGEST -> ANALYZE -> CLASSIFY -> NARRATE -> SCRIPT -> EDL -> SOURCE_ASSETS -> RENDER -> UPLOAD\n3. Each stage has: name, function reference, dependencies, estimated_time.\n4. run() method executes stages in topological order, tracking elapsed time vs the wall-clock budget.\n5. Stage functions are initially stubs that log 'Stage X not yet implemented' \u2014 they'll be filled in by later tasks.\n6. Progress reporting: print stage name, status (running/done/skipped/error), elapsed time.",
         "testStrategy": "Test CLI invocation with --help for each subcommand. Test orchestrator DAG ordering is correct. Test orchestrator handles stage errors gracefully (skips dependents, reports failure).",
         "priority": "high",
         "status": "done",
@@ -89,7 +89,7 @@
         "id": "6",
         "title": "GPU scheduler",
         "description": "Implement gpu_scheduler.py for VRAM-aware model loading/unloading with context-manager API.",
-        "details": "Create autopilot/analyze/gpu_scheduler.py:\n1. A GPUScheduler class that tracks currently loaded models and their VRAM usage.\n2. Model registry: dict mapping model_name -> ModelSpec(load_fn, unload_fn, vram_bytes, warmup_fn).\n3. Context manager API: `with scheduler.model('whisperx') as model:` — loads if not loaded, unloads others if VRAM insufficient.\n4. VRAM tracking: query torch.cuda.mem_get_info() for available VRAM. If loading a model would exceed available VRAM, unload the least-recently-used model first.\n5. Device selection from config (gpu_device index).\n6. Eager unloading: after context manager exits, model stays loaded (LRU cache) unless another model needs the VRAM.\n7. Force-unload method to clear all models (useful between pipeline stages).\n8. Thread safety: use a threading.Lock since the pipeline may run audio analysis concurrently with video analysis.\n\nVRAM budget from PRD:\n- whisperx large-v3: ~3 GB\n- TransNetV2: <1 GB\n- YOLO11x: ~8 GB\n- InsightFace buffalo_l: ~2 GB\n- SigLIP 2: ~3 GB\n- PANNs CNN14: <1 GB\n- Qwen2.5-VL-7B: ~14 GB\n- Total GPU: 24 GB (RTX 3090)",
+        "details": "Create autopilot/analyze/gpu_scheduler.py:\n1. A GPUScheduler class that tracks currently loaded models and their VRAM usage.\n2. Model registry: dict mapping model_name -> ModelSpec(load_fn, unload_fn, vram_bytes, warmup_fn).\n3. Context manager API: `with scheduler.model('whisperx') as model:` \u2014 loads if not loaded, unloads others if VRAM insufficient.\n4. VRAM tracking: query torch.cuda.mem_get_info() for available VRAM. If loading a model would exceed available VRAM, unload the least-recently-used model first.\n5. Device selection from config (gpu_device index).\n6. Eager unloading: after context manager exits, model stays loaded (LRU cache) unless another model needs the VRAM.\n7. Force-unload method to clear all models (useful between pipeline stages).\n8. Thread safety: use a threading.Lock since the pipeline may run audio analysis concurrently with video analysis.\n\nVRAM budget from PRD:\n- whisperx large-v3: ~3 GB\n- TransNetV2: <1 GB\n- YOLO11x: ~8 GB\n- InsightFace buffalo_l: ~2 GB\n- SigLIP 2: ~3 GB\n- PANNs CNN14: <1 GB\n- Qwen2.5-VL-7B: ~14 GB\n- Total GPU: 24 GB (RTX 3090)",
         "testStrategy": "Unit tests with mock VRAM tracking (don't require GPU). Test LRU eviction logic. Test context manager loads/unloads correctly. Test VRAM overflow triggers eviction. Test thread safety with concurrent access.",
         "priority": "high",
         "status": "done",
@@ -160,7 +160,7 @@
         "id": "10",
         "title": "Face detection and clustering",
         "description": "Implement faces.py with InsightFace SCRFD + ArcFace 512-d embeddings and DBSCAN clustering.",
-        "details": "Create autopilot/analyze/faces.py:\n1. detect_faces(media_id: str, video_path: Path, db: CatalogDB, scheduler: GPUScheduler) -> None\n   - Load InsightFace buffalo_l model pack via GPU scheduler.\n   - Run SCRFD face detection on sampled frames (1 FPS, same as YOLO sparse mode).\n   - For each detected face, extract 512-d ArcFace embedding.\n   - Store per-frame face data in a faces table or within detections.\n\n2. cluster_faces(db: CatalogDB) -> None\n   - Collect all face embeddings across all media files.\n   - Run DBSCAN or agglomerative clustering on embeddings (cosine distance).\n   - Populate face_clusters table: cluster_id, representative_embedding (centroid), sample_image_paths.\n   - The label field starts as NULL — human assigns names via scripts/label_faces.py.\n\n3. Also create scripts/label_faces.py:\n   - Interactive script that displays sample face crops per cluster.\n   - User assigns a name to each cluster.\n   - Updates face_clusters.label in the database.\n\nPerformance: SCRFD at ~100 FPS on RTX 3090. 50h at 1 FPS = 180K frames -> ~30 min.",
+        "details": "Create autopilot/analyze/faces.py:\n1. detect_faces(media_id: str, video_path: Path, db: CatalogDB, scheduler: GPUScheduler) -> None\n   - Load InsightFace buffalo_l model pack via GPU scheduler.\n   - Run SCRFD face detection on sampled frames (1 FPS, same as YOLO sparse mode).\n   - For each detected face, extract 512-d ArcFace embedding.\n   - Store per-frame face data in a faces table or within detections.\n\n2. cluster_faces(db: CatalogDB) -> None\n   - Collect all face embeddings across all media files.\n   - Run DBSCAN or agglomerative clustering on embeddings (cosine distance).\n   - Populate face_clusters table: cluster_id, representative_embedding (centroid), sample_image_paths.\n   - The label field starts as NULL \u2014 human assigns names via scripts/label_faces.py.\n\n3. Also create scripts/label_faces.py:\n   - Interactive script that displays sample face crops per cluster.\n   - User assigns a name to each cluster.\n   - Updates face_clusters.label in the database.\n\nPerformance: SCRFD at ~100 FPS on RTX 3090. 50h at 1 FPS = 180K frames -> ~30 min.",
         "testStrategy": "Test face detection with a fixture image containing faces. Verify embedding dimensionality is 512. Test clustering produces distinct clusters for distinct people. Test label_faces.py updates the database correctly.",
         "priority": "medium",
         "status": "done",
@@ -233,7 +233,7 @@
         "id": "14",
         "title": "Activity clustering and labeling",
         "description": "Implement cluster.py for temporal-spatial-semantic DBSCAN clustering and classify.py for Claude Sonnet activity labeling.",
-        "details": "Create autopilot/organize/cluster.py:\n1. cluster_activities(db: CatalogDB) -> list[ActivityCluster]\n   - Load all media files with timestamps and GPS coordinates.\n   - Step 1: Temporal-spatial clustering via DBSCAN with custom distance metric combining:\n     a. Temporal: clips within 30 minutes of each other.\n     b. Spatial: clips within 500 meters (haversine distance on GPS coords).\n   - Step 2: Semantic refinement within each cluster:\n     a. Load SigLIP embeddings for clips in the cluster.\n     b. Compute mean CLIP embedding per 5-minute sliding window.\n     c. Detect embedding-space discontinuities (cosine distance > threshold) as activity boundaries.\n     d. Also use transcript text similarity to validate splits.\n   - Step 3: Handle missing GPS (some clips may lack GPS) — fall back to temporal-only clustering.\n   - Store clusters in activity_clusters table.\n\nCreate autopilot/organize/classify.py:\n1. label_activities(db: CatalogDB, config: LLMConfig) -> None\n   - For each activity cluster, assemble a summary: transcript excerpts, top YOLO classes, top audio events, GPS reverse-geocode (via simple offline lookup or Nominatim), time range.\n   - Call Claude Sonnet via Anthropic API with the activity_label.md prompt.\n   - Parse response: short descriptive label + 1-paragraph description.\n   - Also ask LLM to flag clusters that should be split.\n   - Update activity_clusters table with labels and descriptions.",
+        "details": "Create autopilot/organize/cluster.py:\n1. cluster_activities(db: CatalogDB) -> list[ActivityCluster]\n   - Load all media files with timestamps and GPS coordinates.\n   - Step 1: Temporal-spatial clustering via DBSCAN with custom distance metric combining:\n     a. Temporal: clips within 30 minutes of each other.\n     b. Spatial: clips within 500 meters (haversine distance on GPS coords).\n   - Step 2: Semantic refinement within each cluster:\n     a. Load SigLIP embeddings for clips in the cluster.\n     b. Compute mean CLIP embedding per 5-minute sliding window.\n     c. Detect embedding-space discontinuities (cosine distance > threshold) as activity boundaries.\n     d. Also use transcript text similarity to validate splits.\n   - Step 3: Handle missing GPS (some clips may lack GPS) \u2014 fall back to temporal-only clustering.\n   - Store clusters in activity_clusters table.\n\nCreate autopilot/organize/classify.py:\n1. label_activities(db: CatalogDB, config: LLMConfig) -> None\n   - For each activity cluster, assemble a summary: transcript excerpts, top YOLO classes, top audio events, GPS reverse-geocode (via simple offline lookup or Nominatim), time range.\n   - Call Claude Sonnet via Anthropic API with the activity_label.md prompt.\n   - Parse response: short descriptive label + 1-paragraph description.\n   - Also ask LLM to flag clusters that should be split.\n   - Update activity_clusters table with labels and descriptions.",
         "testStrategy": "Test clustering with synthetic data (known cluster centers, verify correct assignment). Test semantic refinement splits distinct activities within a spatial cluster. Test LLM labeling with mocked API response. Test handling of missing GPS data.",
         "priority": "high",
         "status": "done",
@@ -253,7 +253,7 @@
         "id": "15",
         "title": "Narrative organization",
         "description": "Implement narratives.py for master storyboard construction and Claude Opus narrative proposals.",
-        "details": "Create autopilot/organize/narratives.py:\n1. build_master_storyboard(db: CatalogDB) -> str\n   - For each activity cluster, produce a structured summary:\n     a. Label and description (from Stage 2)\n     b. Duration of usable footage\n     c. Key moments: transcript highlights + YOLO event density peaks\n     d. People present: from face clusters\n     e. Emotional tone: transcript sentiment + audio events\n     f. Visual quality notes: YOLO detection confidence distributions (low confidence = motion blur / poor framing)\n   - Format as structured text for LLM consumption.\n\n2. propose_narratives(storyboard: str, db: CatalogDB, config: LLMConfig) -> list[Narrative]\n   - Call Claude Opus with the master storyboard + narrative_planner.md system prompt.\n   - System prompt includes creator's style preferences, target durations, audience from config.\n   - Request: proposed narratives with titles, included activities, duration, narrative arc, emotional journey, reasoning.\n   - Parse structured response into Narrative objects.\n   - Store in narratives table with status='proposed'.\n\n3. This is a human review checkpoint — output should be formatted for creator review (clear summary of each proposed narrative).",
+        "details": "Create autopilot/organize/narratives.py:\n1. build_master_storyboard(db: CatalogDB) -> str\n   - For each activity cluster, produce a structured summary:\n     a. Label and description (from Stage 2)\n     b. Duration of usable footage\n     c. Key moments: transcript highlights + YOLO event density peaks\n     d. People present: from face clusters\n     e. Emotional tone: transcript sentiment + audio events\n     f. Visual quality notes: YOLO detection confidence distributions (low confidence = motion blur / poor framing)\n   - Format as structured text for LLM consumption.\n\n2. propose_narratives(storyboard: str, db: CatalogDB, config: LLMConfig) -> list[Narrative]\n   - Call Claude Opus with the master storyboard + narrative_planner.md system prompt.\n   - System prompt includes creator's style preferences, target durations, audience from config.\n   - Request: proposed narratives with titles, included activities, duration, narrative arc, emotional journey, reasoning.\n   - Parse structured response into Narrative objects.\n   - Store in narratives table with status='proposed'.\n\n3. This is a human review checkpoint \u2014 output should be formatted for creator review (clear summary of each proposed narrative).",
         "testStrategy": "Test storyboard construction with mock DB data. Test LLM call with mocked API response. Verify narrative objects have all required fields. Test formatting of review output.",
         "priority": "high",
         "status": "done",
@@ -287,7 +287,7 @@
         "id": "17",
         "title": "EDL generation and validation",
         "description": "Implement edl.py for Claude Opus tool-use EDL construction and validator.py for automated EDL checks.",
-        "details": "Create autopilot/plan/edl.py:\n1. generate_edl(narrative_id: str, db: CatalogDB, config: LLMConfig) -> dict\n   - Load the script (from Stage 4) and detailed storyboard data for candidate clips.\n   - Call Claude Opus with edit_planner.md system prompt using function-calling/tool-use.\n   - Available tools for the LLM:\n     a. select_clip(clip_id, in_timecode, out_timecode, track)\n     b. add_transition(type, duration, position)\n     c. set_crop_mode(clip_id, mode, subject_track_id)\n     d. add_title(text, style, position, duration)\n     e. set_audio(clip_id, level_db, fade_in, fade_out)\n     f. add_music(mood, duration, start_time)\n     g. add_voiceover(text, start_time, duration)\n     h. request_broll(description, duration, start_time)\n   - Collect all tool calls into a JSON EDL structure.\n   - Store in edit_plans table. Update narrative status to 'planned'.\n\nCreate autopilot/plan/validator.py:\n1. validate_edl(edl: dict, db: CatalogDB) -> ValidationResult\n   - Check: no overlapping clips on same track\n   - Check: total duration within ±10% of scripted target\n   - Check: all referenced clip_ids exist in catalog\n   - Check: all in/out points within clip duration bounds\n   - Check: audio levels within broadcast-safe ranges (-24 to 0 dBFS)\n   - Return: ValidationResult with pass/fail, list of errors, list of warnings.\n2. If validation fails, re-prompt the LLM with error feedback (up to 3 retries).",
+        "details": "Create autopilot/plan/edl.py:\n1. generate_edl(narrative_id: str, db: CatalogDB, config: LLMConfig) -> dict\n   - Load the script (from Stage 4) and detailed storyboard data for candidate clips.\n   - Call Claude Opus with edit_planner.md system prompt using function-calling/tool-use.\n   - Available tools for the LLM:\n     a. select_clip(clip_id, in_timecode, out_timecode, track)\n     b. add_transition(type, duration, position)\n     c. set_crop_mode(clip_id, mode, subject_track_id)\n     d. add_title(text, style, position, duration)\n     e. set_audio(clip_id, level_db, fade_in, fade_out)\n     f. add_music(mood, duration, start_time)\n     g. add_voiceover(text, start_time, duration)\n     h. request_broll(description, duration, start_time)\n   - Collect all tool calls into a JSON EDL structure.\n   - Store in edit_plans table. Update narrative status to 'planned'.\n\nCreate autopilot/plan/validator.py:\n1. validate_edl(edl: dict, db: CatalogDB) -> ValidationResult\n   - Check: no overlapping clips on same track\n   - Check: total duration within \u00b110% of scripted target\n   - Check: all referenced clip_ids exist in catalog\n   - Check: all in/out points within clip duration bounds\n   - Check: audio levels within broadcast-safe ranges (-24 to 0 dBFS)\n   - Return: ValidationResult with pass/fail, list of errors, list of warnings.\n2. If validation fails, re-prompt the LLM with error feedback (up to 3 retries).",
         "testStrategy": "Test EDL generation with mocked LLM tool-use response. Test validator catches: overlapping clips, invalid clip_ids, out-of-bounds timecodes, excessive duration, unsafe audio levels. Test retry logic with initially-invalid then valid EDL.",
         "priority": "high",
         "status": "done",
@@ -322,7 +322,7 @@
         "id": "19",
         "title": "Auto-crop viewport computation",
         "description": "Implement crop.py for subject tracking, rule-of-thirds framing, Kalman filter smoothing with activity-aware tau, and detection gap handling.",
-        "details": "Create autopilot/render/crop.py:\n1. compute_crop_path(media_id: str, target_aspect: str, db: CatalogDB, config: CameraConfig, edl_entry: dict) -> np.ndarray\n   - Load tracking data from detections table for the clip.\n   - Source is 4K×4K (4096×4096). Target: 1920×1080 (16:9) or 1080×1920 (9:16).\n   - Crop window is ~47-50% of source width for 16:9.\n\n2. Subject selection:\n   - If EDL specifies subject_track_id: use that track.\n   - If 'auto': select track with highest cumulative (bbox_area × frame_count).\n\n3. Raw crop center per frame:\n   - Position subject according to rule of thirds (horizontally: center at 1/3 or 2/3; vertically: eyes at 1/3 from top).\n   - For multiple subjects: compute bounding box containing all, center on that.\n\n4. Smoothing via Kalman filter (or EMA with configurable tau):\n   - Slow activities (walking, talking): tau = 1.0s\n   - Medium activities (hiking): tau = 0.5s\n   - Fast activities (sports): tau = 0.2s\n   - Tau comes from config or EDL per-clip override.\n\n5. Clamp to frame bounds: crop window never extends beyond source frame.\n\n6. Detection gap handling:\n   - Subject not detected: hold last position for up to 2 seconds.\n   - After 2s: smoothly drift to frame center over 1 second.\n   - Subject reappears: smooth transition back.\n\n7. Output: per-frame (crop_x, crop_y) array stored in crop_paths table as packed binary.\n\n8. Fallback modes: 'center' (fixed center crop), 'manual_offset' (static offset), 'stabilize_only' (gyro-based).",
+        "details": "Create autopilot/render/crop.py:\n1. compute_crop_path(media_id: str, target_aspect: str, db: CatalogDB, config: CameraConfig, edl_entry: dict) -> np.ndarray\n   - Load tracking data from detections table for the clip.\n   - Source is 4K\u00d74K (4096\u00d74096). Target: 1920\u00d71080 (16:9) or 1080\u00d71920 (9:16).\n   - Crop window is ~47-50% of source width for 16:9.\n\n2. Subject selection:\n   - If EDL specifies subject_track_id: use that track.\n   - If 'auto': select track with highest cumulative (bbox_area \u00d7 frame_count).\n\n3. Raw crop center per frame:\n   - Position subject according to rule of thirds (horizontally: center at 1/3 or 2/3; vertically: eyes at 1/3 from top).\n   - For multiple subjects: compute bounding box containing all, center on that.\n\n4. Smoothing via Kalman filter (or EMA with configurable tau):\n   - Slow activities (walking, talking): tau = 1.0s\n   - Medium activities (hiking): tau = 0.5s\n   - Fast activities (sports): tau = 0.2s\n   - Tau comes from config or EDL per-clip override.\n\n5. Clamp to frame bounds: crop window never extends beyond source frame.\n\n6. Detection gap handling:\n   - Subject not detected: hold last position for up to 2 seconds.\n   - After 2s: smoothly drift to frame center over 1 second.\n   - Subject reappears: smooth transition back.\n\n7. Output: per-frame (crop_x, crop_y) array stored in crop_paths table as packed binary.\n\n8. Fallback modes: 'center' (fixed center crop), 'manual_offset' (static offset), 'stabilize_only' (gyro-based).",
         "testStrategy": "Test with synthetic detection data (known bounding boxes). Verify crop follows subject. Test smoothing eliminates frame-to-frame jitter (max delta < 2% frame width). Test gap handling (hold, drift, reacquire). Test clamp to bounds. Test all fallback modes.",
         "priority": "high",
         "status": "done",
@@ -376,7 +376,7 @@
         "id": "22",
         "title": "Post-render quality validation",
         "description": "Implement validate.py for duration, loudness, black frames, silence, codec, and file size checks.",
-        "details": "Create autopilot/render/validate.py:\n1. validate_render(rendered_path: Path, edl: dict, config: OutputConfig) -> ValidationReport\n   - Duration: within ±1 second of EDL target.\n   - Audio loudness: within -16 ±1 LUFS (measure via ffmpeg loudnorm analysis pass).\n   - Black frames: scan for frames with mean pixel value < 5 (via ffmpeg blackdetect or frame sampling).\n   - Silent audio gaps: detect silence > 2 seconds (unless marked intentional in EDL) via ffmpeg silencedetect.\n   - Resolution and codec: match target specs from config.\n   - File size: 8-15 MB per minute for 1080p H.264 (warn if outside range).\n\n2. Return ValidationReport with: pass/fail, list of issues with severity (error/warning), measurements.\n3. Write validation_report.json to output/{narrative_title}/.\n\nAll checks use ffprobe/ffmpeg analysis — no need for frame-by-frame Python processing.",
+        "details": "Create autopilot/render/validate.py:\n1. validate_render(rendered_path: Path, edl: dict, config: OutputConfig) -> ValidationReport\n   - Duration: within \u00b11 second of EDL target.\n   - Audio loudness: within -16 \u00b11 LUFS (measure via ffmpeg loudnorm analysis pass).\n   - Black frames: scan for frames with mean pixel value < 5 (via ffmpeg blackdetect or frame sampling).\n   - Silent audio gaps: detect silence > 2 seconds (unless marked intentional in EDL) via ffmpeg silencedetect.\n   - Resolution and codec: match target specs from config.\n   - File size: 8-15 MB per minute for 1080p H.264 (warn if outside range).\n\n2. Return ValidationReport with: pass/fail, list of issues with severity (error/warning), measurements.\n3. Write validation_report.json to output/{narrative_title}/.\n\nAll checks use ffprobe/ffmpeg analysis \u2014 no need for frame-by-frame Python processing.",
         "testStrategy": "Test with a fixture rendered video. Test duration check (pass and fail cases). Test loudness measurement. Test black frame detection with a video containing intentional black frames. Test file size bounds.",
         "priority": "medium",
         "status": "done",
@@ -466,14 +466,14 @@
         "details": "In render/ffmpeg_render.py and render/router.py, subprocess.run() calls to ffmpeg have no timeout parameter. A hung ffmpeg process blocks the entire render stage forever.\n\nFix:\n1. Add a configurable timeout (default 600s for individual clips, 1800s for concat) to all subprocess.run() calls in ffmpeg_render.py and router.py.\n2. Catch subprocess.TimeoutExpired and convert to RenderError/RoutingError with a descriptive message including the clip_id and timeout value.\n3. Add tests: mock subprocess.run to raise TimeoutExpired and verify the correct error type is raised with useful message.",
         "testStrategy": "Unit tests: mock subprocess.run to raise TimeoutExpired, verify RenderError/RoutingError raised with descriptive message. Test that timeout values are passed correctly to subprocess.run calls.",
         "priority": "high",
-        "status": "blocked",
+        "status": "done",
         "dependencies": [],
         "tags": [
           "autopilot",
           "robustness"
         ],
         "subtasks": [],
-        "updatedAt": "2026-03-21T08:10:21.900Z"
+        "updatedAt": "2026-03-21T12:03:02.000Z"
       },
       {
         "id": "27",
@@ -482,14 +482,14 @@
         "details": "The orchestrator runs for up to 36 hours. Killing it with Ctrl-C or SIGTERM currently leaves orphaned ffmpeg subprocesses, uncommitted DB state, and GPU models loaded.\n\nFix:\n1. In orchestrator.py, add a shutdown flag (threading.Event or simple bool) checked between pipeline stages and between items within a stage.\n2. Register signal handlers in cli.py's main() that set the shutdown flag and log 'Shutdown requested, finishing current work...'\n3. In _run_ingest, _run_analyze, _run_render loops: check the shutdown flag between iterations. If set, break the loop gracefully.\n4. Ensure the finally blocks in orchestrator already handle cleanup (GPU scheduler force_unload_all, db.close).\n5. Add tests: verify that setting the shutdown flag causes stage loops to exit early. Verify signal handler registration.",
         "testStrategy": "Unit tests: create PipelineOrchestrator, set shutdown flag, verify stage loops exit early. Test signal handler registration via mock. Integration: verify cleanup runs on shutdown.",
         "priority": "high",
-        "status": "blocked",
+        "status": "done",
         "dependencies": [],
         "tags": [
           "autopilot",
           "robustness"
         ],
         "subtasks": [],
-        "updatedAt": "2026-03-21T09:33:30.102Z"
+        "updatedAt": "2026-03-21T12:03:02.000Z"
       },
       {
         "id": "28",
@@ -505,14 +505,14 @@
           "config"
         ],
         "subtasks": [],
-        "updatedAt": "2026-03-21T08:07:00.145Z"
+        "updatedAt": "2026-03-21T12:03:02.000Z"
       },
       {
         "id": "29",
         "title": "Lazy-load stage modules in orchestrator",
         "description": "Replace eager imports in orchestrator.py with lazy imports via importlib so that importing the orchestrator doesn't pull in every ML dependency (WhisperX, YOLO, InsightFace, MoviePy, etc.).",
-        "details": "orchestrator.py currently imports all stage modules at module level:\n  from autopilot.analyze import asr, audio_events, embeddings, faces, objects, scenes\n  from autopilot.ingest import dedup, normalizer, scanner\n  etc.\n\nThis means importing orchestrator.py loads the entire ML stack, causing slow CLI startup and brittle coupling.\n\nFix:\n1. Remove all stage module imports from the top of orchestrator.py.\n2. In each _run_* function, import the needed modules at function scope:\n   def _run_ingest(*, config, db):\n       from autopilot.ingest import dedup, normalizer, scanner\n       ...\n3. Keep non-ML imports (json, logging, Path, dataclass, etc.) at module level.\n4. Verify existing tests still pass — they mock these modules, so ensure mock paths are still correct.\n5. Add a test that imports orchestrator.py without any ML packages installed (mock all stage modules to verify lazy loading).",
-        "testStrategy": "Existing tests must pass (mock paths may need updating). New test: import autopilot.orchestrator with all analyze/ingest/organize/plan/render/source/upload modules mocked at sys.modules level — verify import succeeds without loading real ML packages.",
+        "details": "orchestrator.py currently imports all stage modules at module level:\n  from autopilot.analyze import asr, audio_events, embeddings, faces, objects, scenes\n  from autopilot.ingest import dedup, normalizer, scanner\n  etc.\n\nThis means importing orchestrator.py loads the entire ML stack, causing slow CLI startup and brittle coupling.\n\nFix:\n1. Remove all stage module imports from the top of orchestrator.py.\n2. In each _run_* function, import the needed modules at function scope:\n   def _run_ingest(*, config, db):\n       from autopilot.ingest import dedup, normalizer, scanner\n       ...\n3. Keep non-ML imports (json, logging, Path, dataclass, etc.) at module level.\n4. Verify existing tests still pass \u2014 they mock these modules, so ensure mock paths are still correct.\n5. Add a test that imports orchestrator.py without any ML packages installed (mock all stage modules to verify lazy loading).",
+        "testStrategy": "Existing tests must pass (mock paths may need updating). New test: import autopilot.orchestrator with all analyze/ingest/organize/plan/render/source/upload modules mocked at sys.modules level \u2014 verify import succeeds without loading real ML packages.",
         "priority": "medium",
         "status": "pending",
         "dependencies": [],
@@ -521,13 +521,13 @@
           "orchestrator"
         ],
         "subtasks": [],
-        "updatedAt": "2026-03-21T09:36:53.393Z"
+        "updatedAt": "2026-03-21T12:03:02.000Z"
       },
       {
         "id": "30",
         "title": "Add CI/CD GitHub Actions workflow",
         "description": "Create a GitHub Actions workflow that runs pytest, ruff check, and pyright on every push and PR, failing on any error.",
-        "details": "The project has 1,257 tests but no CI. Create .github/workflows/ci.yml:\n\n1. Trigger: push to main, pull_request to main\n2. Matrix: Python 3.11, 3.12\n3. Steps:\n   a. Checkout\n   b. Install uv\n   c. uv sync (install deps)\n   d. ruff check autopilot/ tests/\n   e. pyright autopilot/ (if pyright is in dev deps, otherwise skip)\n   f. pytest tests/ -x --tb=short\n4. Cache uv/pip cache for speed\n5. No GPU needed — all tests mock ML models\n\nKeep it simple. No coverage reporting in this task (separate task 31).",
+        "details": "The project has 1,257 tests but no CI. Create .github/workflows/ci.yml:\n\n1. Trigger: push to main, pull_request to main\n2. Matrix: Python 3.11, 3.12\n3. Steps:\n   a. Checkout\n   b. Install uv\n   c. uv sync (install deps)\n   d. ruff check autopilot/ tests/\n   e. pyright autopilot/ (if pyright is in dev deps, otherwise skip)\n   f. pytest tests/ -x --tb=short\n4. Cache uv/pip cache for speed\n5. No GPU needed \u2014 all tests mock ML models\n\nKeep it simple. No coverage reporting in this task (separate task 31).",
         "testStrategy": "Validate YAML syntax. Verify workflow file references correct paths (autopilot/, tests/). Manual: push to a branch and verify Actions run.",
         "priority": "medium",
         "status": "done",
@@ -537,7 +537,7 @@
           "ci"
         ],
         "subtasks": [],
-        "updatedAt": "2026-03-21T08:09:04.083Z"
+        "updatedAt": "2026-03-21T12:03:02.000Z"
       },
       {
         "id": "31",
@@ -546,7 +546,7 @@
         "details": "1. Add pytest-cov to [project.optional-dependencies] dev section in pyproject.toml.\n2. Add coverage configuration to pyproject.toml:\n   [tool.coverage.run]\n   source = ['autopilot']\n   omit = ['*/tests/*']\n   [tool.coverage.report]\n   show_missing = true\n   fail_under = 70\n3. Update pytest.ini_options in pyproject.toml to add --cov=autopilot --cov-report=term-missing as default addopts.\n4. If task 30 is done, update .github/workflows/ci.yml to include coverage in the pytest step.\n5. Add a test that verifies the coverage config is present in pyproject.toml.",
         "testStrategy": "Run pytest --cov=autopilot tests/ and verify coverage report is generated. Verify fail_under threshold works by temporarily setting it to 100 and confirming failure.",
         "priority": "low",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [
           "30"
         ],
@@ -556,16 +556,16 @@
           "ci"
         ],
         "subtasks": [],
-        "updatedAt": "2026-03-21T09:31:18.650Z"
+        "updatedAt": "2026-03-21T12:03:02.000Z"
       },
       {
         "id": "32",
         "title": "Item-level checkpoint/resume for pipeline stages",
         "description": "Add per-item progress tracking so the pipeline can resume from where it left off after a crash, instead of restarting entire stages from scratch.",
-        "details": "The pipeline runs for up to 36 hours. A crash mid-ANALYZE (the longest stage) loses all progress — there's no checkpoint or resume capability.\n\nThe DB already has the data to support this. The fix is to make each _run_* function in orchestrator.py query what's already been done and skip completed items.\n\nImplementation:\n1. Add a richer status state machine to media_files: 'pending' -> 'ingested' -> 'transcribed' -> 'detected' -> 'embedded' -> 'clustered' -> 'analyzed'. Each analysis pass updates the status after successful completion.\n2. In _run_ingest: skip media where status != 'pending' (already ingested).\n3. In _run_analyze: for each analysis pass (asr, objects, faces, embeddings, scenes, audio_events), check what's already done per media_id. The transcripts/detections/faces/etc tables already serve as implicit checkpoints — if a row exists, skip that pass for that media. Add explicit queries: db.has_transcript(media_id), db.has_detections(media_id), etc.\n4. In _run_classify, _run_narrate, _run_script, _run_edl: check if output already exists in the corresponding table before regenerating.\n5. Add a --force flag to cli.py that bypasses resume logic and reprocesses everything.\n6. Log resume behavior: 'Resuming ANALYZE: 47/100 media already transcribed, processing remaining 53'.\n\nDo NOT add a separate checkpoint file — use the DB as the source of truth (it already is).",
-        "testStrategy": "Unit tests: populate DB with partial analysis results, run _run_analyze, verify only unprocessed media is analyzed. Test --force flag bypasses resume. Test that each has_* helper returns correct bool. Integration: run pipeline twice — second run should be a near-instant no-op.",
+        "details": "The pipeline runs for up to 36 hours. A crash mid-ANALYZE (the longest stage) loses all progress \u2014 there's no checkpoint or resume capability.\n\nThe DB already has the data to support this. The fix is to make each _run_* function in orchestrator.py query what's already been done and skip completed items.\n\nImplementation:\n1. Add a richer status state machine to media_files: 'pending' -> 'ingested' -> 'transcribed' -> 'detected' -> 'embedded' -> 'clustered' -> 'analyzed'. Each analysis pass updates the status after successful completion.\n2. In _run_ingest: skip media where status != 'pending' (already ingested).\n3. In _run_analyze: for each analysis pass (asr, objects, faces, embeddings, scenes, audio_events), check what's already done per media_id. The transcripts/detections/faces/etc tables already serve as implicit checkpoints \u2014 if a row exists, skip that pass for that media. Add explicit queries: db.has_transcript(media_id), db.has_detections(media_id), etc.\n4. In _run_classify, _run_narrate, _run_script, _run_edl: check if output already exists in the corresponding table before regenerating.\n5. Add a --force flag to cli.py that bypasses resume logic and reprocesses everything.\n6. Log resume behavior: 'Resuming ANALYZE: 47/100 media already transcribed, processing remaining 53'.\n\nDo NOT add a separate checkpoint file \u2014 use the DB as the source of truth (it already is).",
+        "testStrategy": "Unit tests: populate DB with partial analysis results, run _run_analyze, verify only unprocessed media is analyzed. Test --force flag bypasses resume. Test that each has_* helper returns correct bool. Integration: run pipeline twice \u2014 second run should be a near-instant no-op.",
         "priority": "critical",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "tags": [
           "autopilot",
@@ -573,32 +573,32 @@
           "robustness"
         ],
         "subtasks": [],
-        "updatedAt": "2026-03-21T09:31:18.602Z"
+        "updatedAt": "2026-03-21T12:03:02.000Z"
       },
       {
         "id": "33",
         "title": "Pin ML dependency versions and generate uv lock file",
         "description": "Add lower-bound version constraints for ML dependencies in pyproject.toml and generate a uv.lock file for reproducible installs.",
-        "details": "All dependencies in pyproject.toml are unpinned (e.g. just 'whisperx', 'ultralytics'). A fresh install on a different day can produce a completely different environment. ML deps are especially volatile across majors.\n\nImplementation:\n1. For each ML dependency, determine the currently installed version via `uv pip list` or `pip show`.\n2. Add lower-bound + major-version caps for ML packages that break across majors:\n   - whisperx>=0.10,<1.0\n   - ultralytics>=8.0,<9.0\n   - insightface>=0.7,<1.0\n   - faster-whisper>=1.0,<2.0\n   - transformers>=4.40,<5.0\n   - audiocraft>=1.3,<2.0\n   - moviepy>=2.0,<3.0\n   - opentimelineio>=0.17,<1.0\n   (Adjust exact versions based on what's actually installed)\n3. Leave stable deps unpinned (click, pyyaml, requests, etc.)\n4. Run `uv lock` to generate uv.lock.\n5. Add uv.lock to git tracking.\n6. Verify `uv sync` still works from a clean state.\n\nDo NOT pin to exact versions (==) — that's too rigid for a solo project. Lower bounds + major caps strike the right balance.",
+        "details": "All dependencies in pyproject.toml are unpinned (e.g. just 'whisperx', 'ultralytics'). A fresh install on a different day can produce a completely different environment. ML deps are especially volatile across majors.\n\nImplementation:\n1. For each ML dependency, determine the currently installed version via `uv pip list` or `pip show`.\n2. Add lower-bound + major-version caps for ML packages that break across majors:\n   - whisperx>=0.10,<1.0\n   - ultralytics>=8.0,<9.0\n   - insightface>=0.7,<1.0\n   - faster-whisper>=1.0,<2.0\n   - transformers>=4.40,<5.0\n   - audiocraft>=1.3,<2.0\n   - moviepy>=2.0,<3.0\n   - opentimelineio>=0.17,<1.0\n   (Adjust exact versions based on what's actually installed)\n3. Leave stable deps unpinned (click, pyyaml, requests, etc.)\n4. Run `uv lock` to generate uv.lock.\n5. Add uv.lock to git tracking.\n6. Verify `uv sync` still works from a clean state.\n\nDo NOT pin to exact versions (==) \u2014 that's too rigid for a solo project. Lower bounds + major caps strike the right balance.",
         "testStrategy": "Verify uv.lock is generated and valid. Verify `uv sync` from clean venv succeeds. Verify pyproject.toml parses correctly. Spot-check that key imports still work (import whisperx, import ultralytics, etc.).",
         "priority": "high",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "tags": [
           "autopilot",
           "dependencies"
         ],
         "subtasks": [],
-        "updatedAt": "2026-03-21T09:31:18.476Z"
+        "updatedAt": "2026-03-21T12:03:02.000Z"
       },
       {
         "id": "34",
         "title": "Replace Anthropic SDK calls with Claude CLI invocation (Max plan)",
         "description": "Replace all 4 direct anthropic.Anthropic() SDK calls with Claude CLI subprocess invocation to use the Claude Max subscription instead of API credits.",
-        "details": "4 modules call anthropic.Anthropic().messages.create() directly, burning API credits:\n\n1. organize/classify.py:154 — utility_model, simple text→JSON (activity labels)\n2. organize/narratives.py:276 — planning_model, simple text→JSON (narrative proposals) \n3. plan/script.py:436 — planning_model, simple text→JSON (scene scripts)\n4. plan/edl.py:144 — planning_model, text→JSON WITH TOOL-USE (EDL generation with validation loop)\n\nImplementation:\n1. Create autopilot/llm.py with an invoke_claude() wrapper modeled on dark-factory's shared/cli_invoke.py pattern:\n   - Subprocess call: claude --print --model <model> --system-prompt <system> --output-format json\n   - Prompt passed via stdin (--append-system-prompt or positional arg)\n   - Parse JSON output (result field from claude CLI)\n   - Handle errors (non-zero exit, timeout)\n   - Support --json-schema for structured output\n   - Accept oauth_token override via CLAUDE_OAUTH_TOKEN env var passthrough\n\n2. For simple calls (classify, narratives, script):\n   - Replace client.messages.create() with invoke_claude(system=..., prompt=..., model=...)\n   - Parse response text same as before (JSON extraction from markdown blocks)\n\n3. For tool-use call (edl.py):\n   - EDL generation uses tool-use for iterative validation. Two options:\n     a) Convert to --json-schema structured output (preferred — single-shot, no iteration needed if prompt is good enough)\n     b) Or provide tools via MCP server (heavier, only if structured output insufficient)\n   - The validation retry loop in edl.py already handles malformed output — structured output with retry is equivalent\n\n4. Remove anthropic from runtime dependencies in pyproject.toml (keep in dev for tests if needed).\n5. Update LLMConfig to map model names: planning_model → 'opus', utility_model → 'sonnet' (CLI uses short names).\n6. Add --api-fallback flag to cli.py for environments where CLI isn't available.\n\nTest strategy: Mock subprocess.run in all 4 modules. Test invoke_claude() with mocked CLI output. Integration: verify prompt formatting matches what CLI expects.",
+        "details": "4 modules call anthropic.Anthropic().messages.create() directly, burning API credits:\n\n1. organize/classify.py:154 \u2014 utility_model, simple text\u2192JSON (activity labels)\n2. organize/narratives.py:276 \u2014 planning_model, simple text\u2192JSON (narrative proposals) \n3. plan/script.py:436 \u2014 planning_model, simple text\u2192JSON (scene scripts)\n4. plan/edl.py:144 \u2014 planning_model, text\u2192JSON WITH TOOL-USE (EDL generation with validation loop)\n\nImplementation:\n1. Create autopilot/llm.py with an invoke_claude() wrapper modeled on dark-factory's shared/cli_invoke.py pattern:\n   - Subprocess call: claude --print --model <model> --system-prompt <system> --output-format json\n   - Prompt passed via stdin (--append-system-prompt or positional arg)\n   - Parse JSON output (result field from claude CLI)\n   - Handle errors (non-zero exit, timeout)\n   - Support --json-schema for structured output\n   - Accept oauth_token override via CLAUDE_OAUTH_TOKEN env var passthrough\n\n2. For simple calls (classify, narratives, script):\n   - Replace client.messages.create() with invoke_claude(system=..., prompt=..., model=...)\n   - Parse response text same as before (JSON extraction from markdown blocks)\n\n3. For tool-use call (edl.py):\n   - EDL generation uses tool-use for iterative validation. Two options:\n     a) Convert to --json-schema structured output (preferred \u2014 single-shot, no iteration needed if prompt is good enough)\n     b) Or provide tools via MCP server (heavier, only if structured output insufficient)\n   - The validation retry loop in edl.py already handles malformed output \u2014 structured output with retry is equivalent\n\n4. Remove anthropic from runtime dependencies in pyproject.toml (keep in dev for tests if needed).\n5. Update LLMConfig to map model names: planning_model \u2192 'opus', utility_model \u2192 'sonnet' (CLI uses short names).\n6. Add --api-fallback flag to cli.py for environments where CLI isn't available.\n\nTest strategy: Mock subprocess.run in all 4 modules. Test invoke_claude() with mocked CLI output. Integration: verify prompt formatting matches what CLI expects.",
         "testStrategy": "Unit tests: mock subprocess.run, verify invoke_claude builds correct command. Test each of the 4 call sites with mocked CLI output. Test error handling (timeout, non-zero exit). Test JSON schema output parsing for EDL.",
         "priority": "high",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "tags": [
           "autopilot",
@@ -606,14 +606,14 @@
           "cost"
         ],
         "subtasks": [],
-        "updatedAt": "2026-03-21T09:36:53.506Z"
+        "updatedAt": "2026-03-21T12:03:02.000Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-21T09:36:53.506Z",
+      "lastModified": "2026-03-21T12:03:02.000Z",
       "taskCount": 34,
-      "completedCount": 27,
+      "completedCount": 32,
       "tags": [
         "master"
       ]
