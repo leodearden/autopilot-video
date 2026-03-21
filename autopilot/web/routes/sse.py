@@ -43,10 +43,19 @@ def _format_event(event: dict) -> ServerSentEvent:
     )
 
 
+def _get_last_event_id(request: Request) -> int:
+    """Parse Last-Event-ID header, returning 0 on missing/invalid."""
+    raw = request.headers.get("last-event-id", "0")
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        return 0
+
+
 async def _event_generator(request: Request):
     """Async generator that polls pipeline_events and yields SSE events."""
     db = _get_db(request)
-    last_event_id = 0
+    last_event_id = _get_last_event_id(request)
     try:
         while True:
             events = db.get_events_since(last_event_id)
