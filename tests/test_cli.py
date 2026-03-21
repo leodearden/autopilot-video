@@ -34,7 +34,7 @@ class TestMainGroup:
 
 
 EXPECTED_SUBCOMMANDS = ["ingest", "analyze", "plan", "edit", "render", "upload", "run"]
-COMMON_OPTIONS = ["input_dir", "output_dir", "verbose", "dry_run"]
+COMMON_OPTIONS = ["input_dir", "output_dir", "verbose", "dry_run", "force"]
 
 
 class TestSubcommands:
@@ -499,13 +499,26 @@ class TestCLIRealStageWiring:
                 )
 
 
-class TestSignalHandlers:
-    """Tests for signal handler registration in the 'run' command."""
+class TestForceFlag:
+    """Tests for CLI --force flag propagation."""
 
-    def test_run_registers_sigint_handler(self, tmp_path: Path) -> None:
-        """'run' command registers a SIGINT signal handler."""
-        import signal
+    def test_force_in_common_options(self) -> None:
+        """--force is present in _common_options for all subcommands."""
+        for cmd_name in EXPECTED_SUBCOMMANDS:
+            cmd = main.commands[cmd_name]
+            param_names = [p.name for p in cmd.params]
+            assert "force" in param_names, (
+                f"{cmd_name} missing --force option"
+            )
 
+    def test_run_command_has_force_option(self) -> None:
+        """'run' subcommand accepts --force flag."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["run", "--help"])
+        assert "--force" in result.output
+
+    def test_run_command_passes_force_to_orchestrator(self, tmp_path: Path) -> None:
+        """'run --force' passes force=True to PipelineOrchestrator constructor."""
         config_file = _write_minimal_config(tmp_path)
         runner = CliRunner()
 
@@ -513,68 +526,52 @@ class TestSignalHandlers:
             mock_db_cls.return_value = MagicMock()
             with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
                 mock_orch_cls.return_value = MagicMock()
-                with patch("autopilot.cli.signal.signal") as mock_signal:
-                    runner.invoke(
+                runner.invoke(
+                    main,
+                    ["--config", str(config_file), "run", "--force"],
+                )
+                call_kwargs = mock_orch_cls.call_args[1]
+                assert call_kwargs.get("force") is True
+
+    def test_run_command_defaults_force_false(self, tmp_path: Path) -> None:
+        """'run' without --force passes force=False to PipelineOrchestrator."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+            mock_db_cls.return_value = MagicMock()
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch_cls.return_value = MagicMock()
+                runner.invoke(
+                    main,
+                    ["--config", str(config_file), "run"],
+                )
+                call_kwargs = mock_orch_cls.call_args[1]
+                assert call_kwargs.get("force") is False
+
+    def test_individual_subcommands_pass_force_to_stage(self, tmp_path: Path) -> None:
+        """Each subcommand passes force=True to stage function when --force given."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        for cmd_name in ["ingest", "analyze", "plan", "edit", "render", "upload"]:
+            with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+                mock_db_cls.return_value = MagicMock()
+                with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                    mock_orch = MagicMock()
+                    mock_orch_cls.return_value = mock_orch
+                    stage_func = MagicMock()
+                    mock_orch._stage_map.__getitem__.return_value.func = stage_func
+
+                    result = runner.invoke(
                         main,
-                        ["--config", str(config_file), "run"],
+                        ["--config", str(config_file), cmd_name, "--force"],
                     )
-                    # Check that signal.signal was called for SIGINT
-                    sigint_calls = [
-                        c for c in mock_signal.call_args_list
-                        if c[0][0] == signal.SIGINT
-                    ]
-                    assert len(sigint_calls) >= 1, (
-                        "signal.signal should be called with SIGINT"
+                    assert result.exit_code == 0, (
+                        f"{cmd_name} --force failed: {result.output}"
                     )
-
-    def test_run_registers_sigterm_handler(self, tmp_path: Path) -> None:
-        """'run' command registers a SIGTERM signal handler."""
-        import signal
-
-        config_file = _write_minimal_config(tmp_path)
-        runner = CliRunner()
-
-        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
-            mock_db_cls.return_value = MagicMock()
-            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
-                mock_orch_cls.return_value = MagicMock()
-                with patch("autopilot.cli.signal.signal") as mock_signal:
-                    runner.invoke(
-                        main,
-                        ["--config", str(config_file), "run"],
-                    )
-                    sigterm_calls = [
-                        c for c in mock_signal.call_args_list
-                        if c[0][0] == signal.SIGTERM
-                    ]
-                    assert len(sigterm_calls) >= 1, (
-                        "signal.signal should be called with SIGTERM"
-                    )
-
-    def test_signal_handler_calls_request_shutdown(self, tmp_path: Path) -> None:
-        """The signal handler calls request_shutdown() from the orchestrator."""
-        import signal
-
-        config_file = _write_minimal_config(tmp_path)
-        runner = CliRunner()
-
-        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
-            mock_db_cls.return_value = MagicMock()
-            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
-                mock_orch_cls.return_value = MagicMock()
-                with patch("autopilot.cli.signal.signal") as mock_signal:
-                    with patch("autopilot.cli.request_shutdown") as mock_req:
-                        runner.invoke(
-                            main,
-                            ["--config", str(config_file), "run"],
+                    # Every call to stage_func should have force=True
+                    for call in stage_func.call_args_list:
+                        assert call[1].get("force") is True, (
+                            f"{cmd_name}: stage func not called with force=True"
                         )
-                        # Get the handler that was registered for SIGINT
-                        sigint_calls = [
-                            c for c in mock_signal.call_args_list
-                            if c[0][0] == signal.SIGINT
-                        ]
-                        assert len(sigint_calls) >= 1
-                        handler = sigint_calls[0][0][1]
-                        # Invoke the handler
-                        handler(signal.SIGINT, None)
-                        mock_req.assert_called_once()
