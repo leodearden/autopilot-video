@@ -283,11 +283,30 @@ def _run_narrate(
     )
 
 
-def _run_script(*, config: Any, db: Any) -> None:
+def _run_script(*, config: Any, db: Any, force: bool = False) -> None:
     """SCRIPT stage: generate scripts for each approved narrative."""
     approved = db.list_narratives("approved")
+
+    # Checkpoint/resume: skip narratives that already have a script
+    skipped = 0
+    if not force:
+        to_process = []
+        for narr in approved:
+            nid = narr["narrative_id"]
+            if db.get_narrative_script(nid) is not None:
+                skipped += 1
+            else:
+                to_process.append(narr)
+        if skipped > 0:
+            logger.info(
+                "Resuming SCRIPT: %d/%d narratives already scripted",
+                skipped, len(approved),
+            )
+    else:
+        to_process = list(approved)
+
     successes = 0
-    for narr in approved:
+    for narr in to_process:
         if shutdown_requested():
             break
         nid = narr["narrative_id"]
@@ -297,7 +316,7 @@ def _run_script(*, config: Any, db: Any) -> None:
         except Exception:
             logger.exception("Script generation failed for narrative %s", nid)
 
-    if approved and successes == 0:
+    if approved and successes == 0 and skipped == 0:
         raise RuntimeError("All narratives failed script generation")
 
     logger.info("Script complete: %d/%d succeeded", successes, len(approved))

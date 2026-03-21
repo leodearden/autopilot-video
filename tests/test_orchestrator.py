@@ -892,6 +892,7 @@ class TestScriptStage:
         db.list_narratives.return_value = [
             {"narrative_id": "n1"}, {"narrative_id": "n2"},
         ]
+        db.get_narrative_script.return_value = None
         mock_script.generate_script.return_value = {"scenes": []}
 
         _run_script(config=minimal_config, db=db)
@@ -910,6 +911,7 @@ class TestScriptStage:
         db.list_narratives.return_value = [
             {"narrative_id": "n1"}, {"narrative_id": "n2"},
         ]
+        db.get_narrative_script.return_value = None
         mock_script.generate_script.side_effect = [
             ScriptError("failed"), {"scenes": []},
         ]
@@ -930,6 +932,7 @@ class TestScriptStage:
         db.list_narratives.return_value = [
             {"narrative_id": "n1"}, {"narrative_id": "n2"},
         ]
+        db.get_narrative_script.return_value = None
         mock_script.generate_script.side_effect = ScriptError("fail")
 
         with pytest.raises(RuntimeError, match="All narratives failed"):
