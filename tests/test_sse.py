@@ -169,3 +169,86 @@ class TestSSEEventDelivery:
         assert data["event_type"] == "stage_completed"
         assert data["stage"] == "INGEST"
         assert data["elapsed"] == 1.23
+
+
+class TestSSEReconnection:
+    """Tests for Last-Event-ID reconnection support."""
+
+    def test_last_event_id_header_resumes_from_position(self, sse_db, sse_app) -> None:
+        """Connecting with Last-Event-ID: 3 skips events 1-3, sends 4-5."""
+        from autopilot.web.routes import sse as sse_module
+
+        # Insert 5 events (IDs will be 1-5)
+        for i in range(5):
+            sse_db.insert_event(f"event_{i}", stage="INGEST")
+
+        async def _finite_gen(request):
+            db = sse_module._get_db(request)
+            last_id = sse_module._get_last_event_id(request)
+            try:
+                events = db.get_events_since(last_id)
+                for ev in events:
+                    yield sse_module._format_event(ev)
+            finally:
+                db.close()
+
+        with patch.object(sse_module, "_event_generator", _finite_gen):
+            client = TestClient(sse_app)
+            response = client.get(
+                "/api/events", headers={"Last-Event-ID": "3"}
+            )
+            events = _parse_sse_body(response.text)
+
+        assert len(events) == 2
+        assert events[0]["event"] == "event_3"
+        assert events[1]["event"] == "event_4"
+
+    def test_missing_last_event_id_starts_from_zero(self, sse_db, sse_app) -> None:
+        """Without Last-Event-ID header, all events are received."""
+        from autopilot.web.routes import sse as sse_module
+
+        for i in range(3):
+            sse_db.insert_event(f"event_{i}", stage="INGEST")
+
+        async def _finite_gen(request):
+            db = sse_module._get_db(request)
+            last_id = sse_module._get_last_event_id(request)
+            try:
+                events = db.get_events_since(last_id)
+                for ev in events:
+                    yield sse_module._format_event(ev)
+            finally:
+                db.close()
+
+        with patch.object(sse_module, "_event_generator", _finite_gen):
+            client = TestClient(sse_app)
+            response = client.get("/api/events")
+            events = _parse_sse_body(response.text)
+
+        assert len(events) == 3
+
+    def test_invalid_last_event_id_starts_from_zero(self, sse_db, sse_app) -> None:
+        """Non-numeric Last-Event-ID falls back to 0 (all events)."""
+        from autopilot.web.routes import sse as sse_module
+
+        for i in range(3):
+            sse_db.insert_event(f"event_{i}", stage="INGEST")
+
+        async def _finite_gen(request):
+            db = sse_module._get_db(request)
+            last_id = sse_module._get_last_event_id(request)
+            try:
+                events = db.get_events_since(last_id)
+                for ev in events:
+                    yield sse_module._format_event(ev)
+            finally:
+                db.close()
+
+        with patch.object(sse_module, "_event_generator", _finite_gen):
+            client = TestClient(sse_app)
+            response = client.get(
+                "/api/events", headers={"Last-Event-ID": "abc"}
+            )
+            events = _parse_sse_body(response.text)
+
+        assert len(events) == 3
