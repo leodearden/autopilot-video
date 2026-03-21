@@ -234,6 +234,8 @@ def _run_script(*, config: Any, db: Any) -> None:
     approved = db.list_narratives("approved")
     successes = 0
     for narr in approved:
+        if shutdown_requested():
+            break
         nid = narr["narrative_id"]
         try:
             script.generate_script(nid, db, config.llm)
@@ -252,6 +254,8 @@ def _run_edl(*, config: Any, db: Any) -> None:
     approved = db.list_narratives("approved")
     successes = 0
     for narr in approved:
+        if shutdown_requested():
+            break
         nid = narr["narrative_id"]
         # Skip narratives without scripts
         if db.get_narrative_script(nid) is None:
@@ -288,6 +292,8 @@ def _run_source_assets(*, config: Any, db: Any) -> None:
     approved = db.list_narratives("approved")
     successes = 0
     for narr in approved:
+        if shutdown_requested():
+            break
         nid = narr["narrative_id"]
         plan = db.get_edit_plan(nid)
         if plan is None:
@@ -315,6 +321,8 @@ def _run_render(*, config: Any, db: Any) -> None:
     approved = db.list_narratives("approved")
     successes = 0
     for narr in approved:
+        if shutdown_requested():
+            break
         nid = narr["narrative_id"]
         plan = db.get_edit_plan(nid)
         if plan is None:
@@ -345,6 +353,8 @@ def _run_upload(*, config: Any, db: Any) -> None:
     approved = db.list_narratives("approved")
     successes = 0
     for narr in approved:
+        if shutdown_requested():
+            break
         nid = narr["narrative_id"]
         plan = db.get_edit_plan(nid)
         if plan is None:
