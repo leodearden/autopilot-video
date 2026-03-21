@@ -2332,3 +2332,89 @@ class TestScriptResume:
 
         # Both should get generate_script called
         assert mock_script.generate_script.call_count == 2
+
+
+# -- Checkpoint/resume tests for _run_edl ------------------------------------
+
+
+class TestEdlResume:
+    """Tests for _run_edl checkpoint/resume logic."""
+
+    @patch("autopilot.orchestrator.otio_export")
+    @patch("autopilot.orchestrator.validator")
+    @patch("autopilot.orchestrator.edl_mod")
+    def test_edl_skips_narrative_with_existing_edit_plan(
+        self, mock_edl, mock_validator, mock_otio, minimal_config,
+    ):
+        """_run_edl skips EDL generation when narrative already has an edit plan with edl_json."""
+        from autopilot.orchestrator import _run_edl
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        db.get_narrative_script.return_value = {"scenes": []}
+        # n1 already has an edit plan with edl_json, n2 does not
+        db.get_edit_plan.side_effect = lambda nid: (
+            {"narrative_id": "n1", "edl_json": '{"timeline": []}'} if nid == "n1"
+            else None
+        )
+        mock_edl.generate_edl.return_value = {"timeline": []}
+        mock_validator.validate_edl.return_value = MagicMock(passed=True)
+
+        _run_edl(config=minimal_config, db=db)
+
+        # Only n2 should get generate_edl called
+        assert mock_edl.generate_edl.call_count == 1
+
+    @patch("autopilot.orchestrator.otio_export")
+    @patch("autopilot.orchestrator.validator")
+    @patch("autopilot.orchestrator.edl_mod")
+    def test_edl_logs_resume_counts(
+        self, mock_edl, mock_validator, mock_otio, minimal_config, caplog,
+    ):
+        """_run_edl logs 'Resuming EDL: N/M narratives already have edit plans'."""
+        from autopilot.orchestrator import _run_edl
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"}, {"narrative_id": "n3"},
+        ]
+        db.get_narrative_script.return_value = {"scenes": []}
+        # n1 and n2 already have edit plans
+        db.get_edit_plan.side_effect = lambda nid: (
+            {"narrative_id": nid, "edl_json": '{"timeline": []}'} if nid in ("n1", "n2")
+            else None
+        )
+        mock_edl.generate_edl.return_value = {"timeline": []}
+        mock_validator.validate_edl.return_value = MagicMock(passed=True)
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            _run_edl(config=minimal_config, db=db)
+
+        assert any("Resuming EDL" in r.message and "2/3" in r.message
+                    for r in caplog.records)
+
+    @patch("autopilot.orchestrator.otio_export")
+    @patch("autopilot.orchestrator.validator")
+    @patch("autopilot.orchestrator.edl_mod")
+    def test_edl_force_regenerates_all(
+        self, mock_edl, mock_validator, mock_otio, minimal_config,
+    ):
+        """_run_edl with force=True regenerates even narratives with existing edit plans."""
+        from autopilot.orchestrator import _run_edl
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        db.get_narrative_script.return_value = {"scenes": []}
+        # Both already have edit plans
+        db.get_edit_plan.return_value = {"narrative_id": "n1", "edl_json": '{"timeline": []}'}
+        mock_edl.generate_edl.return_value = {"timeline": []}
+        mock_validator.validate_edl.return_value = MagicMock(passed=True)
+
+        _run_edl(config=minimal_config, db=db, force=True)
+
+        # Both should get generate_edl called
+        assert mock_edl.generate_edl.call_count == 2
