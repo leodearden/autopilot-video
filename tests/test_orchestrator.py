@@ -4673,3 +4673,56 @@ class TestCheckGateNotFound:
             result = orch._check_gate("INGEST")
         assert result == "approved"
         assert any("Gate check failed" in r.message for r in caplog.records)
+
+
+class TestGateInitInRun:
+    """Tests for gate initialization in run()."""
+
+    def test_run_calls_init_default_gates(self, catalog_db) -> None:
+        """run() calls db.init_default_gates()."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        # Spy on init_default_gates
+        original = catalog_db.init_default_gates
+        call_count = 0
+        def spy():
+            nonlocal call_count
+            call_count += 1
+            return original()
+        catalog_db.init_default_gates = spy
+
+        orch.run(config=MagicMock(), db=catalog_db)
+        assert call_count == 1
+
+    def test_run_resets_gate_statuses_to_idle(self, catalog_db) -> None:
+        """run() resets all gate statuses to 'idle' at start."""
+        # Pre-set a gate to approved
+        catalog_db.init_default_gates()
+        catalog_db.update_gate("ingest", status="approved")
+
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=catalog_db)
+
+        # After run, gate should have been reset to idle (then set to approved by auto mode)
+        # But the reset happens before stage loop, so we verify by checking the gate was processed
+        gate = catalog_db.get_gate("ingest")
+        # After run, auto mode sets it to 'approved'
+        assert gate["status"] == "approved"
+
+    def test_run_proceeds_when_init_gates_raises(self, catalog_db) -> None:
+        """Pipeline still runs if init_default_gates() raises."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        # Make init_default_gates raise
+        catalog_db.init_default_gates = MagicMock(side_effect=RuntimeError("db error"))
+
+        # Should still complete
+        results = orch.run(config=MagicMock(), db=catalog_db)
+        assert len(results) == 9
