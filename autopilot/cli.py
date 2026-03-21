@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import signal
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +11,7 @@ import click
 
 from autopilot.config import AutopilotConfig, ConfigError, load_config
 from autopilot.db import CatalogDB
-from autopilot.orchestrator import PipelineOrchestrator
+from autopilot.orchestrator import PipelineOrchestrator, request_shutdown
 
 __all__ = ["main"]
 
@@ -268,14 +269,27 @@ def run(
     dry_run: bool,
 ) -> None:
     """Run the full pipeline (all stages)."""
+    def _shutdown_handler(signum: int, frame: Any) -> None:
+        logger.info("Shutdown requested, finishing current work...")
+        request_shutdown()
+
     db = None
     try:
         config, db = _setup_context(ctx, input_dir, output_dir, verbose)
+
+        # Register signal handlers for graceful shutdown
+        prev_sigint = signal.signal(signal.SIGINT, _shutdown_handler)
+        prev_sigterm = signal.signal(signal.SIGTERM, _shutdown_handler)
+
         orch = PipelineOrchestrator(
             budget_seconds=config.processing.max_wall_clock_hours * 3600,
             human_review_fn=_cli_human_review,
         )
         orch.run(config=config, db=db, dry_run=dry_run)
+
+        # Restore original signal handlers
+        signal.signal(signal.SIGINT, prev_sigint)
+        signal.signal(signal.SIGTERM, prev_sigterm)
     except click.ClickException:
         raise
     except Exception as e:
