@@ -3871,3 +3871,46 @@ class TestAnalyzeJobTracking:
         _run_analyze(config=minimal_config, db=db)
 
         db.insert_job.assert_not_called()
+
+
+class TestClassifyJobTracking:
+    """Tests for per-job tracking in _run_classify."""
+
+    @patch("autopilot.orchestrator.classify")
+    @patch("autopilot.orchestrator.cluster")
+    def test_classify_creates_two_jobs(
+        self, mock_cluster, mock_classify, minimal_config,
+    ):
+        """Creates 'cluster_activities' and 'label_activities' jobs."""
+        from autopilot.orchestrator import _run_classify
+
+        db = MagicMock()
+        db.get_activity_clusters.return_value = []
+
+        _run_classify(
+            config=minimal_config, db=db,
+            run_id="run_c", emit_fn=MagicMock(),
+        )
+
+        assert db.insert_job.call_count == 2
+        job_types = [c[0][2] for c in db.insert_job.call_args_list]
+        assert "cluster_activities" in job_types
+        assert "label_activities" in job_types
+        for call in db.insert_job.call_args_list:
+            assert call[0][1] == "CLASSIFY"
+            assert call[1]["worker"] == "cpu"
+
+    @patch("autopilot.orchestrator.classify")
+    @patch("autopilot.orchestrator.cluster")
+    def test_classify_no_jobs_when_no_run_id(
+        self, mock_cluster, mock_classify, minimal_config,
+    ):
+        """When run_id=None, no insert_job calls."""
+        from autopilot.orchestrator import _run_classify
+
+        db = MagicMock()
+        db.get_activity_clusters.return_value = []
+
+        _run_classify(config=minimal_config, db=db)
+
+        db.insert_job.assert_not_called()
