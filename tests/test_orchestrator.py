@@ -2887,3 +2887,59 @@ class TestRunTrackingInit:
 
         kw = mock_db.insert_run.call_args[1]
         assert kw["budget_remaining_seconds"] == 3600
+
+
+class TestEmitEvent:
+    """Tests for the _emit_event helper method."""
+
+    def test_emit_event_calls_insert_event(self) -> None:
+        """_emit_event calls db.insert_event with event_type and stage."""
+        orch = PipelineOrchestrator()
+        orch._db = MagicMock()
+        orch._run_id = "a" * 32
+
+        orch._emit_event("test_event", stage="INGEST")
+
+        orch._db.insert_event.assert_called_once()
+        call_kwargs = orch._db.insert_event.call_args[1]
+        assert call_kwargs["event_type"] == "test_event"
+        assert call_kwargs["stage"] == "INGEST"
+
+    def test_emit_event_serializes_payload_to_json(self) -> None:
+        """_emit_event serializes payload dict to JSON string."""
+        orch = PipelineOrchestrator()
+        orch._db = MagicMock()
+        orch._run_id = "b" * 32
+
+        orch._emit_event("test_event", payload={"key": "val"})
+
+        call_kwargs = orch._db.insert_event.call_args[1]
+        assert call_kwargs["payload_json"] == '{"key": "val"}'
+
+    def test_emit_event_none_payload(self) -> None:
+        """_emit_event passes payload_json=None when no payload given."""
+        orch = PipelineOrchestrator()
+        orch._db = MagicMock()
+        orch._run_id = "c" * 32
+
+        orch._emit_event("test_event")
+
+        call_kwargs = orch._db.insert_event.call_args[1]
+        assert call_kwargs["payload_json"] is None
+
+    def test_emit_event_logs_at_debug_level(
+        self, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """_emit_event emits a debug-level log."""
+        orch = PipelineOrchestrator()
+        orch._db = MagicMock()
+        orch._run_id = "d" * 32
+
+        with caplog.at_level(logging.DEBUG, logger="autopilot.orchestrator"):
+            orch._emit_event("test_event", stage="INGEST")
+
+        debug_records = [
+            r for r in caplog.records
+            if r.levelno == logging.DEBUG and "test_event" in r.message
+        ]
+        assert len(debug_records) >= 1
