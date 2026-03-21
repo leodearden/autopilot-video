@@ -4509,3 +4509,71 @@ class TestCheckGateNotify:
         gate_events = [e for e in events if e["event_type"] == "gate_passed"]
         assert len(gate_events) == 1
         assert gate_events[0]["stage"] == "CLASSIFY"
+
+
+class TestCheckGatePause:
+    """Tests for _check_gate() in 'pause' mode."""
+
+    def test_gate_pause_sets_waiting_and_polls(self, catalog_db) -> None:
+        """Pause mode sets status='waiting', emits 'gate_waiting', then polls."""
+        catalog_db.init_default_gates()
+        catalog_db.update_gate("ingest", mode="pause")
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+
+        # Simulate external approval: after first get_gate returns 'waiting',
+        # update gate to 'approved' so the poll loop exits.
+        call_count = 0
+        original_get_gate = catalog_db.get_gate
+
+        def fake_get_gate(stage):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 2:
+                # Simulate external approval
+                catalog_db.update_gate(stage, status="approved", decided_by="human")
+            return original_get_gate(stage)
+
+        catalog_db.get_gate = fake_get_gate
+
+        with patch("autopilot.orchestrator.time.sleep"):
+            result = orch._check_gate("INGEST")
+
+        assert result == "approved"
+        # gate_waiting event emitted
+        events = catalog_db.get_events_since(0)
+        waiting_events = [e for e in events if e["event_type"] == "gate_waiting"]
+        assert len(waiting_events) == 1
+        assert waiting_events[0]["stage"] == "INGEST"
+        # gate_approved event emitted
+        approved_events = [e for e in events if e["event_type"] == "gate_approved"]
+        assert len(approved_events) == 1
+
+    def test_gate_pause_skipped_status(self, catalog_db) -> None:
+        """Pause mode returns 'skipped' when gate status is set to 'skipped'."""
+        catalog_db.init_default_gates()
+        catalog_db.update_gate("narrate", mode="pause")
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+
+        call_count = 0
+        original_get_gate = catalog_db.get_gate
+
+        def fake_get_gate(stage):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 2:
+                catalog_db.update_gate(stage, status="skipped")
+            return original_get_gate(stage)
+
+        catalog_db.get_gate = fake_get_gate
+
+        with patch("autopilot.orchestrator.time.sleep"):
+            result = orch._check_gate("NARRATE")
+
+        assert result == "skipped"
+        events = catalog_db.get_events_since(0)
+        skipped_events = [e for e in events if e["event_type"] == "gate_skipped"]
+        assert len(skipped_events) == 1
