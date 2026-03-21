@@ -1841,8 +1841,6 @@ class TestShutdownSkipDetails:
 
     def test_shutdown_skipped_distinct_from_dependency_skipped(self) -> None:
         """Shutdown-skipped stages have error_message; dependency-skipped do not."""
-        from autopilot.orchestrator import request_shutdown
-
         orch = PipelineOrchestrator()
 
         call_order: list[str] = []
