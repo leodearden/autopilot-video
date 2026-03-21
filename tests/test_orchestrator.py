@@ -3339,3 +3339,88 @@ class TestInsertRunResilience:
             and "run tracking" in r.message.lower()
         ]
         assert len(warning_records) >= 1
+
+
+class TestTrackingCallResilience:
+    """Tests that transient db.update_run failures don't abort the pipeline."""
+
+    def test_update_run_failure_in_stage_loop_does_not_abort(self) -> None:
+        """When db.update_run raises on current_stage update, all stages still execute."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        # update_run raises on the first call (current_stage update)
+        mock_db.update_run.side_effect = RuntimeError("DB error")
+
+        results = orch.run(config=MagicMock(), db=mock_db)
+
+        # All 9 stages should have run
+        assert len(results) == 9
+        for result in results.values():
+            assert result.status == StageStatus.DONE
+
+    def test_update_run_failure_for_budget_does_not_abort(self) -> None:
+        """When db.update_run raises on budget_remaining update, pipeline completes."""
+        orch = PipelineOrchestrator(budget_seconds=3600)
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+
+        # Only raise when budget_remaining_seconds kwarg is present
+        def selective_raise(*args: Any, **kwargs: Any) -> None:
+            if "budget_remaining_seconds" in kwargs:
+                raise RuntimeError("DB error on budget update")
+
+        mock_db.update_run.side_effect = selective_raise
+
+        results = orch.run(config=MagicMock(), db=mock_db)
+
+        assert len(results) == 9
+        for result in results.values():
+            assert result.status == StageStatus.DONE
+
+    def test_finalization_update_run_failure_returns_results(self) -> None:
+        """When db.update_run raises during finalization, run() still returns results."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+
+        # Only raise when status='completed' kwarg is present (finalization)
+        def selective_raise(*args: Any, **kwargs: Any) -> None:
+            if "status" in kwargs and kwargs["status"] == "completed":
+                raise RuntimeError("DB error on finalize")
+
+        mock_db.update_run.side_effect = selective_raise
+
+        results = orch.run(config=MagicMock(), db=mock_db)
+
+        # Should still return all 9 results
+        assert len(results) == 9
+        for result in results.values():
+            assert result.status == StageStatus.DONE
+
+    def test_update_run_failure_logs_warning(
+        self, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """WARNING log emitted for each failed db.update_run call."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        mock_db.update_run.side_effect = RuntimeError("DB error")
+
+        with caplog.at_level(logging.WARNING, logger="autopilot.orchestrator"):
+            orch.run(config=MagicMock(), db=mock_db)
+
+        warning_records = [
+            r for r in caplog.records
+            if r.levelno == logging.WARNING
+            and "tracking" in r.message.lower()
+        ]
+        assert len(warning_records) >= 1
