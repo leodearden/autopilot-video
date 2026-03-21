@@ -42,6 +42,7 @@ dependencies = [
     "uvicorn[standard]",
     "jinja2",
     "python-multipart",
+    "sse-starlette",
 ]
 
 [project.scripts]
