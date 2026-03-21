@@ -448,11 +448,30 @@ def _run_render(*, config: Any, db: Any, force: bool = False) -> None:
     logger.info("Render complete: %d/%d succeeded", successes, len(approved))
 
 
-def _run_upload(*, config: Any, db: Any) -> None:
+def _run_upload(*, config: Any, db: Any, force: bool = False) -> None:
     """UPLOAD stage: upload video and extract thumbnail per narrative."""
     approved = db.list_narratives("approved")
+
+    # Checkpoint/resume: skip narratives that already have uploads
+    skipped = 0
+    if not force:
+        to_process = []
+        for narr in approved:
+            nid = narr["narrative_id"]
+            if db.get_upload(nid) is not None:
+                skipped += 1
+            else:
+                to_process.append(narr)
+        if skipped > 0:
+            logger.info(
+                "Resuming UPLOAD: %d/%d narratives already uploaded",
+                skipped, len(approved),
+            )
+    else:
+        to_process = list(approved)
+
     successes = 0
-    for narr in approved:
+    for narr in to_process:
         nid = narr["narrative_id"]
         plan = db.get_edit_plan(nid)
         if plan is None:
@@ -470,7 +489,7 @@ def _run_upload(*, config: Any, db: Any) -> None:
         except Exception:
             logger.exception("Upload failed for narrative %s", nid)
 
-    if approved and successes == 0:
+    if approved and successes == 0 and skipped == 0:
         raise RuntimeError("All narratives failed upload")
 
     logger.info("Upload complete: %d/%d succeeded", successes, len(approved))

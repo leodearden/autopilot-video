@@ -1222,6 +1222,7 @@ class TestUploadStage:
             "edl_json": '{}',
             "render_path": "/out/renders/n1/output.mp4",
         }
+        db.get_upload.return_value = None
 
         mock_youtube.upload_video.return_value = "https://youtu.be/abc"
         mock_thumbnail.extract_best_thumbnail.return_value = Path("/thumb.jpg")
@@ -1248,6 +1249,7 @@ class TestUploadStage:
             "edl_json": '{}',
             "render_path": "/out/renders/output.mp4",
         }
+        db.get_upload.return_value = None
 
         mock_youtube.upload_video.side_effect = [
             UploadError("fail"), "https://youtu.be/def",
@@ -1273,6 +1275,7 @@ class TestUploadStage:
             "edl_json": '{}',
             "render_path": "/db/stored/path.mp4",
         }
+        db.get_upload.return_value = None
         mock_youtube.upload_video.return_value = "https://youtu.be/abc"
         mock_thumbnail.extract_best_thumbnail.return_value = Path("/thumb.jpg")
 
@@ -1296,6 +1299,7 @@ class TestUploadStage:
             "narrative_id": "n1",
             "edl_json": '{}',
         }
+        db.get_upload.return_value = None
 
         with caplog.at_level(logging.WARNING, logger="autopilot.orchestrator"):
             with pytest.raises(RuntimeError, match="All narratives failed"):
@@ -1320,6 +1324,7 @@ class TestUploadStage:
             "edl_json": '{}',
             "render_path": "/out/renders/output.mp4",
         }
+        db.get_upload.return_value = None
 
         mock_youtube.upload_video.side_effect = RuntimeError("fail")
 

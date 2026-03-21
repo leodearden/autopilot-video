@@ -1,106 +1,241 @@
 {
-  "task_id": "33",
-  "title": "Pin ML dependency versions and generate uv lock file",
+  "task_id": "32",
+  "title": "Item-level checkpoint/resume for pipeline stages",
   "files": [
-    "pyproject.toml",
-    "uv.lock",
-    "tests/test_scaffolding.py"
+    "autopilot/db.py",
+    "autopilot/orchestrator.py",
+    "autopilot/cli.py",
+    "tests/test_db.py",
+    "tests/test_orchestrator.py",
+    "tests/test_cli.py"
   ],
   "modules": [
+    "autopilot",
     "tests"
   ],
-  "analysis": "The pyproject.toml currently lists 25+ runtime dependencies, almost all unpinned (only moviepy>=2.0 has a lower bound). ML dependencies like whisperx, ultralytics, insightface, faster-whisper, transformers, audiocraft are especially volatile across major versions. The task requires adding lower-bound + major-version cap constraints (>=X.Y,<Z.0) for ML deps while leaving stable deps (click, pyyaml, requests) unpinned. Then generate uv.lock via `uv lock` for reproducible installs.\n\nThe existing test_scaffolding.py has test_pyproject_toml_has_all_dependencies which normalizes dep names by stripping version specifiers before checking — this test will continue to pass after adding version constraints. The CI workflow already uses `uv sync --extra dev` which will automatically use uv.lock when present.\n\nKey considerations:\n- The task description gives suggested version ranges; actual values should be based on what's installed or reasonable defaults for the project.\n- No exact pinning (==) — lower bounds + major caps strike the right balance.\n- scenedetect, panns-inference, qwen-vl-utils, faiss-gpu, scikit-learn, kokoro, pyav also fall in the ML/specialized category and should get constraints.\n- Stable deps (click, numpy, Pillow, pyyaml, requests, anthropic, google-api-python-client) can remain unpinned or get light lower bounds only.",
-  "prerequisites": [],
+  "analysis": "The pipeline runs up to 36 hours. A crash mid-ANALYZE loses all progress because stage functions don't check what's already been done. The DB already has implicit checkpoints (if a transcript row exists, that media was transcribed), but the orchestrator doesn't query them.\n\nThe fix has two parts:\n1. Add `has_*` convenience methods to CatalogDB for checking per-media completion of each analysis pass (transcript, boundaries, detections, faces, embeddings, audio_events). These are simple existence checks against the respective tables.\n2. Modify each `_run_*` function in orchestrator.py to query what's already completed and skip done items, logging resume progress (e.g. 'Resuming ANALYZE: 47/100 media already transcribed').\n3. Add a `--force` flag to cli.py that passes through to stage functions to bypass resume logic.\n\nKey observations:\n- media_files.status currently has values: 'ingested', 'analyzing', 'duplicate'. The task spec suggests a richer state machine, but the simpler approach is to use the existing tables as implicit checkpoints (which the spec also endorses). We'll add the has_* methods as the primary mechanism rather than changing the status column, since each analysis pass writes to a separate table and a media file can be partially analyzed (e.g. transcribed but not yet object-detected).\n- _run_ingest already handles resume implicitly via INSERT (which fails on duplicate PK), but it still re-scans and re-normalizes. We should skip media that's already in the DB.\n- _run_analyze processes 6 passes per media. Each pass should be individually skippable.\n- _run_classify, _run_narrate, _run_script, _run_edl, _run_source_assets, _run_render, _run_upload should skip items that already have output in the DB.\n- The `--force` flag needs to propagate from CLI through the orchestrator to each stage function.\n\nExisting test patterns use @patch decorators on module-level imports, MagicMock for db/config, and the catalog_db fixture for integration tests with in-memory SQLite. We'll follow these patterns.",
+  "prerequisites": [
+    {
+      "id": "pre-1",
+      "description": "Add has_transcript(media_id), has_detections(media_id), has_boundaries(media_id), has_faces(media_id), has_embeddings(media_id), has_audio_events(media_id) convenience methods to CatalogDB. These return bool by checking row existence in the respective tables via SELECT 1 ... LIMIT 1.",
+      "status": "done",
+      "commit": "5ec20ae",
+      "tests": [
+        "tests/test_db.py::TestHasCheckpointMethods::test_has_transcript_returns_false_when_absent",
+        "tests/test_db.py::TestHasCheckpointMethods::test_has_transcript_returns_true_when_present",
+        "tests/test_db.py::TestHasCheckpointMethods::test_has_detections_returns_false_when_absent",
+        "tests/test_db.py::TestHasCheckpointMethods::test_has_detections_returns_true_when_present",
+        "tests/test_db.py::TestHasCheckpointMethods::test_has_boundaries_returns_false_when_absent",
+        "tests/test_db.py::TestHasCheckpointMethods::test_has_boundaries_returns_true_when_present",
+        "tests/test_db.py::TestHasCheckpointMethods::test_has_faces_returns_false_when_absent",
+        "tests/test_db.py::TestHasCheckpointMethods::test_has_faces_returns_true_when_present",
+        "tests/test_db.py::TestHasCheckpointMethods::test_has_embeddings_returns_false_when_absent",
+        "tests/test_db.py::TestHasCheckpointMethods::test_has_embeddings_returns_true_when_present",
+        "tests/test_db.py::TestHasCheckpointMethods::test_has_audio_events_returns_false_when_absent",
+        "tests/test_db.py::TestHasCheckpointMethods::test_has_audio_events_returns_true_when_present"
+      ]
+    }
+  ],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Add test_ml_deps_have_version_constraints to test_scaffolding.py: parse pyproject.toml, identify the ML dependency list (whisperx, faster-whisper, ultralytics, insightface, transformers, audiocraft, moviepy, opentimelineio, scenedetect, panns-inference, kokoro, pyav, qwen-vl-utils, faiss-gpu, scikit-learn), and assert each has both a lower bound (>=) and an upper bound (<) version constraint. This test will initially fail because deps are unpinned.",
+      "description": "Write failing tests for _run_ingest resume: test_ingest_skips_already_ingested_media (when db.get_media returns non-None for a media_id, skip insert+normalize), test_ingest_logs_resume_counts (logs 'Resuming INGEST: N/M files already ingested'), test_ingest_force_reprocesses_all (when force=True, reprocess even existing media)",
       "status": "done",
-      "commit": "1e63a14"
+      "commit": "352aa5d"
     },
     {
       "id": "step-2",
-      "type": "test",
-      "description": "Add test_stable_deps_not_overconstrained to test_scaffolding.py: verify that stable deps (click, pyyaml, requests, numpy, Pillow, anthropic, google-api-python-client) do NOT have upper-bound constraints (<). They may optionally have lower bounds. This test should pass immediately since those deps are currently unpinned.",
+      "type": "impl",
+      "description": "Implement resume logic in _run_ingest: before insert_media, check db.get_media(media_id) and skip if already exists. Add force kwarg (default False). Log resume counts.",
       "status": "done",
-      "commit": "1e63a14"
+      "commit": "118a82f"
     },
     {
       "id": "step-3",
-      "type": "impl",
-      "description": "Update pyproject.toml: add lower-bound + major-cap version constraints for all ML/volatile dependencies. Use the version ranges from the task description, adjusted for what's reasonable: whisperx>=0.10,<1.0; ultralytics>=8.0,<9.0; insightface>=0.7,<1.0; faster-whisper>=1.0,<2.0; transformers>=4.40,<5.0; audiocraft>=1.3,<2.0; moviepy>=2.0,<3.0 (already has >=2.0); opentimelineio>=0.17,<1.0; scenedetect>=0.6,<1.0; panns-inference>=0.1,<1.0; kokoro>=0.9,<1.0; pyav>=12.0,<14.0; qwen-vl-utils>=0.0.8,<1.0; faiss-gpu>=1.7,<2.0; scikit-learn>=1.4,<2.0. Keep click, numpy, Pillow, pyyaml, requests, anthropic, google-api-python-client unpinned.",
+      "type": "test",
+      "description": "Write failing tests for _run_analyze per-pass resume: test_analyze_skips_transcribed_media (when db.has_transcript returns True, skip asr.transcribe_media for that media), test_analyze_skips_detected_media (when db.has_detections returns True, skip objects.detect_objects), and similar for boundaries/faces/embeddings/audio_events. test_analyze_logs_resume_counts per pass. test_analyze_force_reprocesses_all.",
       "status": "done",
-      "commit": "e65470c"
+      "commit": "12887ca"
     },
     {
       "id": "step-4",
-      "type": "test",
-      "description": "Add test_uv_lock_file_exists to test_scaffolding.py: assert that uv.lock file exists at the project root. This test will initially fail because uv.lock doesn't exist yet.",
+      "type": "impl",
+      "description": "Implement per-pass resume in _run_analyze: before each analysis call, check the corresponding has_* method. Add force kwarg (default False). Log per-pass resume counts (e.g. 'Resuming ANALYZE: 47/100 media already transcribed, processing remaining 53').",
       "status": "done",
-      "commit": "508302c"
+      "commit": "950510d"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Add test_uv_lock_not_gitignored to test_scaffolding.py: read .gitignore and assert it does not contain 'uv.lock'. This test should pass immediately since .gitignore doesn't mention uv.lock.",
+      "description": "Write failing tests for _run_classify resume: test_classify_skips_when_clusters_exist (when db.get_activity_clusters returns non-empty and all have labels, skip). test_classify_force_clears_and_reprocesses.",
       "status": "done",
-      "commit": "508302c"
+      "commit": "49b8a85"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Run `uv lock` in the project root to generate the uv.lock file. Verify the generated file exists and is non-empty. If uv lock fails due to resolution conflicts, adjust version constraints in pyproject.toml and retry.",
+      "description": "Implement resume logic in _run_classify: check if activity clusters already exist and are labeled, skip if so. Add force kwarg (default False).",
       "status": "done",
-      "commit": "42e1b72"
+      "commit": "75a5bcc"
     },
     {
       "id": "step-7",
-      "type": "impl",
-      "description": "Run the full test suite (pytest tests/test_scaffolding.py) to verify all new and existing tests pass: test_ml_deps_have_version_constraints, test_stable_deps_not_overconstrained, test_uv_lock_file_exists, test_uv_lock_not_gitignored, and all pre-existing tests (especially test_pyproject_toml_has_all_dependencies which normalizes dep names).",
+      "type": "test",
+      "description": "Write failing tests for _run_script resume: test_script_skips_narrative_with_existing_script (when db.get_narrative_script returns non-None, skip generate_script for that narrative). test_script_logs_resume_counts. test_script_force_regenerates_all.",
       "status": "done",
-      "commit": "42e1b72"
+      "commit": "ea07b17"
+    },
+    {
+      "id": "step-8",
+      "type": "impl",
+      "description": "Implement resume logic in _run_script: check db.get_narrative_script(nid) before calling generate_script, skip if exists. Add force kwarg (default False). Log resume counts.",
+      "status": "done",
+      "commit": "8c66317"
+    },
+    {
+      "id": "step-9",
+      "type": "test",
+      "description": "Write failing tests for _run_edl resume: test_edl_skips_narrative_with_existing_edit_plan (when db.get_edit_plan returns non-None with edl_json, skip). test_edl_force_regenerates_all.",
+      "status": "done",
+      "commit": "7b0eca7"
+    },
+    {
+      "id": "step-10",
+      "type": "impl",
+      "description": "Implement resume logic in _run_edl: check db.get_edit_plan(nid) before generating, skip if edl_json already present. Add force kwarg (default False). Log resume counts.",
+      "status": "done",
+      "commit": "5239fe3"
+    },
+    {
+      "id": "step-11",
+      "type": "test",
+      "description": "Write failing tests for _run_source_assets resume: test_source_skips_narrative_with_resolved_assets (when asset_dir exists and is non-empty, skip). test_source_force_re_resolves_all.",
+      "status": "done",
+      "commit": "ae1978d"
+    },
+    {
+      "id": "step-12",
+      "type": "impl",
+      "description": "Implement resume logic in _run_source_assets: skip narratives where asset directory exists and is non-empty. Add force kwarg (default False).",
+      "status": "done",
+      "commit": "73fc6dc"
+    },
+    {
+      "id": "step-13",
+      "type": "test",
+      "description": "Write failing tests for _run_render resume: test_render_skips_narrative_with_existing_render_path (when edit_plan has render_path and file exists on disk). test_render_force_re_renders_all.",
+      "status": "done",
+      "commit": "b727ffa"
+    },
+    {
+      "id": "step-14",
+      "type": "impl",
+      "description": "Implement resume logic in _run_render: check if render_path exists in edit_plan and file exists on disk, skip if so. Add force kwarg (default False).",
+      "status": "done",
+      "commit": "7f416d2"
+    },
+    {
+      "id": "step-15",
+      "type": "test",
+      "description": "Write failing tests for _run_upload resume: test_upload_skips_narrative_with_existing_upload (when db.get_upload returns non-None). test_upload_force_re_uploads_all.",
+      "status": "done",
+      "commit": "884567b"
+    },
+    {
+      "id": "step-16",
+      "type": "impl",
+      "description": "Implement resume logic in _run_upload: check db.get_upload(nid) before uploading, skip if exists. Add force kwarg (default False).",
+      "status": "done",
+      "commit": "PENDING"
+    },
+    {
+      "id": "step-17",
+      "type": "test",
+      "description": "Write failing tests for force flag propagation: test_orchestrator_run_passes_force_to_stages (when run(force=True), each stage receives force=True). test_orchestrator_run_defaults_force_false. test_orchestrator_init_accepts_force.",
+      "status": "pending",
+      "commit": null
+    },
+    {
+      "id": "step-18",
+      "type": "impl",
+      "description": "Add force parameter to PipelineOrchestrator.__init__ and run(), propagate force=True/False to each stage.func call via kwargs.",
+      "status": "pending",
+      "commit": null
+    },
+    {
+      "id": "step-19",
+      "type": "test",
+      "description": "Write failing tests for CLI --force flag: test_run_command_has_force_option, test_run_command_passes_force_to_orchestrator, test_individual_subcommands_have_force_option (ingest, analyze, plan, edit, render, upload all accept --force). test_force_in_common_options.",
+      "status": "pending",
+      "commit": null
+    },
+    {
+      "id": "step-20",
+      "type": "impl",
+      "description": "Add --force flag to _common_options decorator in cli.py. Wire it through to PipelineOrchestrator(force=True) in the 'run' command and to individual stage calls in subcommands.",
+      "status": "pending",
+      "commit": null
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use >=X.Y,<Z.0 pattern (lower bound + major cap) rather than exact pinning",
-      "rationale": "Per task description: exact pinning (==) is too rigid for a solo project. Lower bounds ensure minimum feature set; major caps prevent breaking API changes. This is the standard pattern for ML libraries that break across major versions."
+      "decision": "Use DB tables as implicit checkpoints rather than adding a richer status state machine to media_files",
+      "rationale": "The task spec says 'the DB already has the data to support this' and 'do NOT add a separate checkpoint file \u2014 use the DB as the source of truth'. The existing tables (transcripts, detections, faces, etc.) already serve as natural checkpoints. Adding a status state machine to media_files would be redundant and could get out of sync with the actual table contents. The has_* methods provide the clearest, most reliable check."
     },
     {
-      "decision": "Categorize deps into ML/volatile (constrained) vs stable (unconstrained)",
-      "rationale": "ML libraries (whisperx, ultralytics, transformers, etc.) frequently have breaking changes across majors. Stable ecosystem libraries (click, pyyaml, requests, numpy) follow semver reliably and rarely break. Over-constraining stable deps creates unnecessary resolver conflicts."
+      "decision": "Add has_* convenience methods to CatalogDB rather than inlining existence checks in orchestrator",
+      "rationale": "Centralizes checkpoint logic in the DB layer. The orchestrator calls db.has_transcript(media_id) instead of db.get_transcript(media_id) is not None. This is more efficient (SELECT 1 ... LIMIT 1 vs SELECT *) and more readable. The task spec explicitly calls for db.has_transcript(), db.has_detections(), etc."
     },
     {
-      "decision": "Add tests to test_scaffolding.py rather than a new test file",
-      "rationale": "test_scaffolding.py already contains pyproject.toml validation tests (test_pyproject_toml_valid, test_pyproject_toml_has_all_dependencies). Version constraint tests and uv.lock existence tests are natural extensions of this scaffolding validation."
+      "decision": "Per-pass granularity in _run_analyze rather than per-media",
+      "rationale": "A crash between asr.transcribe_media and objects.detect_objects should only re-run object detection, not re-transcribe. Each of the 6 analysis passes (asr, scenes, objects, faces, embeddings, audio_events) is checked independently per media_id."
     },
     {
-      "decision": "Include scenedetect, panns-inference, kokoro, pyav, qwen-vl-utils, faiss-gpu, scikit-learn in constrained set",
-      "rationale": "These are ML/specialized packages that can break across majors. The task description lists a subset; we expand to all ML-adjacent deps for consistency. Better to constrain proactively than discover breakage later."
+      "decision": "Add force kwarg to every _run_* function signature rather than a global flag",
+      "rationale": "Each stage function is also called directly by CLI subcommands (e.g. 'autopilot analyze' calls _run_analyze directly). The force flag must be available at both the orchestrator level and the individual command level."
     },
     {
-      "decision": "Track uv.lock in git (not gitignored)",
-      "rationale": "Per task description: uv.lock must be git-tracked for reproducible installs. This is the standard practice — lock files belong in version control for applications (as opposed to libraries)."
+      "decision": "Skip _run_narrate from resume logic",
+      "rationale": "_run_narrate involves human review and proposes new narratives from the current storyboard. It's inherently non-idempotent (the storyboard may change). Narratives already have a status field ('proposed', 'approved', 'rejected') that serves as the resume mechanism for downstream stages."
+    },
+    {
+      "decision": "For _run_source_assets resume, check asset directory existence on disk rather than adding a new DB column",
+      "rationale": "There's no DB table tracking resolved assets. The assets are files on disk. Checking if the asset_dir exists and is non-empty is the simplest approach without schema changes. The task spec says to use DB as source of truth where possible, but there's no existing DB representation for resolved assets."
     }
   ],
   "reuse": [
     {
-      "what": "Existing pyproject.toml test helpers in test_scaffolding.py",
-      "where": "tests/test_scaffolding.py lines 79-114",
-      "how": "test_pyproject_toml_has_all_dependencies already parses pyproject.toml and normalizes dep names. New tests follow the same pattern of reading pyproject.toml with tomllib and iterating over the dependencies list."
+      "what": "catalog_db fixture",
+      "where": "tests/conftest.py",
+      "how": "Reuse the in-memory CatalogDB fixture for testing has_* methods"
     },
     {
-      "what": "project_root fixture from conftest.py",
-      "where": "tests/conftest.py lines 14-16",
-      "how": "All new tests use project_root to locate pyproject.toml, uv.lock, and .gitignore — same fixture used by existing scaffolding tests."
+      "what": "minimal_config fixture",
+      "where": "tests/conftest.py",
+      "how": "Reuse for orchestrator stage function tests"
     },
     {
-      "what": "CI workflow already uses uv sync",
-      "where": ".github/workflows/ci.yml line 29",
-      "how": "No CI changes needed. `uv sync --extra dev` will automatically use uv.lock when present, giving CI reproducible installs."
+      "what": "Existing db.get_transcript(), db.get_boundaries(), etc.",
+      "where": "autopilot/db.py",
+      "how": "The new has_* methods use similar SQL patterns but return bool instead of dict. Can reference existing methods for table/column names."
+    },
+    {
+      "what": "Existing @patch decorator patterns in test_orchestrator.py",
+      "where": "tests/test_orchestrator.py",
+      "how": "Follow the same mock injection pattern for testing resume behavior in each stage"
+    },
+    {
+      "what": "_common_options decorator",
+      "where": "autopilot/cli.py",
+      "how": "Add --force to the existing decorator so all subcommands get it automatically"
+    },
+    {
+      "what": "CliRunner test pattern",
+      "where": "tests/test_cli.py",
+      "how": "Follow existing Click CliRunner patterns for testing --force flag"
     }
   ],
-  "_session_id": "33-942482ce",
-  "_created_at": "2026-03-21T09:33:03.748893+00:00"
+  "_session_id": "32-616538c5",
+  "_created_at": "2026-03-21T09:35:56.579858+00:00"
 }
