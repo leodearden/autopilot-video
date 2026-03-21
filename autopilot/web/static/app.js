@@ -33,8 +33,12 @@ function connectSSE(url) {
     const source = new EventSource(url);
 
     source.addEventListener('notification', function(event) {
-        const data = JSON.parse(event.data);
-        showToast(data.message, data.type || 'info');
+        try {
+            const data = JSON.parse(event.data);
+            showToast(data.message, data.type || 'info');
+        } catch (e) {
+            console.error('SSE notification parse error:', e, event.data);
+        }
     });
 
     source.onerror = function() {

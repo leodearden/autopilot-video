@@ -20,7 +20,7 @@
     "autopilot",
     "tests"
   ],
-  "analysis": "This task creates the web management console skeleton for autopilot-video. The project already has a Click CLI (autopilot/cli.py) with group + subcommands pattern, a CatalogDB class in autopilot/db.py with WAL mode and full pipeline control tables (from task 35), and a mature test suite using pytest with CliRunner and conftest fixtures.\n\nKey observations:\n1. The CLI uses click.Group with @main.command() decorators, _common_options decorator, and _setup_context helper for config+DB loading. The 'serve' command does NOT need _common_options (no --dry-run, --force, etc.) \u2014 it needs its own --host, --port, --output-dir options.\n2. CatalogDB takes a db_path string and sets up WAL mode. The web app factory needs to accept a db_path and store it for lazy connection creation.\n3. pyproject.toml uses hatchling build, has [project.scripts] autopilot = 'autopilot.cli:main'. Dependencies need fastapi, uvicorn[standard], jinja2, python-multipart added.\n4. Task description says create_app(db_path) \u2014 the app factory pattern. The serve CLI command constructs the path from output_dir.\n5. The existing test_scaffolding.py checks for __init__.py in all packages \u2014 adding autopilot/web will need __init__.py.\n6. Tests should use FastAPI's TestClient (from httpx) for testing without starting uvicorn.\n7. The serve command in the task description has output_dir / 'catalog.db' which needs Path conversion since click.Path() returns a string.\n8. Lazy imports in serve command follow the pattern already used in other subcommands (e.g., importing PipelineOrchestrator at module top is fine, but uvicorn should be lazy since it's only needed for serve).",
+  "analysis": "This task creates the web management console skeleton for autopilot-video. The project already has a Click CLI (autopilot/cli.py) with group + subcommands pattern, a CatalogDB class in autopilot/db.py with WAL mode and full pipeline control tables (from task 35), and a mature test suite using pytest with CliRunner and conftest fixtures.\n\nKey observations:\n1. The CLI uses click.Group with @main.command() decorators, _common_options decorator, and _setup_context helper for config+DB loading. The 'serve' command does NOT need _common_options (no --dry-run, --force, etc.) \u2014 it needs its own --host, --port, --output-dir options.\n2. CatalogDB takes a db_path string and sets up WAL mode. The web app factory needs to accept a db_path and store it for lazy connection creation.\n3. pyproject.toml uses hatchling build, has [project.scripts] autopilot = 'autopilot.cli:main'. Dependencies need fastapi, uvicorn[standard], jinja2, python-multipart added.\n4. Task description says create_app(db_path) \u2014 the app factory pattern. The serve CLI command constructs the path from output_dir.\n5. The existing test_scaffolding.py checks for __init__.py in all packages \u2014 adding autopilot/web will need __init__.py.\n6. Tests should use FastAPI's TestClient (from httpx) for testing without starting uvicorn.\n7. The serve command in the task description has output_dir / 'catalog.db' which needs Path conversion since click.Path() returns a string.\n8. Lazy imports in serve command follow the pattern already used in other subcommands (e.g., importing PipelineOrchestrator at module top is fine, but uvicorn should be lazy since it's only needed for serve).\n\nReview fix: The SSE notification listener in app.js line 36 does JSON.parse(event.data) without try/catch. Malformed or truncated SSE payloads would throw an uncaught SyntaxError, silently dropping the notification. Need to wrap in try/catch with console.error logging.",
   "prerequisites": [
     {
       "id": "pre-1",
@@ -121,6 +121,20 @@
       "description": "Fix any issues from test_serve tests. Ensure serve command correctly passes db_path to create_app and host/port to uvicorn.run. Run full test suite to verify no regressions.",
       "status": "done",
       "commit": "aed3d61"
+    },
+    {
+      "id": "step-13",
+      "type": "test",
+      "description": "Write failing test: TestSSEErrorHandling.test_sse_notification_listener_has_try_catch \u2014 Read the content of autopilot/web/static/app.js, locate the SSE notification event listener (the addEventListener('notification', ...) block), and assert that the JSON.parse call is wrapped in a try/catch. Specifically: assert 'try' and 'catch' appear within the notification listener function body, and that 'console.error' is present in the catch block for logging parse failures. This is a static analysis test of the JS source since browser-level SSE testing is out of scope.",
+      "status": "done",
+      "commit": "35dc2ab"
+    },
+    {
+      "id": "step-14",
+      "type": "impl",
+      "description": "Fix autopilot/web/static/app.js: Wrap the SSE notification listener body in try/catch. Replace the bare `const data = JSON.parse(event.data); showToast(data.message, data.type || 'info');` with `try { const data = JSON.parse(event.data); showToast(data.message, data.type || 'info'); } catch (e) { console.error('SSE notification parse error:', e, event.data); }`. This prevents uncaught SyntaxError from malformed/truncated SSE payloads and logs the error for debugging.",
+      "status": "pending",
+      "commit": null
     }
   ],
   "design_decisions": [
@@ -159,6 +173,10 @@
     {
       "decision": "Test template rendering by adding a temporary test route rather than testing Jinja2 directly",
       "rationale": "Testing through the HTTP stack via TestClient ensures the full rendering pipeline works (Jinja2 configuration, template discovery, static file references). More realistic than inspecting template strings."
+    },
+    {
+      "decision": "Test SSE error handling via static JS source analysis rather than browser-level testing",
+      "rationale": "Browser-level SSE testing would require a headless browser (Playwright/Selenium), which is out of scope for this task. Reading the JS source and asserting the try/catch pattern exists in the notification listener is a pragmatic and reliable verification approach."
     }
   ],
   "reuse": [
@@ -189,5 +207,5 @@
     }
   ],
   "_session_id": "36-7bf32510",
-  "_created_at": "2026-03-21T17:12:44.299665+00:00"
+  "_created_at": "2026-03-21T17:27:43.147521+00:00"
 }
