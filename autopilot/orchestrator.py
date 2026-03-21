@@ -774,6 +774,11 @@ class PipelineOrchestrator:
             # Progress reporting after each stage
             cumulative = time.monotonic() - pipeline_start
             if self.budget_seconds and self.budget_seconds > 0:
+                remaining = self.budget_seconds - cumulative
+                db.update_run(
+                    run_id,
+                    budget_remaining_seconds=remaining,
+                )
                 pct = (cumulative / self.budget_seconds) * 100
                 logger.info(
                     "[PROGRESS] %.1fs / %.1fs budget (%.1f%%)",
