@@ -4661,3 +4661,15 @@ class TestCheckGateNotFound:
         with caplog.at_level(logging.WARNING):
             orch._check_gate("INGEST")
         assert any("Gate not found" in r.message for r in caplog.records)
+
+    def test_gate_check_resilience_on_db_error(self, caplog) -> None:
+        """When DB raises, _check_gate returns 'approved' and logs warning."""
+        orch = PipelineOrchestrator()
+        mock_db = MagicMock()
+        mock_db.get_gate.side_effect = RuntimeError("db connection lost")
+        orch._db = mock_db
+        orch._run_id = "test-run-id"
+        with caplog.at_level(logging.WARNING):
+            result = orch._check_gate("INGEST")
+        assert result == "approved"
+        assert any("Gate check failed" in r.message for r in caplog.records)

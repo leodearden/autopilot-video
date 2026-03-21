@@ -991,6 +991,14 @@ class PipelineOrchestrator:
         Returns:
             'approved' if the stage should run, 'skipped' if it should be skipped.
         """
+        try:
+            return self._check_gate_inner(stage_name)
+        except Exception as exc:
+            logger.warning("Gate check failed for %s: %s — auto-approving", stage_name, exc)
+            return "approved"
+
+    def _check_gate_inner(self, stage_name: str) -> str:
+        """Inner gate check logic (called by _check_gate with resilience wrapper)."""
         gate_name = self._gate_stage_name(stage_name)
         gate = self._db.get_gate(gate_name)
 
