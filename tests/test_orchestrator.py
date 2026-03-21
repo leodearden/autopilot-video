@@ -3114,3 +3114,47 @@ class TestRunFinalization:
         assert len(failed_calls) == 1
         payload = json.loads(failed_calls[0][1]["payload_json"])
         assert "duration" in payload
+
+
+class TestBudgetRemainingTracking:
+    """Tests for budget_remaining_seconds updates after each stage."""
+
+    def test_budget_remaining_written_after_each_stage(self) -> None:
+        """With budget_seconds=3600, update_run is called with budget_remaining_seconds after each stage."""
+        orch = PipelineOrchestrator(budget_seconds=3600)
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        update_calls = mock_db.update_run.call_args_list
+        budget_calls = [
+            c for c in update_calls
+            if "budget_remaining_seconds" in c[1]
+        ]
+        # Should have one budget update per stage (9 stages)
+        assert len(budget_calls) == 9
+        # Each budget_remaining value should be a float
+        for c in budget_calls:
+            remaining = c[1]["budget_remaining_seconds"]
+            assert isinstance(remaining, float)
+            # Budget remaining should be <= 3600 (decreasing)
+            assert remaining <= 3600
+
+    def test_no_budget_remaining_when_no_budget(self) -> None:
+        """With budget_seconds=None, update_run is NOT called with budget_remaining_seconds for per-stage updates."""
+        orch = PipelineOrchestrator(budget_seconds=None)
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        update_calls = mock_db.update_run.call_args_list
+        budget_calls = [
+            c for c in update_calls
+            if "budget_remaining_seconds" in c[1]
+        ]
+        # No per-stage budget updates should occur
+        assert len(budget_calls) == 0
