@@ -500,3 +500,45 @@ class TestRunsCRUD:
         runs = catalog_db.list_runs()
         assert len(runs) == 3
         assert [r["run_id"] for r in runs] == ["r11", "r12", "r10"]
+
+
+# -- Cross-table integration tests ------------------------------------------
+
+
+class TestPipelineCrossTable:
+    """Integration tests spanning multiple pipeline tables."""
+
+    def test_jobs_reference_run_id(self, catalog_db):
+        """Jobs with run_id can be counted by status for that run."""
+        catalog_db.insert_run("r1", started_at="2026-01-01T00:00:00")
+        catalog_db.insert_job("j1", "ingest", "import", status="done", run_id="r1")
+        catalog_db.insert_job(
+            "j2", "ingest", "import", status="pending", run_id="r1"
+        )
+        catalog_db.insert_job(
+            "j3", "ingest", "import", status="done", run_id="r2"
+        )
+        counts = catalog_db.count_jobs_by_status("ingest", run_id="r1")
+        assert counts == {"done": 1, "pending": 1}
+
+    def test_events_reference_job_id(self, catalog_db):
+        """Events can store and retrieve a job_id reference."""
+        catalog_db.insert_job("j10", "analyze", "transcribe")
+        eid = catalog_db.insert_event(
+            "job_started", stage="analyze", job_id="j10"
+        )
+        events = catalog_db.get_events_since(eid - 1)
+        assert len(events) == 1
+        assert events[0]["job_id"] == "j10"
+
+    def test_update_nonexistent_gate_is_noop(self, catalog_db):
+        """update_gate() on a missing stage doesn't error."""
+        catalog_db.update_gate("nonexistent", mode="manual")
+        # No error raised; nothing inserted
+        assert catalog_db.get_gate("nonexistent") is None
+
+    def test_update_nonexistent_job_is_noop(self, catalog_db):
+        """update_job() on a missing job_id doesn't error."""
+        catalog_db.update_job("nonexistent", status="done")
+        # No error raised; nothing inserted
+        assert catalog_db.get_job("nonexistent") is None
