@@ -1350,3 +1350,581 @@ class TestEnhancedProgress:
         for stage_name in ["INGEST", "ANALYZE", "CLASSIFY", "NARRATE",
                            "SCRIPT", "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD"]:
             assert stage_name in all_text
+
+
+class TestShutdownAPI:
+    """Tests for shutdown_requested() and request_shutdown() API."""
+
+    def setup_method(self) -> None:
+        """Reset shutdown state before each test."""
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    def teardown_method(self) -> None:
+        """Reset shutdown state after each test."""
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    def test_shutdown_event_exists(self) -> None:
+        """Module-level _shutdown_event is a threading.Event."""
+        import threading
+
+        from autopilot.orchestrator import _shutdown_event
+
+        assert isinstance(_shutdown_event, threading.Event)
+
+    def test_shutdown_requested_initially_false(self) -> None:
+        """shutdown_requested() returns False initially."""
+        from autopilot.orchestrator import shutdown_requested
+
+        assert shutdown_requested() is False
+
+    def test_request_shutdown_makes_shutdown_requested_true(self) -> None:
+        """request_shutdown() makes shutdown_requested() return True."""
+        from autopilot.orchestrator import request_shutdown, shutdown_requested
+
+        request_shutdown()
+        assert shutdown_requested() is True
+
+    def test_reset_shutdown_restores_false(self) -> None:
+        """_reset_shutdown() restores shutdown_requested() to False."""
+        from autopilot.orchestrator import (
+            _reset_shutdown,
+            request_shutdown,
+            shutdown_requested,
+        )
+
+        request_shutdown()
+        assert shutdown_requested() is True
+        _reset_shutdown()
+        assert shutdown_requested() is False
+
+    def test_shutdown_requested_in_all(self) -> None:
+        """shutdown_requested is exported in __all__."""
+        from autopilot import orchestrator
+
+        assert "shutdown_requested" in orchestrator.__all__
+
+    def test_request_shutdown_in_all(self) -> None:
+        """request_shutdown is exported in __all__."""
+        from autopilot import orchestrator
+
+        assert "request_shutdown" in orchestrator.__all__
+
+
+class TestShutdownBetweenStages:
+    """Tests for shutdown checks between pipeline stages in run()."""
+
+    def setup_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    def teardown_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    def test_run_skips_remaining_stages_after_shutdown(self) -> None:
+        """When shutdown is requested after INGEST, remaining stages are SKIPPED."""
+        from autopilot.orchestrator import request_shutdown
+
+        orch = PipelineOrchestrator()
+        call_order: list[str] = []
+
+        def make_func(name: str):
+            def func(**kw):
+                call_order.append(name)
+                if name == "INGEST":
+                    request_shutdown()
+            return func
+
+        for stage in orch.stages:
+            stage.func = make_func(stage.name)
+
+        results = orch.run(config=MagicMock(), db=MagicMock())
+
+        # Only INGEST should have been called
+        assert call_order == ["INGEST"]
+        assert results["INGEST"].status == StageStatus.DONE
+
+        # All remaining stages should be SKIPPED
+        for name in ["ANALYZE", "CLASSIFY", "NARRATE", "SCRIPT",
+                      "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD"]:
+            assert results[name].status == StageStatus.SKIPPED, (
+                f"{name} should be SKIPPED after shutdown"
+            )
+
+    def test_run_logs_shutdown_skip(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """run() logs a message when skipping stages due to shutdown."""
+        from autopilot.orchestrator import request_shutdown
+
+        orch = PipelineOrchestrator()
+
+        def ingest_then_shutdown(**kw):
+            request_shutdown()
+
+        for stage in orch.stages:
+            stage.func = MagicMock()
+        orch._stage_map["INGEST"].func = ingest_then_shutdown
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            orch.run(config=MagicMock(), db=MagicMock())
+
+        assert any(
+            "shutdown" in r.message.lower() and "skip" in r.message.lower()
+            for r in caplog.records
+        )
+
+
+class TestIngestShutdown:
+    """Tests for _run_ingest breaking early on shutdown."""
+
+    def setup_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    def teardown_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    @patch("autopilot.orchestrator.dedup")
+    @patch("autopilot.orchestrator.normalizer")
+    @patch("autopilot.orchestrator.scanner")
+    def test_ingest_breaks_on_shutdown(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+    ) -> None:
+        """_run_ingest breaks early when shutdown is requested mid-iteration."""
+        from autopilot.orchestrator import _run_ingest, request_shutdown
+
+        # Create 3 mock files
+        files = []
+        for i in range(3):
+            mf = MagicMock()
+            mf.file_path = Path(f"/fake/v{i}.mp4")
+            mf.sha256_prefix = f"sha{i}"
+            files.append(mf)
+        mock_scanner.scan_directory.return_value = files
+
+        db = MagicMock()
+        call_count = 0
+
+        def insert_and_shutdown(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                request_shutdown()
+
+        db.insert_media.side_effect = insert_and_shutdown
+
+        _run_ingest(config=minimal_config, db=db)
+
+        # Only the first file should be fully processed; second iteration
+        # should see shutdown and break before processing
+        assert db.insert_media.call_count == 1
+
+    @patch("autopilot.orchestrator.dedup")
+    @patch("autopilot.orchestrator.normalizer")
+    @patch("autopilot.orchestrator.scanner")
+    def test_ingest_still_deduplicates_on_shutdown(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+    ) -> None:
+        """dedup.mark_duplicates is still called even when shutdown breaks the loop."""
+        from autopilot.orchestrator import _run_ingest, request_shutdown
+
+        mf = MagicMock()
+        mf.file_path = Path("/fake/v0.mp4")
+        mf.sha256_prefix = "sha0"
+        mock_scanner.scan_directory.return_value = [mf, MagicMock(), MagicMock()]
+
+        db = MagicMock()
+        db.insert_media.side_effect = lambda *a, **kw: request_shutdown()
+
+        _run_ingest(config=minimal_config, db=db)
+
+        mock_dedup.mark_duplicates.assert_called_once_with(db)
+
+
+class TestAnalyzeShutdown:
+    """Tests for _run_analyze breaking early on shutdown."""
+
+    def setup_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    def teardown_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_breaks_on_shutdown(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ) -> None:
+        """_run_analyze breaks after first media when shutdown is requested."""
+        from autopilot.orchestrator import _run_analyze, request_shutdown
+
+        db = MagicMock()
+        db.list_all_media.return_value = [
+            {"id": "m1", "file_path": "/f/v1.mp4", "status": "ok"},
+            {"id": "m2", "file_path": "/f/v2.mp4", "status": "ok"},
+            {"id": "m3", "file_path": "/f/v3.mp4", "status": "ok"},
+        ]
+
+        call_count = 0
+
+        def asr_and_shutdown(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                request_shutdown()
+
+        mock_asr.transcribe_media.side_effect = asr_and_shutdown
+
+        _run_analyze(config=minimal_config, db=db)
+
+        # Only 1 media should be analyzed
+        assert mock_asr.transcribe_media.call_count == 1
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_unloads_gpu_on_shutdown(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ) -> None:
+        """scheduler.force_unload_all() is still called on shutdown."""
+        from autopilot.orchestrator import _run_analyze, request_shutdown
+
+        mock_scheduler = MagicMock()
+        mock_gpu_cls.return_value = mock_scheduler
+
+        db = MagicMock()
+        db.list_all_media.return_value = [
+            {"id": "m1", "file_path": "/f/v1.mp4", "status": "ok"},
+        ]
+        mock_asr.transcribe_media.side_effect = lambda *a, **kw: request_shutdown()
+
+        _run_analyze(config=minimal_config, db=db)
+
+        mock_scheduler.force_unload_all.assert_called_once()
+
+
+class TestRemainingStagesShutdown:
+    """Tests for shutdown in _run_script, _run_edl, _run_source_assets, _run_render, _run_upload."""
+
+    def setup_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    def teardown_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    @patch("autopilot.orchestrator.script")
+    def test_script_breaks_on_shutdown(self, mock_script, minimal_config) -> None:
+        """_run_script breaks after first narrative when shutdown requested."""
+        from autopilot.orchestrator import _run_script, request_shutdown
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
+        ]
+
+        call_count = 0
+
+        def gen_and_shutdown(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                request_shutdown()
+
+        mock_script.generate_script.side_effect = gen_and_shutdown
+
+        _run_script(config=minimal_config, db=db)
+
+        assert mock_script.generate_script.call_count == 1
+
+    @patch("autopilot.orchestrator.otio_export")
+    @patch("autopilot.orchestrator.validator")
+    @patch("autopilot.orchestrator.edl_mod")
+    def test_edl_breaks_on_shutdown(
+        self, mock_edl_mod, mock_validator, mock_otio, minimal_config,
+    ) -> None:
+        """_run_edl breaks after first narrative when shutdown requested."""
+        from autopilot.orchestrator import _run_edl, request_shutdown
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
+        ]
+        db.get_narrative_script.return_value = "some script"
+        mock_edl_mod.generate_edl.return_value = []
+        mock_validator.validate_edl.return_value = MagicMock(passed=True)
+
+        call_count = 0
+
+        def edl_and_shutdown(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                request_shutdown()
+            return []
+
+        mock_edl_mod.generate_edl.side_effect = edl_and_shutdown
+
+        _run_edl(config=minimal_config, db=db)
+
+        assert mock_edl_mod.generate_edl.call_count == 1
+
+    @patch("autopilot.orchestrator.resolve")
+    def test_source_assets_breaks_on_shutdown(
+        self, mock_resolve, minimal_config,
+    ) -> None:
+        """_run_source_assets breaks after first narrative when shutdown requested."""
+        from autopilot.orchestrator import _run_source_assets, request_shutdown
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
+        ]
+        db.get_edit_plan.return_value = {"edl_json": "[]"}
+
+        call_count = 0
+
+        def resolve_and_shutdown(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                request_shutdown()
+
+        mock_resolve.resolve_edl_assets.side_effect = resolve_and_shutdown
+
+        _run_source_assets(config=minimal_config, db=db)
+
+        assert mock_resolve.resolve_edl_assets.call_count == 1
+
+    @patch("autopilot.orchestrator.render_validate")
+    @patch("autopilot.orchestrator.router")
+    def test_render_breaks_on_shutdown(
+        self, mock_router, mock_render_validate, minimal_config,
+    ) -> None:
+        """_run_render breaks after first narrative when shutdown requested."""
+        from autopilot.orchestrator import _run_render, request_shutdown
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
+        ]
+        db.get_edit_plan.return_value = {"edl_json": "[]"}
+        mock_router.route_and_render.return_value = Path("/fake/out.mp4")
+        mock_render_validate.validate_render.return_value = MagicMock(issues=[])
+
+        call_count = 0
+
+        def render_and_shutdown(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                request_shutdown()
+            return Path("/fake/out.mp4")
+
+        mock_router.route_and_render.side_effect = render_and_shutdown
+
+        _run_render(config=minimal_config, db=db)
+
+        assert mock_router.route_and_render.call_count == 1
+
+    @patch("autopilot.orchestrator.thumbnail")
+    @patch("autopilot.orchestrator.youtube")
+    def test_upload_breaks_on_shutdown(
+        self, mock_youtube, mock_thumbnail, minimal_config,
+    ) -> None:
+        """_run_upload breaks after first narrative when shutdown requested."""
+        from autopilot.orchestrator import _run_upload, request_shutdown
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
+        ]
+        db.get_edit_plan.return_value = {
+            "edl_json": "[]",
+            "render_path": "/fake/out.mp4",
+        }
+
+        call_count = 0
+
+        def upload_and_shutdown(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                request_shutdown()
+
+        mock_youtube.upload_video.side_effect = upload_and_shutdown
+
+        _run_upload(config=minimal_config, db=db)
+
+        assert mock_youtube.upload_video.call_count == 1
+
+
+class TestShutdownSkipDetails:
+    """Tests for shutdown-skipped stage result details and summary logging."""
+
+    def setup_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    def teardown_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    def test_shutdown_skipped_stages_have_error_message(self) -> None:
+        """Stages skipped due to shutdown have error_message='shutdown requested'."""
+        from autopilot.orchestrator import request_shutdown
+
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        # Request shutdown after INGEST completes
+        def ingest_then_shutdown(**kw):
+            request_shutdown()
+
+        orch._stage_map["INGEST"].func = ingest_then_shutdown
+
+        results = orch.run(config=MagicMock(), db=MagicMock())
+
+        # INGEST should be DONE with no error_message
+        assert results["INGEST"].status == StageStatus.DONE
+        assert results["INGEST"].error_message is None
+
+        # All remaining stages should be SKIPPED with error_message='shutdown requested'
+        for name in [
+            "ANALYZE", "CLASSIFY", "NARRATE", "SCRIPT",
+            "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD",
+        ]:
+            result = results[name]
+            assert result.status == StageStatus.SKIPPED, (
+                f"{name} should be SKIPPED"
+            )
+            assert result.error_message == "shutdown requested", (
+                f"{name} should have error_message='shutdown requested', "
+                f"got {result.error_message!r}"
+            )
+
+    def test_shutdown_skipped_distinct_from_dependency_skipped(self) -> None:
+        """Shutdown-skipped stages have error_message; dependency-skipped do not."""
+        orch = PipelineOrchestrator()
+
+        call_order: list[str] = []
+
+        def make_func(name: str):
+            def func(**kw):
+                call_order.append(name)
+                if name == "ANALYZE":
+                    raise RuntimeError("analysis failed")
+            return func
+
+        # Replace all stage funcs; ANALYZE will fail, then we request shutdown
+        # after CLASSIFY (which should be dependency-skipped)
+        for stage in orch.stages:
+            stage.func = make_func(stage.name)
+
+        # Make INGEST succeed, ANALYZE fail
+        results = orch.run(config=MagicMock(), db=MagicMock())
+
+        # ANALYZE errored → CLASSIFY should be dependency-skipped (no error_message)
+        assert results["CLASSIFY"].status == StageStatus.SKIPPED
+        assert results["CLASSIFY"].error_message is None
+
+    def test_summary_log_includes_shutdown_skipped_stages(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Pipeline summary log shows both done and skipped stages."""
+        from autopilot.orchestrator import request_shutdown
+
+        orch = PipelineOrchestrator()
+
+        def ingest_then_shutdown(**kw):
+            request_shutdown()
+
+        for stage in orch.stages:
+            stage.func = MagicMock()
+        orch._stage_map["INGEST"].func = ingest_then_shutdown
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            orch.run(config=MagicMock(), db=MagicMock())
+
+        # Find the summary log message
+        summary_records = [
+            r for r in caplog.records if "Pipeline complete" in r.message
+        ]
+        assert len(summary_records) == 1, "Expected exactly one pipeline summary log"
+        summary = summary_records[0].message
+
+        # INGEST should show as done
+        assert "INGEST: done" in summary
+        # Remaining stages should show as skipped
+        assert "ANALYZE: skipped" in summary
+        assert "UPLOAD: skipped" in summary
+
+    def test_shutdown_log_per_skipped_stage(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Each shutdown-skipped stage gets a [SHUTDOWN] log entry."""
+        from autopilot.orchestrator import request_shutdown
+
+        orch = PipelineOrchestrator()
+
+        def ingest_then_shutdown(**kw):
+            request_shutdown()
+
+        for stage in orch.stages:
+            stage.func = MagicMock()
+        orch._stage_map["INGEST"].func = ingest_then_shutdown
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            orch.run(config=MagicMock(), db=MagicMock())
+
+        shutdown_logs = [
+            r for r in caplog.records if "[SHUTDOWN]" in r.message
+        ]
+        # Should have one [SHUTDOWN] log per remaining stage (8 stages)
+        skipped_names = [
+            "ANALYZE", "CLASSIFY", "NARRATE", "SCRIPT",
+            "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD",
+        ]
+        assert len(shutdown_logs) == len(skipped_names), (
+            f"Expected {len(skipped_names)} [SHUTDOWN] logs, got {len(shutdown_logs)}"
+        )
+        for name in skipped_names:
+            assert any(
+                name in r.message for r in shutdown_logs
+            ), f"Missing [SHUTDOWN] log for {name}"

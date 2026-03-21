@@ -6,6 +6,7 @@ import enum
 import functools
 import json
 import logging
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -30,7 +31,28 @@ __all__ = [
     "StageDefinition",
     "StageResult",
     "StageStatus",
+    "request_shutdown",
+    "shutdown_requested",
 ]
+
+# Module-level shutdown flag — thread-safe via threading.Event.
+_shutdown_event = threading.Event()
+
+
+def shutdown_requested() -> bool:
+    """Return True if a graceful shutdown has been requested."""
+    return _shutdown_event.is_set()
+
+
+def request_shutdown() -> None:
+    """Request a graceful shutdown of the pipeline."""
+    _shutdown_event.set()
+    logger.info("Shutdown requested")
+
+
+def _reset_shutdown() -> None:
+    """Reset the shutdown flag (for testing only)."""
+    _shutdown_event.clear()
 
 
 class StageStatus(enum.Enum):
@@ -94,6 +116,8 @@ def _run_ingest(*, config: Any, db: Any) -> None:
 
     ingested = 0
     for mf in files:
+        if shutdown_requested():
+            break
         media_id = mf.sha256_prefix or mf.file_path.stem
         try:
             normalizer.normalize_audio(
@@ -136,6 +160,8 @@ def _run_analyze(*, config: Any, db: Any) -> None:
     successes = 0
     try:
         for media in media_list:
+            if shutdown_requested():
+                break
             media_id = media["id"]
             file_path = Path(media["file_path"])
             audio_path = file_path  # audio extracted from same file
@@ -208,6 +234,8 @@ def _run_script(*, config: Any, db: Any) -> None:
     approved = db.list_narratives("approved")
     successes = 0
     for narr in approved:
+        if shutdown_requested():
+            break
         nid = narr["narrative_id"]
         try:
             script.generate_script(nid, db, config.llm)
@@ -226,6 +254,8 @@ def _run_edl(*, config: Any, db: Any) -> None:
     approved = db.list_narratives("approved")
     successes = 0
     for narr in approved:
+        if shutdown_requested():
+            break
         nid = narr["narrative_id"]
         # Skip narratives without scripts
         if db.get_narrative_script(nid) is None:
@@ -262,6 +292,8 @@ def _run_source_assets(*, config: Any, db: Any) -> None:
     approved = db.list_narratives("approved")
     successes = 0
     for narr in approved:
+        if shutdown_requested():
+            break
         nid = narr["narrative_id"]
         plan = db.get_edit_plan(nid)
         if plan is None:
@@ -289,6 +321,8 @@ def _run_render(*, config: Any, db: Any) -> None:
     approved = db.list_narratives("approved")
     successes = 0
     for narr in approved:
+        if shutdown_requested():
+            break
         nid = narr["narrative_id"]
         plan = db.get_edit_plan(nid)
         if plan is None:
@@ -319,6 +353,8 @@ def _run_upload(*, config: Any, db: Any) -> None:
     approved = db.list_narratives("approved")
     successes = 0
     for narr in approved:
+        if shutdown_requested():
+            break
         nid = narr["narrative_id"]
         plan = db.get_edit_plan(nid)
         if plan is None:
@@ -469,6 +505,20 @@ class PipelineOrchestrator:
         pipeline_start = time.monotonic()
 
         for stage_name in order:
+            # Check for graceful shutdown before starting next stage
+            if shutdown_requested():
+                for remaining in order:
+                    if remaining not in results:
+                        results[remaining] = StageResult(
+                            status=StageStatus.SKIPPED,
+                            elapsed_seconds=0.0,
+                            error_message="shutdown requested",
+                        )
+                        logger.info(
+                            "[SHUTDOWN] Skipping %s", remaining,
+                        )
+                break
+
             stage = self._stage_map[stage_name]
 
             # Check if any dependency errored — skip if so

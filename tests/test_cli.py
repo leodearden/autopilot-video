@@ -497,3 +497,84 @@ class TestCLIRealStageWiring:
                 assert accessed == stage_names, (
                     f"{cmd_name}: expected {stage_names}, got {accessed}"
                 )
+
+
+class TestSignalHandlers:
+    """Tests for signal handler registration in the 'run' command."""
+
+    def test_run_registers_sigint_handler(self, tmp_path: Path) -> None:
+        """'run' command registers a SIGINT signal handler."""
+        import signal
+
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+            mock_db_cls.return_value = MagicMock()
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch_cls.return_value = MagicMock()
+                with patch("autopilot.cli.signal.signal") as mock_signal:
+                    runner.invoke(
+                        main,
+                        ["--config", str(config_file), "run"],
+                    )
+                    # Check that signal.signal was called for SIGINT
+                    sigint_calls = [
+                        c for c in mock_signal.call_args_list
+                        if c[0][0] == signal.SIGINT
+                    ]
+                    assert len(sigint_calls) >= 1, (
+                        "signal.signal should be called with SIGINT"
+                    )
+
+    def test_run_registers_sigterm_handler(self, tmp_path: Path) -> None:
+        """'run' command registers a SIGTERM signal handler."""
+        import signal
+
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+            mock_db_cls.return_value = MagicMock()
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch_cls.return_value = MagicMock()
+                with patch("autopilot.cli.signal.signal") as mock_signal:
+                    runner.invoke(
+                        main,
+                        ["--config", str(config_file), "run"],
+                    )
+                    sigterm_calls = [
+                        c for c in mock_signal.call_args_list
+                        if c[0][0] == signal.SIGTERM
+                    ]
+                    assert len(sigterm_calls) >= 1, (
+                        "signal.signal should be called with SIGTERM"
+                    )
+
+    def test_signal_handler_calls_request_shutdown(self, tmp_path: Path) -> None:
+        """The signal handler calls request_shutdown() from the orchestrator."""
+        import signal
+
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+            mock_db_cls.return_value = MagicMock()
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch_cls.return_value = MagicMock()
+                with patch("autopilot.cli.signal.signal") as mock_signal:
+                    with patch("autopilot.cli.request_shutdown") as mock_req:
+                        runner.invoke(
+                            main,
+                            ["--config", str(config_file), "run"],
+                        )
+                        # Get the handler that was registered for SIGINT
+                        sigint_calls = [
+                            c for c in mock_signal.call_args_list
+                            if c[0][0] == signal.SIGINT
+                        ]
+                        assert len(sigint_calls) >= 1
+                        handler = sigint_calls[0][0][1]
+                        # Invoke the handler
+                        handler(signal.SIGINT, None)
+                        mock_req.assert_called_once()
