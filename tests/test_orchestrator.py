@@ -4639,3 +4639,25 @@ class TestCheckGateShutdown:
 
         result = orch._check_gate("INGEST")
         assert result == "skipped"
+
+
+class TestCheckGateNotFound:
+    """Tests for _check_gate() when gate row is missing."""
+
+    def test_gate_not_found_returns_approved(self, catalog_db) -> None:
+        """When gate row doesn't exist, return 'approved' as graceful fallback."""
+        # Don't call init_default_gates — no gate rows
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+        result = orch._check_gate("INGEST")
+        assert result == "approved"
+
+    def test_gate_not_found_logs_warning(self, catalog_db, caplog) -> None:
+        """When gate row doesn't exist, a warning is logged."""
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+        with caplog.at_level(logging.WARNING):
+            orch._check_gate("INGEST")
+        assert any("Gate not found" in r.message for r in caplog.records)
