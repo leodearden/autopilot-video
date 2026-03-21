@@ -1549,3 +1549,80 @@ class TestIngestShutdown:
         _run_ingest(config=minimal_config, db=db)
 
         mock_dedup.mark_duplicates.assert_called_once_with(db)
+
+
+class TestAnalyzeShutdown:
+    """Tests for _run_analyze breaking early on shutdown."""
+
+    def setup_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    def teardown_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_breaks_on_shutdown(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ) -> None:
+        """_run_analyze breaks after first media when shutdown is requested."""
+        from autopilot.orchestrator import _run_analyze, request_shutdown
+
+        db = MagicMock()
+        db.list_all_media.return_value = [
+            {"id": "m1", "file_path": "/f/v1.mp4", "status": "ok"},
+            {"id": "m2", "file_path": "/f/v2.mp4", "status": "ok"},
+            {"id": "m3", "file_path": "/f/v3.mp4", "status": "ok"},
+        ]
+
+        call_count = 0
+
+        def asr_and_shutdown(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                request_shutdown()
+
+        mock_asr.transcribe_media.side_effect = asr_and_shutdown
+
+        _run_analyze(config=minimal_config, db=db)
+
+        # Only 1 media should be analyzed
+        assert mock_asr.transcribe_media.call_count == 1
+
+    @patch("autopilot.orchestrator.GPUScheduler")
+    @patch("autopilot.orchestrator.faces")
+    @patch("autopilot.orchestrator.audio_events")
+    @patch("autopilot.orchestrator.embeddings")
+    @patch("autopilot.orchestrator.objects")
+    @patch("autopilot.orchestrator.scenes")
+    @patch("autopilot.orchestrator.asr")
+    def test_analyze_unloads_gpu_on_shutdown(
+        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
+        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+    ) -> None:
+        """scheduler.force_unload_all() is still called on shutdown."""
+        from autopilot.orchestrator import _run_analyze, request_shutdown
+
+        mock_scheduler = MagicMock()
+        mock_gpu_cls.return_value = mock_scheduler
+
+        db = MagicMock()
+        db.list_all_media.return_value = [
+            {"id": "m1", "file_path": "/f/v1.mp4", "status": "ok"},
+        ]
+        mock_asr.transcribe_media.side_effect = lambda *a, **kw: request_shutdown()
+
+        _run_analyze(config=minimal_config, db=db)
+
+        mock_scheduler.force_unload_all.assert_called_once()
