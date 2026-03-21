@@ -4924,3 +4924,96 @@ class TestDryRunSkipsGateCheck:
         assert gate_calls == [], (
             f"_check_gate was called for stages: {gate_calls}"
         )
+
+
+class TestGateResetUsesPublicAPI:
+    """REVIEW FIX: run() must use db.get_all_gates() (public API) for gate
+    reset, not db._PIPELINE_STAGES (private attribute).
+    """
+
+    def test_gate_reset_calls_get_all_gates(self) -> None:
+        """run() uses db.get_all_gates() to enumerate gates for reset."""
+        mock_db = MagicMock()
+        mock_db.get_all_gates.return_value = [
+            {"stage": s} for s in (
+                "ingest", "analyze", "classify", "narrate",
+                "script", "edl", "source", "render", "upload",
+            )
+        ]
+        mock_db.get_gate.return_value = {
+            "mode": "auto", "status": "idle", "timeout_hours": None,
+        }
+
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=mock_db)
+
+        # get_all_gates must have been called (public API)
+        mock_db.get_all_gates.assert_called()
+
+    def test_gate_reset_does_not_access_private_pipeline_stages(self) -> None:
+        """run() must NOT access db._PIPELINE_STAGES (private attribute)."""
+        mock_db = MagicMock()
+        mock_db.get_all_gates.return_value = [
+            {"stage": s} for s in (
+                "ingest", "analyze", "classify", "narrate",
+                "script", "edl", "source", "render", "upload",
+            )
+        ]
+        mock_db.get_gate.return_value = {
+            "mode": "auto", "status": "idle", "timeout_hours": None,
+        }
+
+        # Remove _PIPELINE_STAGES to ensure it's not accessed
+        # MagicMock auto-creates attributes, so we use a spec-limited mock
+        # or just verify via PropertyMock
+        access_log: list[str] = []
+        original_getattr = type(mock_db).__getattr__
+
+        def tracking_getattr(self_mock, name):
+            if name == "_PIPELINE_STAGES":
+                access_log.append(name)
+            return original_getattr(self_mock, name)
+
+        with patch.object(type(mock_db), "__getattr__", tracking_getattr):
+            orch = PipelineOrchestrator()
+            for stage in orch.stages:
+                stage.func = MagicMock()
+            orch.run(config=MagicMock(), db=mock_db)
+
+        assert "_PIPELINE_STAGES" not in access_log, (
+            "run() accessed db._PIPELINE_STAGES — "
+            "should use db.get_all_gates() instead"
+        )
+
+    def test_update_gate_called_for_each_gate_from_get_all_gates(self) -> None:
+        """update_gate is called with status='idle' for each gate returned
+        by get_all_gates()."""
+        mock_db = MagicMock()
+        gate_stages = [
+            "ingest", "analyze", "classify", "narrate",
+            "script", "edl", "source", "render", "upload",
+        ]
+        mock_db.get_all_gates.return_value = [
+            {"stage": s} for s in gate_stages
+        ]
+        mock_db.get_gate.return_value = {
+            "mode": "auto", "status": "idle", "timeout_hours": None,
+        }
+
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=mock_db)
+
+        # Verify update_gate(stage, status='idle') called for each
+        idle_calls = [
+            c for c in mock_db.update_gate.call_args_list
+            if len(c.args) >= 1
+            and c.kwargs.get("status") == "idle"
+        ]
+        idle_stages = [c.args[0] for c in idle_calls]
+        assert sorted(idle_stages) == sorted(gate_stages)
