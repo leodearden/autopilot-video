@@ -6,6 +6,7 @@ import enum
 import functools
 import json
 import logging
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -30,7 +31,28 @@ __all__ = [
     "StageDefinition",
     "StageResult",
     "StageStatus",
+    "request_shutdown",
+    "shutdown_requested",
 ]
+
+# Module-level shutdown flag — thread-safe via threading.Event.
+_shutdown_event = threading.Event()
+
+
+def shutdown_requested() -> bool:
+    """Return True if a graceful shutdown has been requested."""
+    return _shutdown_event.is_set()
+
+
+def request_shutdown() -> None:
+    """Request a graceful shutdown of the pipeline."""
+    _shutdown_event.set()
+    logger.info("Shutdown requested")
+
+
+def _reset_shutdown() -> None:
+    """Reset the shutdown flag (for testing only)."""
+    _shutdown_event.clear()
 
 
 class StageStatus(enum.Enum):
