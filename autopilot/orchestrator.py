@@ -692,17 +692,21 @@ class PipelineOrchestrator:
         pipeline_start = time.monotonic()
 
         # --- Run tracking: create pipeline_runs record ---
-        run_id = uuid4().hex
-        started_at = datetime.now(timezone.utc).isoformat()
-        self._run_id = run_id
         self._db = db
-        db.insert_run(
-            run_id,
-            started_at=started_at,
-            config_snapshot=str(config),
-            status="running",
-            budget_remaining_seconds=self.budget_seconds,
-        )
+        try:
+            run_id = uuid4().hex
+            started_at = datetime.now(timezone.utc).isoformat()
+            self._run_id = run_id
+            db.insert_run(
+                run_id,
+                started_at=started_at,
+                config_snapshot=str(config),
+                status="running",
+                budget_remaining_seconds=self.budget_seconds,
+            )
+        except Exception as exc:
+            logger.warning("Run tracking unavailable: %s", exc)
+            self._run_id = None
 
         for stage_name in order:
             if shutdown_requested():
@@ -747,8 +751,9 @@ class PipelineOrchestrator:
 
             logger.info("[RUNNING] %s", stage_name)
             # Emit stage_started event and update current_stage on run
-            self._emit_event("stage_started", stage=stage_name)
-            db.update_run(run_id, current_stage=stage_name)
+            if self._run_id is not None:
+                self._emit_event("stage_started", stage=stage_name)
+                db.update_run(self._run_id, current_stage=stage_name)
             t0 = time.monotonic()
             try:
                 stage.func(config=config, db=db, force=self.force)
@@ -757,10 +762,11 @@ class PipelineOrchestrator:
                     status=StageStatus.DONE,
                     elapsed_seconds=elapsed,
                 )
-                self._emit_event(
-                    "stage_completed", stage=stage_name,
-                    payload={"elapsed": elapsed},
-                )
+                if self._run_id is not None:
+                    self._emit_event(
+                        "stage_completed", stage=stage_name,
+                        payload={"elapsed": elapsed},
+                    )
                 logger.info("[DONE] %s (%.1fs)", stage_name, elapsed)
             except Exception as exc:
                 elapsed = time.monotonic() - t0
@@ -770,20 +776,22 @@ class PipelineOrchestrator:
                     error_message=str(exc),
                 )
                 errored_stages.add(stage_name)
-                self._emit_event(
-                    "stage_error", stage=stage_name,
-                    payload={"error": str(exc)},
-                )
+                if self._run_id is not None:
+                    self._emit_event(
+                        "stage_error", stage=stage_name,
+                        payload={"error": str(exc)},
+                    )
                 logger.error("[ERROR] %s: %s", stage_name, exc)
 
             # Progress reporting after each stage
             cumulative = time.monotonic() - pipeline_start
             if self.budget_seconds and self.budget_seconds > 0:
                 remaining = self.budget_seconds - cumulative
-                db.update_run(
-                    run_id,
-                    budget_remaining_seconds=remaining,
-                )
+                if self._run_id is not None:
+                    db.update_run(
+                        self._run_id,
+                        budget_remaining_seconds=remaining,
+                    )
                 pct = (cumulative / self.budget_seconds) * 100
                 logger.info(
                     "[PROGRESS] %.1fs / %.1fs budget (%.1f%%)",
@@ -811,21 +819,22 @@ class PipelineOrchestrator:
         )
 
         # --- Run tracking: finalize run record ---
-        final_status = "failed" if errored_stages else "completed"
-        db.update_run(
-            run_id,
-            finished_at=datetime.now(timezone.utc).isoformat(),
-            status=final_status,
-            wall_clock_seconds=total_elapsed,
-        )
-        if errored_stages:
-            self._emit_event(
-                "run_failed", payload={"duration": total_elapsed},
+        if self._run_id is not None:
+            final_status = "failed" if errored_stages else "completed"
+            db.update_run(
+                self._run_id,
+                finished_at=datetime.now(timezone.utc).isoformat(),
+                status=final_status,
+                wall_clock_seconds=total_elapsed,
             )
-        else:
-            self._emit_event(
-                "run_completed", payload={"duration": total_elapsed},
-            )
+            if errored_stages:
+                self._emit_event(
+                    "run_failed", payload={"duration": total_elapsed},
+                )
+            else:
+                self._emit_event(
+                    "run_completed", payload={"duration": total_elapsed},
+                )
 
         # Check budget
         if self.budget_seconds is not None and total_elapsed > self.budget_seconds:
