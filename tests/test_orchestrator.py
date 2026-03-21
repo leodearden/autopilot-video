@@ -4386,3 +4386,644 @@ class TestJobTrackingIntegration:
             if e["event_type"] == "job_error" and e["stage"] == "SCRIPT"
         ]
         assert len(job_error_events) >= 1
+
+
+# ── Gate system tests ────────────────────────────────────────────────────
+
+
+class TestGateStageNameMapping:
+    """Tests for PipelineOrchestrator._gate_stage_name() static method."""
+
+    def test_ingest_maps_to_lowercase(self) -> None:
+        assert PipelineOrchestrator._gate_stage_name("INGEST") == "ingest"
+
+    def test_analyze_maps_to_lowercase(self) -> None:
+        assert PipelineOrchestrator._gate_stage_name("ANALYZE") == "analyze"
+
+    def test_source_assets_maps_to_source(self) -> None:
+        """SOURCE_ASSETS must map to 'source' (the DB gate name)."""
+        assert PipelineOrchestrator._gate_stage_name("SOURCE_ASSETS") == "source"
+
+    def test_all_nine_stages_map(self) -> None:
+        """Every orchestrator stage should map to a known DB gate name."""
+        expected = {
+            "INGEST": "ingest",
+            "ANALYZE": "analyze",
+            "CLASSIFY": "classify",
+            "NARRATE": "narrate",
+            "SCRIPT": "script",
+            "EDL": "edl",
+            "SOURCE_ASSETS": "source",
+            "RENDER": "render",
+            "UPLOAD": "upload",
+        }
+        for stage, gate in expected.items():
+            assert PipelineOrchestrator._gate_stage_name(stage) == gate
+
+    def test_callable_without_instance(self) -> None:
+        """_gate_stage_name is a static method — no instance needed."""
+        result = PipelineOrchestrator._gate_stage_name("INGEST")
+        assert result == "ingest"
+
+
+class TestCheckGateAuto:
+    """Tests for _check_gate() in 'auto' mode (default)."""
+
+    def test_gate_auto_returns_approved(self, catalog_db) -> None:
+        """Auto mode should return 'approved'."""
+        catalog_db.init_default_gates()
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+        result = orch._check_gate("INGEST")
+        assert result == "approved"
+
+    def test_gate_auto_updates_status_to_approved(self, catalog_db) -> None:
+        """Auto mode updates the gate status to 'approved' with decided_by='system'."""
+        catalog_db.init_default_gates()
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+        orch._check_gate("INGEST")
+        gate = catalog_db.get_gate("ingest")
+        assert gate["status"] == "approved"
+        assert gate["decided_by"] == "system"
+
+    def test_gate_auto_emits_gate_passed_event(self, catalog_db) -> None:
+        """Auto mode emits a 'gate_passed' event."""
+        catalog_db.init_default_gates()
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+        orch._check_gate("INGEST")
+        events = catalog_db.get_events_since(0)
+        gate_events = [e for e in events if e["event_type"] == "gate_passed"]
+        assert len(gate_events) == 1
+        assert gate_events[0]["stage"] == "INGEST"
+
+    def test_gate_auto_fetches_by_mapped_name(self, catalog_db) -> None:
+        """Gate is fetched using the mapped name (SOURCE_ASSETS -> source)."""
+        catalog_db.init_default_gates()
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+        orch._check_gate("SOURCE_ASSETS")
+        gate = catalog_db.get_gate("source")
+        assert gate["status"] == "approved"
+
+
+class TestCheckGateNotify:
+    """Tests for _check_gate() in 'notify' mode."""
+
+    def test_gate_notify_returns_approved(self, catalog_db) -> None:
+        """Notify mode should return 'approved'."""
+        catalog_db.init_default_gates()
+        catalog_db.update_gate("ingest", mode="notify")
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+        result = orch._check_gate("INGEST")
+        assert result == "approved"
+
+    def test_gate_notify_updates_status(self, catalog_db) -> None:
+        """Notify mode updates the gate to approved with decided_by='system'."""
+        catalog_db.init_default_gates()
+        catalog_db.update_gate("analyze", mode="notify")
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+        orch._check_gate("ANALYZE")
+        gate = catalog_db.get_gate("analyze")
+        assert gate["status"] == "approved"
+        assert gate["decided_by"] == "system"
+
+    def test_gate_notify_emits_gate_passed(self, catalog_db) -> None:
+        """Notify mode emits a 'gate_passed' event."""
+        catalog_db.init_default_gates()
+        catalog_db.update_gate("classify", mode="notify")
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+        orch._check_gate("CLASSIFY")
+        events = catalog_db.get_events_since(0)
+        gate_events = [e for e in events if e["event_type"] == "gate_passed"]
+        assert len(gate_events) == 1
+        assert gate_events[0]["stage"] == "CLASSIFY"
+
+
+class TestCheckGatePause:
+    """Tests for _check_gate() in 'pause' mode."""
+
+    def test_gate_pause_sets_waiting_and_polls(self, catalog_db) -> None:
+        """Pause mode sets status='waiting', emits 'gate_waiting', then polls."""
+        catalog_db.init_default_gates()
+        catalog_db.update_gate("ingest", mode="pause")
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+
+        # Simulate external approval: after first get_gate returns 'waiting',
+        # update gate to 'approved' so the poll loop exits.
+        call_count = 0
+        original_get_gate = catalog_db.get_gate
+
+        def fake_get_gate(stage):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 2:
+                # Simulate external approval
+                catalog_db.update_gate(stage, status="approved", decided_by="human")
+            return original_get_gate(stage)
+
+        catalog_db.get_gate = fake_get_gate
+
+        with patch("autopilot.orchestrator.time.sleep"):
+            result = orch._check_gate("INGEST")
+
+        assert result == "approved"
+        # gate_waiting event emitted
+        events = catalog_db.get_events_since(0)
+        waiting_events = [e for e in events if e["event_type"] == "gate_waiting"]
+        assert len(waiting_events) == 1
+        assert waiting_events[0]["stage"] == "INGEST"
+        # gate_approved event emitted
+        approved_events = [e for e in events if e["event_type"] == "gate_approved"]
+        assert len(approved_events) == 1
+
+    def test_gate_pause_skipped_status(self, catalog_db) -> None:
+        """Pause mode returns 'skipped' when gate status is set to 'skipped'."""
+        catalog_db.init_default_gates()
+        catalog_db.update_gate("narrate", mode="pause")
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+
+        call_count = 0
+        original_get_gate = catalog_db.get_gate
+
+        def fake_get_gate(stage):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 2:
+                catalog_db.update_gate(stage, status="skipped")
+            return original_get_gate(stage)
+
+        catalog_db.get_gate = fake_get_gate
+
+        with patch("autopilot.orchestrator.time.sleep"):
+            result = orch._check_gate("NARRATE")
+
+        assert result == "skipped"
+        events = catalog_db.get_events_since(0)
+        skipped_events = [e for e in events if e["event_type"] == "gate_skipped"]
+        assert len(skipped_events) == 1
+
+
+class TestCheckGateTimeout:
+    """Tests for _check_gate() pause mode with timeout."""
+
+    def test_gate_pause_timeout_auto_approves(self, catalog_db) -> None:
+        """When timeout_hours is exceeded, gate is auto-approved with notes."""
+        catalog_db.init_default_gates()
+        catalog_db.update_gate("ingest", mode="pause", timeout_hours=0.0001)
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+
+        # Mock time.monotonic to simulate timeout: first call returns 0, second returns large value
+        mono_values = iter([0.0, 100.0, 200.0])
+
+        with patch("autopilot.orchestrator.time.sleep"), \
+             patch("autopilot.orchestrator.time.monotonic", side_effect=mono_values):
+            result = orch._check_gate("INGEST")
+
+        assert result == "approved"
+
+        # Gate should be updated with timeout notes
+        gate = catalog_db.get_gate("ingest")
+        assert gate["status"] == "approved"
+        assert gate["decided_by"] == "system"
+        assert "timeout" in gate["notes"]
+
+        # gate_approved event with reason=timeout
+        events = catalog_db.get_events_since(0)
+        approved_events = [e for e in events if e["event_type"] == "gate_approved"]
+        assert len(approved_events) == 1
+        payload = json.loads(approved_events[0]["payload_json"])
+        assert payload["reason"] == "timeout"
+
+
+class TestCheckGateShutdown:
+    """Tests for _check_gate() pause mode with shutdown."""
+
+    def setup_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+        _reset_shutdown()
+
+    def teardown_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+        _reset_shutdown()
+
+    def test_gate_pause_returns_skipped_on_shutdown(self, catalog_db) -> None:
+        """When shutdown is requested, _check_gate returns 'skipped' immediately."""
+        from autopilot.orchestrator import request_shutdown
+
+        catalog_db.init_default_gates()
+        catalog_db.update_gate("ingest", mode="pause")
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+
+        # Request shutdown before calling _check_gate
+        request_shutdown()
+
+        result = orch._check_gate("INGEST")
+        assert result == "skipped"
+
+
+class TestCheckGateNotFound:
+    """Tests for _check_gate() when gate row is missing."""
+
+    def test_gate_not_found_returns_approved(self, catalog_db) -> None:
+        """When gate row doesn't exist, return 'approved' as graceful fallback."""
+        # Don't call init_default_gates — no gate rows
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+        result = orch._check_gate("INGEST")
+        assert result == "approved"
+
+    def test_gate_not_found_logs_warning(self, catalog_db, caplog) -> None:
+        """When gate row doesn't exist, a warning is logged."""
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+        with caplog.at_level(logging.WARNING):
+            orch._check_gate("INGEST")
+        assert any("Gate not found" in r.message for r in caplog.records)
+
+    def test_gate_check_resilience_on_db_error(self, caplog) -> None:
+        """When DB raises, _check_gate returns 'approved' and logs warning."""
+        orch = PipelineOrchestrator()
+        mock_db = MagicMock()
+        mock_db.get_gate.side_effect = RuntimeError("db connection lost")
+        orch._db = mock_db
+        orch._run_id = "test-run-id"
+        with caplog.at_level(logging.WARNING):
+            result = orch._check_gate("INGEST")
+        assert result == "approved"
+        assert any("Gate check failed" in r.message for r in caplog.records)
+
+
+class TestGateInitInRun:
+    """Tests for gate initialization in run()."""
+
+    def test_run_calls_init_default_gates(self, catalog_db) -> None:
+        """run() calls db.init_default_gates()."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        # Spy on init_default_gates
+        original = catalog_db.init_default_gates
+        call_count = 0
+        def spy():
+            nonlocal call_count
+            call_count += 1
+            return original()
+        catalog_db.init_default_gates = spy
+
+        orch.run(config=MagicMock(), db=catalog_db)
+        assert call_count == 1
+
+    def test_run_resets_gate_statuses_to_idle(self) -> None:
+        """run() resets all gate statuses to 'idle' at start."""
+        mock_db = MagicMock()
+        mock_db.get_all_gates.return_value = [
+            {"stage": s} for s in (
+                "ingest", "analyze", "classify", "narrate", "script",
+                "edl", "source", "render", "upload",
+            )
+        ]
+        mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
+
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=mock_db)
+
+        # Verify update_gate was called with status='idle' for each stage
+        idle_calls = [
+            c for c in mock_db.update_gate.call_args_list
+            if c.kwargs.get("status") == "idle" or
+               (len(c.args) >= 1 and any(kw == "idle" for kw in c.kwargs.values()))
+        ]
+        assert len(idle_calls) == 9
+
+    def test_run_proceeds_when_init_gates_raises(self, catalog_db) -> None:
+        """Pipeline still runs if init_default_gates() raises."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        # Make init_default_gates raise
+        catalog_db.init_default_gates = MagicMock(side_effect=RuntimeError("db error"))
+
+        # Should still complete
+        results = orch.run(config=MagicMock(), db=catalog_db)
+        assert len(results) == 9
+
+
+class TestGateIntegrationInRun:
+    """Tests for _check_gate integration in run() stage loop."""
+
+    def test_check_gate_called_before_each_stage(self) -> None:
+        """_check_gate is called once per stage before execution."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        gate_calls: list[str] = []
+
+        def spy_check(stage_name):
+            gate_calls.append(stage_name)
+            return "approved"
+
+        orch._check_gate = spy_check
+
+        mock_db = MagicMock()
+        mock_db.get_all_gates.return_value = [
+            {"stage": s} for s in (
+                "ingest", "analyze", "classify", "narrate", "script",
+                "edl", "source", "render", "upload",
+            )
+        ]
+        mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
+        orch.run(config=MagicMock(), db=mock_db)
+
+        assert gate_calls == [
+            "INGEST", "ANALYZE", "CLASSIFY", "NARRATE", "SCRIPT",
+            "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD",
+        ]
+
+    def test_gate_skipped_stage_not_executed(self) -> None:
+        """When _check_gate returns 'skipped', stage func is NOT called."""
+        orch = PipelineOrchestrator()
+        mock_funcs = {}
+        for stage in orch.stages:
+            stage.func = MagicMock()
+            mock_funcs[stage.name] = stage.func
+
+        def selective_gate(stage_name):
+            if stage_name == "RENDER":
+                return "skipped"
+            return "approved"
+
+        orch._check_gate = selective_gate
+
+        mock_db = MagicMock()
+        mock_db.get_all_gates.return_value = [
+            {"stage": s} for s in (
+                "ingest", "analyze", "classify", "narrate", "script",
+                "edl", "source", "render", "upload",
+            )
+        ]
+        mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
+        results = orch.run(config=MagicMock(), db=mock_db)
+
+        # RENDER stage func should NOT be called
+        mock_funcs["RENDER"].assert_not_called()
+        # Result should be SKIPPED
+        assert results["RENDER"].status == StageStatus.SKIPPED
+
+    def test_gate_skipped_does_not_cascade_to_dependents(self) -> None:
+        """Gate-skipped stages do NOT propagate skip to downstream stages."""
+        orch = PipelineOrchestrator()
+        mock_funcs = {}
+        for stage in orch.stages:
+            stage.func = MagicMock()
+            mock_funcs[stage.name] = stage.func
+
+        def selective_gate(stage_name):
+            if stage_name == "SOURCE_ASSETS":
+                return "skipped"
+            return "approved"
+
+        orch._check_gate = selective_gate
+
+        mock_db = MagicMock()
+        mock_db.get_all_gates.return_value = [
+            {"stage": s} for s in (
+                "ingest", "analyze", "classify", "narrate", "script",
+                "edl", "source", "render", "upload",
+            )
+        ]
+        mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
+        results = orch.run(config=MagicMock(), db=mock_db)
+
+        # SOURCE_ASSETS skipped via gate
+        assert results["SOURCE_ASSETS"].status == StageStatus.SKIPPED
+        # RENDER depends on SOURCE_ASSETS but should still run (gate skip != error skip)
+        mock_funcs["RENDER"].assert_called_once()
+        assert results["RENDER"].status == StageStatus.DONE
+
+
+class TestGateBackwardsCompat:
+    """Tests for backwards compatibility of gate system with human_review_fn."""
+
+    @patch("autopilot.orchestrator.narratives")
+    def test_human_review_fn_still_invoked_with_auto_gate(self, mock_narratives) -> None:
+        """With human_review_fn and NARRATE gate mode='auto', callback is still used."""
+        narr = MagicMock()
+        narr.narrative_id = "n1"
+        mock_narratives.build_master_storyboard.return_value = "sb"
+        mock_narratives.propose_narratives.return_value = [narr]
+        mock_narratives.format_for_review.return_value = "review text"
+
+        review_fn = MagicMock(return_value=["n1"])
+        orch = PipelineOrchestrator(human_review_fn=review_fn)
+
+        # Replace all non-NARRATE stages with mocks
+        for stage in orch.stages:
+            if stage.name != "NARRATE":
+                stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        mock_db.get_all_gates.return_value = [
+            {"stage": s} for s in (
+                "ingest", "analyze", "classify", "narrate", "script",
+                "edl", "source", "render", "upload",
+            )
+        ]
+        mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
+
+        results = orch.run(config=MagicMock(), db=mock_db)
+
+        # The human_review_fn callback should still have been invoked
+        review_fn.assert_called_once()
+        assert results["NARRATE"].status == StageStatus.DONE
+
+    def test_existing_narrate_test_still_passes(self) -> None:
+        """The existing test_narrate_calls_human_review_callback pattern still works.
+
+        This is a meta-test confirming the gate system doesn't break
+        _run_narrate's internal human_review_fn logic.
+        """
+        from autopilot.orchestrator import _run_narrate
+
+        with patch("autopilot.orchestrator.narratives") as mock_narratives:
+            narr = MagicMock()
+            narr.narrative_id = "n1"
+            mock_narratives.build_master_storyboard.return_value = "sb"
+            mock_narratives.propose_narratives.return_value = [narr]
+            mock_narratives.format_for_review.return_value = "review text"
+            db = MagicMock()
+
+            review_fn = MagicMock(return_value=["n1"])
+            _run_narrate(config=MagicMock(), db=db, human_review_fn=review_fn)
+
+            review_fn.assert_called_once_with("review text", [narr])
+
+
+class TestDryRunSkipsGateCheck:
+    """REVIEW FIX: dry_run=True must NOT call _check_gate() for any stage.
+
+    If _check_gate runs before dry_run guard, pause-mode gates would block
+    dry_run indefinitely via the 2s polling loop.
+    """
+
+    def test_dry_run_does_not_call_check_gate(self) -> None:
+        """dry_run=True should never invoke _check_gate()."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        gate_calls: list[str] = []
+
+        def spy_check(stage_name):
+            gate_calls.append(stage_name)
+            raise AssertionError(
+                f"_check_gate should NOT be called in dry_run, "
+                f"but was called for {stage_name}"
+            )
+
+        orch._check_gate = spy_check
+
+        mock_db = MagicMock()
+        mock_db.get_all_gates.return_value = [
+            {"stage": s} for s in (
+                "ingest", "analyze", "classify", "narrate",
+                "script", "edl", "source", "render", "upload",
+            )
+        ]
+        mock_db.get_gate.return_value = {
+            "mode": "auto", "status": "idle", "timeout_hours": None,
+        }
+
+        # This should complete without calling _check_gate
+        results = orch.run(config=MagicMock(), db=mock_db, dry_run=True)
+
+        # All stages should be SKIPPED (dry_run behavior)
+        assert len(results) == 9
+        for name, result in results.items():
+            assert result.status == StageStatus.SKIPPED, (
+                f"{name} should be SKIPPED in dry_run"
+            )
+        # _check_gate should never have been called
+        assert gate_calls == [], (
+            f"_check_gate was called for stages: {gate_calls}"
+        )
+
+
+class TestGateResetUsesPublicAPI:
+    """REVIEW FIX: run() must use db.get_all_gates() (public API) for gate
+    reset, not db._PIPELINE_STAGES (private attribute).
+    """
+
+    def test_gate_reset_calls_get_all_gates(self) -> None:
+        """run() uses db.get_all_gates() to enumerate gates for reset."""
+        mock_db = MagicMock()
+        mock_db.get_all_gates.return_value = [
+            {"stage": s} for s in (
+                "ingest", "analyze", "classify", "narrate",
+                "script", "edl", "source", "render", "upload",
+            )
+        ]
+        mock_db.get_gate.return_value = {
+            "mode": "auto", "status": "idle", "timeout_hours": None,
+        }
+
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=mock_db)
+
+        # get_all_gates must have been called (public API)
+        mock_db.get_all_gates.assert_called()
+
+    def test_gate_reset_does_not_access_private_pipeline_stages(self) -> None:
+        """run() must NOT access db._PIPELINE_STAGES (private attribute)."""
+        mock_db = MagicMock()
+        mock_db.get_all_gates.return_value = [
+            {"stage": s} for s in (
+                "ingest", "analyze", "classify", "narrate",
+                "script", "edl", "source", "render", "upload",
+            )
+        ]
+        mock_db.get_gate.return_value = {
+            "mode": "auto", "status": "idle", "timeout_hours": None,
+        }
+
+        # Remove _PIPELINE_STAGES to ensure it's not accessed
+        # MagicMock auto-creates attributes, so we use a spec-limited mock
+        # or just verify via PropertyMock
+        access_log: list[str] = []
+        original_getattr = type(mock_db).__getattr__
+
+        def tracking_getattr(self_mock, name):
+            if name == "_PIPELINE_STAGES":
+                access_log.append(name)
+            return original_getattr(self_mock, name)
+
+        with patch.object(type(mock_db), "__getattr__", tracking_getattr):
+            orch = PipelineOrchestrator()
+            for stage in orch.stages:
+                stage.func = MagicMock()
+            orch.run(config=MagicMock(), db=mock_db)
+
+        assert "_PIPELINE_STAGES" not in access_log, (
+            "run() accessed db._PIPELINE_STAGES — "
+            "should use db.get_all_gates() instead"
+        )
+
+    def test_update_gate_called_for_each_gate_from_get_all_gates(self) -> None:
+        """update_gate is called with status='idle' for each gate returned
+        by get_all_gates()."""
+        mock_db = MagicMock()
+        gate_stages = [
+            "ingest", "analyze", "classify", "narrate",
+            "script", "edl", "source", "render", "upload",
+        ]
+        mock_db.get_all_gates.return_value = [
+            {"stage": s} for s in gate_stages
+        ]
+        mock_db.get_gate.return_value = {
+            "mode": "auto", "status": "idle", "timeout_hours": None,
+        }
+
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=mock_db)
+
+        # Verify update_gate(stage, status='idle') called for each
+        idle_calls = [
+            c for c in mock_db.update_gate.call_args_list
+            if len(c.args) >= 1
+            and c.kwargs.get("status") == "idle"
+        ]
+        idle_stages = [c.args[0] for c in idle_calls]
+        assert sorted(idle_stages) == sorted(gate_stages)

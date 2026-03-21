@@ -1,6 +1,6 @@
 {
-  "task_id": "38",
-  "title": "Orchestrator: per-job tracking",
+  "task_id": "39",
+  "title": "Orchestrator: gate system",
   "files": [
     "autopilot/orchestrator.py",
     "tests/test_orchestrator.py"
@@ -9,282 +9,253 @@
     "autopilot",
     "tests"
   ],
-  "analysis": "The orchestrator (autopilot/orchestrator.py) has 9 module-level _run_* functions for pipeline stages and a PipelineOrchestrator class that runs them in topological order. Run-level tracking already exists (pipeline_runs + pipeline_events tables, _emit_event method, resilient try/except wrappers). The db.py CatalogDB already has full pipeline_jobs CRUD: insert_job, update_job, get_job, list_jobs, count_jobs_by_status. This task adds per-sub-task job tracking within each stage.\n\nKey design challenge: _run_* functions are module-level (not class methods) but need job tracking. The approach is: (1) add module-level _start_job/_finish_job helpers that take db, run_id, and optional emit_fn, (2) add a _track_job context manager for convenience, (3) add run_id=None and emit_fn=None kwargs to all _run_* functions for backward compat, (4) have PipelineOrchestrator.run() pass run_id=self._run_id and emit_fn=self._emit_event when calling stage functions.\n\nJob tracking is resilient \u2014 all insert_job/update_job calls are wrapped in try/except to never break the pipeline (matching the existing pattern from task 37). Events (job_started, job_completed, job_error) are emitted through the emit_fn callback.\n\nEach stage instruments its sub-tasks: INGEST (per-file + dedup), ANALYZE (per media x analysis_type + face_clustering), CLASSIFY (clustering + labeling), NARRATE (storyboard + proposal), SCRIPT (per narrative), EDL (per narrative: edl_gen + validate + otio_export), SOURCE_ASSETS (per narrative), RENDER (per narrative: render + validate), UPLOAD (per narrative: upload + thumbnail).",
+  "analysis": "The PipelineOrchestrator in orchestrator.py manages a DAG of 9 stages (INGEST, ANALYZE, CLASSIFY, NARRATE, SCRIPT, EDL, SOURCE_ASSETS, RENDER, UPLOAD) executed in topological order via run(). The DB layer (db.py, task 38) already has pipeline_gates CRUD: init_default_gates(), get_gate(), update_gate(), get_all_gates(). Gates have columns: stage, mode (default 'auto'), status (default 'idle'), decided_at, decided_by, notes, timeout_hours. DB stage names are lowercase ('ingest', 'source') while orchestrator uses uppercase ('INGEST', 'SOURCE_ASSETS'). A mapping is needed: stage_name.lower() works for most, but 'SOURCE_ASSETS' must map to 'source'. The _emit_event method already exists on PipelineOrchestrator for emitting events to pipeline_events table. The human_review_fn mechanism is used at NARRATE stage only \u2014 passed to _run_narrate via functools.partial. For backwards compatibility, when gate mode is 'auto' and human_review_fn is provided, the callback should still be invoked (CLI usage). The gate system replaces this with a more general mechanism: 'pause' mode at NARRATE causes the pipeline to wait for external approval (web console writes to pipeline_gates). Implementation approach: (1) Add _gate_stage_name() static method for name mapping, (2) Add _check_gate() method with auto/notify/pause modes, (3) In run(), init gates and reset statuses before stage loop, (4) Before each stage execution, call _check_gate() and handle 'skipped' result, (5) For NARRATE backwards compat: if human_review_fn is set AND gate mode is 'auto', _check_gate passes through and _run_narrate uses human_review_fn as before \u2014 no change to _run_narrate needed.\n\nREVIEW FIX (post step-20): Two blocking issues found. (1) Module boundary violation: orchestrator.py:1170 accesses db._PIPELINE_STAGES, a private attribute. Fix: use db.get_all_gates() public API instead, and update 5 test sites that set mock_db._PIPELINE_STAGES. (2) Control flow ordering: _check_gate() is called before the dry_run guard, so dry_run hangs on pause-mode gates. Fix: move gate check after dry_run guard.",
   "prerequisites": [],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write tests for _start_job helper: creates pipeline_jobs record with 'running' status, started_at timestamp, correct stage/job_type/target_id/target_label/worker/run_id, returns (job_id, start_mono) tuple with 32-char hex job_id. Also test _finish_job: updates job with status='done', finished_at, duration_seconds calculated from monotonic time; test error path sets status='error' and error_message.",
+      "description": "Write test class TestGateStageNameMapping with tests for _gate_stage_name(): maps 'INGEST'->'ingest', 'ANALYZE'->'analyze', 'SOURCE_ASSETS'->'source', all 9 stages map correctly. Verify it's a static method callable without instance.",
       "status": "done",
-      "commit": "5d8d42a"
+      "commit": "32a36c0"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Implement module-level _start_job(db, stage, job_type, *, target_id=None, target_label=None, worker=None, run_id=None, emit_fn=None) -> tuple[str, float] and _finish_job(db, job_id, start_mono, *, status='done', error_message=None, emit_fn=None, stage=None) functions. _start_job generates uuid4 job_id, records started_at as UTC ISO, calls db.insert_job with status='running', emits 'job_started' event via emit_fn if provided. _finish_job calculates duration from monotonic clock, calls db.update_job, emits 'job_completed' or 'job_error'. Both wrap db calls in try/except for resilience.",
+      "description": "Implement _gate_stage_name(stage_name) as a static method on PipelineOrchestrator. Uses a dict mapping for special cases (SOURCE_ASSETS->source) and .lower() as fallback. Also add _STAGE_TO_GATE class-level dict for the mapping.",
       "status": "done",
-      "commit": "63b11ac"
+      "commit": "a8d2846"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write tests for _track_job context manager: yields job_id, on clean exit calls _finish_job with status='done', on exception calls _finish_job with status='error' and error_message=str(exc) then re-raises. Test that it's resilient to db errors (doesn't mask the original exception).",
+      "description": "Write test class TestCheckGateAuto with tests for _check_gate() auto mode: (1) gate fetched from DB by mapped name, (2) gate status updated to 'approved' with decided_by='system', (3) 'gate_passed' event emitted with stage info, (4) returns 'approved'. Use real in-memory CatalogDB (catalog_db fixture) with init_default_gates().",
       "status": "done",
-      "commit": "1adae2d"
+      "commit": "67ab06a"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement @contextmanager _track_job(db, stage, job_type, **kwargs) that calls _start_job, yields job_id, and calls _finish_job in try/except/else pattern. On success: _finish_job with status='done'. On exception: _finish_job with status='error', then re-raise.",
+      "description": "Implement _check_gate(self, stage_name) method on PipelineOrchestrator. For 'auto' mode: update gate status='approved', decided_by='system', decided_at=now; emit 'gate_passed' event; return 'approved'.",
       "status": "done",
-      "commit": "3e1d7bf"
+      "commit": "deea29c"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write tests for _start_job/_finish_job resilience: when db.insert_job raises, _start_job still returns a job_id (logs warning, doesn't propagate); when db.update_job raises, _finish_job doesn't crash (logs warning). Test emit_fn callback is called with correct event types and kwargs (event_type, stage, job_id).",
+      "description": "Write test class TestCheckGateNotify: (1) gate mode set to 'notify', (2) _check_gate emits 'gate_passed' event, (3) gate updated to approved with decided_by='system', (4) returns 'approved'.",
       "status": "done",
-      "commit": "0c44076"
+      "commit": "47dc694"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Ensure try/except wrapping in _start_job and _finish_job for resilience. Ensure emit_fn is called as emit_fn(event_type, stage=stage, job_id=job_id) matching the _emit_event signature.",
+      "description": "Add 'notify' mode handling to _check_gate(): emit 'gate_passed' event, update gate to approved, return 'approved'. Notify behaves like auto but the event can trigger external notification systems.",
       "status": "done",
-      "commit": "8d2c8ed"
+      "commit": "63ac50f"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write tests for _run_ingest job tracking: when run_id is provided, creates one 'ingest_file' job per processed file (worker='cpu', target_id=media_id, target_label=filename) and one 'dedup' job at the end. Verify jobs have correct stage='INGEST'. Also verify backward compat: when run_id=None (default), no insert_job calls made.",
+      "description": "Write test class TestCheckGatePause: (1) gate mode='pause', _check_gate sets status='waiting' and emits 'gate_waiting', (2) simulate external approval by having a side-effect on db.get_gate that returns 'approved' on second call, (3) verify _check_gate returns 'approved' and emits 'gate_approved'. Also test skipped status: side-effect returns 'skipped', verify 'gate_skipped' event and 'skipped' return.",
       "status": "done",
-      "commit": "e675922"
+      "commit": "eadd511"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Modify _run_ingest to accept run_id=None, emit_fn=None kwargs. When run_id is not None, wrap each file's ingest logic with _track_job(db, 'INGEST', 'ingest_file', target_id=media_id, target_label=str(mf.file_path.name), worker='cpu', run_id=run_id, emit_fn=emit_fn). Wrap dedup.mark_duplicates with _track_job(db, 'INGEST', 'dedup', worker='cpu', run_id=run_id, emit_fn=emit_fn).",
+      "description": "Add 'pause' mode handling to _check_gate(): set gate status='waiting', emit 'gate_waiting', enter polling loop (time.sleep(2)) checking gate status via db.get_gate(). On 'approved'/'skipped': emit appropriate event and return status.",
       "status": "done",
-      "commit": "c7aadd7"
+      "commit": "86f5277"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write tests for _run_analyze job tracking: creates one job per (media x analysis_type) for 6 types (asr, scenes, objects, faces, embeddings, audio_events) with worker='gpu' and target_id=media_id, plus one 'face_clustering' job with worker='cpu'. Verify stage='ANALYZE' on all jobs. Test that failed analysis per-media sets that job to error status but other media continue.",
+      "description": "Write test TestCheckGateTimeout: gate mode='pause' with timeout_hours set to a very small value (e.g. 0.0001). Mock time.monotonic to simulate elapsed time exceeding timeout. Verify gate auto-approved with notes='auto-approved: timeout', decided_by='system', 'gate_approved' event has payload with reason='timeout', returns 'approved'.",
       "status": "done",
-      "commit": "5d02b58"
+      "commit": "995a1b6"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Modify _run_analyze to accept run_id=None, emit_fn=None. When run_id is not None, wrap each analysis call per media with _track_job (asr -> job_type='asr', scenes -> 'scenes', objects -> 'objects', faces -> 'faces', embeddings -> 'embeddings', audio_events -> 'audio_events'). Wrap faces.cluster_faces with _track_job for 'face_clustering' (worker='cpu'). Each per-media analysis job gets worker='gpu' and target_id=media_id.",
+      "description": "Add timeout logic to _check_gate() pause mode: record wait_start via time.monotonic(), in each poll iteration check if timeout_hours is set and elapsed hours > timeout_hours. If so, update gate to approved with notes='auto-approved: timeout', emit 'gate_approved' with reason='timeout' payload, return 'approved'.",
       "status": "done",
-      "commit": "ec2ddee"
+      "commit": "846f165"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write tests for _run_classify job tracking: creates 'cluster_activities' job (worker='cpu') and 'label_activities' job (worker='cpu'). Verify both have stage='CLASSIFY'.",
+      "description": "Write test TestCheckGateShutdown: gate mode='pause', request_shutdown() called before or during poll. Verify _check_gate returns 'skipped' without waiting. Use _reset_shutdown in setup/teardown.",
       "status": "done",
-      "commit": "87f8751"
+      "commit": "a85ca7d"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Modify _run_classify to accept run_id=None, emit_fn=None. Wrap cluster.cluster_activities with _track_job for 'cluster_activities' and classify.label_activities with _track_job for 'label_activities'.",
+      "description": "Add shutdown check to _check_gate() pause mode: check shutdown_requested() in while loop condition and return 'skipped' when true.",
       "status": "done",
-      "commit": "b7fb59f"
+      "commit": "846f165"
     },
     {
       "id": "step-13",
       "type": "test",
-      "description": "Write tests for _run_narrate job tracking: creates 'build_storyboard' job and 'propose_narratives' job, both with worker='cpu' and stage='NARRATE'.",
+      "description": "Write test TestCheckGateNotFound: gate row not found (db.get_gate returns None). Verify _check_gate logs a warning and returns 'approved' (graceful fallback, never blocks pipeline).",
       "status": "done",
-      "commit": "5e2410b"
+      "commit": "98d811c"
     },
     {
       "id": "step-14",
       "type": "impl",
-      "description": "Modify _run_narrate to accept run_id=None, emit_fn=None. Wrap narratives.build_master_storyboard with _track_job for 'build_storyboard' and narratives.propose_narratives with _track_job for 'propose_narratives'.",
+      "description": "Add None check at start of _check_gate(): if gate is None, log warning and return 'approved'. Wrap the entire method body in try/except for resilience (matching existing event/run tracking pattern).",
       "status": "done",
-      "commit": "2afa0da"
+      "commit": "a8bfee8"
     },
     {
       "id": "step-15",
       "type": "test",
-      "description": "Write tests for _run_script job tracking: creates one 'generate_script' job per narrative with target_id=narrative_id, worker='cpu', stage='SCRIPT'. Test error case sets that job to error status.",
+      "description": "Write test class TestGateInitInRun: (1) run() calls db.init_default_gates(), (2) run() resets all gate statuses to 'idle' at start, (3) if init_default_gates() raises, pipeline still proceeds (resilience). Use real catalog_db to verify gate rows.",
       "status": "done",
-      "commit": "5e2410b"
+      "commit": "a5e4f77"
     },
     {
       "id": "step-16",
       "type": "impl",
-      "description": "Modify _run_script to accept run_id=None, emit_fn=None. Wrap script.generate_script per narrative with _track_job.",
+      "description": "In run(), after creating the run record (after line ~1068): call db.init_default_gates() wrapped in try/except, then iterate all stages and reset each gate status to 'idle' via db.update_gate(gate_name, status='idle').",
       "status": "done",
-      "commit": "2afa0da"
+      "commit": "5761f53"
     },
     {
       "id": "step-17",
       "type": "test",
-      "description": "Write tests for _run_edl job tracking: per narrative creates 'generate_edl', 'validate_edl', and 'otio_export' jobs with target_id=narrative_id, worker='cpu', stage='EDL'.",
+      "description": "Write test class TestGateIntegrationInRun: (1) _check_gate called before each stage, verify via mock/spy, (2) when _check_gate returns 'skipped' for a stage, that stage gets StageResult SKIPPED and its func is NOT called, (3) downstream stages still execute (gate skip doesn't propagate like error skip). Use mock stage funcs and real or mock DB.",
       "status": "done",
-      "commit": "5e2410b"
+      "commit": "4f31b5a"
     },
     {
       "id": "step-18",
       "type": "impl",
-      "description": "Modify _run_edl to accept run_id=None, emit_fn=None. Within each narrative's try block, wrap edl_mod.generate_edl, validator.validate_edl, and otio_export.export_otio with individual _track_job calls.",
+      "description": "In run() stage loop, after dependency check and before dry_run check (~line 1099): call gate_result = self._check_gate(stage_name). If gate_result == 'skipped', create StageResult(status=StageStatus.SKIPPED), log '[GATE-SKIPPED] stage_name', continue. Do NOT add to errored_stages so downstream stages still run.",
       "status": "done",
-      "commit": "2afa0da"
+      "commit": "2675b46"
     },
     {
       "id": "step-19",
       "type": "test",
-      "description": "Write tests for _run_source_assets job tracking: creates one 'resolve_assets' job per narrative with target_id=narrative_id, worker='cpu', stage='SOURCE_ASSETS'.",
+      "description": "Write test TestGateBackwardsCompat: (1) PipelineOrchestrator with human_review_fn=callback and NARRATE gate mode='auto' \u2014 verify _run_narrate still receives and uses the callback (existing test_narrate_calls_human_review_callback pattern still passes), (2) verify gate system doesn't interfere with _run_narrate's internal human_review_fn logic.",
       "status": "done",
-      "commit": "5e2410b"
+      "commit": "8262321"
     },
     {
       "id": "step-20",
       "type": "impl",
-      "description": "Modify _run_source_assets to accept run_id=None, emit_fn=None. Wrap resolve.resolve_edl_assets per narrative with _track_job.",
+      "description": "Verify backwards compatibility \u2014 no changes needed to _run_narrate. The gate system operates at run() loop level: _check_gate('NARRATE') passes through for 'auto' mode, then _run_narrate is called with human_review_fn already bound via functools.partial. Run full test suite to confirm no regressions.",
       "status": "done",
-      "commit": "2afa0da"
+      "commit": "8262321"
     },
     {
       "id": "step-21",
       "type": "test",
-      "description": "Write tests for _run_render job tracking: per narrative creates 'render' job (worker='gpu') and 'validate_render' job (worker='cpu') with target_id=narrative_id, stage='RENDER'.",
+      "description": "REVIEW FIX (control_flow_ordering): Write test TestDryRunSkipsGateCheck that verifies dry_run=True does NOT call _check_gate() for any stage. Replace _check_gate with a spy that records calls and raises AssertionError if called. Run with dry_run=True. Assert spy was never called. This test will FAIL against current code because _check_gate is called before the dry_run guard, meaning pause-mode gates would block dry_run.",
       "status": "done",
-      "commit": "5e2410b"
+      "commit": "a57e666"
     },
     {
       "id": "step-22",
       "type": "impl",
-      "description": "Modify _run_render to accept run_id=None, emit_fn=None. Wrap router.route_and_render with _track_job for 'render' (worker='gpu') and render_validate.validate_render with _track_job for 'validate_render' (worker='cpu').",
+      "description": "REVIEW FIX (control_flow_ordering): In run() stage loop, move the gate check block (lines 1204-1212) to AFTER the dry_run guard (lines 1214-1224). New order: dependency check -> dry_run guard -> gate check -> stage execution. This ensures dry_run never blocks on pause-mode gates.",
       "status": "done",
-      "commit": "2afa0da"
+      "commit": "e169f93"
     },
     {
       "id": "step-23",
       "type": "test",
-      "description": "Write tests for _run_upload job tracking: per narrative creates 'upload_video' job and 'extract_thumbnail' job with target_id=narrative_id, worker='cpu', stage='UPLOAD'.",
+      "description": "REVIEW FIX (module_boundary_violation): Write test TestGateResetUsesPublicAPI that verifies run() uses db.get_all_gates() (the public method) rather than db._PIPELINE_STAGES for gate status reset. Use a MagicMock db where get_all_gates returns a list of gate dicts (each with 'stage' key). Assert update_gate is called with status='idle' for each stage returned by get_all_gates. Also update the existing test_run_resets_gate_statuses_to_idle in TestGateInitInRun to use get_all_gates instead of _PIPELINE_STAGES on the mock.",
       "status": "done",
-      "commit": "5e2410b"
+      "commit": "0e6a92e"
     },
     {
       "id": "step-24",
       "type": "impl",
-      "description": "Modify _run_upload to accept run_id=None, emit_fn=None. Wrap youtube.upload_video with _track_job for 'upload_video' and thumbnail.extract_best_thumbnail with _track_job for 'extract_thumbnail'.",
+      "description": "REVIEW FIX (module_boundary_violation): In orchestrator.py run(), replace 'for gate_stage in db._PIPELINE_STAGES: db.update_gate(gate_stage, status=\"idle\")' with 'for gate in db.get_all_gates(): db.update_gate(gate[\"stage\"], status=\"idle\")'. This uses only the public CatalogDB API. Then update all 5 test sites in test_orchestrator.py that set mock_db._PIPELINE_STAGES to instead configure mock_db.get_all_gates.return_value with a list of dicts containing 'stage' keys. Affected tests: TestGateInitInRun.test_run_resets_gate_statuses_to_idle, TestGateIntegrationInRun (3 tests), TestGateBackwardsCompat.test_human_review_fn_still_invoked_with_auto_gate.",
       "status": "done",
-      "commit": "2afa0da"
-    },
-    {
-      "id": "step-25",
-      "type": "test",
-      "description": "Write test that PipelineOrchestrator.run() passes run_id=self._run_id and emit_fn=self._emit_event to each stage function call. Verify via mock stage funcs that the kwargs are present alongside config, db, and force.",
-      "status": "done",
-      "commit": "5e2410b"
-    },
-    {
-      "id": "step-26",
-      "type": "impl",
-      "description": "Modify PipelineOrchestrator.run() to pass run_id=self._run_id and emit_fn=self._emit_event as additional kwargs to stage.func() calls. When self._run_id is None (insert_run failed), pass run_id=None so stages skip tracking.",
-      "status": "done",
-      "commit": "c9f6424"
-    },
-    {
-      "id": "step-27",
-      "type": "test",
-      "description": "Write integration test: run full pipeline with real in-memory CatalogDB and stub stage functions that internally call _track_job to create a couple of test jobs. Verify pipeline_jobs records are created in DB with correct run_id, stage, status='done', duration_seconds > 0, and that job_started/job_completed events appear in pipeline_events.",
-      "status": "done",
-      "commit": "8533d12"
-    },
-    {
-      "id": "step-28",
-      "type": "impl",
-      "description": "Run full test suite to verify all existing + new tests pass. Fix any regressions from the new run_id/emit_fn kwargs being passed to stage functions (existing mock stages should accept **kwargs gracefully since MagicMock accepts any kwargs).",
-      "status": "done",
-      "commit": "0291019"
+      "commit": "7ecc91c"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Module-level _start_job/_finish_job/_track_job helpers instead of PipelineOrchestrator methods",
-      "rationale": "The _run_* stage functions are module-level, not class methods, so they can't access self. Module-level helpers that accept db, run_id, and emit_fn are callable from both _run_* functions and the orchestrator. A _track_job context manager wraps them for clean syntax."
+      "decision": "Stage name mapping via _gate_stage_name() static method with _STAGE_TO_GATE dict",
+      "rationale": "DB gates use lowercase names ('ingest', 'source') while orchestrator uses uppercase ('INGEST', 'SOURCE_ASSETS'). A dedicated mapping handles the mismatch cleanly, especially SOURCE_ASSETS->source which can't be done with simple .lower(). Using a class-level dict makes it explicit and extensible."
     },
     {
-      "decision": "Add run_id=None and emit_fn=None kwargs to all _run_* functions",
-      "rationale": "Backward compatible \u2014 existing tests and callers that don't pass these kwargs get no job tracking. The orchestrator's run() method passes them when run tracking is active. MagicMock stage replacements in existing tests accept any kwargs, so no test breakage."
+      "decision": "Gate check operates at run() loop level, not inside stage functions",
+      "rationale": "Placing _check_gate() in the run() loop before stage.func() call means all stages get gate support uniformly without modifying individual _run_* stage functions. This preserves the separation of concerns: _run_* handles domain logic, run() handles orchestration control."
     },
     {
-      "decision": "Guard job tracking with 'if run_id is not None' in _start_job/_finish_job",
-      "rationale": "When called directly (e.g., in tests or standalone), _run_* functions should work without job tracking. The run_id serves as the feature flag \u2014 None means no tracking."
+      "decision": "human_review_fn preserved as-is for backwards compatibility",
+      "rationale": "The task says 'Keep human_review_fn as a fallback: if provided AND gate mode is auto, use the callback'. Since _run_narrate already receives human_review_fn via partial binding and auto mode passes through _check_gate immediately, the existing behavior is preserved without code changes to _run_narrate."
     },
     {
-      "decision": "Resilient job tracking \u2014 all db calls in helpers wrapped in try/except",
-      "rationale": "Matches existing pattern from task 37 (_emit_event, insert_run, update_run resilience). Job tracking is observability, not core logic \u2014 it must never break the pipeline."
+      "decision": "Graceful fallback when gate row not found \u2014 return 'approved'",
+      "rationale": "If init_default_gates() wasn't called or a custom stage name doesn't have a gate, _check_gate() should not crash the pipeline. Logging a warning and returning 'approved' preserves the principle that gate tracking must never break the pipeline (same resilience pattern as job tracking and event emission)."
     },
     {
-      "decision": "Use _track_job context manager for wrapping sub-tasks",
-      "rationale": "Clean pattern that automatically handles success/error status transitions and duration calculation. Keeps the _run_* function bodies readable. The context manager re-raises exceptions so the outer error handling in each _run_* function still works correctly."
+      "decision": "Gate init and reset wrapped in try/except for resilience",
+      "rationale": "Following the existing pattern in run() where run tracking is wrapped in try/except \u2014 gate initialization and reset should similarly be resilient. If the DB methods fail, the pipeline proceeds with gates defaulting to 'approved'."
     },
     {
-      "decision": "Pass emit_fn callback rather than full orchestrator reference",
-      "rationale": "Minimal coupling \u2014 _run_* functions only need a callable to emit events, not the full PipelineOrchestrator instance. Matches _emit_event's existing interface."
+      "decision": "Gate-skipped stages do NOT propagate to dependents (unlike error-skipped)",
+      "rationale": "A gate skip is intentional user action (e.g., skip UPLOAD stage) \u2014 downstream stages that depend on the skipped stage may still be runnable. This is different from error-propagation where dependent stages can't run because their input is missing. The task spec says 'If result is skipped, set StageResult to SKIPPED and skip the stage' without mentioning cascading."
     },
     {
-      "decision": "Worker field: 'gpu' for ML analysis jobs and render, 'cpu' for everything else",
-      "rationale": "Matches the task spec and the existing GPUScheduler pattern. Analysis jobs (asr, scenes, objects, faces, embeddings, audio_events) use GPU; render uses GPU; all other jobs (ingest, dedup, classify, narrate, script, edl, source, upload, thumbnail) use CPU."
+      "decision": "Poll interval of 2 seconds for pause mode",
+      "rationale": "Task spec explicitly specifies time.sleep(2). This is a reasonable balance between responsiveness and DB load for human-driven approval."
     },
     {
-      "decision": "Individual _track_job calls per sub-task rather than wrapping entire _run_* body",
-      "rationale": "Granular tracking is the goal \u2014 each sub-task (per-file ingest, per-media analysis, etc.) gets its own job record for fine-grained monitoring in the web console."
+      "decision": "Use db.get_all_gates() instead of db._PIPELINE_STAGES for gate reset loop",
+      "rationale": "REVIEW FIX: Accessing _PIPELINE_STAGES is a module boundary violation \u2014 it's a private class attribute of CatalogDB. The public get_all_gates() method returns all gate rows and is the correct API for the orchestrator to enumerate existing gates. This decouples the orchestrator from the DB's internal stage list representation."
+    },
+    {
+      "decision": "Gate check placed after dry_run guard, not before",
+      "rationale": "REVIEW FIX: dry_run is a non-blocking execution-plan preview. If _check_gate() runs before the dry_run guard, pause-mode gates will block indefinitely via the 2s polling loop, making dry_run unusable. The correct order is: dependency check -> dry_run guard -> gate check -> stage execution."
     }
   ],
   "reuse": [
     {
-      "what": "db.insert_job / db.update_job / db.get_job / db.list_jobs / db.count_jobs_by_status",
-      "where": "autopilot/db.py lines 997-1104",
-      "how": "Already implemented with full pipeline_jobs CRUD. _start_job calls insert_job, _finish_job calls update_job. Tests use list_jobs/get_job to verify."
+      "what": "db.init_default_gates(), db.get_gate(), db.update_gate(), db.get_all_gates()",
+      "where": "autopilot/db.py lines 942-993 (already implemented in task 38)",
+      "how": "Called directly in _check_gate() and run() \u2014 no wrappers needed. get_gate returns a dict with mode, status, timeout_hours, etc. get_all_gates() returns list of dicts, used for gate reset loop instead of private _PIPELINE_STAGES."
     },
     {
-      "what": "PipelineOrchestrator._emit_event method",
-      "where": "autopilot/orchestrator.py lines 617-642",
-      "how": "Already handles event emission with resilience (try/except). Pass self._emit_event as emit_fn callback to _start_job/_finish_job via _run_* kwargs."
+      "what": "PipelineOrchestrator._emit_event() method",
+      "where": "autopilot/orchestrator.py lines 976-1001",
+      "how": "Used in _check_gate() to emit gate_passed, gate_waiting, gate_approved, gate_skipped events. Already handles resilience (try/except)."
+    },
+    {
+      "what": "shutdown_requested() and _reset_shutdown() functions",
+      "where": "autopilot/orchestrator.py lines 44-57",
+      "how": "shutdown_requested() used in _check_gate() pause mode polling loop to break on shutdown. _reset_shutdown() used in test setup/teardown."
     },
     {
       "what": "catalog_db fixture (in-memory CatalogDB with autocommit)",
       "where": "tests/conftest.py lines 26-39",
-      "how": "Reuse for integration tests that verify real DB records. Already used in TestRunTrackingIntegration."
+      "how": "Used in gate tests that need real DB operations (init_default_gates, get_gate, update_gate). Tests verify actual gate state changes."
     },
     {
-      "what": "minimal_config fixture",
-      "where": "tests/conftest.py lines 43-51",
-      "how": "Reuse for stage function tests. Already used extensively in TestIngestStage, TestAnalyzeStage, etc."
+      "what": "MagicMock-based test patterns for PipelineOrchestrator.run() tests",
+      "where": "tests/test_orchestrator.py (TestShutdownBetweenStages, TestEnhancedProgress, etc.)",
+      "how": "Follow same pattern: replace stage funcs with MagicMock, mock db, call run(), assert results. Gate tests extend this by configuring gate states."
     },
     {
-      "what": "Existing mock/patch patterns for stage tests",
-      "where": "tests/test_orchestrator.py (TestIngestStage, TestAnalyzeStage, TestClassifyStage, etc.)",
-      "how": "Follow same @patch decorator stacking pattern for mocking scanner, normalizer, dedup, faces, asr, etc. when testing job tracking in each stage."
-    },
-    {
-      "what": "uuid4().hex for ID generation",
-      "where": "Already used in orchestrator.py line 697 for run_id generation",
-      "how": "Same pattern for generating unique job identifiers."
+      "what": "Resilience pattern (try/except with logger.warning, never propagate)",
+      "where": "orchestrator.py _emit_event, insert_run wrapper, _start_job/_finish_job",
+      "how": "Same pattern for gate init, reset, and _check_gate \u2014 wrap DB calls, log warnings, never crash the pipeline."
     },
     {
       "what": "datetime.now(timezone.utc).isoformat() for timestamps",
-      "where": "Already used in orchestrator.py for run started_at/finished_at",
-      "how": "Same pattern for job started_at/finished_at timestamps."
-    },
-    {
-      "what": "Resilience pattern (try/except with logger.warning)",
-      "where": "orchestrator.py _emit_event, insert_run wrapper, update_run wrappers",
-      "how": "Same pattern for _start_job/_finish_job \u2014 wrap db calls, log warnings, never propagate."
+      "where": "Already used throughout orchestrator.py for run/job timestamps",
+      "how": "Used for decided_at timestamp when updating gate status."
     }
   ],
-  "_session_id": "38-76628785",
-  "_created_at": "2026-03-21T17:46:07.281980+00:00"
+  "_session_id": "39-bc971ab9",
+  "_created_at": "2026-03-21T18:32:52.291870+00:00"
 }

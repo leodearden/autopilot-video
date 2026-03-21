@@ -973,6 +973,103 @@ class PipelineOrchestrator:
             s.name: s for s in self.stages
         }
 
+    # Mapping from orchestrator stage names to DB gate stage names.
+    _STAGE_TO_GATE: dict[str, str] = {
+        "SOURCE_ASSETS": "source",
+    }
+
+    @staticmethod
+    def _gate_stage_name(stage_name: str) -> str:
+        """Map an orchestrator stage name to the corresponding DB gate name."""
+        return PipelineOrchestrator._STAGE_TO_GATE.get(
+            stage_name, stage_name.lower()
+        )
+
+    def _check_gate(self, stage_name: str) -> str:
+        """Check the gate for a stage and return the gate decision.
+
+        Returns:
+            'approved' if the stage should run, 'skipped' if it should be skipped.
+        """
+        try:
+            return self._check_gate_inner(stage_name)
+        except Exception as exc:
+            logger.warning("Gate check failed for %s: %s — auto-approving", stage_name, exc)
+            return "approved"
+
+    def _check_gate_inner(self, stage_name: str) -> str:
+        """Inner gate check logic (called by _check_gate with resilience wrapper)."""
+        gate_name = self._gate_stage_name(stage_name)
+        gate = self._db.get_gate(gate_name)
+
+        if gate is None:
+            logger.warning(
+                "Gate not found for stage %s (gate=%s), auto-approving",
+                stage_name,
+                gate_name,
+            )
+            return "approved"
+
+        mode = gate.get("mode", "auto")
+
+        if mode in ("auto", "notify"):
+            decided_at = datetime.now(timezone.utc).isoformat()
+            self._db.update_gate(
+                gate_name,
+                status="approved",
+                decided_by="system",
+                decided_at=decided_at,
+            )
+            self._emit_event("gate_passed", stage=stage_name)
+            return "approved"
+
+        if mode == "pause":
+            # Set gate to waiting and emit event
+            self._db.update_gate(gate_name, status="waiting")
+            self._emit_event("gate_waiting", stage=stage_name)
+            logger.info("[GATE-WAITING] %s — waiting for external approval", stage_name)
+
+            timeout_hours = gate.get("timeout_hours")
+            wait_start = time.monotonic()
+
+            # Poll for approval/skip
+            while not shutdown_requested():
+                time.sleep(2)
+
+                # Check timeout
+                if timeout_hours is not None and timeout_hours > 0:
+                    elapsed_hours = (time.monotonic() - wait_start) / 3600
+                    if elapsed_hours > timeout_hours:
+                        self._db.update_gate(
+                            gate_name,
+                            status="approved",
+                            decided_by="system",
+                            decided_at=datetime.now(timezone.utc).isoformat(),
+                            notes="auto-approved: timeout",
+                        )
+                        self._emit_event(
+                            "gate_approved", stage=stage_name,
+                            payload={"reason": "timeout"},
+                        )
+                        logger.info("[GATE-TIMEOUT] %s — auto-approved after timeout", stage_name)
+                        return "approved"
+
+                current = self._db.get_gate(gate_name)
+                if current is None:
+                    return "approved"
+                status = current.get("status", "waiting")
+                if status == "approved":
+                    self._emit_event("gate_approved", stage=stage_name)
+                    return "approved"
+                if status == "skipped":
+                    self._emit_event("gate_skipped", stage=stage_name)
+                    return "skipped"
+
+            # Shutdown requested
+            return "skipped"
+
+        return "approved"
+
     def _emit_event(
         self,
         event_type: str,
@@ -1067,6 +1164,14 @@ class PipelineOrchestrator:
             logger.warning("Run tracking unavailable: %s", exc)
             self._run_id = None
 
+        # --- Gate initialization ---
+        try:
+            db.init_default_gates()
+            for gate in db.get_all_gates():
+                db.update_gate(gate["stage"], status="idle")
+        except Exception as exc:
+            logger.warning("Gate initialization failed: %s", exc)
+
         for stage_name in order:
             if shutdown_requested():
                 for remaining in order:
@@ -1106,6 +1211,16 @@ class PipelineOrchestrator:
                     status=StageStatus.SKIPPED,
                     elapsed_seconds=0.0,
                 )
+                continue
+
+            # Check gate — may block (pause mode) or skip
+            gate_result = self._check_gate(stage_name)
+            if gate_result == "skipped":
+                results[stage_name] = StageResult(
+                    status=StageStatus.SKIPPED,
+                    elapsed_seconds=0.0,
+                )
+                logger.info("[GATE-SKIPPED] %s", stage_name)
                 continue
 
             logger.info("[RUNNING] %s", stage_name)
