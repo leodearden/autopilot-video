@@ -1,241 +1,172 @@
 {
-  "task_id": "32",
-  "title": "Item-level checkpoint/resume for pipeline stages",
+  "task_id": "35",
+  "title": "DB schema: pipeline control tables",
   "files": [
     "autopilot/db.py",
-    "autopilot/orchestrator.py",
-    "autopilot/cli.py",
-    "tests/test_db.py",
-    "tests/test_orchestrator.py",
-    "tests/test_cli.py"
+    "tests/test_db_pipeline.py",
+    "tests/test_db.py"
   ],
   "modules": [
     "autopilot",
     "tests"
   ],
-  "analysis": "The pipeline runs up to 36 hours. A crash mid-ANALYZE loses all progress because stage functions don't check what's already been done. The DB already has implicit checkpoints (if a transcript row exists, that media was transcribed), but the orchestrator doesn't query them.\n\nThe fix has two parts:\n1. Add `has_*` convenience methods to CatalogDB for checking per-media completion of each analysis pass (transcript, boundaries, detections, faces, embeddings, audio_events). These are simple existence checks against the respective tables.\n2. Modify each `_run_*` function in orchestrator.py to query what's already completed and skip done items, logging resume progress (e.g. 'Resuming ANALYZE: 47/100 media already transcribed').\n3. Add a `--force` flag to cli.py that passes through to stage functions to bypass resume logic.\n\nKey observations:\n- media_files.status currently has values: 'ingested', 'analyzing', 'duplicate'. The task spec suggests a richer state machine, but the simpler approach is to use the existing tables as implicit checkpoints (which the spec also endorses). We'll add the has_* methods as the primary mechanism rather than changing the status column, since each analysis pass writes to a separate table and a media file can be partially analyzed (e.g. transcribed but not yet object-detected).\n- _run_ingest already handles resume implicitly via INSERT (which fails on duplicate PK), but it still re-scans and re-normalizes. We should skip media that's already in the DB.\n- _run_analyze processes 6 passes per media. Each pass should be individually skippable.\n- _run_classify, _run_narrate, _run_script, _run_edl, _run_source_assets, _run_render, _run_upload should skip items that already have output in the DB.\n- The `--force` flag needs to propagate from CLI through the orchestrator to each stage function.\n\nExisting test patterns use @patch decorators on module-level imports, MagicMock for db/config, and the catalog_db fixture for integration tests with in-memory SQLite. We'll follow these patterns.",
+  "analysis": "CatalogDB in autopilot/db.py uses direct SQL with sqlite3.Row factory, returning dict[str, object] | None for single rows and list[dict[str, object]] for multi-row queries. Schema is created in _create_schema() via executescript with CREATE TABLE IF NOT EXISTS. The existing test suite uses a 'catalog_db' fixture from conftest.py that creates an in-memory DB with autocommit. Tests are organized in classes per table group. We need to: (1) add 4 new tables to _create_schema() with appropriate indexes, (2) implement ~18 CRUD methods following existing patterns, (3) write comprehensive tests in a new test_db_pipeline.py file. The update_activity_cluster pattern (kwargs-based SET clause with f-string) should be reused for update_gate, update_job, and update_run. The EXPECTED_TABLES list in test_db.py and the table count assertion (15) need updating to account for the 4 new tables. The _create_schema docstring says '15 catalog tables' which becomes '19 catalog tables'.",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Add has_transcript(media_id), has_detections(media_id), has_boundaries(media_id), has_faces(media_id), has_embeddings(media_id), has_audio_events(media_id) convenience methods to CatalogDB. These return bool by checking row existence in the respective tables via SELECT 1 ... LIMIT 1.",
+      "description": "Update EXPECTED_TABLES in tests/test_db.py to include the 4 new pipeline tables (pipeline_events, pipeline_gates, pipeline_jobs, pipeline_runs \u2014 alphabetically sorted) and change the table count from 15 to 19 in test_schema_is_idempotent. Update _create_schema docstring from 15 to 19.",
       "status": "done",
-      "commit": "5ec20ae",
-      "tests": [
-        "tests/test_db.py::TestHasCheckpointMethods::test_has_transcript_returns_false_when_absent",
-        "tests/test_db.py::TestHasCheckpointMethods::test_has_transcript_returns_true_when_present",
-        "tests/test_db.py::TestHasCheckpointMethods::test_has_detections_returns_false_when_absent",
-        "tests/test_db.py::TestHasCheckpointMethods::test_has_detections_returns_true_when_present",
-        "tests/test_db.py::TestHasCheckpointMethods::test_has_boundaries_returns_false_when_absent",
-        "tests/test_db.py::TestHasCheckpointMethods::test_has_boundaries_returns_true_when_present",
-        "tests/test_db.py::TestHasCheckpointMethods::test_has_faces_returns_false_when_absent",
-        "tests/test_db.py::TestHasCheckpointMethods::test_has_faces_returns_true_when_present",
-        "tests/test_db.py::TestHasCheckpointMethods::test_has_embeddings_returns_false_when_absent",
-        "tests/test_db.py::TestHasCheckpointMethods::test_has_embeddings_returns_true_when_present",
-        "tests/test_db.py::TestHasCheckpointMethods::test_has_audio_events_returns_false_when_absent",
-        "tests/test_db.py::TestHasCheckpointMethods::test_has_audio_events_returns_true_when_present"
-      ]
+      "commit": "9930362",
+      "tests": []
     }
   ],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing tests for _run_ingest resume: test_ingest_skips_already_ingested_media (when db.get_media returns non-None for a media_id, skip insert+normalize), test_ingest_logs_resume_counts (logs 'Resuming INGEST: N/M files already ingested'), test_ingest_force_reprocesses_all (when force=True, reprocess even existing media)",
+      "description": "Write failing test class TestPipelineSchema in test_db_pipeline.py \u2014 verify pipeline_gates, pipeline_jobs, pipeline_events, pipeline_runs tables exist with correct columns (check PRAGMA table_info for each), verify indexes exist on pipeline_jobs(stage,status), pipeline_jobs(run_id), pipeline_events(event_type), pipeline_events(created_at)",
       "status": "done",
-      "commit": "352aa5d"
+      "commit": "4ac7ed2"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Implement resume logic in _run_ingest: before insert_media, check db.get_media(media_id) and skip if already exists. Add force kwarg (default False). Log resume counts.",
+      "description": "Add 4 CREATE TABLE IF NOT EXISTS statements to _create_schema(): pipeline_gates (stage TEXT PK, mode TEXT DEFAULT 'auto', status TEXT DEFAULT 'idle', decided_at TEXT, decided_by TEXT DEFAULT 'system', notes TEXT, timeout_hours REAL), pipeline_jobs (job_id TEXT PK, stage TEXT NOT NULL, job_type TEXT NOT NULL, target_id TEXT, target_label TEXT, status TEXT DEFAULT 'pending', started_at TEXT, finished_at TEXT, duration_seconds REAL, progress_pct REAL, error_message TEXT, worker TEXT, run_id TEXT), pipeline_events (event_id INTEGER PK AUTOINCREMENT, event_type TEXT NOT NULL, stage TEXT, job_id TEXT, payload_json TEXT, created_at TEXT DEFAULT (datetime('now'))), pipeline_runs (run_id TEXT PK, started_at TEXT NOT NULL, finished_at TEXT, config_snapshot TEXT, current_stage TEXT, status TEXT DEFAULT 'running', wall_clock_seconds REAL, budget_remaining_seconds REAL). Add CREATE INDEX statements for pipeline_jobs and pipeline_events.",
       "status": "done",
-      "commit": "118a82f"
+      "commit": "1847890"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write failing tests for _run_analyze per-pass resume: test_analyze_skips_transcribed_media (when db.has_transcript returns True, skip asr.transcribe_media for that media), test_analyze_skips_detected_media (when db.has_detections returns True, skip objects.detect_objects), and similar for boundaries/faces/embeddings/audio_events. test_analyze_logs_resume_counts per pass. test_analyze_force_reprocesses_all.",
+      "description": "Write failing tests TestGatesCRUD: test_init_default_gates_populates_stages (known pipeline stages get rows), test_init_default_gates_is_idempotent (calling twice doesn't duplicate or overwrite), test_get_gate_returns_dict (returns correct dict with all fields), test_get_gate_not_found_returns_none, test_get_all_gates_returns_list, test_update_gate_modifies_fields (change mode, status, notes etc.), test_update_gate_noop_on_empty_kwargs",
       "status": "done",
-      "commit": "12887ca"
+      "commit": "fb379b6"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement per-pass resume in _run_analyze: before each analysis call, check the corresponding has_* method. Add force kwarg (default False). Log per-pass resume counts (e.g. 'Resuming ANALYZE: 47/100 media already transcribed, processing remaining 53').",
+      "description": "Implement gates CRUD on CatalogDB: init_default_gates() uses INSERT OR IGNORE for each known pipeline stage (ingest, analyze, classify, narrate, script, edl, source, render, upload), get_gate(stage) returns dict|None, get_all_gates() returns list[dict], update_gate(stage, **kwargs) uses dynamic SET clause following update_activity_cluster pattern",
       "status": "done",
-      "commit": "950510d"
+      "commit": "02676e8"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write failing tests for _run_classify resume: test_classify_skips_when_clusters_exist (when db.get_activity_clusters returns non-empty and all have labels, skip). test_classify_force_clears_and_reprocesses.",
+      "description": "Write failing tests TestJobsCRUD: test_insert_job_all_fields, test_insert_job_minimal_fields (only required fields), test_get_job_returns_dict, test_get_job_not_found, test_update_job_modifies_fields, test_list_jobs_no_filter (returns all), test_list_jobs_filter_by_stage, test_list_jobs_filter_by_status, test_list_jobs_filter_by_job_type, test_list_jobs_filter_by_run_id, test_list_jobs_combined_filters, test_list_jobs_empty_result, test_count_jobs_by_status_returns_dict, test_count_jobs_by_status_with_run_id_filter",
       "status": "done",
-      "commit": "49b8a85"
+      "commit": "7467bc5"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Implement resume logic in _run_classify: check if activity clusters already exist and are labeled, skip if so. Add force kwarg (default False).",
+      "description": "Implement jobs CRUD: insert_job(job_id, stage, job_type, **optional fields) with INSERT, get_job(job_id) returns dict|None, update_job(job_id, **kwargs) with dynamic SET, list_jobs(stage=None, status=None, job_type=None, run_id=None) builds WHERE clauses dynamically with parameter binding, count_jobs_by_status(stage, run_id=None) uses GROUP BY status returning dict[str,int]",
       "status": "done",
-      "commit": "75a5bcc"
+      "commit": "b336c8e"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write failing tests for _run_script resume: test_script_skips_narrative_with_existing_script (when db.get_narrative_script returns non-None, skip generate_script for that narrative). test_script_logs_resume_counts. test_script_force_regenerates_all.",
+      "description": "Write failing tests TestEventsCRUD: test_insert_event_returns_event_id, test_insert_event_auto_creates_at, test_insert_event_with_all_fields, test_get_events_since_returns_newer_events, test_get_events_since_zero_returns_all, test_get_events_since_empty, test_prune_events_removes_old (insert events with old created_at, verify pruned), test_prune_events_keeps_recent",
       "status": "done",
-      "commit": "ea07b17"
+      "commit": "0f39895"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Implement resume logic in _run_script: check db.get_narrative_script(nid) before calling generate_script, skip if exists. Add force kwarg (default False). Log resume counts.",
+      "description": "Implement events CRUD: insert_event(event_type, stage=None, job_id=None, payload_json=None) inserts and returns cursor.lastrowid as int, get_events_since(event_id) selects WHERE event_id > ? ORDER BY event_id, prune_events(hours=24) deletes WHERE created_at < datetime('now', '-N hours') using string formatting for the hours value in the SQL modifier",
       "status": "done",
-      "commit": "8c66317"
+      "commit": "e2dc896"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write failing tests for _run_edl resume: test_edl_skips_narrative_with_existing_edit_plan (when db.get_edit_plan returns non-None with edl_json, skip). test_edl_force_regenerates_all.",
+      "description": "Write failing tests TestRunsCRUD: test_insert_run_minimal, test_insert_run_all_fields, test_get_run_returns_dict, test_get_run_not_found, test_update_run_modifies_fields, test_get_current_run_returns_latest_running, test_get_current_run_ignores_completed, test_get_current_run_returns_none_when_no_running, test_list_runs_ordered_by_started_at_desc",
       "status": "done",
-      "commit": "7b0eca7"
+      "commit": "75d9468"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Implement resume logic in _run_edl: check db.get_edit_plan(nid) before generating, skip if edl_json already present. Add force kwarg (default False). Log resume counts.",
+      "description": "Implement runs CRUD: insert_run(run_id, started_at, config_snapshot=None, current_stage=None, status='running', budget_remaining_seconds=None), update_run(run_id, **kwargs) with dynamic SET, get_current_run() selects WHERE status='running' ORDER BY started_at DESC LIMIT 1, get_run(run_id) returns dict|None, list_runs() returns all ORDER BY started_at DESC",
       "status": "done",
-      "commit": "5239fe3"
+      "commit": "8c6f8cf"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write failing tests for _run_source_assets resume: test_source_skips_narrative_with_resolved_assets (when asset_dir exists and is non-empty, skip). test_source_force_re_resolves_all.",
+      "description": "Write integration tests TestPipelineCrossTable: test_jobs_reference_run_id (insert run, insert jobs with run_id, count_jobs_by_status with run filter works), test_events_reference_job_id (insert event with job_id, retrieve and verify), test_update_nonexistent_gate_is_noop (no error, 0 rows affected), test_update_nonexistent_job_is_noop",
       "status": "done",
-      "commit": "ae1978d"
+      "commit": "e8cb657"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Implement resume logic in _run_source_assets: skip narratives where asset directory exists and is non-empty. Add force kwarg (default False).",
+      "description": "Fix any edge cases surfaced by integration tests. Run full test suite: pytest tests/test_db_pipeline.py tests/test_db.py to verify all pass",
       "status": "done",
-      "commit": "73fc6dc"
-    },
-    {
-      "id": "step-13",
-      "type": "test",
-      "description": "Write failing tests for _run_render resume: test_render_skips_narrative_with_existing_render_path (when edit_plan has render_path and file exists on disk). test_render_force_re_renders_all.",
-      "status": "done",
-      "commit": "b727ffa"
-    },
-    {
-      "id": "step-14",
-      "type": "impl",
-      "description": "Implement resume logic in _run_render: check if render_path exists in edit_plan and file exists on disk, skip if so. Add force kwarg (default False).",
-      "status": "done",
-      "commit": "7f416d2"
-    },
-    {
-      "id": "step-15",
-      "type": "test",
-      "description": "Write failing tests for _run_upload resume: test_upload_skips_narrative_with_existing_upload (when db.get_upload returns non-None). test_upload_force_re_uploads_all.",
-      "status": "done",
-      "commit": "884567b"
-    },
-    {
-      "id": "step-16",
-      "type": "impl",
-      "description": "Implement resume logic in _run_upload: check db.get_upload(nid) before uploading, skip if exists. Add force kwarg (default False).",
-      "status": "done",
-      "commit": "2724ae9"
-    },
-    {
-      "id": "step-17",
-      "type": "test",
-      "description": "Write failing tests for force flag propagation: test_orchestrator_run_passes_force_to_stages (when run(force=True), each stage receives force=True). test_orchestrator_run_defaults_force_false. test_orchestrator_init_accepts_force.",
-      "status": "done",
-      "commit": "4ed8121"
-    },
-    {
-      "id": "step-18",
-      "type": "impl",
-      "description": "Add force parameter to PipelineOrchestrator.__init__ and run(), propagate force=True/False to each stage.func call via kwargs.",
-      "status": "done",
-      "commit": "ed24958"
-    },
-    {
-      "id": "step-19",
-      "type": "test",
-      "description": "Write failing tests for CLI --force flag: test_run_command_has_force_option, test_run_command_passes_force_to_orchestrator, test_individual_subcommands_have_force_option (ingest, analyze, plan, edit, render, upload all accept --force). test_force_in_common_options.",
-      "status": "done",
-      "commit": "192417a"
-    },
-    {
-      "id": "step-20",
-      "type": "impl",
-      "description": "Add --force flag to _common_options decorator in cli.py. Wire it through to PipelineOrchestrator(force=True) in the 'run' command and to individual stage calls in subcommands.",
-      "status": "done",
-      "commit": "b04858a"
+      "commit": "e8cb657"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use DB tables as implicit checkpoints rather than adding a richer status state machine to media_files",
-      "rationale": "The task spec says 'the DB already has the data to support this' and 'do NOT add a separate checkpoint file \u2014 use the DB as the source of truth'. The existing tables (transcripts, detections, faces, etc.) already serve as natural checkpoints. Adding a status state machine to media_files would be redundant and could get out of sync with the actual table contents. The has_* methods provide the clearest, most reliable check."
+      "decision": "Use kwargs-based dynamic SET clause for update methods (update_gate, update_job, update_run)",
+      "rationale": "Follows existing update_activity_cluster pattern in CatalogDB \u2014 callers pass only the fields they want to change, avoiding None-overwrites. Uses f-string with parameter binding for SQL safety (same as existing code with noqa: S608)."
     },
     {
-      "decision": "Add has_* convenience methods to CatalogDB rather than inlining existence checks in orchestrator",
-      "rationale": "Centralizes checkpoint logic in the DB layer. The orchestrator calls db.has_transcript(media_id) instead of db.get_transcript(media_id) is not None. This is more efficient (SELECT 1 ... LIMIT 1 vs SELECT *) and more readable. The task spec explicitly calls for db.has_transcript(), db.has_detections(), etc."
+      "decision": "init_default_gates() uses INSERT OR IGNORE to be idempotent",
+      "rationale": "Pipeline stages are known at design time; INSERT OR IGNORE means calling init_default_gates() multiple times is safe and won't overwrite user-edited gate settings."
     },
     {
-      "decision": "Per-pass granularity in _run_analyze rather than per-media",
-      "rationale": "A crash between asr.transcribe_media and objects.detect_objects should only re-run object detection, not re-transcribe. Each of the 6 analysis passes (asr, scenes, objects, faces, embeddings, audio_events) is checked independently per media_id."
+      "decision": "insert_event() returns the auto-generated event_id via cursor.lastrowid",
+      "rationale": "AUTOINCREMENT PK means caller needs the generated id for subsequent operations like get_events_since(); lastrowid is the standard sqlite3 mechanism for this."
     },
     {
-      "decision": "Add force kwarg to every _run_* function signature rather than a global flag",
-      "rationale": "Each stage function is also called directly by CLI subcommands (e.g. 'autopilot analyze' calls _run_analyze directly). The force flag must be available at both the orchestrator level and the individual command level."
+      "decision": "pipeline_events.created_at uses SQL DEFAULT (datetime('now')) rather than Python-generated timestamps",
+      "rationale": "Keeps timestamps consistent with DB clock, simplifies prune_events() which uses SQL datetime comparison directly. For testing prune_events, we'll manually insert rows with backdated created_at."
     },
     {
-      "decision": "Skip _run_narrate from resume logic",
-      "rationale": "_run_narrate involves human review and proposes new narratives from the current storyboard. It's inherently non-idempotent (the storyboard may change). Narratives already have a status field ('proposed', 'approved', 'rejected') that serves as the resume mechanism for downstream stages."
+      "decision": "list_jobs() builds WHERE clause dynamically from provided filter kwargs",
+      "rationale": "Avoids N separate query methods; single method handles all filter combinations with parameter binding for SQL safety. Matches the pattern of optional filter in list_narratives()."
     },
     {
-      "decision": "For _run_source_assets resume, check asset directory existence on disk rather than adding a new DB column",
-      "rationale": "There's no DB table tracking resolved assets. The assets are files on disk. Checking if the asset_dir exists and is non-empty is the simplest approach without schema changes. The task spec says to use DB as source of truth where possible, but there's no existing DB representation for resolved assets."
+      "decision": "count_jobs_by_status() returns dict[str, int] mapping status to count",
+      "rationale": "More useful than raw rows for dashboard display \u2014 caller can immediately check counts.get('running', 0), counts.get('error', 0) etc."
+    },
+    {
+      "decision": "New test file tests/test_db_pipeline.py rather than appending to test_db.py",
+      "rationale": "Task spec explicitly requests this file. Keeps pipeline control tests separate from existing catalog tests, enables concurrent development."
+    },
+    {
+      "decision": "Update EXPECTED_TABLES and table count in test_db.py as a prerequisite",
+      "rationale": "Existing schema tests (test_schema_creates_all_13_tables, test_schema_is_idempotent) will fail when new tables are added. Must update them to expect 19 tables before adding schema."
     }
   ],
   "reuse": [
     {
-      "what": "catalog_db fixture",
-      "where": "tests/conftest.py",
-      "how": "Reuse the in-memory CatalogDB fixture for testing has_* methods"
+      "what": "catalog_db fixture (in-memory CatalogDB with autocommit)",
+      "where": "tests/conftest.py line 26-39",
+      "how": "Reuse directly in test_db_pipeline.py \u2014 all new pipeline tests use this fixture for isolated in-memory DB instances"
     },
     {
-      "what": "minimal_config fixture",
-      "where": "tests/conftest.py",
-      "how": "Reuse for orchestrator stage function tests"
+      "what": "update_activity_cluster pattern (dynamic kwargs-based SET clause)",
+      "where": "autopilot/db.py lines 577-588",
+      "how": "Copy pattern for update_gate(), update_job(), update_run() \u2014 build SET clause from kwargs keys with f-string, append PK to values list, use parameter binding"
     },
     {
-      "what": "Existing db.get_transcript(), db.get_boundaries(), etc.",
-      "where": "autopilot/db.py",
-      "how": "The new has_* methods use similar SQL patterns but return bool instead of dict. Can reference existing methods for table/column names."
+      "what": "Row factory dict conversion pattern",
+      "where": "autopilot/db.py throughout (e.g. get_media line 260, list_narratives line 643)",
+      "how": "All query methods return dict(row) for single rows or [dict(row) for row in cur.fetchall()] for multiple rows \u2014 apply to all new methods"
     },
     {
-      "what": "Existing @patch decorator patterns in test_orchestrator.py",
-      "where": "tests/test_orchestrator.py",
-      "how": "Follow the same mock injection pattern for testing resume behavior in each stage"
+      "what": "_create_schema() executescript pattern with CREATE TABLE IF NOT EXISTS",
+      "where": "autopilot/db.py lines 55-209",
+      "how": "Append new CREATE TABLE and CREATE INDEX statements to the existing executescript string"
     },
     {
-      "what": "_common_options decorator",
-      "where": "autopilot/cli.py",
-      "how": "Add --force to the existing decorator so all subcommands get it automatically"
-    },
-    {
-      "what": "CliRunner test pattern",
-      "where": "tests/test_cli.py",
-      "how": "Follow existing Click CliRunner patterns for testing --force flag"
+      "what": "list_narratives optional filter pattern",
+      "where": "autopilot/db.py lines 638-644",
+      "how": "Reference for list_jobs() \u2014 demonstrates optional WHERE clause with parameter binding when filter is not None"
     }
   ],
-  "_session_id": "32-616538c5",
-  "_created_at": "2026-03-21T09:35:56.579858+00:00"
+  "_session_id": "35-4a57af27",
+  "_created_at": "2026-03-21T16:28:57.331230+00:00"
 }

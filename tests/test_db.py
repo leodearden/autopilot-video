@@ -92,6 +92,10 @@ EXPECTED_TABLES = sorted(
         "crop_paths",
         "captions",
         "uploads",
+        "pipeline_events",
+        "pipeline_gates",
+        "pipeline_jobs",
+        "pipeline_runs",
     ]
 )
 
@@ -116,8 +120,8 @@ EXPECTED_MEDIA_FILES_COLUMNS = [
 class TestSchema:
     """Tests for CatalogDB._create_schema()."""
 
-    def test_schema_creates_all_13_tables(self, catalog_db):
-        """_create_schema() creates all 13 expected tables."""
+    def test_schema_creates_all_19_tables(self, catalog_db):
+        """_create_schema() creates all 19 expected tables."""
         cur = catalog_db.conn.execute(
             "SELECT name FROM sqlite_master "
             "WHERE type='table' AND name NOT LIKE 'sqlite_%' "
@@ -139,7 +143,7 @@ class TestSchema:
         cur = catalog_db.conn.execute(
             "SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
         )
-        assert cur.fetchone()[0] == 15
+        assert cur.fetchone()[0] == 19
 
     def test_schema_foreign_keys(self, catalog_db):
         """Foreign key constraints exist on child tables."""
