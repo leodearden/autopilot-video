@@ -186,3 +186,141 @@ class TestGatesCRUD:
         gate = catalog_db.get_gate("ingest")
         assert gate is not None
         assert gate["mode"] == "auto"  # unchanged
+
+
+# -- Jobs CRUD tests --------------------------------------------------------
+
+
+class TestJobsCRUD:
+    """Tests for pipeline jobs CRUD methods."""
+
+    def test_insert_job_all_fields(self, catalog_db):
+        """insert_job() with all fields stores them correctly."""
+        catalog_db.insert_job(
+            "j1",
+            "ingest",
+            "media_import",
+            target_id="m1",
+            target_label="clip.mp4",
+            status="running",
+            started_at="2026-01-01T00:00:00",
+            finished_at="2026-01-01T00:01:00",
+            duration_seconds=60.0,
+            progress_pct=100.0,
+            error_message=None,
+            worker="w1",
+            run_id="r1",
+        )
+        job = catalog_db.get_job("j1")
+        assert job is not None
+        assert job["job_id"] == "j1"
+        assert job["stage"] == "ingest"
+        assert job["job_type"] == "media_import"
+        assert job["target_id"] == "m1"
+        assert job["target_label"] == "clip.mp4"
+        assert job["status"] == "running"
+        assert job["duration_seconds"] == 60.0
+        assert job["run_id"] == "r1"
+
+    def test_insert_job_minimal_fields(self, catalog_db):
+        """insert_job() with only required fields uses defaults."""
+        catalog_db.insert_job("j2", "analyze", "transcribe")
+        job = catalog_db.get_job("j2")
+        assert job is not None
+        assert job["status"] == "pending"
+        assert job["target_id"] is None
+        assert job["run_id"] is None
+
+    def test_get_job_returns_dict(self, catalog_db):
+        """get_job() returns a plain dict."""
+        catalog_db.insert_job("j3", "classify", "cluster")
+        job = catalog_db.get_job("j3")
+        assert isinstance(job, dict)
+
+    def test_get_job_not_found(self, catalog_db):
+        """get_job() returns None for a nonexistent job_id."""
+        assert catalog_db.get_job("nonexistent") is None
+
+    def test_update_job_modifies_fields(self, catalog_db):
+        """update_job() changes specified fields."""
+        catalog_db.insert_job("j4", "ingest", "media_import")
+        catalog_db.update_job(
+            "j4", status="done", finished_at="2026-01-01T00:05:00"
+        )
+        job = catalog_db.get_job("j4")
+        assert job is not None
+        assert job["status"] == "done"
+        assert job["finished_at"] == "2026-01-01T00:05:00"
+
+    def test_list_jobs_no_filter(self, catalog_db):
+        """list_jobs() with no filters returns all jobs."""
+        catalog_db.insert_job("j5", "ingest", "media_import")
+        catalog_db.insert_job("j6", "analyze", "transcribe")
+        jobs = catalog_db.list_jobs()
+        assert len(jobs) == 2
+
+    def test_list_jobs_filter_by_stage(self, catalog_db):
+        """list_jobs(stage=...) returns only matching stage."""
+        catalog_db.insert_job("j7", "ingest", "media_import")
+        catalog_db.insert_job("j8", "analyze", "transcribe")
+        jobs = catalog_db.list_jobs(stage="ingest")
+        assert len(jobs) == 1
+        assert jobs[0]["job_id"] == "j7"
+
+    def test_list_jobs_filter_by_status(self, catalog_db):
+        """list_jobs(status=...) returns only matching status."""
+        catalog_db.insert_job("j9", "ingest", "media_import", status="done")
+        catalog_db.insert_job("j10", "ingest", "media_import")
+        jobs = catalog_db.list_jobs(status="pending")
+        assert len(jobs) == 1
+        assert jobs[0]["job_id"] == "j10"
+
+    def test_list_jobs_filter_by_job_type(self, catalog_db):
+        """list_jobs(job_type=...) returns only matching type."""
+        catalog_db.insert_job("j11", "analyze", "transcribe")
+        catalog_db.insert_job("j12", "analyze", "detect_objects")
+        jobs = catalog_db.list_jobs(job_type="transcribe")
+        assert len(jobs) == 1
+        assert jobs[0]["job_id"] == "j11"
+
+    def test_list_jobs_filter_by_run_id(self, catalog_db):
+        """list_jobs(run_id=...) returns only matching run."""
+        catalog_db.insert_job("j13", "ingest", "x", run_id="r1")
+        catalog_db.insert_job("j14", "ingest", "x", run_id="r2")
+        jobs = catalog_db.list_jobs(run_id="r1")
+        assert len(jobs) == 1
+        assert jobs[0]["job_id"] == "j13"
+
+    def test_list_jobs_combined_filters(self, catalog_db):
+        """list_jobs() with multiple filters uses AND logic."""
+        catalog_db.insert_job("j15", "ingest", "x", status="done", run_id="r1")
+        catalog_db.insert_job(
+            "j16", "ingest", "x", status="pending", run_id="r1"
+        )
+        catalog_db.insert_job("j17", "analyze", "y", status="done", run_id="r1")
+        jobs = catalog_db.list_jobs(stage="ingest", status="done", run_id="r1")
+        assert len(jobs) == 1
+        assert jobs[0]["job_id"] == "j15"
+
+    def test_list_jobs_empty_result(self, catalog_db):
+        """list_jobs() returns empty list when nothing matches."""
+        jobs = catalog_db.list_jobs(stage="nonexistent")
+        assert jobs == []
+
+    def test_count_jobs_by_status_returns_dict(self, catalog_db):
+        """count_jobs_by_status() returns {status: count} mapping."""
+        catalog_db.insert_job("j18", "ingest", "x", status="pending")
+        catalog_db.insert_job("j19", "ingest", "x", status="pending")
+        catalog_db.insert_job("j20", "ingest", "x", status="done")
+        counts = catalog_db.count_jobs_by_status("ingest")
+        assert counts == {"pending": 2, "done": 1}
+
+    def test_count_jobs_by_status_with_run_id_filter(self, catalog_db):
+        """count_jobs_by_status() with run_id filters correctly."""
+        catalog_db.insert_job("j21", "ingest", "x", status="done", run_id="r1")
+        catalog_db.insert_job(
+            "j22", "ingest", "x", status="pending", run_id="r1"
+        )
+        catalog_db.insert_job("j23", "ingest", "x", status="done", run_id="r2")
+        counts = catalog_db.count_jobs_by_status("ingest", run_id="r1")
+        assert counts == {"done": 1, "pending": 1}
