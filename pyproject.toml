@@ -37,6 +37,11 @@ dependencies = [
     # APIs
     "anthropic",
     "google-api-python-client",
+    # Web
+    "fastapi",
+    "uvicorn[standard]",
+    "jinja2",
+    "python-multipart",
 ]
 
 [project.scripts]
@@ -48,6 +53,7 @@ dev = [
     "pytest-cov",
     "ruff",
     "pyright",
+    "httpx",
 ]
 vllm = [
     "vllm",
