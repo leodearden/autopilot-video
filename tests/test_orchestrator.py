@@ -1412,3 +1412,70 @@ class TestShutdownAPI:
         from autopilot import orchestrator
 
         assert "request_shutdown" in orchestrator.__all__
+
+
+class TestShutdownBetweenStages:
+    """Tests for shutdown checks between pipeline stages in run()."""
+
+    def setup_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    def teardown_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    def test_run_skips_remaining_stages_after_shutdown(self) -> None:
+        """When shutdown is requested after INGEST, remaining stages are SKIPPED."""
+        from autopilot.orchestrator import request_shutdown
+
+        orch = PipelineOrchestrator()
+        call_order: list[str] = []
+
+        def make_func(name: str):
+            def func(**kw):
+                call_order.append(name)
+                if name == "INGEST":
+                    request_shutdown()
+            return func
+
+        for stage in orch.stages:
+            stage.func = make_func(stage.name)
+
+        results = orch.run(config=MagicMock(), db=MagicMock())
+
+        # Only INGEST should have been called
+        assert call_order == ["INGEST"]
+        assert results["INGEST"].status == StageStatus.DONE
+
+        # All remaining stages should be SKIPPED
+        for name in ["ANALYZE", "CLASSIFY", "NARRATE", "SCRIPT",
+                      "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD"]:
+            assert results[name].status == StageStatus.SKIPPED, (
+                f"{name} should be SKIPPED after shutdown"
+            )
+
+    def test_run_logs_shutdown_skip(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """run() logs a message when skipping stages due to shutdown."""
+        from autopilot.orchestrator import request_shutdown
+
+        orch = PipelineOrchestrator()
+
+        def ingest_then_shutdown(**kw):
+            request_shutdown()
+
+        for stage in orch.stages:
+            stage.func = MagicMock()
+        orch._stage_map["INGEST"].func = ingest_then_shutdown
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            orch.run(config=MagicMock(), db=MagicMock())
+
+        assert any(
+            "shutdown" in r.message.lower() and "skip" in r.message.lower()
+            for r in caplog.records
+        )
