@@ -3220,3 +3220,55 @@ class TestRunTrackingIntegration:
         run_record = catalog_db.get_run(orch._run_id)
         assert run_record is not None
         assert run_record["status"] is not None
+
+
+class TestEmitEventResilience:
+    """Tests that _emit_event swallows DB errors and never propagates them."""
+
+    def test_emit_event_swallows_db_error(self) -> None:
+        """_emit_event does not raise when db.insert_event raises RuntimeError."""
+        orch = PipelineOrchestrator()
+        orch._db = MagicMock()
+        orch._db.insert_event.side_effect = RuntimeError("DB locked")
+        orch._run_id = "a" * 32
+
+        # Should NOT raise
+        orch._emit_event("test_event", stage="X")
+
+    def test_emit_event_logs_warning_on_db_error(
+        self, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """When insert_event raises, _emit_event logs a WARNING with event_type and error."""
+        orch = PipelineOrchestrator()
+        orch._db = MagicMock()
+        orch._db.insert_event.side_effect = RuntimeError("connection lost")
+        orch._run_id = "b" * 32
+
+        with caplog.at_level(logging.WARNING, logger="autopilot.orchestrator"):
+            orch._emit_event("test_event", stage="Y")
+
+        warning_records = [
+            r for r in caplog.records
+            if r.levelno == logging.WARNING
+            and "test_event" in r.message
+            and "connection lost" in r.message
+        ]
+        assert len(warning_records) >= 1
+
+    def test_emit_event_still_works_after_error(self) -> None:
+        """After a failed _emit_event, a subsequent call with a working db succeeds."""
+        orch = PipelineOrchestrator()
+        orch._db = MagicMock()
+        orch._run_id = "c" * 32
+
+        # First call: DB raises
+        orch._db.insert_event.side_effect = RuntimeError("transient")
+        orch._emit_event("failing_event", stage="A")
+
+        # Second call: DB works fine
+        orch._db.insert_event.side_effect = None
+        orch._emit_event("ok_event", stage="B")
+
+        # Verify second call went through
+        last_call = orch._db.insert_event.call_args
+        assert last_call[1]["event_type"] == "ok_event"
