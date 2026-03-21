@@ -4386,3 +4386,41 @@ class TestJobTrackingIntegration:
             if e["event_type"] == "job_error" and e["stage"] == "SCRIPT"
         ]
         assert len(job_error_events) >= 1
+
+
+# ── Gate system tests ────────────────────────────────────────────────────
+
+
+class TestGateStageNameMapping:
+    """Tests for PipelineOrchestrator._gate_stage_name() static method."""
+
+    def test_ingest_maps_to_lowercase(self) -> None:
+        assert PipelineOrchestrator._gate_stage_name("INGEST") == "ingest"
+
+    def test_analyze_maps_to_lowercase(self) -> None:
+        assert PipelineOrchestrator._gate_stage_name("ANALYZE") == "analyze"
+
+    def test_source_assets_maps_to_source(self) -> None:
+        """SOURCE_ASSETS must map to 'source' (the DB gate name)."""
+        assert PipelineOrchestrator._gate_stage_name("SOURCE_ASSETS") == "source"
+
+    def test_all_nine_stages_map(self) -> None:
+        """Every orchestrator stage should map to a known DB gate name."""
+        expected = {
+            "INGEST": "ingest",
+            "ANALYZE": "analyze",
+            "CLASSIFY": "classify",
+            "NARRATE": "narrate",
+            "SCRIPT": "script",
+            "EDL": "edl",
+            "SOURCE_ASSETS": "source",
+            "RENDER": "render",
+            "UPLOAD": "upload",
+        }
+        for stage, gate in expected.items():
+            assert PipelineOrchestrator._gate_stage_name(stage) == gate
+
+    def test_callable_without_instance(self) -> None:
+        """_gate_stage_name is a static method — no instance needed."""
+        result = PipelineOrchestrator._gate_stage_name("INGEST")
+        assert result == "ingest"
