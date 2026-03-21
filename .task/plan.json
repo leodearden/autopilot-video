@@ -67,8 +67,8 @@
       "id": "step-8",
       "type": "test",
       "description": "Run full test suite to verify all existing tests still pass and the new tests pass. Check that the existing test_scaffolding.py test_pyproject_toml_has_dev_dependencies test picks up pytest-cov without changes (it only checks pytest, ruff, pyright \u2014 no conflict). Verify test_ci_workflow.py test_pytest_flags still passes with the expanded command.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "a542968"
     }
   ],
   "design_decisions": [
