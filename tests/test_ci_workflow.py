@@ -100,3 +100,29 @@ class TestSteps:
         pytest_cmd = pytest_cmds[0]
         assert "-x" in pytest_cmd
         assert "--tb=short" in pytest_cmd
+
+
+class TestWorkflowQuality:
+    """Additional quality assertions for the CI workflow."""
+
+    def test_no_gpu_cuda_references(self, workflow: dict) -> None:
+        """CI should not reference GPU/CUDA — those belong in separate workflows."""
+        raw = WORKFLOW_PATH.read_text().lower()
+        assert "cuda" not in raw
+        assert "gpu" not in raw
+        assert "nvidia" not in raw
+
+    def test_uv_cache_enabled(self, workflow: dict) -> None:
+        """The setup-uv action should have caching enabled."""
+        steps = workflow["jobs"]["ci"]["steps"]
+        uv_steps = [s for s in steps if "astral-sh/setup-uv" in s.get("uses", "")]
+        assert len(uv_steps) > 0
+        uv_step = uv_steps[0]
+        assert uv_step.get("with", {}).get("enable-cache") is True
+
+    def test_workflow_has_descriptive_name(self, workflow: dict) -> None:
+        """Workflow should have a non-empty, descriptive name."""
+        assert "name" in workflow
+        name = workflow["name"]
+        assert isinstance(name, str)
+        assert len(name) >= 2, "Workflow name should be descriptive"
