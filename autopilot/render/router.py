@@ -25,6 +25,9 @@ if TYPE_CHECKING:
 
 __all__ = ["RoutingError", "route_and_render"]
 
+#: Default timeout (seconds) for final video concatenation via FFmpeg.
+CONCAT_TIMEOUT_SECONDS: int = 1800
+
 logger = logging.getLogger(__name__)
 
 
@@ -292,7 +295,11 @@ def route_and_render(
         cmd.append(str(final_output))
 
         try:
-            subprocess.run(cmd, check=True)
+            subprocess.run(cmd, check=True, timeout=CONCAT_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired as e:
+            raise RoutingError(
+                f"Final concatenation timed out after {CONCAT_TIMEOUT_SECONDS}s"
+            ) from e
         except (subprocess.CalledProcessError, FileNotFoundError, OSError) as e:
             raise RoutingError(
                 f"Final concatenation failed: {e}"
