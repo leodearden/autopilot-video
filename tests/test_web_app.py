@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import click
 import pytest
 from fastapi import FastAPI, Request
 from httpx import ASGITransport, AsyncClient
@@ -108,3 +109,40 @@ class TestBaseTemplate:
         response = client.get("/test-base-template")
         assert response.status_code == 200
         assert "dark" in response.text
+
+
+class TestServeCommand:
+    """Tests for the 'autopilot serve' CLI command."""
+
+    def test_serve_registered_in_main(self) -> None:
+        """'serve' is a registered subcommand of main."""
+        from autopilot.cli import main
+
+        assert "serve" in main.commands
+
+    def test_serve_has_host_option(self) -> None:
+        """serve command has --host option with default '127.0.0.1'."""
+        from autopilot.cli import main
+
+        cmd = main.commands["serve"]
+        param_names = {p.name: p for p in cmd.params}
+        assert "host" in param_names
+        assert param_names["host"].default == "127.0.0.1"
+
+    def test_serve_has_port_option(self) -> None:
+        """serve command has --port option with default 8080, type int."""
+        from autopilot.cli import main
+
+        cmd = main.commands["serve"]
+        param_names = {p.name: p for p in cmd.params}
+        assert "port" in param_names
+        assert param_names["port"].default == 8080
+        assert param_names["port"].type == click.INT
+
+    def test_serve_has_output_dir_option(self) -> None:
+        """serve command has --output-dir option."""
+        from autopilot.cli import main
+
+        cmd = main.commands["serve"]
+        param_names = [p.name for p in cmd.params]
+        assert "output_dir" in param_names
