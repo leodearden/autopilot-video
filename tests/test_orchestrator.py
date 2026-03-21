@@ -4267,3 +4267,115 @@ class TestOrchestratorPassesJobKwargs:
 
         for mf in mock_funcs:
             assert mf.call_args[1]["run_id"] is None
+
+
+class TestJobTrackingIntegration:
+    """Integration tests: run pipeline with real CatalogDB and stub stages that
+    create jobs via _track_job.  Verify pipeline_jobs + pipeline_events records."""
+
+    def test_jobs_created_in_db_with_correct_run_id(self, catalog_db) -> None:
+        """Stub stages create jobs via _track_job; verify pipeline_jobs records."""
+        from autopilot.orchestrator import _track_job
+
+        orch = PipelineOrchestrator()
+
+        # Replace all stages with no-ops except INGEST which creates 2 jobs
+        def fake_ingest(*, config, db, force, run_id=None, emit_fn=None):
+            with _track_job(db, "INGEST", "ingest_file",
+                            target_id="media_001", worker="cpu",
+                            run_id=run_id, emit_fn=emit_fn):
+                pass  # simulate work
+            with _track_job(db, "INGEST", "dedup",
+                            worker="cpu", run_id=run_id, emit_fn=emit_fn):
+                pass
+
+        for stage in orch.stages:
+            if stage.name == "INGEST":
+                stage.func = fake_ingest
+            else:
+                stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=catalog_db)
+
+        jobs = catalog_db.list_jobs(run_id=orch._run_id)
+        assert len(jobs) == 2
+
+        ingest_file_jobs = [j for j in jobs if j["job_type"] == "ingest_file"]
+        assert len(ingest_file_jobs) == 1
+        j = ingest_file_jobs[0]
+        assert j["stage"] == "INGEST"
+        assert j["status"] == "done"
+        assert j["target_id"] == "media_001"
+        assert j["worker"] == "cpu"
+        assert j["run_id"] == orch._run_id
+        assert float(j["duration_seconds"]) >= 0
+
+        dedup_jobs = [j for j in jobs if j["job_type"] == "dedup"]
+        assert len(dedup_jobs) == 1
+        assert dedup_jobs[0]["status"] == "done"
+
+    def test_job_events_appear_in_pipeline_events(self, catalog_db) -> None:
+        """job_started and job_completed events appear in pipeline_events."""
+        from autopilot.orchestrator import _track_job
+
+        orch = PipelineOrchestrator()
+
+        def fake_analyze(*, config, db, force, run_id=None, emit_fn=None):
+            with _track_job(db, "ANALYZE", "asr",
+                            target_id="m1", worker="gpu",
+                            run_id=run_id, emit_fn=emit_fn):
+                pass
+
+        for stage in orch.stages:
+            if stage.name == "ANALYZE":
+                stage.func = fake_analyze
+            else:
+                stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=catalog_db)
+
+        events = catalog_db.get_events_since(0)
+        event_types = [e["event_type"] for e in events]
+
+        assert "job_started" in event_types
+        assert "job_completed" in event_types
+
+        # Find the job_started event for ANALYZE
+        job_started_events = [
+            e for e in events
+            if e["event_type"] == "job_started" and e["stage"] == "ANALYZE"
+        ]
+        assert len(job_started_events) >= 1
+
+    def test_job_error_recorded_on_stage_failure(self, catalog_db) -> None:
+        """A failing job within a stage records status='error' in pipeline_jobs."""
+        from autopilot.orchestrator import _track_job
+
+        orch = PipelineOrchestrator()
+
+        def fake_script(*, config, db, force, run_id=None, emit_fn=None):
+            with _track_job(db, "SCRIPT", "generate_script",
+                            target_id="n1", worker="cpu",
+                            run_id=run_id, emit_fn=emit_fn):
+                raise ValueError("script generation failed")
+
+        for stage in orch.stages:
+            if stage.name == "SCRIPT":
+                stage.func = fake_script
+            else:
+                stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=catalog_db)
+
+        jobs = catalog_db.list_jobs(run_id=orch._run_id, stage="SCRIPT")
+        assert len(jobs) == 1
+        assert jobs[0]["status"] == "error"
+        assert "script generation failed" in jobs[0]["error_message"]
+
+        # job_error event should also be emitted
+        events = catalog_db.get_events_since(0)
+        job_error_events = [
+            e for e in events
+            if e["event_type"] == "job_error" and e["stage"] == "SCRIPT"
+        ]
+        assert len(job_error_events) >= 1
