@@ -133,8 +133,8 @@
       "id": "step-14",
       "type": "impl",
       "description": "Fix autopilot/web/static/app.js: Wrap the SSE notification listener body in try/catch. Replace the bare `const data = JSON.parse(event.data); showToast(data.message, data.type || 'info');` with `try { const data = JSON.parse(event.data); showToast(data.message, data.type || 'info'); } catch (e) { console.error('SSE notification parse error:', e, event.data); }`. This prevents uncaught SyntaxError from malformed/truncated SSE payloads and logs the error for debugging.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "f367457"
     }
   ],
   "design_decisions": [
