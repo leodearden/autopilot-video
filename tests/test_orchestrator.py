@@ -438,6 +438,7 @@ class TestIngestStage:
         mock_file2.file_path = Path("/fake/v2.mp4")
         mock_scanner.scan_directory.return_value = [mock_file1, mock_file2]
         db = MagicMock()
+        db.get_media.return_value = None  # nothing ingested yet
 
         _run_ingest(config=minimal_config, db=db)
 
@@ -456,6 +457,7 @@ class TestIngestStage:
         mock_file.file_path = Path("/fake/video.mp4")
         mock_scanner.scan_directory.return_value = [mock_file]
         db = MagicMock()
+        db.get_media.return_value = None  # nothing ingested yet
 
         _run_ingest(config=minimal_config, db=db)
 

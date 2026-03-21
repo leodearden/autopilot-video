@@ -108,14 +108,32 @@ def _stage_stub(name: str) -> Callable[..., Any]:
     return _stub
 
 
-def _run_ingest(*, config: Any, db: Any) -> None:
+def _run_ingest(*, config: Any, db: Any, force: bool = False) -> None:
     """INGEST stage: scan directory, insert media, normalize audio, mark duplicates."""
     files = scanner.scan_directory(config.input_dir, max_workers=None)
     norm_dir = config.output_dir / "normalized"
     norm_dir.mkdir(parents=True, exist_ok=True)
 
+    # Checkpoint/resume: skip media already in the DB
+    skipped = 0
+    if not force:
+        to_process = []
+        for mf in files:
+            media_id = mf.sha256_prefix or mf.file_path.stem
+            if db.get_media(media_id) is not None:
+                skipped += 1
+            else:
+                to_process.append(mf)
+        if skipped > 0:
+            logger.info(
+                "Resuming INGEST: %d/%d files already ingested",
+                skipped, len(files),
+            )
+    else:
+        to_process = list(files)
+
     ingested = 0
-    for mf in files:
+    for mf in to_process:
         if shutdown_requested():
             break
         media_id = mf.sha256_prefix or mf.file_path.stem
