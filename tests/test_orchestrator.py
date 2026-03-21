@@ -3518,3 +3518,66 @@ class TestFinishJob:
         _finish_job(mock_db, "job_dur", start_mono)
         duration = mock_db.update_job.call_args[1]["duration_seconds"]
         assert duration >= 2.0
+
+
+class TestTrackJobContextManager:
+    """Tests for the _track_job context manager."""
+
+    def test_track_job_yields_job_id(self) -> None:
+        """_track_job yields a 32-char hex job_id."""
+        from autopilot.orchestrator import _track_job
+
+        mock_db = MagicMock()
+        with _track_job(mock_db, "INGEST", "ingest_file") as job_id:
+            assert isinstance(job_id, str)
+            assert len(job_id) == 32
+
+    def test_track_job_calls_finish_with_done_on_success(self) -> None:
+        """On clean exit, _track_job calls db.update_job with status='done'."""
+        from autopilot.orchestrator import _track_job
+
+        mock_db = MagicMock()
+        with _track_job(mock_db, "INGEST", "ingest_file"):
+            pass  # no error
+
+        mock_db.update_job.assert_called_once()
+        call_kwargs = mock_db.update_job.call_args[1]
+        assert call_kwargs["status"] == "done"
+
+    def test_track_job_calls_finish_with_error_on_exception(self) -> None:
+        """On exception, _track_job calls db.update_job with status='error' and re-raises."""
+        from autopilot.orchestrator import _track_job
+
+        mock_db = MagicMock()
+        with pytest.raises(ValueError, match="test error"):
+            with _track_job(mock_db, "ANALYZE", "asr") as job_id:
+                raise ValueError("test error")
+
+        call_kwargs = mock_db.update_job.call_args[1]
+        assert call_kwargs["status"] == "error"
+        assert call_kwargs["error_message"] == "test error"
+
+    def test_track_job_resilient_to_db_errors(self) -> None:
+        """When db fails, _track_job doesn't mask the original exception."""
+        from autopilot.orchestrator import _track_job
+
+        mock_db = MagicMock()
+        mock_db.insert_job.side_effect = RuntimeError("db connection lost")
+        mock_db.update_job.side_effect = RuntimeError("db connection lost")
+
+        # Should not raise a db error, the original ValueError should propagate
+        with pytest.raises(ValueError, match="original"):
+            with _track_job(mock_db, "INGEST", "ingest_file"):
+                raise ValueError("original")
+
+    def test_track_job_no_error_when_db_fails_on_success(self) -> None:
+        """When db fails on success path, _track_job doesn't raise."""
+        from autopilot.orchestrator import _track_job
+
+        mock_db = MagicMock()
+        mock_db.insert_job.side_effect = RuntimeError("db error")
+        mock_db.update_job.side_effect = RuntimeError("db error")
+
+        # Should not raise anything
+        with _track_job(mock_db, "INGEST", "ingest_file"):
+            pass  # clean exit, but db calls fail silently
