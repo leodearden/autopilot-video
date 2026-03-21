@@ -53,7 +53,7 @@ class CatalogDB:
             self.conn.rollback()
 
     def _create_schema(self) -> None:
-        """Create all 15 catalog tables if they don't already exist."""
+        """Create all 19 catalog tables if they don't already exist."""
         self.conn.executescript(
             """\
             CREATE TABLE IF NOT EXISTS media_files (
