@@ -3914,3 +3914,293 @@ class TestClassifyJobTracking:
         _run_classify(config=minimal_config, db=db)
 
         db.insert_job.assert_not_called()
+
+
+class TestNarrateJobTracking:
+    """Tests for per-job tracking in _run_narrate."""
+
+    @patch("autopilot.orchestrator.narratives")
+    def test_narrate_creates_two_jobs(
+        self, mock_narratives, minimal_config,
+    ):
+        """Creates 'build_storyboard' and 'propose_narratives' jobs."""
+        from autopilot.orchestrator import _run_narrate
+
+        mock_narratives.build_master_storyboard.return_value = MagicMock()
+        mock_narratives.propose_narratives.return_value = []
+        mock_narratives.format_for_review.return_value = ""
+        db = MagicMock()
+
+        _run_narrate(
+            config=minimal_config, db=db,
+            run_id="run_n", emit_fn=MagicMock(),
+        )
+
+        assert db.insert_job.call_count == 2
+        job_types = [c[0][2] for c in db.insert_job.call_args_list]
+        assert "build_storyboard" in job_types
+        assert "propose_narratives" in job_types
+        for call in db.insert_job.call_args_list:
+            assert call[0][1] == "NARRATE"
+            assert call[1]["worker"] == "cpu"
+
+    @patch("autopilot.orchestrator.narratives")
+    def test_narrate_no_jobs_when_no_run_id(
+        self, mock_narratives, minimal_config,
+    ):
+        """When run_id=None, no insert_job calls."""
+        from autopilot.orchestrator import _run_narrate
+
+        mock_narratives.build_master_storyboard.return_value = MagicMock()
+        mock_narratives.propose_narratives.return_value = []
+        mock_narratives.format_for_review.return_value = ""
+        db = MagicMock()
+
+        _run_narrate(config=minimal_config, db=db)
+
+        db.insert_job.assert_not_called()
+
+
+class TestScriptJobTracking:
+    """Tests for per-job tracking in _run_script."""
+
+    @patch("autopilot.orchestrator.script")
+    def test_script_creates_job_per_narrative(
+        self, mock_script, minimal_config,
+    ):
+        """Creates one 'generate_script' job per narrative."""
+        from autopilot.orchestrator import _run_script
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
+        ]
+        db.get_narrative_script.return_value = None
+
+        _run_script(
+            config=minimal_config, db=db,
+            run_id="run_s", emit_fn=MagicMock(),
+        )
+
+        assert db.insert_job.call_count == 2
+        for call in db.insert_job.call_args_list:
+            assert call[0][1] == "SCRIPT"
+            assert call[0][2] == "generate_script"
+            assert call[1]["worker"] == "cpu"
+
+        target_ids = [c[1]["target_id"] for c in db.insert_job.call_args_list]
+        assert "n1" in target_ids
+        assert "n2" in target_ids
+
+    @patch("autopilot.orchestrator.script")
+    def test_script_no_jobs_when_no_run_id(
+        self, mock_script, minimal_config,
+    ):
+        """When run_id=None, no insert_job calls."""
+        from autopilot.orchestrator import _run_script
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_narrative_script.return_value = None
+
+        _run_script(config=minimal_config, db=db)
+
+        db.insert_job.assert_not_called()
+
+
+class TestEdlJobTracking:
+    """Tests for per-job tracking in _run_edl."""
+
+    @patch("autopilot.orchestrator.otio_export")
+    @patch("autopilot.orchestrator.validator")
+    @patch("autopilot.orchestrator.edl_mod")
+    def test_edl_creates_three_jobs_per_narrative(
+        self, mock_edl, mock_validator, mock_otio, minimal_config,
+    ):
+        """Creates 'generate_edl', 'validate_edl', 'otio_export' per narrative."""
+        from autopilot.orchestrator import _run_edl
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_edit_plan.return_value = None
+        db.get_narrative_script.return_value = "some script"
+        mock_edl.generate_edl.return_value = {"cuts": []}
+        mock_validator.validate_edl.return_value = MagicMock(passed=True)
+
+        _run_edl(
+            config=minimal_config, db=db,
+            run_id="run_e", emit_fn=MagicMock(),
+        )
+
+        assert db.insert_job.call_count == 3
+        job_types = [c[0][2] for c in db.insert_job.call_args_list]
+        assert "generate_edl" in job_types
+        assert "validate_edl" in job_types
+        assert "otio_export" in job_types
+        for call in db.insert_job.call_args_list:
+            assert call[0][1] == "EDL"
+            assert call[1]["worker"] == "cpu"
+
+    @patch("autopilot.orchestrator.otio_export")
+    @patch("autopilot.orchestrator.validator")
+    @patch("autopilot.orchestrator.edl_mod")
+    def test_edl_no_jobs_when_no_run_id(
+        self, mock_edl, mock_validator, mock_otio, minimal_config,
+    ):
+        """When run_id=None, no insert_job calls."""
+        from autopilot.orchestrator import _run_edl
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_edit_plan.return_value = None
+        db.get_narrative_script.return_value = "some script"
+        mock_edl.generate_edl.return_value = {"cuts": []}
+        mock_validator.validate_edl.return_value = MagicMock(passed=True)
+
+        _run_edl(config=minimal_config, db=db)
+
+        db.insert_job.assert_not_called()
+
+
+class TestSourceAssetsJobTracking:
+    """Tests for per-job tracking in _run_source_assets."""
+
+    @patch("autopilot.orchestrator.resolve")
+    def test_source_creates_job_per_narrative(
+        self, mock_resolve, minimal_config,
+    ):
+        """Creates one 'resolve_assets' job per narrative."""
+        from autopilot.orchestrator import _run_source_assets
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_edit_plan.return_value = {"edl_json": '{"cuts": []}'}
+
+        _run_source_assets(
+            config=minimal_config, db=db,
+            run_id="run_sa", emit_fn=MagicMock(),
+        )
+
+        job_calls = [c for c in db.insert_job.call_args_list if c[0][2] == "resolve_assets"]
+        assert len(job_calls) == 1
+        assert job_calls[0][0][1] == "SOURCE_ASSETS"
+        assert job_calls[0][1]["worker"] == "cpu"
+        assert job_calls[0][1]["target_id"] == "n1"
+
+    @patch("autopilot.orchestrator.resolve")
+    def test_source_no_jobs_when_no_run_id(
+        self, mock_resolve, minimal_config,
+    ):
+        """When run_id=None, no insert_job calls."""
+        from autopilot.orchestrator import _run_source_assets
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_edit_plan.return_value = {"edl_json": '{"cuts": []}'}
+
+        _run_source_assets(config=minimal_config, db=db)
+
+        db.insert_job.assert_not_called()
+
+
+class TestRenderJobTracking:
+    """Tests for per-job tracking in _run_render."""
+
+    @patch("autopilot.orchestrator.render_validate")
+    @patch("autopilot.orchestrator.router")
+    def test_render_creates_two_jobs_per_narrative(
+        self, mock_router, mock_rv, minimal_config,
+    ):
+        """Creates 'render' (gpu) and 'validate_render' (cpu) per narrative."""
+        from autopilot.orchestrator import _run_render
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_edit_plan.return_value = {"edl_json": '{"cuts": []}'}
+        mock_router.route_and_render.return_value = Path("/out/n1.mp4")
+        mock_rv.validate_render.return_value = MagicMock(issues=[])
+
+        _run_render(
+            config=minimal_config, db=db,
+            run_id="run_r", emit_fn=MagicMock(),
+        )
+
+        assert db.insert_job.call_count == 2
+        job_types = [c[0][2] for c in db.insert_job.call_args_list]
+        assert "render" in job_types
+        assert "validate_render" in job_types
+        for call in db.insert_job.call_args_list:
+            assert call[0][1] == "RENDER"
+            assert call[1]["target_id"] == "n1"
+
+        # Check workers
+        workers = {c[0][2]: c[1]["worker"] for c in db.insert_job.call_args_list}
+        assert workers["render"] == "gpu"
+        assert workers["validate_render"] == "cpu"
+
+    @patch("autopilot.orchestrator.render_validate")
+    @patch("autopilot.orchestrator.router")
+    def test_render_no_jobs_when_no_run_id(
+        self, mock_router, mock_rv, minimal_config,
+    ):
+        """When run_id=None, no insert_job calls."""
+        from autopilot.orchestrator import _run_render
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_edit_plan.return_value = {"edl_json": '{"cuts": []}'}
+        mock_router.route_and_render.return_value = Path("/out/n1.mp4")
+        mock_rv.validate_render.return_value = MagicMock(issues=[])
+
+        _run_render(config=minimal_config, db=db)
+
+        db.insert_job.assert_not_called()
+
+
+class TestUploadJobTracking:
+    """Tests for per-job tracking in _run_upload."""
+
+    @patch("autopilot.orchestrator.thumbnail")
+    @patch("autopilot.orchestrator.youtube")
+    def test_upload_creates_two_jobs_per_narrative(
+        self, mock_yt, mock_thumb, minimal_config,
+    ):
+        """Creates 'upload_video' and 'extract_thumbnail' per narrative."""
+        from autopilot.orchestrator import _run_upload
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_upload.return_value = None
+        db.get_edit_plan.return_value = {"render_path": "/out/n1.mp4"}
+
+        _run_upload(
+            config=minimal_config, db=db,
+            run_id="run_u", emit_fn=MagicMock(),
+        )
+
+        assert db.insert_job.call_count == 2
+        job_types = [c[0][2] for c in db.insert_job.call_args_list]
+        assert "upload_video" in job_types
+        assert "extract_thumbnail" in job_types
+        for call in db.insert_job.call_args_list:
+            assert call[0][1] == "UPLOAD"
+            assert call[1]["worker"] == "cpu"
+            assert call[1]["target_id"] == "n1"
+
+    @patch("autopilot.orchestrator.thumbnail")
+    @patch("autopilot.orchestrator.youtube")
+    def test_upload_no_jobs_when_no_run_id(
+        self, mock_yt, mock_thumb, minimal_config,
+    ):
+        """When run_id=None, no insert_job calls."""
+        from autopilot.orchestrator import _run_upload
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_upload.return_value = None
+        db.get_edit_plan.return_value = {"render_path": "/out/n1.mp4"}
+
+        _run_upload(config=minimal_config, db=db)
+
+        db.insert_job.assert_not_called()
