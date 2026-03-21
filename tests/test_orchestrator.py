@@ -3675,3 +3675,85 @@ class TestJobHelperResilience:
         mock_emit.assert_called_once_with(
             "job_error", stage="ANALYZE", job_id="job_abc",
         )
+
+
+class TestIngestJobTracking:
+    """Tests for per-job tracking in _run_ingest."""
+
+    @patch("autopilot.orchestrator.dedup")
+    @patch("autopilot.orchestrator.normalizer")
+    @patch("autopilot.orchestrator.scanner")
+    def test_ingest_creates_ingest_file_job_per_file(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+    ):
+        """When run_id is provided, creates one 'ingest_file' job per file."""
+        from autopilot.orchestrator import _run_ingest
+
+        mock_file1 = MagicMock()
+        mock_file1.file_path = Path("/fake/v1.mp4")
+        mock_file1.sha256_prefix = "aaa111"
+        mock_file2 = MagicMock()
+        mock_file2.file_path = Path("/fake/v2.mp4")
+        mock_file2.sha256_prefix = "bbb222"
+        mock_scanner.scan_directory.return_value = [mock_file1, mock_file2]
+        db = MagicMock()
+        db.get_media.return_value = None
+
+        _run_ingest(
+            config=minimal_config, db=db,
+            run_id="run_abc", emit_fn=MagicMock(),
+        )
+
+        # Should have insert_job calls for ingest_file (2 files) + dedup (1)
+        ingest_file_calls = [
+            c for c in db.insert_job.call_args_list
+            if c[0][2] == "ingest_file"
+        ]
+        assert len(ingest_file_calls) == 2
+        # Check stage is INGEST
+        for call in ingest_file_calls:
+            assert call[0][1] == "INGEST"
+            assert call[1]["worker"] == "cpu"
+
+    @patch("autopilot.orchestrator.dedup")
+    @patch("autopilot.orchestrator.normalizer")
+    @patch("autopilot.orchestrator.scanner")
+    def test_ingest_creates_dedup_job(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+    ):
+        """When run_id is provided, creates one 'dedup' job."""
+        from autopilot.orchestrator import _run_ingest
+
+        mock_scanner.scan_directory.return_value = []
+        db = MagicMock()
+
+        _run_ingest(
+            config=minimal_config, db=db,
+            run_id="run_abc", emit_fn=MagicMock(),
+        )
+
+        dedup_calls = [
+            c for c in db.insert_job.call_args_list
+            if c[0][2] == "dedup"
+        ]
+        assert len(dedup_calls) == 1
+        assert dedup_calls[0][0][1] == "INGEST"
+
+    @patch("autopilot.orchestrator.dedup")
+    @patch("autopilot.orchestrator.normalizer")
+    @patch("autopilot.orchestrator.scanner")
+    def test_ingest_no_jobs_when_no_run_id(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+    ):
+        """When run_id=None (default), no insert_job calls made."""
+        from autopilot.orchestrator import _run_ingest
+
+        mock_file = MagicMock()
+        mock_file.file_path = Path("/fake/v1.mp4")
+        mock_scanner.scan_directory.return_value = [mock_file]
+        db = MagicMock()
+        db.get_media.return_value = None
+
+        _run_ingest(config=minimal_config, db=db)
+
+        db.insert_job.assert_not_called()
