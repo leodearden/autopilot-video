@@ -741,6 +741,9 @@ class PipelineOrchestrator:
                 continue
 
             logger.info("[RUNNING] %s", stage_name)
+            # Emit stage_started event and update current_stage on run
+            self._emit_event("stage_started", stage=stage_name)
+            db.update_run(run_id, current_stage=stage_name)
             t0 = time.monotonic()
             try:
                 stage.func(config=config, db=db, force=self.force)
@@ -748,6 +751,10 @@ class PipelineOrchestrator:
                 results[stage_name] = StageResult(
                     status=StageStatus.DONE,
                     elapsed_seconds=elapsed,
+                )
+                self._emit_event(
+                    "stage_completed", stage=stage_name,
+                    payload={"elapsed": elapsed},
                 )
                 logger.info("[DONE] %s (%.1fs)", stage_name, elapsed)
             except Exception as exc:
@@ -758,6 +765,10 @@ class PipelineOrchestrator:
                     error_message=str(exc),
                 )
                 errored_stages.add(stage_name)
+                self._emit_event(
+                    "stage_error", stage=stage_name,
+                    payload={"error": str(exc)},
+                )
                 logger.error("[ERROR] %s: %s", stage_name, exc)
 
             # Progress reporting after each stage
