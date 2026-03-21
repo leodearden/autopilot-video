@@ -191,6 +191,53 @@ class CatalogDB:
                 PRIMARY KEY (narrative_id)
             );
 
+            -- Pipeline control tables
+            CREATE TABLE IF NOT EXISTS pipeline_gates (
+                stage TEXT PRIMARY KEY,
+                mode TEXT DEFAULT 'auto',
+                status TEXT DEFAULT 'idle',
+                decided_at TEXT,
+                decided_by TEXT DEFAULT 'system',
+                notes TEXT,
+                timeout_hours REAL
+            );
+
+            CREATE TABLE IF NOT EXISTS pipeline_jobs (
+                job_id TEXT PRIMARY KEY,
+                stage TEXT NOT NULL,
+                job_type TEXT NOT NULL,
+                target_id TEXT,
+                target_label TEXT,
+                status TEXT DEFAULT 'pending',
+                started_at TEXT,
+                finished_at TEXT,
+                duration_seconds REAL,
+                progress_pct REAL,
+                error_message TEXT,
+                worker TEXT,
+                run_id TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS pipeline_events (
+                event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL,
+                stage TEXT,
+                job_id TEXT,
+                payload_json TEXT,
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS pipeline_runs (
+                run_id TEXT PRIMARY KEY,
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                config_snapshot TEXT,
+                current_stage TEXT,
+                status TEXT DEFAULT 'running',
+                wall_clock_seconds REAL,
+                budget_remaining_seconds REAL
+            );
+
             -- Performance indexes
             CREATE INDEX IF NOT EXISTS idx_media_files_sha256
                 ON media_files(sha256_prefix);
@@ -206,6 +253,14 @@ class CatalogDB:
                 ON narratives(status);
             CREATE INDEX IF NOT EXISTS idx_captions_media
                 ON captions(media_id);
+            CREATE INDEX IF NOT EXISTS idx_pipeline_jobs_stage_status
+                ON pipeline_jobs(stage, status);
+            CREATE INDEX IF NOT EXISTS idx_pipeline_jobs_run_id
+                ON pipeline_jobs(run_id);
+            CREATE INDEX IF NOT EXISTS idx_pipeline_events_event_type
+                ON pipeline_events(event_type);
+            CREATE INDEX IF NOT EXISTS idx_pipeline_events_created_at
+                ON pipeline_events(created_at);
             """
         )
 
