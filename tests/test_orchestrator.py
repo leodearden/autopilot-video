@@ -4874,3 +4874,53 @@ class TestGateBackwardsCompat:
             _run_narrate(config=MagicMock(), db=db, human_review_fn=review_fn)
 
             review_fn.assert_called_once_with("review text", [narr])
+
+
+class TestDryRunSkipsGateCheck:
+    """REVIEW FIX: dry_run=True must NOT call _check_gate() for any stage.
+
+    If _check_gate runs before dry_run guard, pause-mode gates would block
+    dry_run indefinitely via the 2s polling loop.
+    """
+
+    def test_dry_run_does_not_call_check_gate(self) -> None:
+        """dry_run=True should never invoke _check_gate()."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        gate_calls: list[str] = []
+
+        def spy_check(stage_name):
+            gate_calls.append(stage_name)
+            raise AssertionError(
+                f"_check_gate should NOT be called in dry_run, "
+                f"but was called for {stage_name}"
+            )
+
+        orch._check_gate = spy_check
+
+        mock_db = MagicMock()
+        mock_db.get_all_gates.return_value = [
+            {"stage": s} for s in (
+                "ingest", "analyze", "classify", "narrate",
+                "script", "edl", "source", "render", "upload",
+            )
+        ]
+        mock_db.get_gate.return_value = {
+            "mode": "auto", "status": "idle", "timeout_hours": None,
+        }
+
+        # This should complete without calling _check_gate
+        results = orch.run(config=MagicMock(), db=mock_db, dry_run=True)
+
+        # All stages should be SKIPPED (dry_run behavior)
+        assert len(results) == 9
+        for name, result in results.items():
+            assert result.status == StageStatus.SKIPPED, (
+                f"{name} should be SKIPPED in dry_run"
+            )
+        # _check_gate should never have been called
+        assert gate_calls == [], (
+            f"_check_gate was called for stages: {gate_calls}"
+        )
