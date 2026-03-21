@@ -770,6 +770,7 @@ class TestClassifyStage:
         from autopilot.orchestrator import _run_classify
 
         db = MagicMock()
+        db.get_activity_clusters.return_value = []  # nothing classified yet
         _run_classify(config=minimal_config, db=db)
 
         mock_cluster.cluster_activities.assert_called_once_with(db)
@@ -783,6 +784,7 @@ class TestClassifyStage:
         from autopilot.orchestrator import _run_classify
 
         db = MagicMock()
+        db.get_activity_clusters.return_value = []  # nothing classified yet
         _run_classify(config=minimal_config, db=db)
 
         mock_classify.label_activities.assert_called_once_with(db, minimal_config.llm)

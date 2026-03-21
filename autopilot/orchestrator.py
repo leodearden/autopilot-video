@@ -240,8 +240,17 @@ def _run_analyze(*, config: Any, db: Any, force: bool = False) -> None:
         scheduler.force_unload_all()
 
 
-def _run_classify(*, config: Any, db: Any) -> None:
+def _run_classify(*, config: Any, db: Any, force: bool = False) -> None:
     """CLASSIFY stage: cluster and label activities."""
+    if not force:
+        existing = db.get_activity_clusters()
+        if existing and all(c.get("label") for c in existing):
+            logger.info(
+                "Resuming CLASSIFY: %d labeled clusters already exist, skipping",
+                len(existing),
+            )
+            return
+
     cluster.cluster_activities(db)
     classify.label_activities(db, config.llm)
     logger.info("Classify complete")
