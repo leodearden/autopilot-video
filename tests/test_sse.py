@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
+from starlette.testclient import TestClient
 
 from autopilot.db import CatalogDB
 from autopilot.web.app import create_app
@@ -31,17 +33,25 @@ def sse_app(sse_db: CatalogDB) -> FastAPI:
 @pytest.fixture
 def sse_client(sse_app: FastAPI):
     """Create a TestClient for SSE tests."""
-    from starlette.testclient import TestClient
-
     return TestClient(sse_app)
 
 
 class TestSSEEndpointBasic:
     """Tests for the basic SSE endpoint behavior."""
 
-    def test_sse_endpoint_returns_200_event_stream(self, sse_client) -> None:
-        """GET /api/events returns 200 with content-type text/event-stream."""
-        with sse_client.stream("GET", "/api/events") as response:
+    def test_sse_endpoint_returns_200_event_stream(self, sse_app) -> None:
+        """GET /api/events returns 200 with content-type text/event-stream.
+
+        We patch the generator to yield one event then stop, avoiding the
+        infinite stream that would hang tests.
+        """
+        from autopilot.web.routes import sse as sse_module
+
+        async def _finite_gen(request):
+            yield {"data": "hello"}
+
+        with patch.object(sse_module, "_event_generator", _finite_gen):
+            client = TestClient(sse_app)
+            response = client.get("/api/events")
             assert response.status_code == 200
-            content_type = response.headers["content-type"]
-            assert "text/event-stream" in content_type
+            assert "text/event-stream" in response.headers["content-type"]
