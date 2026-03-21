@@ -194,3 +194,45 @@ class TestServeCommand:
 
         assert result.exit_code == 0, result.output
         mock_uvicorn_run.assert_called_once_with(mock_app, host="0.0.0.0", port=9090)
+
+
+class TestSSEErrorHandling:
+    """Tests for SSE notification error handling in app.js."""
+
+    def test_sse_notification_listener_has_try_catch(self) -> None:
+        """The SSE notification listener wraps JSON.parse in try/catch."""
+        js_path = Path(__file__).resolve().parent.parent / "autopilot" / "web" / "static" / "app.js"
+        js_source = js_path.read_text()
+
+        # Find the notification listener block
+        listener_start = js_source.find("addEventListener('notification'")
+        assert listener_start != -1, "notification event listener not found in app.js"
+
+        # Extract the listener function body (from the opening brace after 'function'
+        # to its matching closing brace)
+        func_start = js_source.find("function", listener_start)
+        assert func_start != -1, "function keyword not found in notification listener"
+
+        body_start = js_source.find("{", func_start)
+        assert body_start != -1, "opening brace not found in notification listener"
+
+        # Extract the listener body
+        brace_depth = 0
+        body_end = body_start
+        for i in range(body_start, len(js_source)):
+            if js_source[i] == "{":
+                brace_depth += 1
+            elif js_source[i] == "}":
+                brace_depth -= 1
+                if brace_depth == 0:
+                    body_end = i + 1
+                    break
+
+        listener_body = js_source[body_start:body_end]
+
+        # Assert try/catch wraps the JSON.parse
+        assert "try" in listener_body, "try block not found in notification listener"
+        assert "catch" in listener_body, "catch block not found in notification listener"
+        assert "console.error" in listener_body, (
+            "console.error not found in notification listener catch block"
+        )
