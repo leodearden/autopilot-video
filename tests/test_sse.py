@@ -36,6 +36,29 @@ def sse_client(sse_app: FastAPI):
     return TestClient(sse_app)
 
 
+def _parse_sse_body(text: str) -> list[dict]:
+    """Parse SSE response text into a list of event dicts.
+
+    Each event has 'id', 'event', and 'data' keys extracted from
+    the SSE wire format.
+    """
+    events = []
+    current: dict = {}
+    for line in text.splitlines():
+        if line.startswith("id:"):
+            current["id"] = line[3:].strip()
+        elif line.startswith("event:"):
+            current["event"] = line[6:].strip()
+        elif line.startswith("data:"):
+            current["data"] = line[5:].strip()
+        elif line == "" and current:
+            events.append(current)
+            current = {}
+    if current:
+        events.append(current)
+    return events
+
+
 class TestSSEEndpointBasic:
     """Tests for the basic SSE endpoint behavior."""
 
@@ -55,3 +78,94 @@ class TestSSEEndpointBasic:
             response = client.get("/api/events")
             assert response.status_code == 200
             assert "text/event-stream" in response.headers["content-type"]
+
+
+class TestSSEEventDelivery:
+    """Tests for SSE event delivery from the database."""
+
+    def test_events_delivered_in_order(self, sse_db, sse_app) -> None:
+        """Events inserted into DB are delivered in correct order via SSE."""
+        from autopilot.web.routes import sse as sse_module
+
+        sse_db.insert_event("stage_started", stage="INGEST")
+        sse_db.insert_event("job_started", stage="INGEST", job_id="job-1")
+        sse_db.insert_event("stage_completed", stage="INGEST")
+
+        async def _finite_gen(request):
+            db = sse_module._get_db(request)
+            try:
+                events = db.get_events_since(0)
+                for ev in events:
+                    yield sse_module._format_event(ev)
+            finally:
+                db.close()
+
+        with patch.object(sse_module, "_event_generator", _finite_gen):
+            client = TestClient(sse_app)
+            response = client.get("/api/events")
+            events = _parse_sse_body(response.text)
+
+        assert len(events) == 3
+        assert events[0]["event"] == "stage_started"
+        assert events[1]["event"] == "job_started"
+        assert events[2]["event"] == "stage_completed"
+
+    def test_event_has_correct_sse_fields(self, sse_db, sse_app) -> None:
+        """Each SSE event has id, event, and data fields."""
+        from autopilot.web.routes import sse as sse_module
+
+        sse_db.insert_event("stage_started", stage="ANALYZE", job_id="j1")
+
+        async def _finite_gen(request):
+            db = sse_module._get_db(request)
+            try:
+                events = db.get_events_since(0)
+                for ev in events:
+                    yield sse_module._format_event(ev)
+            finally:
+                db.close()
+
+        with patch.object(sse_module, "_event_generator", _finite_gen):
+            client = TestClient(sse_app)
+            response = client.get("/api/events")
+            events = _parse_sse_body(response.text)
+
+        assert len(events) == 1
+        ev = events[0]
+        assert "id" in ev
+        assert "event" in ev
+        assert "data" in ev
+        assert ev["event"] == "stage_started"
+        data = json.loads(ev["data"])
+        assert data["event_type"] == "stage_started"
+        assert data["stage"] == "ANALYZE"
+        assert data["job_id"] == "j1"
+
+    def test_event_data_payload_structure(self, sse_db, sse_app) -> None:
+        """JSON data payload contains event_type, stage, job_id, and parsed payload."""
+        from autopilot.web.routes import sse as sse_module
+
+        sse_db.insert_event(
+            "stage_completed",
+            stage="INGEST",
+            payload_json=json.dumps({"elapsed": 1.23}),
+        )
+
+        async def _finite_gen(request):
+            db = sse_module._get_db(request)
+            try:
+                events = db.get_events_since(0)
+                for ev in events:
+                    yield sse_module._format_event(ev)
+            finally:
+                db.close()
+
+        with patch.object(sse_module, "_event_generator", _finite_gen):
+            client = TestClient(sse_app)
+            response = client.get("/api/events")
+            events = _parse_sse_body(response.text)
+
+        data = json.loads(events[0]["data"])
+        assert data["event_type"] == "stage_completed"
+        assert data["stage"] == "INGEST"
+        assert data["elapsed"] == 1.23
