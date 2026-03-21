@@ -973,6 +973,18 @@ class PipelineOrchestrator:
             s.name: s for s in self.stages
         }
 
+    # Mapping from orchestrator stage names to DB gate stage names.
+    _STAGE_TO_GATE: dict[str, str] = {
+        "SOURCE_ASSETS": "source",
+    }
+
+    @staticmethod
+    def _gate_stage_name(stage_name: str) -> str:
+        """Map an orchestrator stage name to the corresponding DB gate name."""
+        return PipelineOrchestrator._STAGE_TO_GATE.get(
+            stage_name, stage_name.lower()
+        )
+
     def _emit_event(
         self,
         event_type: str,
