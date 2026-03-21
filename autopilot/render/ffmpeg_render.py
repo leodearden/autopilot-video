@@ -21,6 +21,9 @@ if TYPE_CHECKING:
 
 __all__ = ["RenderError", "render_simple"]
 
+#: Default timeout (seconds) for individual clip rendering via FFmpeg.
+CLIP_TIMEOUT_SECONDS: int = 600
+
 logger = logging.getLogger(__name__)
 
 
@@ -129,7 +132,12 @@ def render_simple(
     cmd.append(str(output_path))
 
     try:
-        subprocess.run(cmd, check=True)
+        subprocess.run(cmd, check=True, timeout=CLIP_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired as e:
+        raise RenderError(
+            f"FFmpeg render timed out for clip {edl_entry.get('clip_id', '?')} "
+            f"after {CLIP_TIMEOUT_SECONDS}s"
+        ) from e
     except (subprocess.CalledProcessError, FileNotFoundError, OSError) as e:
         raise RenderError(
             f"FFmpeg render failed for clip {edl_entry.get('clip_id', '?')}: {e}"
