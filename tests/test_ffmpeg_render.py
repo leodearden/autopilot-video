@@ -404,7 +404,8 @@ class TestRenderSimpleErrors:
         ):
             render_simple(edl_entry, None, output, config)
 
-        assert "timeout" in str(exc_info.value).lower() or "timed out" in str(exc_info.value).lower()
+        err_msg = str(exc_info.value).lower()
+        assert "timeout" in err_msg or "timed out" in err_msg
         assert "600" in str(exc_info.value)
 
     def test_timeout_error_chains_cause(self, tmp_path: Path) -> None:
