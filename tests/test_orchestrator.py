@@ -2256,3 +2256,76 @@ class TestClassifyResume:
 
         mock_cluster.cluster_activities.assert_called_once()
         mock_classify.label_activities.assert_called_once()
+
+
+# -- Checkpoint/resume tests for _run_script ----------------------------------
+
+
+class TestScriptResume:
+    """Tests for _run_script checkpoint/resume logic."""
+
+    @patch("autopilot.orchestrator.script")
+    def test_script_skips_narrative_with_existing_script(
+        self, mock_script, minimal_config,
+    ):
+        """_run_script skips generate_script when narrative already has a script."""
+        from autopilot.orchestrator import _run_script
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        # n1 already has a script, n2 does not
+        db.get_narrative_script.side_effect = lambda nid: (
+            {"narrative_id": "n1", "script_json": "{}"} if nid == "n1" else None
+        )
+        mock_script.generate_script.return_value = {"scenes": []}
+
+        _run_script(config=minimal_config, db=db)
+
+        # Only n2 should get generate_script called
+        assert mock_script.generate_script.call_count == 1
+        mock_script.generate_script.assert_called_once_with("n2", db, minimal_config.llm)
+
+    @patch("autopilot.orchestrator.script")
+    def test_script_logs_resume_counts(
+        self, mock_script, minimal_config, caplog,
+    ):
+        """_run_script logs 'Resuming SCRIPT: N/M narratives already scripted'."""
+        from autopilot.orchestrator import _run_script
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"}, {"narrative_id": "n3"},
+        ]
+        # n1 and n2 already have scripts
+        db.get_narrative_script.side_effect = lambda nid: (
+            {"narrative_id": nid, "script_json": "{}"} if nid in ("n1", "n2") else None
+        )
+        mock_script.generate_script.return_value = {"scenes": []}
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            _run_script(config=minimal_config, db=db)
+
+        assert any("Resuming SCRIPT" in r.message and "2/3" in r.message
+                    for r in caplog.records)
+
+    @patch("autopilot.orchestrator.script")
+    def test_script_force_regenerates_all(
+        self, mock_script, minimal_config,
+    ):
+        """_run_script with force=True regenerates even narratives with existing scripts."""
+        from autopilot.orchestrator import _run_script
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        # Both already have scripts
+        db.get_narrative_script.return_value = {"narrative_id": "n1", "script_json": "{}"}
+        mock_script.generate_script.return_value = {"scenes": []}
+
+        _run_script(config=minimal_config, db=db, force=True)
+
+        # Both should get generate_script called
+        assert mock_script.generate_script.call_count == 2
