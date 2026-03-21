@@ -470,7 +470,14 @@ def _run_analyze(
         scheduler.force_unload_all()
 
 
-def _run_classify(*, config: Any, db: Any, force: bool = False) -> None:
+def _run_classify(
+    *,
+    config: Any,
+    db: Any,
+    force: bool = False,
+    run_id: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
+) -> None:
     """CLASSIFY stage: cluster and label activities."""
     if not force:
         existing = db.get_activity_clusters()
@@ -481,8 +488,15 @@ def _run_classify(*, config: Any, db: Any, force: bool = False) -> None:
             )
             return
 
-    cluster.cluster_activities(db)
-    classify.label_activities(db, config.llm)
+    _jkw: dict[str, Any] = {"run_id": run_id, "emit_fn": emit_fn}
+    if run_id is not None:
+        with _track_job(db, "CLASSIFY", "cluster_activities", worker="cpu", **_jkw):
+            cluster.cluster_activities(db)
+        with _track_job(db, "CLASSIFY", "label_activities", worker="cpu", **_jkw):
+            classify.label_activities(db, config.llm)
+    else:
+        cluster.cluster_activities(db)
+        classify.label_activities(db, config.llm)
     logger.info("Classify complete")
 
 
