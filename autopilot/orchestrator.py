@@ -800,6 +800,23 @@ class PipelineOrchestrator:
             "Pipeline complete (%.1fs)\n%s", total_elapsed, summary,
         )
 
+        # --- Run tracking: finalize run record ---
+        final_status = "failed" if errored_stages else "completed"
+        db.update_run(
+            run_id,
+            finished_at=datetime.now(timezone.utc).isoformat(),
+            status=final_status,
+            wall_clock_seconds=total_elapsed,
+        )
+        if errored_stages:
+            self._emit_event(
+                "run_failed", payload={"duration": total_elapsed},
+            )
+        else:
+            self._emit_event(
+                "run_completed", payload={"duration": total_elapsed},
+            )
+
         # Check budget
         if self.budget_seconds is not None and total_elapsed > self.budget_seconds:
             logger.warning(
