@@ -9,7 +9,7 @@
     "autopilot",
     "tests"
   ],
-  "analysis": "The PipelineOrchestrator in orchestrator.py manages a DAG of 9 stages (INGEST, ANALYZE, CLASSIFY, NARRATE, SCRIPT, EDL, SOURCE_ASSETS, RENDER, UPLOAD) executed in topological order via run(). The DB layer (db.py, task 38) already has pipeline_gates CRUD: init_default_gates(), get_gate(), update_gate(), get_all_gates(). Gates have columns: stage, mode (default 'auto'), status (default 'idle'), decided_at, decided_by, notes, timeout_hours. DB stage names are lowercase ('ingest', 'source') while orchestrator uses uppercase ('INGEST', 'SOURCE_ASSETS'). A mapping is needed: stage_name.lower() works for most, but 'SOURCE_ASSETS' must map to 'source'. The _emit_event method already exists on PipelineOrchestrator for emitting events to pipeline_events table. The human_review_fn mechanism is used at NARRATE stage only \u2014 passed to _run_narrate via functools.partial. For backwards compatibility, when gate mode is 'auto' and human_review_fn is provided, the callback should still be invoked (CLI usage). The gate system replaces this with a more general mechanism: 'pause' mode at NARRATE causes the pipeline to wait for external approval (web console writes to pipeline_gates). Implementation approach: (1) Add _gate_stage_name() static method for name mapping, (2) Add _check_gate() method with auto/notify/pause modes, (3) In run(), init gates and reset statuses before stage loop, (4) Before each stage execution, call _check_gate() and handle 'skipped' result, (5) For NARRATE backwards compat: if human_review_fn is set AND gate mode is 'auto', _check_gate passes through and _run_narrate uses human_review_fn as before \u2014 no change to _run_narrate needed.",
+  "analysis": "The PipelineOrchestrator in orchestrator.py manages a DAG of 9 stages (INGEST, ANALYZE, CLASSIFY, NARRATE, SCRIPT, EDL, SOURCE_ASSETS, RENDER, UPLOAD) executed in topological order via run(). The DB layer (db.py, task 38) already has pipeline_gates CRUD: init_default_gates(), get_gate(), update_gate(), get_all_gates(). Gates have columns: stage, mode (default 'auto'), status (default 'idle'), decided_at, decided_by, notes, timeout_hours. DB stage names are lowercase ('ingest', 'source') while orchestrator uses uppercase ('INGEST', 'SOURCE_ASSETS'). A mapping is needed: stage_name.lower() works for most, but 'SOURCE_ASSETS' must map to 'source'. The _emit_event method already exists on PipelineOrchestrator for emitting events to pipeline_events table. The human_review_fn mechanism is used at NARRATE stage only \u2014 passed to _run_narrate via functools.partial. For backwards compatibility, when gate mode is 'auto' and human_review_fn is provided, the callback should still be invoked (CLI usage). The gate system replaces this with a more general mechanism: 'pause' mode at NARRATE causes the pipeline to wait for external approval (web console writes to pipeline_gates). Implementation approach: (1) Add _gate_stage_name() static method for name mapping, (2) Add _check_gate() method with auto/notify/pause modes, (3) In run(), init gates and reset statuses before stage loop, (4) Before each stage execution, call _check_gate() and handle 'skipped' result, (5) For NARRATE backwards compat: if human_review_fn is set AND gate mode is 'auto', _check_gate passes through and _run_narrate uses human_review_fn as before \u2014 no change to _run_narrate needed.\n\nREVIEW FIX (post step-20): Two blocking issues found. (1) Module boundary violation: orchestrator.py:1170 accesses db._PIPELINE_STAGES, a private attribute. Fix: use db.get_all_gates() public API instead, and update 5 test sites that set mock_db._PIPELINE_STAGES. (2) Control flow ordering: _check_gate() is called before the dry_run guard, so dry_run hangs on pause-mode gates. Fix: move gate check after dry_run guard.",
   "prerequisites": [],
   "steps": [
     {
@@ -151,6 +151,34 @@
       "description": "Verify backwards compatibility \u2014 no changes needed to _run_narrate. The gate system operates at run() loop level: _check_gate('NARRATE') passes through for 'auto' mode, then _run_narrate is called with human_review_fn already bound via functools.partial. Run full test suite to confirm no regressions.",
       "status": "done",
       "commit": "8262321"
+    },
+    {
+      "id": "step-21",
+      "type": "test",
+      "description": "REVIEW FIX (control_flow_ordering): Write test TestDryRunSkipsGateCheck that verifies dry_run=True does NOT call _check_gate() for any stage. Replace _check_gate with a spy that records calls and raises AssertionError if called. Run with dry_run=True. Assert spy was never called. This test will FAIL against current code because _check_gate is called before the dry_run guard, meaning pause-mode gates would block dry_run.",
+      "status": "done",
+      "commit": "a57e666"
+    },
+    {
+      "id": "step-22",
+      "type": "impl",
+      "description": "REVIEW FIX (control_flow_ordering): In run() stage loop, move the gate check block (lines 1204-1212) to AFTER the dry_run guard (lines 1214-1224). New order: dependency check -> dry_run guard -> gate check -> stage execution. This ensures dry_run never blocks on pause-mode gates.",
+      "status": "done",
+      "commit": "e169f93"
+    },
+    {
+      "id": "step-23",
+      "type": "test",
+      "description": "REVIEW FIX (module_boundary_violation): Write test TestGateResetUsesPublicAPI that verifies run() uses db.get_all_gates() (the public method) rather than db._PIPELINE_STAGES for gate status reset. Use a MagicMock db where get_all_gates returns a list of gate dicts (each with 'stage' key). Assert update_gate is called with status='idle' for each stage returned by get_all_gates. Also update the existing test_run_resets_gate_statuses_to_idle in TestGateInitInRun to use get_all_gates instead of _PIPELINE_STAGES on the mock.",
+      "status": "done",
+      "commit": "0e6a92e"
+    },
+    {
+      "id": "step-24",
+      "type": "impl",
+      "description": "REVIEW FIX (module_boundary_violation): In orchestrator.py run(), replace 'for gate_stage in db._PIPELINE_STAGES: db.update_gate(gate_stage, status=\"idle\")' with 'for gate in db.get_all_gates(): db.update_gate(gate[\"stage\"], status=\"idle\")'. This uses only the public CatalogDB API. Then update all 5 test sites in test_orchestrator.py that set mock_db._PIPELINE_STAGES to instead configure mock_db.get_all_gates.return_value with a list of dicts containing 'stage' keys. Affected tests: TestGateInitInRun.test_run_resets_gate_statuses_to_idle, TestGateIntegrationInRun (3 tests), TestGateBackwardsCompat.test_human_review_fn_still_invoked_with_auto_gate.",
+      "status": "done",
+      "commit": "7ecc91c"
     }
   ],
   "design_decisions": [
@@ -181,13 +209,21 @@
     {
       "decision": "Poll interval of 2 seconds for pause mode",
       "rationale": "Task spec explicitly specifies time.sleep(2). This is a reasonable balance between responsiveness and DB load for human-driven approval."
+    },
+    {
+      "decision": "Use db.get_all_gates() instead of db._PIPELINE_STAGES for gate reset loop",
+      "rationale": "REVIEW FIX: Accessing _PIPELINE_STAGES is a module boundary violation \u2014 it's a private class attribute of CatalogDB. The public get_all_gates() method returns all gate rows and is the correct API for the orchestrator to enumerate existing gates. This decouples the orchestrator from the DB's internal stage list representation."
+    },
+    {
+      "decision": "Gate check placed after dry_run guard, not before",
+      "rationale": "REVIEW FIX: dry_run is a non-blocking execution-plan preview. If _check_gate() runs before the dry_run guard, pause-mode gates will block indefinitely via the 2s polling loop, making dry_run unusable. The correct order is: dependency check -> dry_run guard -> gate check -> stage execution."
     }
   ],
   "reuse": [
     {
       "what": "db.init_default_gates(), db.get_gate(), db.update_gate(), db.get_all_gates()",
       "where": "autopilot/db.py lines 942-993 (already implemented in task 38)",
-      "how": "Called directly in _check_gate() and run() \u2014 no wrappers needed. get_gate returns a dict with mode, status, timeout_hours, etc."
+      "how": "Called directly in _check_gate() and run() \u2014 no wrappers needed. get_gate returns a dict with mode, status, timeout_hours, etc. get_all_gates() returns list of dicts, used for gate reset loop instead of private _PIPELINE_STAGES."
     },
     {
       "what": "PipelineOrchestrator._emit_event() method",
@@ -221,5 +257,5 @@
     }
   ],
   "_session_id": "39-bc971ab9",
-  "_created_at": "2026-03-21T18:14:56.663981+00:00"
+  "_created_at": "2026-03-21T18:32:52.291870+00:00"
 }
