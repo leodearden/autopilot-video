@@ -380,11 +380,31 @@ def _run_edl(*, config: Any, db: Any, force: bool = False) -> None:
     logger.info("EDL complete: %d/%d succeeded", successes, len(approved))
 
 
-def _run_source_assets(*, config: Any, db: Any) -> None:
+def _run_source_assets(*, config: Any, db: Any, force: bool = False) -> None:
     """SOURCE_ASSETS stage: resolve assets for each narrative with an edit plan."""
     approved = db.list_narratives("approved")
+
+    # Checkpoint/resume: skip narratives where asset directory exists and is non-empty
+    skipped = 0
+    if not force:
+        to_process = []
+        for narr in approved:
+            nid = narr["narrative_id"]
+            asset_dir = config.output_dir / "assets" / nid
+            if asset_dir.exists() and any(asset_dir.iterdir()):
+                skipped += 1
+            else:
+                to_process.append(narr)
+        if skipped > 0:
+            logger.info(
+                "Resuming SOURCE_ASSETS: %d/%d narratives already have assets",
+                skipped, len(approved),
+            )
+    else:
+        to_process = list(approved)
+
     successes = 0
-    for narr in approved:
+    for narr in to_process:
         if shutdown_requested():
             break
         nid = narr["narrative_id"]
@@ -403,7 +423,7 @@ def _run_source_assets(*, config: Any, db: Any) -> None:
         except Exception:
             logger.exception("Source resolution failed for narrative %s", nid)
 
-    if approved and successes == 0:
+    if approved and successes == 0 and skipped == 0:
         raise RuntimeError("All narratives failed source resolution")
 
     logger.info("Source complete: %d/%d succeeded", successes, len(approved))
