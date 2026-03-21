@@ -7,7 +7,6 @@ from pathlib import Path
 import click
 import pytest
 from fastapi import FastAPI, Request
-from httpx import ASGITransport, AsyncClient
 
 from autopilot.web.app import create_app
 
