@@ -4743,7 +4743,6 @@ class TestGateIntegrationInRun:
             stage.func = MagicMock()
 
         gate_calls: list[str] = []
-        original_check = orch._check_gate
 
         def spy_check(stage_name):
             gate_calls.append(stage_name)

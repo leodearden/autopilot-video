@@ -1003,7 +1003,11 @@ class PipelineOrchestrator:
         gate = self._db.get_gate(gate_name)
 
         if gate is None:
-            logger.warning("Gate not found for stage %s (gate=%s), auto-approving", stage_name, gate_name)
+            logger.warning(
+                "Gate not found for stage %s (gate=%s), auto-approving",
+                stage_name,
+                gate_name,
+            )
             return "approved"
 
         mode = gate.get("mode", "auto")
