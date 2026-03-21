@@ -14,7 +14,11 @@ WORKFLOW_PATH = Path(__file__).resolve().parent.parent / ".github" / "workflows"
 def workflow() -> dict:
     """Load and parse the CI workflow YAML."""
     assert WORKFLOW_PATH.exists(), f"Workflow file not found: {WORKFLOW_PATH}"
-    return yaml.safe_load(WORKFLOW_PATH.read_text())
+    data = yaml.safe_load(WORKFLOW_PATH.read_text())
+    # PyYAML parses the YAML key 'on' as boolean True; normalise it.
+    if True in data and "on" not in data:
+        data["on"] = data.pop(True)
+    return data
 
 
 class TestTriggers:
