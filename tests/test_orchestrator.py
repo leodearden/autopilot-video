@@ -1350,3 +1350,65 @@ class TestEnhancedProgress:
         for stage_name in ["INGEST", "ANALYZE", "CLASSIFY", "NARRATE",
                            "SCRIPT", "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD"]:
             assert stage_name in all_text
+
+
+class TestShutdownAPI:
+    """Tests for shutdown_requested() and request_shutdown() API."""
+
+    def setup_method(self) -> None:
+        """Reset shutdown state before each test."""
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    def teardown_method(self) -> None:
+        """Reset shutdown state after each test."""
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    def test_shutdown_event_exists(self) -> None:
+        """Module-level _shutdown_event is a threading.Event."""
+        import threading
+
+        from autopilot.orchestrator import _shutdown_event
+
+        assert isinstance(_shutdown_event, threading.Event)
+
+    def test_shutdown_requested_initially_false(self) -> None:
+        """shutdown_requested() returns False initially."""
+        from autopilot.orchestrator import shutdown_requested
+
+        assert shutdown_requested() is False
+
+    def test_request_shutdown_makes_shutdown_requested_true(self) -> None:
+        """request_shutdown() makes shutdown_requested() return True."""
+        from autopilot.orchestrator import request_shutdown, shutdown_requested
+
+        request_shutdown()
+        assert shutdown_requested() is True
+
+    def test_reset_shutdown_restores_false(self) -> None:
+        """_reset_shutdown() restores shutdown_requested() to False."""
+        from autopilot.orchestrator import (
+            _reset_shutdown,
+            request_shutdown,
+            shutdown_requested,
+        )
+
+        request_shutdown()
+        assert shutdown_requested() is True
+        _reset_shutdown()
+        assert shutdown_requested() is False
+
+    def test_shutdown_requested_in_all(self) -> None:
+        """shutdown_requested is exported in __all__."""
+        from autopilot import orchestrator
+
+        assert "shutdown_requested" in orchestrator.__all__
+
+    def test_request_shutdown_in_all(self) -> None:
+        """request_shutdown is exported in __all__."""
+        from autopilot import orchestrator
+
+        assert "request_shutdown" in orchestrator.__all__
