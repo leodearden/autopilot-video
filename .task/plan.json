@@ -1,171 +1,111 @@
 {
-  "task_id": "27",
-  "title": "Add SIGINT/SIGTERM signal handlers for graceful shutdown",
+  "task_id": "31",
+  "title": "Add pytest-cov configuration and coverage reporting",
   "files": [
-    "autopilot/orchestrator.py",
-    "autopilot/cli.py",
-    "tests/test_orchestrator.py",
-    "tests/test_cli.py"
+    "pyproject.toml",
+    "tests/test_coverage_config.py",
+    "tests/test_ci_workflow.py",
+    ".github/workflows/ci.yml"
   ],
   "modules": [
-    "autopilot",
-    "tests"
+    "tests",
+    ".github/workflows"
   ],
-  "analysis": "The orchestrator (PipelineOrchestrator) runs 9 pipeline stages in topological order. Each stage function (e.g. _run_ingest, _run_analyze, _run_render) iterates over media files/narratives in for-loops. Currently there is no mechanism to interrupt gracefully \u2014 killing the process leaves orphaned ffmpeg subprocesses, uncommitted DB state, and loaded GPU models.\n\nThe implementation approach:\n1. Add a module-level threading.Event called `_shutdown_event` in orchestrator.py, plus a helper `shutdown_requested()` function.\n2. Add a `request_shutdown()` function that sets the event and logs.\n3. In PipelineOrchestrator.run(), check the shutdown flag between stages. If set, mark remaining stages as SKIPPED and break.\n4. In the stage loop functions (_run_ingest, _run_analyze, _run_render, _run_script, _run_edl, _run_source_assets, _run_upload), check shutdown_requested() between iterations. If set, break the loop early.\n5. In cli.py's `run` command (and optionally `main()`), register signal handlers for SIGINT/SIGTERM that call `request_shutdown()`.\n6. The existing finally blocks (e.g. _run_analyze's scheduler.force_unload_all()) and the CLI's finally blocks (db.close()) already handle cleanup properly.\n\nKey design points:\n- Use threading.Event for thread safety (even though current execution is single-threaded, it's the correct primitive).\n- The shutdown check is a simple `if shutdown_requested(): break` at the top of each iteration loop.\n- Signal handlers in cli.py register before calling orch.run() and restore original handlers after.\n- _run_classify and _run_narrate don't have item loops (they do single batch calls), so no per-item shutdown check is needed there \u2014 the between-stages check in run() handles them.",
+  "analysis": "The project already has a well-structured pyproject.toml with build-system, project metadata, dev dependencies (pytest, ruff, pyright), and tool configs (pytest.ini_options with testpaths only, ruff, pyright). There are existing test patterns: test_scaffolding.py validates pyproject.toml structure using tomllib, and test_ci_workflow.py validates CI workflow YAML structure using yaml. The CI workflow at .github/workflows/ci.yml runs pytest with '-x --tb=short' but no coverage flags. The task requires: (1) adding pytest-cov to dev deps, (2) adding [tool.coverage.run] and [tool.coverage.report] sections, (3) adding --cov addopts to pytest.ini_options, (4) updating CI to include coverage, and (5) a test verifying coverage config in pyproject.toml. I'll create a dedicated test_coverage_config.py for the pyproject.toml coverage tests (keeping separation of concerns from test_scaffolding.py), and add a CI coverage test to test_ci_workflow.py.",
   "prerequisites": [],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write test for shutdown_requested() and request_shutdown() API: verify _shutdown_event exists, shutdown_requested() returns False initially, request_shutdown() makes it return True, and a reset function restores it to False for testing.",
+      "description": "Write test_coverage_config.py with tests that: (a) pytest-cov is in dev deps, (b) tool.coverage.run section exists with source=['autopilot'] and omit=['*/tests/*'], (c) tool.coverage.report section exists with show_missing=true and fail_under=70, (d) pytest addopts contains --cov=autopilot and --cov-report=term-missing. All four tests should fail since none of these exist yet.",
       "status": "done",
-      "commit": "f73f1e5"
+      "commit": "faefed4"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Implement _shutdown_event (threading.Event), shutdown_requested() function, request_shutdown() function, and _reset_shutdown() (for testing) in orchestrator.py. Export shutdown_requested and request_shutdown in __all__.",
+      "description": "Add pytest-cov to [project.optional-dependencies] dev list in pyproject.toml.",
       "status": "done",
-      "commit": "717ef49"
+      "commit": "a5401d9"
     },
     {
       "id": "step-3",
-      "type": "test",
-      "description": "Write test that PipelineOrchestrator.run() checks shutdown between stages: set shutdown after INGEST completes, verify INGEST is DONE and all remaining stages get StageStatus.SKIPPED with no stage func calls for them.",
+      "type": "impl",
+      "description": "Add [tool.coverage.run] section with source=['autopilot'] and omit=['*/tests/*'] to pyproject.toml.",
       "status": "done",
-      "commit": "6b050a7"
+      "commit": "1faaee9"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Add shutdown check in PipelineOrchestrator.run() loop: after each stage completes, check shutdown_requested(). If set, log 'Shutdown requested, skipping remaining stages', mark all remaining stages as SKIPPED, and break.",
+      "description": "Add [tool.coverage.report] section with show_missing=true and fail_under=70 to pyproject.toml.",
       "status": "done",
-      "commit": "d0c9781"
+      "commit": "a36891c"
     },
     {
       "id": "step-5",
-      "type": "test",
-      "description": "Write test that _run_ingest breaks early when shutdown is requested mid-iteration: mock scanner to return 3 files, set shutdown after first file's insert_media, verify db.insert_media called only once (or twice at most), and dedup.mark_duplicates is still called.",
+      "type": "impl",
+      "description": "Update [tool.pytest.ini_options] addopts in pyproject.toml to include '--cov=autopilot --cov-report=term-missing'. All four tests in test_coverage_config.py should now pass.",
       "status": "done",
-      "commit": "7aa7dcd"
+      "commit": "3312d3c"
     },
     {
       "id": "step-6",
-      "type": "impl",
-      "description": "Add `if shutdown_requested(): break` at the top of the for-loop in _run_ingest (before processing each media file). Keep dedup.mark_duplicates() call outside the loop so partial ingests still get dedup'd.",
+      "type": "test",
+      "description": "Add test to test_ci_workflow.py (in TestSteps class) verifying the pytest CI step includes --cov coverage flags. Test should fail since CI workflow hasn't been updated yet.",
       "status": "done",
-      "commit": "3930ef2"
+      "commit": "e034862"
     },
     {
       "id": "step-7",
-      "type": "test",
-      "description": "Write test that _run_analyze breaks early when shutdown is requested mid-iteration: mock 3 media items, set shutdown after first media's analysis, verify only 1 media analyzed, and scheduler.force_unload_all() is still called (via the existing finally block).",
+      "type": "impl",
+      "description": "Update .github/workflows/ci.yml Test step to include coverage flags: change 'uv run pytest tests/ -x --tb=short' to 'uv run pytest tests/ -x --tb=short --cov=autopilot --cov-report=term-missing'. The CI coverage test should now pass.",
       "status": "done",
-      "commit": "b2e7530"
+      "commit": "f1cc97c"
     },
     {
       "id": "step-8",
-      "type": "impl",
-      "description": "Add `if shutdown_requested(): break` at the top of the for-loop in _run_analyze (before each media item's analysis).",
-      "status": "done",
-      "commit": "d6bcea5"
-    },
-    {
-      "id": "step-9",
       "type": "test",
-      "description": "Write tests that _run_script, _run_edl, _run_source_assets, _run_render, and _run_upload break early when shutdown is requested mid-iteration. For each: mock 2 narratives, set shutdown after first, verify only 1 processed.",
+      "description": "Run full test suite to verify all existing tests still pass and the new tests pass. Check that the existing test_scaffolding.py test_pyproject_toml_has_dev_dependencies test picks up pytest-cov without changes (it only checks pytest, ruff, pyright \u2014 no conflict). Verify test_ci_workflow.py test_pytest_flags still passes with the expanded command.",
       "status": "done",
-      "commit": "68de9f9"
-    },
-    {
-      "id": "step-10",
-      "type": "impl",
-      "description": "Add `if shutdown_requested(): break` at the top of the for-loops in _run_script, _run_edl, _run_source_assets, _run_render, and _run_upload.",
-      "status": "done",
-      "commit": "e3dee2c"
-    },
-    {
-      "id": "step-11",
-      "type": "test",
-      "description": "Write test for signal handler registration in cli.py: verify that when the 'run' command is invoked, signal.signal is called for SIGINT and SIGTERM with a handler that calls request_shutdown().",
-      "status": "done",
-      "commit": "5d1702f"
-    },
-    {
-      "id": "step-12",
-      "type": "impl",
-      "description": "In cli.py's `run` command function, register signal handlers for SIGINT and SIGTERM before calling orch.run(). The handler should call request_shutdown() from orchestrator and log 'Shutdown requested, finishing current work...'. Import signal module and request_shutdown.",
-      "status": "done",
-      "commit": "15b75a0"
-    },
-    {
-      "id": "step-13",
-      "type": "test",
-      "description": "Write test that the run() method logs a summary distinguishing completed vs skipped-due-to-shutdown stages. Also test that the StageStatus.SKIPPED result includes a distinguishing error_message like 'shutdown requested'.",
-      "status": "done",
-      "commit": "93b4a74"
-    },
-    {
-      "id": "step-14",
-      "type": "impl",
-      "description": "Refine the shutdown-skip logic in run() to set error_message='shutdown requested' on SKIPPED StageResults caused by shutdown (to distinguish from dependency-skip or dry-run skip). Log '[SHUTDOWN] Skipping <stage>'.",
-      "status": "done",
-      "commit": "d0c9781"
+      "commit": "a542968"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use a module-level threading.Event for the shutdown flag",
-      "rationale": "threading.Event is the idiomatic Python primitive for cross-thread signaling. Even though the orchestrator currently runs single-threaded, signal handlers execute in the main thread asynchronously, so the flag must be thread-safe. A module-level event avoids threading it through every function signature."
+      "decision": "Create a separate test_coverage_config.py rather than adding to test_scaffolding.py",
+      "rationale": "test_scaffolding.py tests project structure (dirs, packages, deps, config.yaml). Coverage config is a distinct concern \u2014 a separate file keeps both files focused and makes the concurrency lock footprint smaller."
     },
     {
-      "decision": "Check shutdown between loop iterations, not mid-operation",
-      "rationale": "Interrupting mid-file-processing could leave corrupt state. Checking between iterations means each file/narrative is fully processed before the shutdown check, ensuring data integrity. This is the 'finish current work' semantic described in the task."
+      "decision": "Add --cov flags both to pyproject.toml addopts AND explicitly in CI workflow",
+      "rationale": "The task explicitly requests both. Having addopts means local dev runs also get coverage. CI explicitly passing the flags ensures coverage even if addopts are overridden."
     },
     {
-      "decision": "Keep dedup.mark_duplicates() and scheduler.force_unload_all() running even on early exit",
-      "rationale": "dedup should run on whatever was ingested (partial is fine). force_unload_all is already in a finally block. Both are critical cleanup operations that must execute regardless of shutdown."
+      "decision": "Use fail_under=70 as specified in the task",
+      "rationale": "Task description explicitly specifies fail_under=70. This is a reasonable starting threshold for a project that already has extensive tests across 40+ test files."
     },
     {
-      "decision": "Register signal handlers only in the CLI 'run' command, not in the orchestrator itself",
-      "rationale": "Signal handler registration is a concern of the entry point (CLI), not the library (orchestrator). The orchestrator just checks the flag. This allows the orchestrator to be used in other contexts (tests, notebooks) without side effects from signal registration."
-    },
-    {
-      "decision": "Add _reset_shutdown() for test isolation",
-      "rationale": "Tests that call request_shutdown() need to clean up the global state. A _reset_shutdown() function (prefixed with underscore to signal internal use) allows each test to restore the initial state in a fixture/teardown."
-    },
-    {
-      "decision": "Mark shutdown-skipped stages with error_message='shutdown requested'",
-      "rationale": "Distinguishes shutdown-skips from dependency-failure-skips and dry-run-skips in the results dict, allowing callers to know why a stage was skipped."
+      "decision": "Keep existing test_ci_workflow.py test_pytest_flags test intact",
+      "rationale": "The existing test checks for '-x' and '--tb=short' in the pytest command. These flags will still be present in the updated command, so the test remains valid. The new test adds coverage-specific assertions."
     }
   ],
   "reuse": [
     {
-      "what": "Existing StageStatus.SKIPPED enum value",
-      "where": "autopilot/orchestrator.py",
-      "how": "Reuse SKIPPED status for shutdown-aborted stages, just like dependency-failure skips already use it."
+      "what": "project_root fixture from conftest.py",
+      "where": "tests/test_coverage_config.py",
+      "how": "Use project_root fixture to locate pyproject.toml, matching the pattern in test_scaffolding.py"
     },
     {
-      "what": "Existing finally blocks for cleanup",
-      "where": "autopilot/orchestrator.py (_run_analyze has finally: scheduler.force_unload_all()), cli.py (finally: db.close())",
-      "how": "These already handle cleanup on any exit path. Graceful shutdown will naturally flow through them without modification."
+      "what": "tomllib-based pyproject.toml parsing pattern from test_scaffolding.py",
+      "where": "tests/test_coverage_config.py",
+      "how": "Use the same pattern: open(project_root / 'pyproject.toml', 'rb') + tomllib.load() to parse and validate TOML structure"
     },
     {
-      "what": "Test patterns: mock stage functions, caplog for log assertions, CliRunner for CLI tests",
-      "where": "tests/test_orchestrator.py, tests/test_cli.py",
-      "how": "Follow exact same patterns: MagicMock for stage funcs, caplog.at_level for log verification, CliRunner with patch('autopilot.cli.PipelineOrchestrator') for CLI tests."
-    },
-    {
-      "what": "conftest.py minimal_config fixture",
-      "where": "tests/conftest.py",
-      "how": "Reuse for stage function tests that need an AutopilotConfig instance."
-    },
-    {
-      "what": "_write_minimal_config helper",
-      "where": "tests/test_cli.py",
-      "how": "Reuse for CLI signal handler tests that need a config file on disk."
+      "what": "workflow fixture and TestSteps helper pattern from test_ci_workflow.py",
+      "where": "tests/test_ci_workflow.py",
+      "how": "Add new test method to existing TestSteps class using the same _step_runs() helper to check for coverage flags"
     }
   ],
-  "_session_id": "27-6067ecc9",
-  "_created_at": "2026-03-21T08:04:25.940365+00:00"
+  "_session_id": "31-264fa550",
+  "_created_at": "2026-03-21T08:11:12.252906+00:00"
 }

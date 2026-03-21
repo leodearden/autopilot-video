@@ -101,6 +101,15 @@ class TestSteps:
         assert "-x" in pytest_cmd
         assert "--tb=short" in pytest_cmd
 
+    def test_pytest_coverage_flags(self, workflow: dict) -> None:
+        """CI pytest step should include coverage flags."""
+        runs = self._step_runs(workflow)
+        pytest_cmds = [r for r in runs if "pytest" in r]
+        assert len(pytest_cmds) > 0
+        pytest_cmd = pytest_cmds[0]
+        assert "--cov" in pytest_cmd
+        assert "--cov-report" in pytest_cmd
+
 
 class TestWorkflowQuality:
     """Additional quality assertions for the CI workflow."""
