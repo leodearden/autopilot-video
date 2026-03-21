@@ -270,6 +270,19 @@ class TestRenderSimpleCommand:
         t_idx = cmd.index("-t")
         assert float(cmd[t_idx + 1]) == pytest.approx(30.0)
 
+    def test_render_simple_passes_timeout_to_subprocess(self, tmp_path: Path) -> None:
+        """render_simple should pass timeout=CLIP_TIMEOUT_SECONDS to subprocess.run."""
+        from autopilot.render.ffmpeg_render import CLIP_TIMEOUT_SECONDS, render_simple
+
+        config = _make_config()
+        edl_entry = _make_edl_entry()
+        output = tmp_path / "out.mp4"
+
+        with patch("subprocess.run") as mock_run:
+            render_simple(edl_entry, None, output, config)
+
+        assert mock_run.call_args[1].get("timeout") == CLIP_TIMEOUT_SECONDS
+
     def test_check_true(self, tmp_path: Path) -> None:
         """render_simple should call subprocess.run with check=True."""
         config = _make_config()
