@@ -1626,3 +1626,167 @@ class TestAnalyzeShutdown:
         _run_analyze(config=minimal_config, db=db)
 
         mock_scheduler.force_unload_all.assert_called_once()
+
+
+class TestRemainingStagesShutdown:
+    """Tests for shutdown in _run_script, _run_edl, _run_source_assets, _run_render, _run_upload."""
+
+    def setup_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    def teardown_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    @patch("autopilot.orchestrator.script")
+    def test_script_breaks_on_shutdown(self, mock_script, minimal_config) -> None:
+        """_run_script breaks after first narrative when shutdown requested."""
+        from autopilot.orchestrator import _run_script, request_shutdown
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
+        ]
+
+        call_count = 0
+
+        def gen_and_shutdown(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                request_shutdown()
+
+        mock_script.generate_script.side_effect = gen_and_shutdown
+
+        _run_script(config=minimal_config, db=db)
+
+        assert mock_script.generate_script.call_count == 1
+
+    @patch("autopilot.orchestrator.otio_export")
+    @patch("autopilot.orchestrator.validator")
+    @patch("autopilot.orchestrator.edl_mod")
+    def test_edl_breaks_on_shutdown(
+        self, mock_edl_mod, mock_validator, mock_otio, minimal_config,
+    ) -> None:
+        """_run_edl breaks after first narrative when shutdown requested."""
+        from autopilot.orchestrator import _run_edl, request_shutdown
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
+        ]
+        db.get_narrative_script.return_value = "some script"
+        mock_edl_mod.generate_edl.return_value = []
+        mock_validator.validate_edl.return_value = MagicMock(passed=True)
+
+        call_count = 0
+
+        def edl_and_shutdown(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                request_shutdown()
+            return []
+
+        mock_edl_mod.generate_edl.side_effect = edl_and_shutdown
+
+        _run_edl(config=minimal_config, db=db)
+
+        assert mock_edl_mod.generate_edl.call_count == 1
+
+    @patch("autopilot.orchestrator.resolve")
+    def test_source_assets_breaks_on_shutdown(
+        self, mock_resolve, minimal_config,
+    ) -> None:
+        """_run_source_assets breaks after first narrative when shutdown requested."""
+        from autopilot.orchestrator import _run_source_assets, request_shutdown
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
+        ]
+        db.get_edit_plan.return_value = {"edl_json": "[]"}
+
+        call_count = 0
+
+        def resolve_and_shutdown(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                request_shutdown()
+
+        mock_resolve.resolve_edl_assets.side_effect = resolve_and_shutdown
+
+        _run_source_assets(config=minimal_config, db=db)
+
+        assert mock_resolve.resolve_edl_assets.call_count == 1
+
+    @patch("autopilot.orchestrator.render_validate")
+    @patch("autopilot.orchestrator.router")
+    def test_render_breaks_on_shutdown(
+        self, mock_router, mock_render_validate, minimal_config,
+    ) -> None:
+        """_run_render breaks after first narrative when shutdown requested."""
+        from autopilot.orchestrator import _run_render, request_shutdown
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
+        ]
+        db.get_edit_plan.return_value = {"edl_json": "[]"}
+        mock_router.route_and_render.return_value = Path("/fake/out.mp4")
+        mock_render_validate.validate_render.return_value = MagicMock(issues=[])
+
+        call_count = 0
+
+        def render_and_shutdown(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                request_shutdown()
+            return Path("/fake/out.mp4")
+
+        mock_router.route_and_render.side_effect = render_and_shutdown
+
+        _run_render(config=minimal_config, db=db)
+
+        assert mock_router.route_and_render.call_count == 1
+
+    @patch("autopilot.orchestrator.thumbnail")
+    @patch("autopilot.orchestrator.youtube")
+    def test_upload_breaks_on_shutdown(
+        self, mock_youtube, mock_thumbnail, minimal_config,
+    ) -> None:
+        """_run_upload breaks after first narrative when shutdown requested."""
+        from autopilot.orchestrator import _run_upload, request_shutdown
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
+        ]
+        db.get_edit_plan.return_value = {
+            "edl_json": "[]",
+            "render_path": "/fake/out.mp4",
+        }
+
+        call_count = 0
+
+        def upload_and_shutdown(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                request_shutdown()
+
+        mock_youtube.upload_video.side_effect = upload_and_shutdown
+
+        _run_upload(config=minimal_config, db=db)
+
+        assert mock_youtube.upload_video.call_count == 1
