@@ -4577,3 +4577,37 @@ class TestCheckGatePause:
         events = catalog_db.get_events_since(0)
         skipped_events = [e for e in events if e["event_type"] == "gate_skipped"]
         assert len(skipped_events) == 1
+
+
+class TestCheckGateTimeout:
+    """Tests for _check_gate() pause mode with timeout."""
+
+    def test_gate_pause_timeout_auto_approves(self, catalog_db) -> None:
+        """When timeout_hours is exceeded, gate is auto-approved with notes."""
+        catalog_db.init_default_gates()
+        catalog_db.update_gate("ingest", mode="pause", timeout_hours=0.0001)
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+
+        # Mock time.monotonic to simulate timeout: first call returns 0, second returns large value
+        mono_values = iter([0.0, 100.0, 200.0])
+
+        with patch("autopilot.orchestrator.time.sleep"), \
+             patch("autopilot.orchestrator.time.monotonic", side_effect=mono_values):
+            result = orch._check_gate("INGEST")
+
+        assert result == "approved"
+
+        # Gate should be updated with timeout notes
+        gate = catalog_db.get_gate("ingest")
+        assert gate["status"] == "approved"
+        assert gate["decided_by"] == "system"
+        assert "timeout" in gate["notes"]
+
+        # gate_approved event with reason=timeout
+        events = catalog_db.get_events_since(0)
+        approved_events = [e for e in events if e["event_type"] == "gate_approved"]
+        assert len(approved_events) == 1
+        payload = json.loads(approved_events[0]["payload_json"])
+        assert payload["reason"] == "timeout"
