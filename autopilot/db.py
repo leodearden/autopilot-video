@@ -939,6 +939,59 @@ class CatalogDB:
         )
         return cur.fetchone() is not None
 
+    # -- pipeline_gates CRUD ---------------------------------------------------
+
+    _PIPELINE_STAGES = (
+        "ingest",
+        "analyze",
+        "classify",
+        "narrate",
+        "script",
+        "edl",
+        "source",
+        "render",
+        "upload",
+    )
+
+    def init_default_gates(self) -> None:
+        """Insert default gate rows for all known pipeline stages.
+
+        Uses INSERT OR IGNORE so calling multiple times is safe and
+        won't overwrite existing gate settings.
+        """
+        for stage in self._PIPELINE_STAGES:
+            self.conn.execute(
+                "INSERT OR IGNORE INTO pipeline_gates (stage) VALUES (?)",
+                (stage,),
+            )
+
+    def get_gate(self, stage: str) -> dict[str, object] | None:
+        """Return the gate row for *stage*, or ``None`` if not found."""
+        cur = self.conn.execute(
+            "SELECT * FROM pipeline_gates WHERE stage = ?",
+            (stage,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+    def get_all_gates(self) -> list[dict[str, object]]:
+        """Return all gate rows."""
+        cur = self.conn.execute("SELECT * FROM pipeline_gates ORDER BY stage")
+        return [dict(row) for row in cur.fetchall()]
+
+    def update_gate(self, stage: str, **kwargs: object) -> None:
+        """Update fields of a gate by keyword arguments."""
+        if not kwargs:
+            return
+        set_clause = ", ".join(f"{k} = ?" for k in kwargs)
+        values = list(kwargs.values())
+        values.append(stage)
+        self.conn.execute(
+            f"UPDATE pipeline_gates SET {set_clause} "  # noqa: S608
+            "WHERE stage = ?",
+            values,
+        )
+
     def close(self) -> None:
         """Close the underlying database connection."""
         self.conn.close()
