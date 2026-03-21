@@ -753,7 +753,10 @@ class PipelineOrchestrator:
             # Emit stage_started event and update current_stage on run
             if self._run_id is not None:
                 self._emit_event("stage_started", stage=stage_name)
-                db.update_run(self._run_id, current_stage=stage_name)
+                try:
+                    db.update_run(self._run_id, current_stage=stage_name)
+                except Exception as exc:
+                    logger.warning("Run tracking update failed: %s", exc)
             t0 = time.monotonic()
             try:
                 stage.func(config=config, db=db, force=self.force)
@@ -788,10 +791,15 @@ class PipelineOrchestrator:
             if self.budget_seconds and self.budget_seconds > 0:
                 remaining = self.budget_seconds - cumulative
                 if self._run_id is not None:
-                    db.update_run(
-                        self._run_id,
-                        budget_remaining_seconds=remaining,
-                    )
+                    try:
+                        db.update_run(
+                            self._run_id,
+                            budget_remaining_seconds=remaining,
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "Run tracking update failed: %s", exc,
+                        )
                 pct = (cumulative / self.budget_seconds) * 100
                 logger.info(
                     "[PROGRESS] %.1fs / %.1fs budget (%.1f%%)",
@@ -821,12 +829,15 @@ class PipelineOrchestrator:
         # --- Run tracking: finalize run record ---
         if self._run_id is not None:
             final_status = "failed" if errored_stages else "completed"
-            db.update_run(
-                self._run_id,
-                finished_at=datetime.now(timezone.utc).isoformat(),
-                status=final_status,
-                wall_clock_seconds=total_elapsed,
-            )
+            try:
+                db.update_run(
+                    self._run_id,
+                    finished_at=datetime.now(timezone.utc).isoformat(),
+                    status=final_status,
+                    wall_clock_seconds=total_elapsed,
+                )
+            except Exception as exc:
+                logger.warning("Run tracking update failed: %s", exc)
             if errored_stages:
                 self._emit_event(
                     "run_failed", payload={"duration": total_elapsed},
