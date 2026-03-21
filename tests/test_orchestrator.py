@@ -2210,3 +2210,47 @@ class TestAnalyzeResume:
         assert mock_faces.detect_faces.call_count == 1
         assert mock_embeddings.compute_embeddings.call_count == 1
         assert mock_audio_events.classify_audio_events.call_count == 1
+
+
+# -- Checkpoint/resume tests for _run_classify --------------------------------
+
+
+class TestClassifyResume:
+    """Tests for _run_classify checkpoint/resume logic."""
+
+    @patch("autopilot.orchestrator.classify")
+    @patch("autopilot.orchestrator.cluster")
+    def test_classify_skips_when_clusters_exist(
+        self, mock_cluster, mock_classify, minimal_config,
+    ):
+        """_run_classify skips when activity clusters already exist and have labels."""
+        from autopilot.orchestrator import _run_classify
+
+        db = MagicMock()
+        db.get_activity_clusters.return_value = [
+            {"cluster_id": "ac1", "label": "Beach Day"},
+            {"cluster_id": "ac2", "label": "Dinner"},
+        ]
+
+        _run_classify(config=minimal_config, db=db)
+
+        mock_cluster.cluster_activities.assert_not_called()
+        mock_classify.label_activities.assert_not_called()
+
+    @patch("autopilot.orchestrator.classify")
+    @patch("autopilot.orchestrator.cluster")
+    def test_classify_force_clears_and_reprocesses(
+        self, mock_cluster, mock_classify, minimal_config,
+    ):
+        """_run_classify with force=True re-runs even when clusters exist."""
+        from autopilot.orchestrator import _run_classify
+
+        db = MagicMock()
+        db.get_activity_clusters.return_value = [
+            {"cluster_id": "ac1", "label": "Beach Day"},
+        ]
+
+        _run_classify(config=minimal_config, db=db, force=True)
+
+        mock_cluster.cluster_activities.assert_called_once()
+        mock_classify.label_activities.assert_called_once()
