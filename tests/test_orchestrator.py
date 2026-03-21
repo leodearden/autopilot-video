@@ -954,6 +954,7 @@ class TestEdlStage:
         db = MagicMock()
         db.list_narratives.return_value = [{"narrative_id": "n1"}]
         db.get_narrative_script.return_value = {"scenes": []}
+        db.get_edit_plan.return_value = None
         mock_edl.generate_edl.return_value = {"timeline": []}
         mock_validator.validate_edl.return_value = MagicMock(passed=True)
         mock_otio.export_otio.return_value = Path("/out/timeline.otio")
@@ -976,6 +977,7 @@ class TestEdlStage:
         db = MagicMock()
         db.list_narratives.return_value = [{"narrative_id": "n1"}]
         db.get_narrative_script.return_value = {"scenes": []}
+        db.get_edit_plan.return_value = None
         mock_edl.generate_edl.return_value = {"timeline": []}
         val_result = MagicMock(passed=True)
         mock_validator.validate_edl.return_value = val_result
@@ -1000,6 +1002,7 @@ class TestEdlStage:
             {"narrative_id": "n1"}, {"narrative_id": "n2"},
         ]
         db.get_narrative_script.return_value = {"scenes": []}
+        db.get_edit_plan.return_value = None
         mock_edl.generate_edl.side_effect = [
             EdlError("fail"), {"timeline": []},
         ]
@@ -1025,6 +1028,7 @@ class TestEdlStage:
             {"narrative_id": "n1"}, {"narrative_id": "n2"},
         ]
         db.get_narrative_script.return_value = {"scenes": []}
+        db.get_edit_plan.return_value = None
         mock_edl.generate_edl.side_effect = RuntimeError("fail")
 
         with pytest.raises(RuntimeError, match="All narratives failed"):

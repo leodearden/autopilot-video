@@ -322,11 +322,31 @@ def _run_script(*, config: Any, db: Any, force: bool = False) -> None:
     logger.info("Script complete: %d/%d succeeded", successes, len(approved))
 
 
-def _run_edl(*, config: Any, db: Any) -> None:
+def _run_edl(*, config: Any, db: Any, force: bool = False) -> None:
     """EDL stage: generate EDL, validate, and export OTIO per narrative."""
     approved = db.list_narratives("approved")
+
+    # Checkpoint/resume: skip narratives that already have an edit plan with edl_json
+    skipped = 0
+    if not force:
+        to_process = []
+        for narr in approved:
+            nid = narr["narrative_id"]
+            existing = db.get_edit_plan(nid)
+            if existing is not None and existing.get("edl_json"):
+                skipped += 1
+            else:
+                to_process.append(narr)
+        if skipped > 0:
+            logger.info(
+                "Resuming EDL: %d/%d narratives already have edit plans",
+                skipped, len(approved),
+            )
+    else:
+        to_process = list(approved)
+
     successes = 0
-    for narr in approved:
+    for narr in to_process:
         if shutdown_requested():
             break
         nid = narr["narrative_id"]
@@ -354,7 +374,7 @@ def _run_edl(*, config: Any, db: Any) -> None:
         except Exception:
             logger.exception("EDL generation failed for narrative %s", nid)
 
-    if approved and successes == 0:
+    if approved and successes == 0 and skipped == 0:
         raise RuntimeError("All narratives failed EDL generation")
 
     logger.info("EDL complete: %d/%d succeeded", successes, len(approved))
