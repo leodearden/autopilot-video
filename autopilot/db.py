@@ -834,6 +834,56 @@ class CatalogDB:
         )
         return [dict(row) for row in cur.fetchall()]
 
+    # -- Checkpoint convenience methods -----------------------------------------
+
+    def has_transcript(self, media_id: str) -> bool:
+        """Return True if a transcript exists for the given media_id."""
+        cur = self.conn.execute(
+            "SELECT 1 FROM transcripts WHERE media_id = ? LIMIT 1",
+            (media_id,),
+        )
+        return cur.fetchone() is not None
+
+    def has_detections(self, media_id: str) -> bool:
+        """Return True if any detections exist for the given media_id."""
+        cur = self.conn.execute(
+            "SELECT 1 FROM detections WHERE media_id = ? LIMIT 1",
+            (media_id,),
+        )
+        return cur.fetchone() is not None
+
+    def has_boundaries(self, media_id: str) -> bool:
+        """Return True if any shot boundaries exist for the given media_id."""
+        cur = self.conn.execute(
+            "SELECT 1 FROM shot_boundaries WHERE media_id = ? LIMIT 1",
+            (media_id,),
+        )
+        return cur.fetchone() is not None
+
+    def has_faces(self, media_id: str) -> bool:
+        """Return True if any faces exist for the given media_id."""
+        cur = self.conn.execute(
+            "SELECT 1 FROM faces WHERE media_id = ? LIMIT 1",
+            (media_id,),
+        )
+        return cur.fetchone() is not None
+
+    def has_embeddings(self, media_id: str) -> bool:
+        """Return True if any clip embeddings exist for the given media_id."""
+        cur = self.conn.execute(
+            "SELECT 1 FROM clip_embeddings WHERE media_id = ? LIMIT 1",
+            (media_id,),
+        )
+        return cur.fetchone() is not None
+
+    def has_audio_events(self, media_id: str) -> bool:
+        """Return True if any audio events exist for the given media_id."""
+        cur = self.conn.execute(
+            "SELECT 1 FROM audio_events WHERE media_id = ? LIMIT 1",
+            (media_id,),
+        )
+        return cur.fetchone() is not None
+
     def close(self) -> None:
         """Close the underlying database connection."""
         self.conn.close()

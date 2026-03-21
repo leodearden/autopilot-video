@@ -1091,3 +1091,79 @@ class TestCaptionsCRUD:
             catalog_db.upsert_caption(
                 "nonexistent_media", 0.0, 10.0, "caption", "model"
             )
+
+
+# -- has_* checkpoint convenience methods ------------------------------------
+
+
+class TestHasCheckpointMethods:
+    """Tests for has_* convenience methods used for checkpoint/resume logic."""
+
+    def test_has_transcript_returns_false_when_absent(self, catalog_db):
+        """has_transcript returns False when no transcript exists for media_id."""
+        _insert_test_media(catalog_db)
+        assert catalog_db.has_transcript("m1") is False
+
+    def test_has_transcript_returns_true_when_present(self, catalog_db):
+        """has_transcript returns True after upserting a transcript."""
+        _insert_test_media(catalog_db)
+        catalog_db.upsert_transcript("m1", segments_json="[]", language="en")
+        assert catalog_db.has_transcript("m1") is True
+
+    def test_has_detections_returns_false_when_absent(self, catalog_db):
+        """has_detections returns False when no detections exist for media_id."""
+        _insert_test_media(catalog_db)
+        assert catalog_db.has_detections("m1") is False
+
+    def test_has_detections_returns_true_when_present(self, catalog_db):
+        """has_detections returns True after inserting detections."""
+        _insert_test_media(catalog_db)
+        catalog_db.batch_insert_detections([("m1", 0, '{"class": "person"}')])
+        assert catalog_db.has_detections("m1") is True
+
+    def test_has_boundaries_returns_false_when_absent(self, catalog_db):
+        """has_boundaries returns False when no shot boundaries exist."""
+        _insert_test_media(catalog_db)
+        assert catalog_db.has_boundaries("m1") is False
+
+    def test_has_boundaries_returns_true_when_present(self, catalog_db):
+        """has_boundaries returns True after upserting boundaries."""
+        _insert_test_media(catalog_db)
+        catalog_db.upsert_boundaries("m1", boundaries_json="[]", method="transnetv2")
+        assert catalog_db.has_boundaries("m1") is True
+
+    def test_has_faces_returns_false_when_absent(self, catalog_db):
+        """has_faces returns False when no faces exist for media_id."""
+        _insert_test_media(catalog_db)
+        assert catalog_db.has_faces("m1") is False
+
+    def test_has_faces_returns_true_when_present(self, catalog_db):
+        """has_faces returns True after inserting faces."""
+        _insert_test_media(catalog_db)
+        catalog_db.batch_insert_faces([
+            ("m1", 0, 0, '[10, 20, 100, 200]', None, None),
+        ])
+        assert catalog_db.has_faces("m1") is True
+
+    def test_has_embeddings_returns_false_when_absent(self, catalog_db):
+        """has_embeddings returns False when no clip embeddings exist."""
+        _insert_test_media(catalog_db)
+        assert catalog_db.has_embeddings("m1") is False
+
+    def test_has_embeddings_returns_true_when_present(self, catalog_db):
+        """has_embeddings returns True after inserting clip embeddings."""
+        _insert_test_media(catalog_db)
+        emb = _make_embedding(768)
+        catalog_db.batch_insert_embeddings([("m1", 0, emb)])
+        assert catalog_db.has_embeddings("m1") is True
+
+    def test_has_audio_events_returns_false_when_absent(self, catalog_db):
+        """has_audio_events returns False when no audio events exist."""
+        _insert_test_media(catalog_db)
+        assert catalog_db.has_audio_events("m1") is False
+
+    def test_has_audio_events_returns_true_when_present(self, catalog_db):
+        """has_audio_events returns True after inserting audio events."""
+        _insert_test_media(catalog_db)
+        catalog_db.batch_insert_audio_events([("m1", 0.5, '{"class": "speech"}')])
+        assert catalog_db.has_audio_events("m1") is True
