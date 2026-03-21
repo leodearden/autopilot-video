@@ -716,6 +716,35 @@ class TestTranscriptByMediaId:
 class TestErrorHandling:
     """Verify route_and_render error handling."""
 
+    def test_concat_timeout_raises_routing_error(self) -> None:
+        """TimeoutExpired on concat subprocess should be wrapped in RoutingError."""
+        import subprocess as _subprocess
+
+        from autopilot.render.router import RoutingError, route_and_render
+
+        edl = _make_edl()
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch(
+                "subprocess.run",
+                side_effect=_subprocess.TimeoutExpired(
+                    cmd="ffmpeg", timeout=1800,
+                ),
+            ),
+            pytest.raises(RoutingError) as exc_info,
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config)
+
+        msg = str(exc_info.value).lower()
+        assert "timeout" in msg or "timed out" in msg
+
     def test_render_simple_failure_raises_routing_error(self) -> None:
         """RenderError from render_simple should be wrapped in RoutingError."""
         from autopilot.render.ffmpeg_render import RenderError
