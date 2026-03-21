@@ -40,7 +40,7 @@ class TestPublicAPI:
 
         sig = inspect.signature(route_and_render)
         param_names = list(sig.parameters.keys())
-        assert param_names == ["narrative_id", "db", "config"]
+        assert param_names == ["narrative_id", "db", "config", "output_dir"]
 
     def test_all_exports(self) -> None:
         """__all__ should export RoutingError and route_and_render."""
@@ -171,7 +171,7 @@ class TestEDLLoading:
         config = _make_config()
 
         with pytest.raises(RoutingError, match="No edit plan"):
-            route_and_render("narr_1", db, config)
+            route_and_render("narr_1", db, config, Path("/tmp/test_output"))
 
     def test_loads_edl_from_edit_plan(self) -> None:
         """route_and_render should parse edl_json from edit plan and use clip data."""
@@ -188,7 +188,7 @@ class TestEDLLoading:
              patch("autopilot.render.router.render_complex"), \
              patch("subprocess.run"):
             mock_rs.return_value = Path("/tmp/segment.mp4")
-            route_and_render("narr_1", db, config)
+            route_and_render("narr_1", db, config, Path("/tmp/test_output"))
 
         db.get_edit_plan.assert_called_once_with("narr_1")
         # Verify the parsed EDL clip was passed to render_simple
@@ -225,7 +225,7 @@ class TestWorkDirCleanup:
             mock_td.return_value.__enter__ = MagicMock(return_value=str(work))
             mock_td.return_value.__exit__ = MagicMock(return_value=False)
             mock_rs.return_value = Path("/tmp/seg.mp4")
-            route_and_render("n1", db, config)
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         # TemporaryDirectory used as context manager (via with statement)
         mock_td.return_value.__enter__.assert_called_once()
@@ -252,7 +252,7 @@ class TestWorkDirCleanup:
             mock_td.return_value.__enter__ = MagicMock(return_value=str(work))
             mock_td.return_value.__exit__ = MagicMock(return_value=False)
             with pytest.raises(RoutingError):
-                route_and_render("n1", db, config)
+                route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         # __exit__ must still be called for cleanup even on error
         mock_td.return_value.__exit__.assert_called_once()
@@ -276,7 +276,7 @@ class TestClipDispatching:
              patch("autopilot.render.router.render_complex") as mock_rc, \
              patch("subprocess.run"):
             mock_rs.return_value = Path("/tmp/seg.mp4")
-            route_and_render("n1", db, config)
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         mock_rs.assert_called_once()
         mock_rc.assert_not_called()
@@ -296,7 +296,7 @@ class TestClipDispatching:
              patch("autopilot.render.router.render_complex") as mock_rc, \
              patch("subprocess.run"):
             mock_rc.return_value = Path("/tmp/seg.mp4")
-            route_and_render("n1", db, config)
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         mock_rc.assert_called_once()
         mock_rs.assert_not_called()
@@ -323,7 +323,7 @@ class TestClipDispatching:
              patch("subprocess.run"):
             mock_rs.return_value = Path("/tmp/seg1.mp4")
             mock_rc.return_value = Path("/tmp/seg2.mp4")
-            route_and_render("n1", db, config)
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         mock_rs.assert_called_once()
         mock_rc.assert_called_once()
@@ -357,7 +357,7 @@ class TestCropPathLoading:
              patch("autopilot.render.router.render_complex") as mock_rc, \
              patch("subprocess.run"):
             mock_rc.return_value = Path("/tmp/seg.mp4")
-            route_and_render("n1", db, config)
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         mock_rc.assert_called_once()
         # The crop_path arg (index 1) should be an ndarray loaded from DB
@@ -382,7 +382,7 @@ class TestCropPathLoading:
              patch("autopilot.render.router.render_complex"), \
              patch("subprocess.run"):
             with pytest.raises(RoutingError, match="crop"):
-                route_and_render("n1", db, config)
+                route_and_render("n1", db, config, Path("/tmp/test_output"))
 
 
 # ---------------------------------------------------------------------------
@@ -407,7 +407,7 @@ class TestFinalConcatenation:
         with patch("autopilot.render.router.render_simple") as mock_rs, \
              patch("subprocess.run") as mock_run:
             mock_rs.return_value = Path("/tmp/seg.mp4")
-            route_and_render("n1", db, config)
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         # The second call to subprocess.run should be the concat
         assert mock_run.call_count >= 1
@@ -430,7 +430,7 @@ class TestFinalConcatenation:
         with patch("autopilot.render.router.render_simple") as mock_rs, \
              patch("subprocess.run"):
             mock_rs.return_value = Path("/tmp/seg.mp4")
-            result = route_and_render("n1", db, config)
+            result = route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         assert "My Video" in str(result)
         assert result.name == "final.mp4"
@@ -449,7 +449,7 @@ class TestFinalConcatenation:
         with patch("autopilot.render.router.render_simple") as mock_rs, \
              patch("subprocess.run") as mock_run:
             mock_rs.return_value = Path("/tmp/seg.mp4")
-            route_and_render("n1", db, config)
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         concat_cmd = mock_run.call_args[0][0]
         cmd_str = " ".join(concat_cmd)
@@ -470,7 +470,7 @@ class TestFinalConcatenation:
         with patch("autopilot.render.router.render_simple") as mock_rs, \
              patch("subprocess.run") as mock_run:
             mock_rs.return_value = Path("/tmp/seg.mp4")
-            route_and_render("n1", db, config)
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         concat_cmd = mock_run.call_args[0][0]
         cmd_str = " ".join(concat_cmd)
@@ -506,7 +506,7 @@ class TestSubtitleSupport:
         with patch("autopilot.render.router.render_simple") as mock_rs, \
              patch("subprocess.run") as mock_run:
             mock_rs.return_value = Path("/tmp/seg.mp4")
-            route_and_render("n1", db, config)
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         concat_cmd = mock_run.call_args[0][0]
         cmd_str = " ".join(concat_cmd)
@@ -526,7 +526,7 @@ class TestSubtitleSupport:
         with patch("autopilot.render.router.render_simple") as mock_rs, \
              patch("subprocess.run") as mock_run:
             mock_rs.return_value = Path("/tmp/seg.mp4")
-            route_and_render("n1", db, config)
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         concat_cmd = mock_run.call_args[0][0]
         cmd_str = " ".join(concat_cmd)
@@ -556,7 +556,7 @@ class TestSubtitlesWithAudioMixing:
         with patch("autopilot.render.router.render_simple") as mock_rs, \
              patch("subprocess.run") as mock_run:
             mock_rs.return_value = Path("/tmp/seg.mp4")
-            route_and_render("n1", db, config)
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         concat_cmd = mock_run.call_args[0][0]
 
@@ -600,7 +600,7 @@ class TestStreamCopyVsFilter:
         with patch("autopilot.render.router.render_simple") as mock_rs, \
              patch("subprocess.run") as mock_run:
             mock_rs.return_value = Path("/tmp/seg.mp4")
-            route_and_render("n1", db, config)
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         concat_cmd = mock_run.call_args[0][0]
         cmd_str = " ".join(concat_cmd)
@@ -626,7 +626,7 @@ class TestStreamCopyVsFilter:
         with patch("autopilot.render.router.render_simple") as mock_rs, \
              patch("subprocess.run") as mock_run:
             mock_rs.return_value = Path("/tmp/seg.mp4")
-            route_and_render("n1", db, config)
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         concat_cmd = mock_run.call_args[0][0]
         # Should have -c copy
@@ -661,7 +661,7 @@ class TestTranscriptByMediaId:
         with patch("autopilot.render.router.render_simple") as mock_rs, \
              patch("subprocess.run"):
             mock_rs.return_value = Path("/tmp/seg.mp4")
-            route_and_render("n1", db, config)
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         # Should have been called with clip_id ("clip_1"), not "n1"
         transcript_calls = db.get_transcript.call_args_list
@@ -700,7 +700,7 @@ class TestTranscriptByMediaId:
         with patch("autopilot.render.router.render_simple") as mock_rs, \
              patch("subprocess.run") as mock_run:
             mock_rs.return_value = Path("/tmp/seg.mp4")
-            route_and_render("n1", db, config)
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         # Verify subtitles filter is in the concat command
         concat_cmd = mock_run.call_args[0][0]
@@ -734,7 +734,7 @@ class TestErrorHandling:
             ),
             pytest.raises(RoutingError, match="clip_1"),
         ):
-            route_and_render("n1", db, config)
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
 
     def test_corrupt_edl_json_raises_routing_error(self) -> None:
         """Corrupt edl_json should raise RoutingError."""
@@ -745,7 +745,7 @@ class TestErrorHandling:
         config = _make_config()
 
         with pytest.raises(RoutingError, match="Corrupt edl_json"):
-            route_and_render("n1", db, config)
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
 
     def test_missing_narrative_still_works(self) -> None:
         """Even if narrative not found, should use 'untitled' default."""
@@ -761,6 +761,6 @@ class TestErrorHandling:
         with patch("autopilot.render.router.render_simple") as mock_rs, \
              patch("subprocess.run"):
             mock_rs.return_value = Path("/tmp/seg.mp4")
-            result = route_and_render("n1", db, config)
+            result = route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         assert "untitled" in str(result)

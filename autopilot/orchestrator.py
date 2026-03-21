@@ -96,6 +96,9 @@ def _run_ingest(*, config: Any, db: Any) -> None:
     for mf in files:
         media_id = mf.sha256_prefix or mf.file_path.stem
         try:
+            normalizer.normalize_audio(
+                mf.file_path, norm_dir, root_dir=config.input_dir
+            )
             db.insert_media(
                 media_id,
                 str(mf.file_path),
@@ -110,9 +113,6 @@ def _run_ingest(*, config: Any, db: Any) -> None:
                 gps_lon=mf.gps_lon,
                 audio_channels=mf.audio_channels,
                 metadata_json=mf.metadata_json,
-            )
-            normalizer.normalize_audio(
-                mf.file_path, norm_dir, root_dir=config.input_dir
             )
             ingested += 1
         except Exception as exc:
@@ -295,7 +295,7 @@ def _run_render(*, config: Any, db: Any) -> None:
             logger.warning("Skipping render for %s: no edit plan", nid)
             continue
         try:
-            output_path = router.route_and_render(nid, db, config.output)
+            output_path = router.route_and_render(nid, db, config.output, config.output_dir)
             edl = json.loads(plan["edl_json"])
             report = render_validate.validate_render(output_path, edl, config.output)
             for issue in report.issues:

@@ -314,7 +314,7 @@ class CatalogDB:
 
     def get_boundaries(
         self, media_id: str, method: str | None = None
-    ) -> dict[str, object] | list[dict[str, object]]:
+    ) -> dict[str, object] | list[dict[str, object]] | None:
         """Get shot boundaries for a media file.
 
         If method is specified, returns a single dict or None.
@@ -326,7 +326,7 @@ class CatalogDB:
                 (media_id, method),
             )
             row = cur.fetchone()
-            return dict(row) if row else None  # type: ignore[return-value]
+            return dict(row) if row else None
         cur = self.conn.execute(
             "SELECT * FROM shot_boundaries WHERE media_id = ?",
             (media_id,),

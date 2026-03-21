@@ -68,6 +68,7 @@ def route_and_render(
     narrative_id: str,
     db: CatalogDB,
     config: OutputConfig,
+    output_dir: Path,
 ) -> Path:
     """Route EDL clips to appropriate renderers and assemble final output.
 
@@ -75,6 +76,7 @@ def route_and_render(
         narrative_id: ID of the narrative to render.
         db: Catalog database handle for loading EDL, media, and crop data.
         config: Output encoding configuration.
+        output_dir: Base directory for rendered output files.
 
     Returns:
         Path to the final rendered output file.
@@ -190,7 +192,7 @@ def route_and_render(
             raise RoutingError("No clips to render")
 
         # -- Concatenate segments ----------------------------------------------
-        output_dir = Path("output") / narrative_title
+        output_dir = output_dir / narrative_title
         output_dir.mkdir(parents=True, exist_ok=True)
         final_output = output_dir / "final.mp4"
 
