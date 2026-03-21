@@ -197,7 +197,7 @@ class TestRun:
         orch.run(config=mock_config, db=mock_db)
 
         for name, mock_fn in mocks.items():
-            mock_fn.assert_called_once_with(config=mock_config, db=mock_db)
+            mock_fn.assert_called_once_with(config=mock_config, db=mock_db, force=False)
 
     def test_run_returns_results_dict(self) -> None:
         """run() returns a dict mapping stage names to StageResult."""

@@ -154,14 +154,14 @@
       "type": "test",
       "description": "Write failing tests for force flag propagation: test_orchestrator_run_passes_force_to_stages (when run(force=True), each stage receives force=True). test_orchestrator_run_defaults_force_false. test_orchestrator_init_accepts_force.",
       "status": "done",
-      "commit": "PENDING"
+      "commit": "4ed8121"
     },
     {
       "id": "step-18",
       "type": "impl",
       "description": "Add force parameter to PipelineOrchestrator.__init__ and run(), propagate force=True/False to each stage.func call via kwargs.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "PENDING"
     },
     {
       "id": "step-19",

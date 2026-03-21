@@ -502,9 +502,11 @@ class PipelineOrchestrator:
         self,
         budget_seconds: float | None = None,
         human_review_fn: Callable | None = None,
+        force: bool = False,
     ) -> None:
         self.budget_seconds = budget_seconds
         self.human_review_fn = human_review_fn
+        self.force = force
 
         # Wrap _run_narrate with human_review_fn via partial
         narrate_func = functools.partial(
@@ -655,7 +657,7 @@ class PipelineOrchestrator:
             logger.info("[RUNNING] %s", stage_name)
             t0 = time.monotonic()
             try:
-                stage.func(config=config, db=db)
+                stage.func(config=config, db=db, force=self.force)
                 elapsed = time.monotonic() - t0
                 results[stage_name] = StageResult(
                     status=StageStatus.DONE,
