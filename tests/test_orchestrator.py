@@ -1493,6 +1493,11 @@ class TestIngestShutdown:
         from autopilot.orchestrator import _reset_shutdown
 
         _reset_shutdown()
+# -- Checkpoint/resume tests for _run_ingest ---------------------------------
+
+
+class TestIngestResume:
+    """Tests for _run_ingest checkpoint/resume logic."""
 
     @patch("autopilot.orchestrator.dedup")
     @patch("autopilot.orchestrator.normalizer")
@@ -1528,6 +1533,29 @@ class TestIngestShutdown:
         # Only the first file should be fully processed; second iteration
         # should see shutdown and break before processing
         assert db.insert_media.call_count == 1
+    def test_ingest_skips_already_ingested_media(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+    ):
+        """_run_ingest skips insert+normalize for media already in the DB."""
+        from autopilot.orchestrator import _run_ingest
+
+        mock_file1 = MagicMock()
+        mock_file1.sha256_prefix = "hash1"
+        mock_file1.file_path = Path("/fake/v1.mp4")
+        mock_file2 = MagicMock()
+        mock_file2.sha256_prefix = "hash2"
+        mock_file2.file_path = Path("/fake/v2.mp4")
+        mock_scanner.scan_directory.return_value = [mock_file1, mock_file2]
+
+        db = MagicMock()
+        # hash1 already exists, hash2 is new
+        db.get_media.side_effect = lambda mid: {"id": mid} if mid == "hash1" else None
+
+        _run_ingest(config=minimal_config, db=db)
+
+        # Only hash2 should get insert_media + normalize_audio
+        assert db.insert_media.call_count == 1
+        assert mock_normalizer.normalize_audio.call_count == 1
 
     @patch("autopilot.orchestrator.dedup")
     @patch("autopilot.orchestrator.normalizer")
@@ -1928,3 +1956,52 @@ class TestShutdownSkipDetails:
             assert any(
                 name in r.message for r in shutdown_logs
             ), f"Missing [SHUTDOWN] log for {name}"
+    def test_ingest_logs_resume_counts(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+        caplog,
+    ):
+        """_run_ingest logs 'Resuming INGEST: N/M files already ingested'."""
+        from autopilot.orchestrator import _run_ingest
+
+        mock_file1 = MagicMock()
+        mock_file1.sha256_prefix = "hash1"
+        mock_file1.file_path = Path("/fake/v1.mp4")
+        mock_file2 = MagicMock()
+        mock_file2.sha256_prefix = "hash2"
+        mock_file2.file_path = Path("/fake/v2.mp4")
+        mock_scanner.scan_directory.return_value = [mock_file1, mock_file2]
+
+        db = MagicMock()
+        db.get_media.side_effect = lambda mid: {"id": mid} if mid == "hash1" else None
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            _run_ingest(config=minimal_config, db=db)
+
+        assert any("Resuming INGEST" in r.message and "1/2" in r.message
+                    for r in caplog.records)
+
+    @patch("autopilot.orchestrator.dedup")
+    @patch("autopilot.orchestrator.normalizer")
+    @patch("autopilot.orchestrator.scanner")
+    def test_ingest_force_reprocesses_all(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+    ):
+        """_run_ingest with force=True reprocesses even existing media."""
+        from autopilot.orchestrator import _run_ingest
+
+        mock_file1 = MagicMock()
+        mock_file1.sha256_prefix = "hash1"
+        mock_file1.file_path = Path("/fake/v1.mp4")
+        mock_file2 = MagicMock()
+        mock_file2.sha256_prefix = "hash2"
+        mock_file2.file_path = Path("/fake/v2.mp4")
+        mock_scanner.scan_directory.return_value = [mock_file1, mock_file2]
+
+        db = MagicMock()
+        db.get_media.return_value = {"id": "existing"}
+
+        _run_ingest(config=minimal_config, db=db, force=True)
+
+        # Both should be processed despite existing in DB
+        assert db.insert_media.call_count == 2
+        assert mock_normalizer.normalize_audio.call_count == 2
