@@ -60,6 +60,10 @@ testpaths = ["tests"]
 source = ["autopilot"]
 omit = ["*/tests/*"]
 
+[tool.coverage.report]
+show_missing = true
+fail_under = 70
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100
