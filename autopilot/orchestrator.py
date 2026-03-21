@@ -160,6 +160,8 @@ def _run_analyze(*, config: Any, db: Any) -> None:
     successes = 0
     try:
         for media in media_list:
+            if shutdown_requested():
+                break
             media_id = media["id"]
             file_path = Path(media["file_path"])
             audio_path = file_path  # audio extracted from same file
