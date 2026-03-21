@@ -330,6 +330,11 @@ def test_load_config_invalid_enums(
         ("processing", "batch_size_yolo", 0),
         ("processing", "batch_size_whisper", 0),
         ("processing", "gpu_device", -1),
+        ("models", "yolo_sample_every_n_frames", -1),
+        ("processing", "max_wall_clock_hours", -1),
+        ("processing", "num_cpu_workers", -1),
+        ("processing", "batch_size_yolo", -1),
+        ("processing", "batch_size_whisper", -1),
     ],
 )
 def test_load_config_numeric_bounds_invalid(
@@ -351,6 +356,10 @@ def test_load_config_numeric_bounds_invalid(
         ("output", "quality_crf", 51),
         ("processing", "gpu_device", 0),
         ("models", "yolo_sample_every_n_frames", 1),
+        ("processing", "max_wall_clock_hours", 1),
+        ("processing", "num_cpu_workers", 1),
+        ("processing", "batch_size_yolo", 1),
+        ("processing", "batch_size_whisper", 1),
     ],
 )
 def test_load_config_numeric_bounds_valid(
