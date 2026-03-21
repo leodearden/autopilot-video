@@ -329,6 +329,27 @@ def test_stable_deps_not_overconstrained(project_root: pathlib.Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_uv_lock_file_exists(project_root: pathlib.Path) -> None:
+    """uv.lock must exist at the project root for reproducible installs."""
+    lock_path = project_root / "uv.lock"
+    assert lock_path.is_file(), "uv.lock must exist at the project root"
+    content = lock_path.read_text()
+    assert len(content) > 0, "uv.lock must not be empty"
+
+
+def test_uv_lock_not_gitignored(project_root: pathlib.Path) -> None:
+    """uv.lock must NOT be in .gitignore — it should be tracked in git."""
+    gitignore_path = project_root / ".gitignore"
+    if not gitignore_path.is_file():
+        return  # no .gitignore, so uv.lock can't be ignored
+    content = gitignore_path.read_text()
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            continue
+        assert stripped != "uv.lock", ".gitignore must NOT contain 'uv.lock'"
+
+
 def test_gitignore_has_output_dir(project_root: pathlib.Path) -> None:
     """'.gitignore' contains 'output/' to prevent committing rendered videos."""
     gitignore_path = project_root / ".gitignore"
