@@ -244,6 +244,87 @@ def test_config_yaml_youtube_section(project_root: pathlib.Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Dependency version constraint tests
+# ---------------------------------------------------------------------------
+
+# ML/volatile dependencies that MUST have lower-bound (>=) and upper-bound (<) constraints
+ML_DEPS = {
+    "whisperx",
+    "faster-whisper",
+    "ultralytics",
+    "insightface",
+    "transformers",
+    "audiocraft",
+    "moviepy",
+    "opentimelineio",
+    "scenedetect",
+    "panns-inference",
+    "kokoro",
+    "pyav",
+    "qwen-vl-utils",
+    "faiss-gpu",
+    "scikit-learn",
+}
+
+# Stable deps that should NOT be upper-bounded
+STABLE_DEPS = {
+    "click",
+    "pyyaml",
+    "requests",
+    "numpy",
+    "pillow",
+    "anthropic",
+    "google-api-python-client",
+}
+
+
+def _parse_dep_name(dep: str) -> str:
+    """Extract the bare package name (lowercase) from a dependency specifier."""
+    # Strip extras like [cuda], then strip version operators
+    name = dep.split("[")[0]
+    for op in (">=", "<=", "!=", "==", ">", "<", "~="):
+        name = name.split(op)[0]
+    return name.strip().lower()
+
+
+def test_ml_deps_have_version_constraints(project_root: pathlib.Path) -> None:
+    """ML/volatile dependencies must have both lower-bound (>=) and upper-bound (<) constraints."""
+    with open(project_root / "pyproject.toml", "rb") as f:
+        data = tomllib.load(f)
+
+    deps = data["project"].get("dependencies", [])
+    dep_map = {_parse_dep_name(d): d for d in deps}
+
+    for pkg in ML_DEPS:
+        assert pkg in dep_map, f"ML dependency {pkg} not found in pyproject.toml"
+        spec = dep_map[pkg]
+        assert ">=" in spec, f"{pkg} must have a lower-bound (>=) constraint, got: {spec}"
+        assert "<" in spec and "<=" not in spec.replace("<=", ""), (
+            f"{pkg} must have an upper-bound (<) constraint, got: {spec}"
+        )
+
+
+def test_stable_deps_not_overconstrained(project_root: pathlib.Path) -> None:
+    """Stable ecosystem deps must NOT have upper-bound (<) constraints."""
+    with open(project_root / "pyproject.toml", "rb") as f:
+        data = tomllib.load(f)
+
+    deps = data["project"].get("dependencies", [])
+    dep_map = {_parse_dep_name(d): d for d in deps}
+
+    for pkg in STABLE_DEPS:
+        if pkg not in dep_map:
+            continue  # not listed, that's fine for this test
+        spec = dep_map[pkg]
+        # Remove the package name to get just the version specifier part
+        version_part = spec[len(spec.split(">")[0].split("<")[0].split("=")[0].split("!")[0].split("[")[0]):]
+        # Check there's no standalone < (not <=, not part of >=)
+        assert "<" not in version_part.replace("<=", "").replace("<<", ""), (
+            f"Stable dep {pkg} should NOT have upper-bound constraint, got: {spec}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # .gitignore and package version tests
 # ---------------------------------------------------------------------------
 
