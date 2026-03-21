@@ -146,3 +146,52 @@ class TestServeCommand:
         cmd = main.commands["serve"]
         param_names = [p.name for p in cmd.params]
         assert "output_dir" in param_names
+
+    def test_serve_invokes_uvicorn(self, tmp_path: Path) -> None:
+        """serve --output-dir calls uvicorn.run with the created app."""
+        from unittest.mock import MagicMock, patch
+
+        from click.testing import CliRunner
+
+        from autopilot.cli import main
+
+        mock_app = MagicMock()
+        mock_create_app = MagicMock(return_value=mock_app)
+        mock_uvicorn_run = MagicMock()
+
+        with (
+            patch("autopilot.cli.create_app", mock_create_app, create=True),
+            patch("uvicorn.run", mock_uvicorn_run),
+        ):
+            runner = CliRunner()
+            result = runner.invoke(main, ["serve", "--output-dir", str(tmp_path)])
+
+        assert result.exit_code == 0, result.output
+        expected_db = str(tmp_path / "catalog.db")
+        mock_create_app.assert_called_once_with(expected_db)
+        mock_uvicorn_run.assert_called_once_with(mock_app, host="127.0.0.1", port=8080)
+
+    def test_serve_passes_custom_host_port(self, tmp_path: Path) -> None:
+        """serve --host 0.0.0.0 --port 9090 passes values to uvicorn.run."""
+        from unittest.mock import MagicMock, patch
+
+        from click.testing import CliRunner
+
+        from autopilot.cli import main
+
+        mock_app = MagicMock()
+        mock_create_app = MagicMock(return_value=mock_app)
+        mock_uvicorn_run = MagicMock()
+
+        with (
+            patch("autopilot.cli.create_app", mock_create_app, create=True),
+            patch("uvicorn.run", mock_uvicorn_run),
+        ):
+            runner = CliRunner()
+            result = runner.invoke(
+                main,
+                ["serve", "--host", "0.0.0.0", "--port", "9090", "--output-dir", str(tmp_path)],
+            )
+
+        assert result.exit_code == 0, result.output
+        mock_uvicorn_run.assert_called_once_with(mock_app, host="0.0.0.0", port=9090)
