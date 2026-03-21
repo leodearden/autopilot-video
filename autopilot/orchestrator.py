@@ -1197,6 +1197,16 @@ class PipelineOrchestrator:
                 logger.info("[SKIPPED] %s (dependency failed)", stage_name)
                 continue
 
+            # Check gate — may block (pause mode) or skip
+            gate_result = self._check_gate(stage_name)
+            if gate_result == "skipped":
+                results[stage_name] = StageResult(
+                    status=StageStatus.SKIPPED,
+                    elapsed_seconds=0.0,
+                )
+                logger.info("[GATE-SKIPPED] %s", stage_name)
+                continue
+
             if dry_run:
                 logger.info(
                     "[DRY-RUN] %s (est. %ss)",
