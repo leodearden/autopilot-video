@@ -1017,9 +1017,31 @@ class PipelineOrchestrator:
             self._emit_event("gate_waiting", stage=stage_name)
             logger.info("[GATE-WAITING] %s — waiting for external approval", stage_name)
 
+            timeout_hours = gate.get("timeout_hours")
+            wait_start = time.monotonic()
+
             # Poll for approval/skip
-            while True:
+            while not shutdown_requested():
                 time.sleep(2)
+
+                # Check timeout
+                if timeout_hours is not None and timeout_hours > 0:
+                    elapsed_hours = (time.monotonic() - wait_start) / 3600
+                    if elapsed_hours > timeout_hours:
+                        self._db.update_gate(
+                            gate_name,
+                            status="approved",
+                            decided_by="system",
+                            decided_at=datetime.now(timezone.utc).isoformat(),
+                            notes="auto-approved: timeout",
+                        )
+                        self._emit_event(
+                            "gate_approved", stage=stage_name,
+                            payload={"reason": "timeout"},
+                        )
+                        logger.info("[GATE-TIMEOUT] %s — auto-approved after timeout", stage_name)
+                        return "approved"
+
                 current = self._db.get_gate(gate_name)
                 if current is None:
                     return "approved"
@@ -1030,6 +1052,9 @@ class PipelineOrchestrator:
                 if status == "skipped":
                     self._emit_event("gate_skipped", stage=stage_name)
                     return "skipped"
+
+            # Shutdown requested
+            return "skipped"
 
         return "approved"
 
