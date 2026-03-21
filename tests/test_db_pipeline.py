@@ -409,3 +409,94 @@ class TestEventsCRUD:
         catalog_db.prune_events(hours=24)
         events = catalog_db.get_events_since(0)
         assert len(events) == 2
+
+
+# -- Runs CRUD tests --------------------------------------------------------
+
+
+class TestRunsCRUD:
+    """Tests for pipeline runs CRUD methods."""
+
+    def test_insert_run_minimal(self, catalog_db):
+        """insert_run() with only required fields uses defaults."""
+        catalog_db.insert_run("r1", started_at="2026-01-01T00:00:00")
+        run = catalog_db.get_run("r1")
+        assert run is not None
+        assert run["run_id"] == "r1"
+        assert run["started_at"] == "2026-01-01T00:00:00"
+        assert run["status"] == "running"
+        assert run["config_snapshot"] is None
+
+    def test_insert_run_all_fields(self, catalog_db):
+        """insert_run() with all fields stores them correctly."""
+        catalog_db.insert_run(
+            "r2",
+            started_at="2026-01-01T00:00:00",
+            config_snapshot='{"key": "val"}',
+            current_stage="ingest",
+            status="running",
+            budget_remaining_seconds=3600.0,
+        )
+        run = catalog_db.get_run("r2")
+        assert run is not None
+        assert run["config_snapshot"] == '{"key": "val"}'
+        assert run["current_stage"] == "ingest"
+        assert run["budget_remaining_seconds"] == 3600.0
+
+    def test_get_run_returns_dict(self, catalog_db):
+        """get_run() returns a plain dict."""
+        catalog_db.insert_run("r3", started_at="2026-01-01T00:00:00")
+        run = catalog_db.get_run("r3")
+        assert isinstance(run, dict)
+
+    def test_get_run_not_found(self, catalog_db):
+        """get_run() returns None for a nonexistent run_id."""
+        assert catalog_db.get_run("nonexistent") is None
+
+    def test_update_run_modifies_fields(self, catalog_db):
+        """update_run() changes specified fields."""
+        catalog_db.insert_run("r4", started_at="2026-01-01T00:00:00")
+        catalog_db.update_run(
+            "r4",
+            status="completed",
+            finished_at="2026-01-01T01:00:00",
+            wall_clock_seconds=3600.0,
+        )
+        run = catalog_db.get_run("r4")
+        assert run is not None
+        assert run["status"] == "completed"
+        assert run["finished_at"] == "2026-01-01T01:00:00"
+        assert run["wall_clock_seconds"] == 3600.0
+
+    def test_get_current_run_returns_latest_running(self, catalog_db):
+        """get_current_run() returns the most recently started running run."""
+        catalog_db.insert_run("r5", started_at="2026-01-01T00:00:00")
+        catalog_db.insert_run("r6", started_at="2026-01-02T00:00:00")
+        current = catalog_db.get_current_run()
+        assert current is not None
+        assert current["run_id"] == "r6"
+
+    def test_get_current_run_ignores_completed(self, catalog_db):
+        """get_current_run() ignores runs with non-running status."""
+        catalog_db.insert_run("r7", started_at="2026-01-01T00:00:00")
+        catalog_db.update_run("r7", status="completed")
+        catalog_db.insert_run("r8", started_at="2026-01-02T00:00:00")
+        current = catalog_db.get_current_run()
+        assert current is not None
+        assert current["run_id"] == "r8"
+
+    def test_get_current_run_returns_none_when_no_running(self, catalog_db):
+        """get_current_run() returns None when all runs are completed."""
+        catalog_db.insert_run(
+            "r9", started_at="2026-01-01T00:00:00", status="completed"
+        )
+        assert catalog_db.get_current_run() is None
+
+    def test_list_runs_ordered_by_started_at_desc(self, catalog_db):
+        """list_runs() returns runs ordered by started_at descending."""
+        catalog_db.insert_run("r10", started_at="2026-01-01T00:00:00")
+        catalog_db.insert_run("r11", started_at="2026-01-03T00:00:00")
+        catalog_db.insert_run("r12", started_at="2026-01-02T00:00:00")
+        runs = catalog_db.list_runs()
+        assert len(runs) == 3
+        assert [r["run_id"] for r in runs] == ["r11", "r12", "r10"]
