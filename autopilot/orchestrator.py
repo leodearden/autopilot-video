@@ -985,6 +985,34 @@ class PipelineOrchestrator:
             stage_name, stage_name.lower()
         )
 
+    def _check_gate(self, stage_name: str) -> str:
+        """Check the gate for a stage and return the gate decision.
+
+        Returns:
+            'approved' if the stage should run, 'skipped' if it should be skipped.
+        """
+        gate_name = self._gate_stage_name(stage_name)
+        gate = self._db.get_gate(gate_name)
+
+        if gate is None:
+            logger.warning("Gate not found for stage %s (gate=%s), auto-approving", stage_name, gate_name)
+            return "approved"
+
+        mode = gate.get("mode", "auto")
+
+        if mode == "auto":
+            decided_at = datetime.now(timezone.utc).isoformat()
+            self._db.update_gate(
+                gate_name,
+                status="approved",
+                decided_by="system",
+                decided_at=decided_at,
+            )
+            self._emit_event("gate_passed", stage=stage_name)
+            return "approved"
+
+        return "approved"
+
     def _emit_event(
         self,
         event_type: str,
