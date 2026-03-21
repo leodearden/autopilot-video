@@ -2943,3 +2943,85 @@ class TestEmitEvent:
             if r.levelno == logging.DEBUG and "test_event" in r.message
         ]
         assert len(debug_records) >= 1
+
+
+class TestStageTransitionEvents:
+    """Tests for stage_started / stage_completed / stage_error events emitted during run()."""
+
+    def test_stage_started_event_emitted_for_each_stage(self) -> None:
+        """run() emits a 'stage_started' event for each of the 9 stages."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        insert_event_calls = mock_db.insert_event.call_args_list
+        started_calls = [
+            c for c in insert_event_calls
+            if c[1].get("event_type") == "stage_started"
+        ]
+        started_stages = [c[1]["stage"] for c in started_calls]
+        assert started_stages == EXPECTED_STAGES
+
+    def test_stage_completed_event_emitted_with_elapsed(self) -> None:
+        """run() emits 'stage_completed' events with 'elapsed' in payload."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        insert_event_calls = mock_db.insert_event.call_args_list
+        completed_calls = [
+            c for c in insert_event_calls
+            if c[1].get("event_type") == "stage_completed"
+        ]
+        assert len(completed_calls) == 9
+        for c in completed_calls:
+            payload = json.loads(c[1]["payload_json"])
+            assert "elapsed" in payload
+            assert isinstance(payload["elapsed"], float)
+
+    def test_stage_error_event_emitted(self) -> None:
+        """When a stage raises, a 'stage_error' event is emitted with error message."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            if stage.name == "INGEST":
+                stage.func = MagicMock(side_effect=RuntimeError("ingest boom"))
+            else:
+                stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        insert_event_calls = mock_db.insert_event.call_args_list
+        error_calls = [
+            c for c in insert_event_calls
+            if c[1].get("event_type") == "stage_error"
+        ]
+        assert len(error_calls) >= 1
+        payload = json.loads(error_calls[0][1]["payload_json"])
+        assert "error" in payload
+        assert "ingest boom" in payload["error"]
+        assert error_calls[0][1]["stage"] == "INGEST"
+
+    def test_current_stage_updated_via_update_run(self) -> None:
+        """run() calls db.update_run with current_stage before each stage runs."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        update_run_calls = mock_db.update_run.call_args_list
+        # Extract calls that set current_stage
+        current_stage_calls = [
+            c for c in update_run_calls
+            if "current_stage" in c[1]
+        ]
+        stages_set = [c[1]["current_stage"] for c in current_stage_calls]
+        assert stages_set == EXPECTED_STAGES
