@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -2829,3 +2831,59 @@ class TestForceFlagPropagation:
             mock_fn.assert_called_once_with(
                 config=mock_config, db=mock_db, force=False,
             )
+
+
+# --- Run Tracking & Event Emission tests (Task 37) ---
+
+
+class TestRunTrackingInit:
+    """Tests for pipeline run record creation at start of run()."""
+
+    def test_run_creates_pipeline_run_record(self) -> None:
+        """run() calls db.insert_run once with a 32-char hex run_id, ISO started_at, status='running'."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        mock_db.insert_run.assert_called_once()
+        call_kwargs = mock_db.insert_run.call_args
+        run_id = call_kwargs[0][0]  # first positional arg
+        assert isinstance(run_id, str)
+        assert len(run_id) == 32
+        assert re.fullmatch(r"[0-9a-f]{32}", run_id), f"run_id not hex: {run_id}"
+
+        kw = call_kwargs[1]
+        assert kw["status"] == "running"
+        # started_at should be an ISO 8601 string
+        assert isinstance(kw["started_at"], str)
+        assert "T" in kw["started_at"]
+        # config_snapshot should be a string
+        assert isinstance(kw["config_snapshot"], str)
+
+    def test_run_stores_run_id_on_self(self) -> None:
+        """After run(), orch._run_id is a 32-char hex string."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=MagicMock())
+
+        assert hasattr(orch, "_run_id")
+        assert isinstance(orch._run_id, str)
+        assert len(orch._run_id) == 32
+        assert re.fullmatch(r"[0-9a-f]{32}", orch._run_id)
+
+    def test_run_passes_budget_to_insert_run(self) -> None:
+        """When budget_seconds=3600, insert_run is called with budget_remaining_seconds=3600."""
+        orch = PipelineOrchestrator(budget_seconds=3600)
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        kw = mock_db.insert_run.call_args[1]
+        assert kw["budget_remaining_seconds"] == 3600
