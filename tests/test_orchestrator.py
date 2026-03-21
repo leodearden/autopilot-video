@@ -2516,3 +2516,124 @@ class TestSourceResume:
 
         # Both should get resolve_edl_assets called
         assert mock_resolve.resolve_edl_assets.call_count == 2
+
+
+# -- Checkpoint/resume tests for _run_render ----------------------------------
+
+
+class TestRenderResume:
+    """Tests for _run_render checkpoint/resume logic."""
+
+    @patch("autopilot.orchestrator.render_validate")
+    @patch("autopilot.orchestrator.router")
+    def test_render_skips_narrative_with_existing_render_path(
+        self, mock_router, mock_validate, minimal_config,
+    ):
+        """_run_render skips when edit_plan has render_path and file exists on disk."""
+        from autopilot.orchestrator import _run_render
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+
+        # Create render file on disk for n1
+        render_path_n1 = minimal_config.output_dir / "renders" / "n1" / "output.mp4"
+        render_path_n1.parent.mkdir(parents=True)
+        render_path_n1.touch()
+
+        # n1 has render_path in edit plan pointing to existing file, n2 does not
+        def get_edit_plan(nid):
+            if nid == "n1":
+                return {
+                    "narrative_id": "n1",
+                    "edl_json": '{"timeline": []}',
+                    "render_path": str(render_path_n1),
+                }
+            return {
+                "narrative_id": "n2",
+                "edl_json": '{"timeline": []}',
+            }
+        db.get_edit_plan.side_effect = get_edit_plan
+
+        mock_router.route_and_render.return_value = Path("/out/video.mp4")
+        mock_validate.validate_render.return_value = MagicMock(passed=True, issues=[])
+
+        _run_render(config=minimal_config, db=db)
+
+        # Only n2 should get route_and_render called
+        assert mock_router.route_and_render.call_count == 1
+
+    @patch("autopilot.orchestrator.render_validate")
+    @patch("autopilot.orchestrator.router")
+    def test_render_logs_resume_counts(
+        self, mock_router, mock_validate, minimal_config, caplog,
+    ):
+        """_run_render logs 'Resuming RENDER: N/M ...'."""
+        from autopilot.orchestrator import _run_render
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"}, {"narrative_id": "n3"},
+        ]
+
+        # Create render files for n1 and n2
+        for nid in ("n1", "n2"):
+            rpath = minimal_config.output_dir / "renders" / nid / "output.mp4"
+            rpath.parent.mkdir(parents=True)
+            rpath.touch()
+
+        def get_edit_plan(nid):
+            if nid in ("n1", "n2"):
+                return {
+                    "narrative_id": nid,
+                    "edl_json": '{"timeline": []}',
+                    "render_path": str(minimal_config.output_dir / "renders" / nid / "output.mp4"),
+                }
+            return {
+                "narrative_id": nid,
+                "edl_json": '{"timeline": []}',
+            }
+        db.get_edit_plan.side_effect = get_edit_plan
+
+        mock_router.route_and_render.return_value = Path("/out/video.mp4")
+        mock_validate.validate_render.return_value = MagicMock(passed=True, issues=[])
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            _run_render(config=minimal_config, db=db)
+
+        assert any("Resuming RENDER" in r.message and "2/3" in r.message
+                    for r in caplog.records)
+
+    @patch("autopilot.orchestrator.render_validate")
+    @patch("autopilot.orchestrator.router")
+    def test_render_force_re_renders_all(
+        self, mock_router, mock_validate, minimal_config,
+    ):
+        """_run_render with force=True re-renders even with existing render output."""
+        from autopilot.orchestrator import _run_render
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+
+        # Create render files for both
+        for nid in ("n1", "n2"):
+            rpath = minimal_config.output_dir / "renders" / nid / "output.mp4"
+            rpath.parent.mkdir(parents=True)
+            rpath.touch()
+
+        db.get_edit_plan.return_value = {
+            "narrative_id": "n1",
+            "edl_json": '{"timeline": []}',
+            "render_path": str(minimal_config.output_dir / "renders" / "n1" / "output.mp4"),
+        }
+
+        mock_router.route_and_render.return_value = Path("/out/video.mp4")
+        mock_validate.validate_render.return_value = MagicMock(passed=True, issues=[])
+
+        _run_render(config=minimal_config, db=db, force=True)
+
+        # Both should get route_and_render called
+        assert mock_router.route_and_render.call_count == 2
