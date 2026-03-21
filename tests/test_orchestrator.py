@@ -3425,3 +3425,96 @@ class TestTrackingCallResilience:
             and "tracking" in r.message.lower()
         ]
         assert len(warning_records) >= 1
+
+
+class TestStartJob:
+    """Tests for the module-level _start_job helper."""
+
+    def test_start_job_returns_job_id_and_start_mono(self) -> None:
+        """_start_job returns (job_id, start_mono) tuple with 32-char hex job_id."""
+        from autopilot.orchestrator import _start_job
+
+        mock_db = MagicMock()
+        job_id, start_mono = _start_job(mock_db, "INGEST", "ingest_file")
+        assert isinstance(job_id, str)
+        assert len(job_id) == 32
+        assert all(c in "0123456789abcdef" for c in job_id)
+        assert isinstance(start_mono, float)
+
+    def test_start_job_calls_insert_job_with_running_status(self) -> None:
+        """_start_job calls db.insert_job with status='running' and correct fields."""
+        from autopilot.orchestrator import _start_job
+
+        mock_db = MagicMock()
+        job_id, _ = _start_job(
+            mock_db, "INGEST", "ingest_file",
+            target_id="media_123", target_label="video.mp4",
+            worker="cpu", run_id="abc123",
+        )
+        mock_db.insert_job.assert_called_once()
+        call_kwargs = mock_db.insert_job.call_args
+        assert call_kwargs[0][0] == job_id  # positional: job_id
+        assert call_kwargs[0][1] == "INGEST"  # positional: stage
+        assert call_kwargs[0][2] == "ingest_file"  # positional: job_type
+        assert call_kwargs[1]["status"] == "running"
+        assert call_kwargs[1]["target_id"] == "media_123"
+        assert call_kwargs[1]["target_label"] == "video.mp4"
+        assert call_kwargs[1]["worker"] == "cpu"
+        assert call_kwargs[1]["run_id"] == "abc123"
+        assert "started_at" in call_kwargs[1]
+
+    def test_start_job_started_at_is_utc_iso(self) -> None:
+        """_start_job sets started_at as a UTC ISO string."""
+        from autopilot.orchestrator import _start_job
+
+        mock_db = MagicMock()
+        _start_job(mock_db, "ANALYZE", "asr")
+        started_at = mock_db.insert_job.call_args[1]["started_at"]
+        # Should be parseable as ISO format and contain timezone info
+        assert "T" in started_at
+        assert "+" in started_at or "Z" in started_at
+
+
+class TestFinishJob:
+    """Tests for the module-level _finish_job helper."""
+
+    def test_finish_job_updates_with_done_status(self) -> None:
+        """_finish_job calls db.update_job with status='done' by default."""
+        from autopilot.orchestrator import _finish_job
+        import time
+
+        mock_db = MagicMock()
+        start_mono = time.monotonic() - 1.5  # simulate 1.5s elapsed
+        _finish_job(mock_db, "job_abc", start_mono)
+        mock_db.update_job.assert_called_once()
+        call_kwargs = mock_db.update_job.call_args[1]
+        assert call_kwargs["status"] == "done"
+        assert "finished_at" in call_kwargs
+        assert isinstance(call_kwargs["duration_seconds"], float)
+        assert call_kwargs["duration_seconds"] >= 1.0
+
+    def test_finish_job_error_status_and_message(self) -> None:
+        """_finish_job with status='error' passes error_message."""
+        from autopilot.orchestrator import _finish_job
+        import time
+
+        mock_db = MagicMock()
+        start_mono = time.monotonic()
+        _finish_job(
+            mock_db, "job_xyz", start_mono,
+            status="error", error_message="disk full",
+        )
+        call_kwargs = mock_db.update_job.call_args[1]
+        assert call_kwargs["status"] == "error"
+        assert call_kwargs["error_message"] == "disk full"
+
+    def test_finish_job_calculates_duration_from_monotonic(self) -> None:
+        """_finish_job duration_seconds is calculated from monotonic clock."""
+        from autopilot.orchestrator import _finish_job
+        import time
+
+        mock_db = MagicMock()
+        start_mono = time.monotonic() - 2.0
+        _finish_job(mock_db, "job_dur", start_mono)
+        duration = mock_db.update_job.call_args[1]["duration_seconds"]
+        assert duration >= 2.0
