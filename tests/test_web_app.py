@@ -43,3 +43,17 @@ class TestHealthCheck:
         response = client.get("/api/health")
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
+
+
+class TestStaticFiles:
+    """Tests for static file serving."""
+
+    def test_app_css_served(self, client) -> None:
+        """GET /static/app.css returns 200."""
+        response = client.get("/static/app.css")
+        assert response.status_code == 200
+
+    def test_app_js_served(self, client) -> None:
+        """GET /static/app.js returns 200."""
+        response = client.get("/static/app.js")
+        assert response.status_code == 200
