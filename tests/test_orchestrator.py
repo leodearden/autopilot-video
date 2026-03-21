@@ -1790,3 +1790,143 @@ class TestRemainingStagesShutdown:
         _run_upload(config=minimal_config, db=db)
 
         assert mock_youtube.upload_video.call_count == 1
+
+
+class TestShutdownSkipDetails:
+    """Tests for shutdown-skipped stage result details and summary logging."""
+
+    def setup_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    def teardown_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    def test_shutdown_skipped_stages_have_error_message(self) -> None:
+        """Stages skipped due to shutdown have error_message='shutdown requested'."""
+        from autopilot.orchestrator import request_shutdown
+
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        # Request shutdown after INGEST completes
+        def ingest_then_shutdown(**kw):
+            request_shutdown()
+
+        orch._stage_map["INGEST"].func = ingest_then_shutdown
+
+        results = orch.run(config=MagicMock(), db=MagicMock())
+
+        # INGEST should be DONE with no error_message
+        assert results["INGEST"].status == StageStatus.DONE
+        assert results["INGEST"].error_message is None
+
+        # All remaining stages should be SKIPPED with error_message='shutdown requested'
+        for name in [
+            "ANALYZE", "CLASSIFY", "NARRATE", "SCRIPT",
+            "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD",
+        ]:
+            result = results[name]
+            assert result.status == StageStatus.SKIPPED, (
+                f"{name} should be SKIPPED"
+            )
+            assert result.error_message == "shutdown requested", (
+                f"{name} should have error_message='shutdown requested', "
+                f"got {result.error_message!r}"
+            )
+
+    def test_shutdown_skipped_distinct_from_dependency_skipped(self) -> None:
+        """Shutdown-skipped stages have error_message; dependency-skipped do not."""
+        from autopilot.orchestrator import request_shutdown
+
+        orch = PipelineOrchestrator()
+
+        call_order: list[str] = []
+
+        def make_func(name: str):
+            def func(**kw):
+                call_order.append(name)
+                if name == "ANALYZE":
+                    raise RuntimeError("analysis failed")
+            return func
+
+        # Replace all stage funcs; ANALYZE will fail, then we request shutdown
+        # after CLASSIFY (which should be dependency-skipped)
+        for stage in orch.stages:
+            stage.func = make_func(stage.name)
+
+        # Make INGEST succeed, ANALYZE fail
+        results = orch.run(config=MagicMock(), db=MagicMock())
+
+        # ANALYZE errored → CLASSIFY should be dependency-skipped (no error_message)
+        assert results["CLASSIFY"].status == StageStatus.SKIPPED
+        assert results["CLASSIFY"].error_message is None
+
+    def test_summary_log_includes_shutdown_skipped_stages(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Pipeline summary log shows both done and skipped stages."""
+        from autopilot.orchestrator import request_shutdown
+
+        orch = PipelineOrchestrator()
+
+        def ingest_then_shutdown(**kw):
+            request_shutdown()
+
+        for stage in orch.stages:
+            stage.func = MagicMock()
+        orch._stage_map["INGEST"].func = ingest_then_shutdown
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            orch.run(config=MagicMock(), db=MagicMock())
+
+        # Find the summary log message
+        summary_records = [
+            r for r in caplog.records if "Pipeline complete" in r.message
+        ]
+        assert len(summary_records) == 1, "Expected exactly one pipeline summary log"
+        summary = summary_records[0].message
+
+        # INGEST should show as done
+        assert "INGEST: done" in summary
+        # Remaining stages should show as skipped
+        assert "ANALYZE: skipped" in summary
+        assert "UPLOAD: skipped" in summary
+
+    def test_shutdown_log_per_skipped_stage(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Each shutdown-skipped stage gets a [SHUTDOWN] log entry."""
+        from autopilot.orchestrator import request_shutdown
+
+        orch = PipelineOrchestrator()
+
+        def ingest_then_shutdown(**kw):
+            request_shutdown()
+
+        for stage in orch.stages:
+            stage.func = MagicMock()
+        orch._stage_map["INGEST"].func = ingest_then_shutdown
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            orch.run(config=MagicMock(), db=MagicMock())
+
+        shutdown_logs = [
+            r for r in caplog.records if "[SHUTDOWN]" in r.message
+        ]
+        # Should have one [SHUTDOWN] log per remaining stage (8 stages)
+        skipped_names = [
+            "ANALYZE", "CLASSIFY", "NARRATE", "SCRIPT",
+            "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD",
+        ]
+        assert len(shutdown_logs) == len(skipped_names), (
+            f"Expected {len(skipped_names)} [SHUTDOWN] logs, got {len(shutdown_logs)}"
+        )
+        for name in skipped_names:
+            assert any(
+                name in r.message for r in shutdown_logs
+            ), f"Missing [SHUTDOWN] log for {name}"
