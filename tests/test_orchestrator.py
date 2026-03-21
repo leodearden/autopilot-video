@@ -3158,3 +3158,57 @@ class TestBudgetRemainingTracking:
         ]
         # No per-stage budget updates should occur
         assert len(budget_calls) == 0
+
+
+class TestRunTrackingIntegration:
+    """Integration tests using real in-memory CatalogDB."""
+
+    def test_full_run_creates_db_records(self, catalog_db) -> None:
+        """Run with real CatalogDB creates a pipeline_runs row with status='completed'."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=catalog_db)
+
+        run_record = catalog_db.get_run(orch._run_id)
+        assert run_record is not None
+        assert run_record["status"] == "completed"
+        assert run_record["wall_clock_seconds"] is not None
+        assert float(run_record["wall_clock_seconds"]) >= 0
+        assert run_record["finished_at"] is not None
+
+    def test_full_run_creates_events(self, catalog_db) -> None:
+        """Run creates stage_started + stage_completed events for each stage plus run_completed."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=catalog_db)
+
+        events = catalog_db.get_events_since(0)
+        event_types = [e["event_type"] for e in events]
+
+        # 9 stages × 2 (started + completed) = 18, plus 1 run_completed = 19
+        assert event_types.count("stage_started") == 9
+        assert event_types.count("stage_completed") == 9
+        assert event_types.count("run_completed") == 1
+
+        # Verify each stage has both started and completed events
+        for stage_name in EXPECTED_STAGES:
+            stage_started = [e for e in events if e["event_type"] == "stage_started" and e["stage"] == stage_name]
+            stage_completed = [e for e in events if e["event_type"] == "stage_completed" and e["stage"] == stage_name]
+            assert len(stage_started) == 1, f"Missing stage_started for {stage_name}"
+            assert len(stage_completed) == 1, f"Missing stage_completed for {stage_name}"
+
+    def test_dry_run_still_creates_run_record(self, catalog_db) -> None:
+        """dry_run=True still creates a pipeline_runs record."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=catalog_db, dry_run=True)
+
+        run_record = catalog_db.get_run(orch._run_id)
+        assert run_record is not None
+        assert run_record["status"] is not None
