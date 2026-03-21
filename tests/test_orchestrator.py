@@ -522,6 +522,12 @@ class TestAnalyzeStage:
         media2 = {"id": "m2", "file_path": "/fake/v2.mp4", "status": "ingested"}
         db = MagicMock()
         db.list_all_media.return_value = [media1, media2]
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
         mock_gpu_cls.return_value = MagicMock()
 
         _run_analyze(config=minimal_config, db=db)
@@ -577,6 +583,12 @@ class TestAnalyzeStage:
         ]
         db = MagicMock()
         db.list_all_media.return_value = media
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
         mock_gpu_cls.return_value = MagicMock()
 
         _run_analyze(config=minimal_config, db=db)
@@ -657,6 +669,12 @@ class TestAnalyzeStage:
             {"id": "m2", "file_path": "/fake/v2.mp4", "status": "ingested"},
             {"id": "m3", "file_path": "/fake/v3.mp4", "status": "ingested"},
         ]
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
         mock_scheduler = MagicMock()
         mock_gpu_cls.return_value = mock_scheduler
         # First media's ASR fails
@@ -687,6 +705,12 @@ class TestAnalyzeStage:
         db.list_all_media.return_value = [
             {"id": "m1", "file_path": "/fake/v1.mp4", "status": "ingested"},
         ]
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
         mock_scheduler = MagicMock()
         mock_gpu_cls.return_value = mock_scheduler
         mock_asr.transcribe_media.side_effect = RuntimeError("ASR failed")
@@ -716,6 +740,12 @@ class TestAnalyzeStage:
             {"id": "m2", "file_path": "/fake/v2.mp4", "status": "ingested"},
             {"id": "m3", "file_path": "/fake/v3.mp4", "status": "ingested"},
         ]
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
         mock_scheduler = MagicMock()
         mock_gpu_cls.return_value = mock_scheduler
         mock_asr.transcribe_media.side_effect = [

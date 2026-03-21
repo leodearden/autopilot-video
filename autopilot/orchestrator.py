@@ -165,7 +165,7 @@ def _run_ingest(*, config: Any, db: Any, force: bool = False) -> None:
     logger.info("Ingest complete: %d/%d files ingested", ingested, len(files))
 
 
-def _run_analyze(*, config: Any, db: Any) -> None:
+def _run_analyze(*, config: Any, db: Any, force: bool = False) -> None:
     """ANALYZE stage: run all analysis passes on each media file."""
     scheduler = GPUScheduler(
         total_vram=0,
@@ -174,6 +174,27 @@ def _run_analyze(*, config: Any, db: Any) -> None:
 
     all_media = db.list_all_media()
     media_list = [m for m in all_media if m.get("status") != "duplicate"]
+
+    # Per-pass checkpoint mapping: (has_method, label)
+    pass_checks: list[tuple[str, str]] = [
+        ("has_transcript", "transcribed"),
+        ("has_boundaries", "shot-detected"),
+        ("has_detections", "object-detected"),
+        ("has_faces", "face-detected"),
+        ("has_embeddings", "embedded"),
+        ("has_audio_events", "audio-classified"),
+    ]
+
+    # Log resume counts per pass
+    if not force:
+        for has_method, label in pass_checks:
+            checker = getattr(db, has_method)
+            done_count = sum(1 for m in media_list if checker(m["id"]))
+            if done_count > 0:
+                logger.info(
+                    "Resuming ANALYZE: %d/%d media already %s",
+                    done_count, len(media_list), label,
+                )
 
     successes = 0
     try:
@@ -184,22 +205,28 @@ def _run_analyze(*, config: Any, db: Any) -> None:
             file_path = Path(media["file_path"])
             audio_path = file_path  # audio extracted from same file
             try:
-                asr.transcribe_media(
-                    media_id, audio_path, db, scheduler, config.models,
-                    batch_size=config.processing.batch_size_whisper,
-                )
-                scenes.detect_shots(media_id, file_path, db, scheduler)
-                objects.detect_objects(
-                    media_id, file_path, db, scheduler, config.models,
-                    sparse=False,
-                )
-                faces.detect_faces(media_id, file_path, db, scheduler, config.models)
-                embeddings.compute_embeddings(
-                    media_id, file_path, db, scheduler, config.models,
-                )
-                audio_events.classify_audio_events(
-                    media_id, audio_path, db, scheduler,
-                )
+                if force or not db.has_transcript(media_id):
+                    asr.transcribe_media(
+                        media_id, audio_path, db, scheduler, config.models,
+                        batch_size=config.processing.batch_size_whisper,
+                    )
+                if force or not db.has_boundaries(media_id):
+                    scenes.detect_shots(media_id, file_path, db, scheduler)
+                if force or not db.has_detections(media_id):
+                    objects.detect_objects(
+                        media_id, file_path, db, scheduler, config.models,
+                        sparse=False,
+                    )
+                if force or not db.has_faces(media_id):
+                    faces.detect_faces(media_id, file_path, db, scheduler, config.models)
+                if force or not db.has_embeddings(media_id):
+                    embeddings.compute_embeddings(
+                        media_id, file_path, db, scheduler, config.models,
+                    )
+                if force or not db.has_audio_events(media_id):
+                    audio_events.classify_audio_events(
+                        media_id, audio_path, db, scheduler,
+                    )
                 successes += 1
             except Exception:
                 logger.exception("Analysis failed for media %s", media_id)
