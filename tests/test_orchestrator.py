@@ -1479,3 +1479,73 @@ class TestShutdownBetweenStages:
             "shutdown" in r.message.lower() and "skip" in r.message.lower()
             for r in caplog.records
         )
+
+
+class TestIngestShutdown:
+    """Tests for _run_ingest breaking early on shutdown."""
+
+    def setup_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    def teardown_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    @patch("autopilot.orchestrator.dedup")
+    @patch("autopilot.orchestrator.normalizer")
+    @patch("autopilot.orchestrator.scanner")
+    def test_ingest_breaks_on_shutdown(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+    ) -> None:
+        """_run_ingest breaks early when shutdown is requested mid-iteration."""
+        from autopilot.orchestrator import _run_ingest, request_shutdown
+
+        # Create 3 mock files
+        files = []
+        for i in range(3):
+            mf = MagicMock()
+            mf.file_path = Path(f"/fake/v{i}.mp4")
+            mf.sha256_prefix = f"sha{i}"
+            files.append(mf)
+        mock_scanner.scan_directory.return_value = files
+
+        db = MagicMock()
+        call_count = 0
+
+        def insert_and_shutdown(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                request_shutdown()
+
+        db.insert_media.side_effect = insert_and_shutdown
+
+        _run_ingest(config=minimal_config, db=db)
+
+        # Only the first file should be fully processed; second iteration
+        # should see shutdown and break before processing
+        assert db.insert_media.call_count == 1
+
+    @patch("autopilot.orchestrator.dedup")
+    @patch("autopilot.orchestrator.normalizer")
+    @patch("autopilot.orchestrator.scanner")
+    def test_ingest_still_deduplicates_on_shutdown(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+    ) -> None:
+        """dedup.mark_duplicates is still called even when shutdown breaks the loop."""
+        from autopilot.orchestrator import _run_ingest, request_shutdown
+
+        mf = MagicMock()
+        mf.file_path = Path("/fake/v0.mp4")
+        mf.sha256_prefix = "sha0"
+        mock_scanner.scan_directory.return_value = [mf, MagicMock(), MagicMock()]
+
+        db = MagicMock()
+        db.insert_media.side_effect = lambda *a, **kw: request_shutdown()
+
+        _run_ingest(config=minimal_config, db=db)
+
+        mock_dedup.mark_duplicates.assert_called_once_with(db)
