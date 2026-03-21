@@ -324,3 +324,88 @@ class TestJobsCRUD:
         catalog_db.insert_job("j23", "ingest", "x", status="done", run_id="r2")
         counts = catalog_db.count_jobs_by_status("ingest", run_id="r1")
         assert counts == {"done": 1, "pending": 1}
+
+
+# -- Events CRUD tests ------------------------------------------------------
+
+
+class TestEventsCRUD:
+    """Tests for pipeline events CRUD methods."""
+
+    def test_insert_event_returns_event_id(self, catalog_db):
+        """insert_event() returns the auto-generated event_id."""
+        eid = catalog_db.insert_event("stage_started", stage="ingest")
+        assert isinstance(eid, int)
+        assert eid >= 1
+
+    def test_insert_event_auto_creates_at(self, catalog_db):
+        """insert_event() sets created_at via SQL DEFAULT."""
+        eid = catalog_db.insert_event("stage_started")
+        cur = catalog_db.conn.execute(
+            "SELECT created_at FROM pipeline_events WHERE event_id = ?",
+            (eid,),
+        )
+        row = cur.fetchone()
+        assert row is not None
+        assert row[0] is not None  # created_at was populated
+
+    def test_insert_event_with_all_fields(self, catalog_db):
+        """insert_event() stores all provided fields."""
+        eid = catalog_db.insert_event(
+            "job_completed",
+            stage="analyze",
+            job_id="j1",
+            payload_json='{"result": "ok"}',
+        )
+        cur = catalog_db.conn.execute(
+            "SELECT * FROM pipeline_events WHERE event_id = ?",
+            (eid,),
+        )
+        row = dict(cur.fetchone())
+        assert row["event_type"] == "job_completed"
+        assert row["stage"] == "analyze"
+        assert row["job_id"] == "j1"
+        assert row["payload_json"] == '{"result": "ok"}'
+
+    def test_get_events_since_returns_newer_events(self, catalog_db):
+        """get_events_since() returns only events after the given id."""
+        e1 = catalog_db.insert_event("a")
+        e2 = catalog_db.insert_event("b")
+        e3 = catalog_db.insert_event("c")
+        events = catalog_db.get_events_since(e1)
+        ids = [e["event_id"] for e in events]
+        assert ids == [e2, e3]
+
+    def test_get_events_since_zero_returns_all(self, catalog_db):
+        """get_events_since(0) returns all events."""
+        catalog_db.insert_event("a")
+        catalog_db.insert_event("b")
+        events = catalog_db.get_events_since(0)
+        assert len(events) == 2
+
+    def test_get_events_since_empty(self, catalog_db):
+        """get_events_since() returns empty list when no events match."""
+        events = catalog_db.get_events_since(0)
+        assert events == []
+
+    def test_prune_events_removes_old(self, catalog_db):
+        """prune_events() removes events older than threshold."""
+        # Insert events with backdated created_at
+        catalog_db.conn.execute(
+            "INSERT INTO pipeline_events (event_type, created_at) "
+            "VALUES (?, datetime('now', '-48 hours'))",
+            ("old_event",),
+        )
+        catalog_db.insert_event("recent_event")
+        catalog_db.prune_events(hours=24)
+        events = catalog_db.get_events_since(0)
+        assert len(events) == 1
+        assert events[0]["event_type"] == "recent_event"
+
+    def test_prune_events_keeps_recent(self, catalog_db):
+        """prune_events() keeps events newer than threshold."""
+        catalog_db.insert_event("recent1")
+        catalog_db.insert_event("recent2")
+        catalog_db.prune_events(hours=24)
+        events = catalog_db.get_events_since(0)
+        assert len(events) == 2
