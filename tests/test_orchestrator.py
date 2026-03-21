@@ -4731,3 +4731,92 @@ class TestGateInitInRun:
         # Should still complete
         results = orch.run(config=MagicMock(), db=catalog_db)
         assert len(results) == 9
+
+
+class TestGateIntegrationInRun:
+    """Tests for _check_gate integration in run() stage loop."""
+
+    def test_check_gate_called_before_each_stage(self) -> None:
+        """_check_gate is called once per stage before execution."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        gate_calls: list[str] = []
+        original_check = orch._check_gate
+
+        def spy_check(stage_name):
+            gate_calls.append(stage_name)
+            return "approved"
+
+        orch._check_gate = spy_check
+
+        mock_db = MagicMock()
+        mock_db._PIPELINE_STAGES = (
+            "ingest", "analyze", "classify", "narrate", "script",
+            "edl", "source", "render", "upload",
+        )
+        mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
+        orch.run(config=MagicMock(), db=mock_db)
+
+        assert gate_calls == [
+            "INGEST", "ANALYZE", "CLASSIFY", "NARRATE", "SCRIPT",
+            "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD",
+        ]
+
+    def test_gate_skipped_stage_not_executed(self) -> None:
+        """When _check_gate returns 'skipped', stage func is NOT called."""
+        orch = PipelineOrchestrator()
+        mock_funcs = {}
+        for stage in orch.stages:
+            stage.func = MagicMock()
+            mock_funcs[stage.name] = stage.func
+
+        def selective_gate(stage_name):
+            if stage_name == "RENDER":
+                return "skipped"
+            return "approved"
+
+        orch._check_gate = selective_gate
+
+        mock_db = MagicMock()
+        mock_db._PIPELINE_STAGES = (
+            "ingest", "analyze", "classify", "narrate", "script",
+            "edl", "source", "render", "upload",
+        )
+        mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
+        results = orch.run(config=MagicMock(), db=mock_db)
+
+        # RENDER stage func should NOT be called
+        mock_funcs["RENDER"].assert_not_called()
+        # Result should be SKIPPED
+        assert results["RENDER"].status == StageStatus.SKIPPED
+
+    def test_gate_skipped_does_not_cascade_to_dependents(self) -> None:
+        """Gate-skipped stages do NOT propagate skip to downstream stages."""
+        orch = PipelineOrchestrator()
+        mock_funcs = {}
+        for stage in orch.stages:
+            stage.func = MagicMock()
+            mock_funcs[stage.name] = stage.func
+
+        def selective_gate(stage_name):
+            if stage_name == "SOURCE_ASSETS":
+                return "skipped"
+            return "approved"
+
+        orch._check_gate = selective_gate
+
+        mock_db = MagicMock()
+        mock_db._PIPELINE_STAGES = (
+            "ingest", "analyze", "classify", "narrate", "script",
+            "edl", "source", "render", "upload",
+        )
+        mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
+        results = orch.run(config=MagicMock(), db=mock_db)
+
+        # SOURCE_ASSETS skipped via gate
+        assert results["SOURCE_ASSETS"].status == StageStatus.SKIPPED
+        # RENDER depends on SOURCE_ASSETS but should still run (gate skip != error skip)
+        mock_funcs["RENDER"].assert_called_once()
+        assert results["RENDER"].status == StageStatus.DONE
