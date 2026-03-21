@@ -491,6 +491,20 @@ class PipelineOrchestrator:
         pipeline_start = time.monotonic()
 
         for stage_name in order:
+            # Check for graceful shutdown before starting next stage
+            if shutdown_requested():
+                for remaining in order:
+                    if remaining not in results:
+                        results[remaining] = StageResult(
+                            status=StageStatus.SKIPPED,
+                            elapsed_seconds=0.0,
+                            error_message="shutdown requested",
+                        )
+                        logger.info(
+                            "[SHUTDOWN] Skipping %s", remaining,
+                        )
+                break
+
             stage = self._stage_map[stage_name]
 
             # Check if any dependency errored — skip if so
