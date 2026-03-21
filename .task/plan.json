@@ -1,172 +1,160 @@
 {
-  "task_id": "35",
-  "title": "DB schema: pipeline control tables",
+  "task_id": "37",
+  "title": "Orchestrator: run tracking + event emission",
   "files": [
-    "autopilot/db.py",
-    "tests/test_db_pipeline.py",
-    "tests/test_db.py"
+    "autopilot/orchestrator.py",
+    "tests/test_orchestrator.py"
   ],
   "modules": [
     "autopilot",
     "tests"
   ],
-  "analysis": "CatalogDB in autopilot/db.py uses direct SQL with sqlite3.Row factory, returning dict[str, object] | None for single rows and list[dict[str, object]] for multi-row queries. Schema is created in _create_schema() via executescript with CREATE TABLE IF NOT EXISTS. The existing test suite uses a 'catalog_db' fixture from conftest.py that creates an in-memory DB with autocommit. Tests are organized in classes per table group. We need to: (1) add 4 new tables to _create_schema() with appropriate indexes, (2) implement ~18 CRUD methods following existing patterns, (3) write comprehensive tests in a new test_db_pipeline.py file. The update_activity_cluster pattern (kwargs-based SET clause with f-string) should be reused for update_gate, update_job, and update_run. The EXPECTED_TABLES list in test_db.py and the table count assertion (15) need updating to account for the 4 new tables. The _create_schema docstring says '15 catalog tables' which becomes '19 catalog tables'.",
-  "prerequisites": [
-    {
-      "id": "pre-1",
-      "description": "Update EXPECTED_TABLES in tests/test_db.py to include the 4 new pipeline tables (pipeline_events, pipeline_gates, pipeline_jobs, pipeline_runs \u2014 alphabetically sorted) and change the table count from 15 to 19 in test_schema_is_idempotent. Update _create_schema docstring from 15 to 19.",
-      "status": "done",
-      "commit": "9930362",
-      "tests": []
-    }
-  ],
+  "analysis": "PipelineOrchestrator.run() in autopilot/orchestrator.py currently executes stages in topological order, logging progress and returning a dict of StageResult. Task 35 (dependency) already added pipeline_runs and pipeline_events tables plus full CRUD to CatalogDB (db.insert_run, db.update_run, db.insert_event, etc.). This task instruments run() to: (1) create a pipeline_runs record at start via db.insert_run with uuid4 run_id, (2) add a _emit_event helper that calls db.insert_event with JSON payload, (3) emit stage_started/stage_completed/stage_error events at each stage transition with current_stage updates on the run, (4) finalize the run at end with status completed|failed, finished_at, wall_clock_seconds, (5) track budget_remaining_seconds. Existing tests use MagicMock for db, so all new db.insert_run/insert_event/update_run calls are silently accepted \u2014 no existing test breakage. New tests will assert those mock calls happened with correct args. An integration test with real in-memory CatalogDB verifies actual DB records.",
+  "prerequisites": [],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing test class TestPipelineSchema in test_db_pipeline.py \u2014 verify pipeline_gates, pipeline_jobs, pipeline_events, pipeline_runs tables exist with correct columns (check PRAGMA table_info for each), verify indexes exist on pipeline_jobs(stage,status), pipeline_jobs(run_id), pipeline_events(event_type), pipeline_events(created_at)",
+      "description": "Write TestRunTrackingInit class with tests: (1) test_run_creates_pipeline_run_record \u2014 after run() with mock stages, db.insert_run called once with 32-char hex run_id, started_at ISO string, status='running', config_snapshot is a string; (2) test_run_stores_run_id_on_self \u2014 after run(), orch._run_id is a 32-char hex string; (3) test_run_passes_budget_to_insert_run \u2014 when budget_seconds=3600, insert_run called with budget_remaining_seconds=3600",
       "status": "done",
-      "commit": "4ac7ed2"
+      "commit": "02fb80f"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Add 4 CREATE TABLE IF NOT EXISTS statements to _create_schema(): pipeline_gates (stage TEXT PK, mode TEXT DEFAULT 'auto', status TEXT DEFAULT 'idle', decided_at TEXT, decided_by TEXT DEFAULT 'system', notes TEXT, timeout_hours REAL), pipeline_jobs (job_id TEXT PK, stage TEXT NOT NULL, job_type TEXT NOT NULL, target_id TEXT, target_label TEXT, status TEXT DEFAULT 'pending', started_at TEXT, finished_at TEXT, duration_seconds REAL, progress_pct REAL, error_message TEXT, worker TEXT, run_id TEXT), pipeline_events (event_id INTEGER PK AUTOINCREMENT, event_type TEXT NOT NULL, stage TEXT, job_id TEXT, payload_json TEXT, created_at TEXT DEFAULT (datetime('now'))), pipeline_runs (run_id TEXT PK, started_at TEXT NOT NULL, finished_at TEXT, config_snapshot TEXT, current_stage TEXT, status TEXT DEFAULT 'running', wall_clock_seconds REAL, budget_remaining_seconds REAL). Add CREATE INDEX statements for pipeline_jobs and pipeline_events.",
+      "description": "Add imports (uuid4, datetime, timezone) to orchestrator.py. At start of run(), generate run_id=uuid4().hex, started_at=datetime.now(timezone.utc).isoformat(), store self._run_id=run_id and self._db=db, call db.insert_run(run_id, started_at=started_at, config_snapshot=str(config), status='running', budget_remaining_seconds=self.budget_seconds)",
       "status": "done",
-      "commit": "1847890"
+      "commit": "5536d12"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write failing tests TestGatesCRUD: test_init_default_gates_populates_stages (known pipeline stages get rows), test_init_default_gates_is_idempotent (calling twice doesn't duplicate or overwrite), test_get_gate_returns_dict (returns correct dict with all fields), test_get_gate_not_found_returns_none, test_get_all_gates_returns_list, test_update_gate_modifies_fields (change mode, status, notes etc.), test_update_gate_noop_on_empty_kwargs",
+      "description": "Write TestEmitEvent class with tests: (1) test_emit_event_calls_insert_event \u2014 set orch._db to a MagicMock, call _emit_event('test_event', stage='INGEST'), verify db.insert_event called with event_type='test_event', stage='INGEST'; (2) test_emit_event_serializes_payload_to_json \u2014 call with payload={'key': 'val'}, verify payload_json='{\"key\": \"val\"}'; (3) test_emit_event_none_payload \u2014 call without payload, verify payload_json=None; (4) test_emit_event_logs_at_debug_level \u2014 verify debug log emitted",
       "status": "done",
-      "commit": "fb379b6"
+      "commit": "586a38a"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement gates CRUD on CatalogDB: init_default_gates() uses INSERT OR IGNORE for each known pipeline stage (ingest, analyze, classify, narrate, script, edl, source, render, upload), get_gate(stage) returns dict|None, get_all_gates() returns list[dict], update_gate(stage, **kwargs) uses dynamic SET clause following update_activity_cluster pattern",
+      "description": "Add _emit_event(self, event_type, stage=None, job_id=None, payload=None) method to PipelineOrchestrator. Calls self._db.insert_event(event_type, stage=stage, job_id=job_id, payload_json=json.dumps(payload) if payload is not None else None). Logs at debug level.",
       "status": "done",
-      "commit": "02676e8"
+      "commit": "5e7a147"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write failing tests TestJobsCRUD: test_insert_job_all_fields, test_insert_job_minimal_fields (only required fields), test_get_job_returns_dict, test_get_job_not_found, test_update_job_modifies_fields, test_list_jobs_no_filter (returns all), test_list_jobs_filter_by_stage, test_list_jobs_filter_by_status, test_list_jobs_filter_by_job_type, test_list_jobs_filter_by_run_id, test_list_jobs_combined_filters, test_list_jobs_empty_result, test_count_jobs_by_status_returns_dict, test_count_jobs_by_status_with_run_id_filter",
+      "description": "Write TestStageTransitionEvents class with tests: (1) test_stage_started_event_emitted_for_each_stage \u2014 run with all mock stages, verify db.insert_event called with event_type='stage_started' and correct stage name for each of the 9 stages; (2) test_stage_completed_event_emitted_with_elapsed \u2014 verify 'stage_completed' events include payload with 'elapsed' key; (3) test_stage_error_event_emitted \u2014 make one stage raise, verify 'stage_error' event with error message in payload; (4) test_current_stage_updated_via_update_run \u2014 verify db.update_run called with current_stage=name before each stage runs",
       "status": "done",
-      "commit": "7467bc5"
+      "commit": "753533d"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Implement jobs CRUD: insert_job(job_id, stage, job_type, **optional fields) with INSERT, get_job(job_id) returns dict|None, update_job(job_id, **kwargs) with dynamic SET, list_jobs(stage=None, status=None, job_type=None, run_id=None) builds WHERE clauses dynamically with parameter binding, count_jobs_by_status(stage, run_id=None) uses GROUP BY status returning dict[str,int]",
+      "description": "In run() stage loop, before calling stage.func: emit 'stage_started' event and call db.update_run(run_id, current_stage=stage_name). After successful stage: emit 'stage_completed' event with payload={'elapsed': elapsed}. In exception handler: emit 'stage_error' event with payload={'error': str(exc)}.",
       "status": "done",
-      "commit": "b336c8e"
+      "commit": "1f54788"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write failing tests TestEventsCRUD: test_insert_event_returns_event_id, test_insert_event_auto_creates_at, test_insert_event_with_all_fields, test_get_events_since_returns_newer_events, test_get_events_since_zero_returns_all, test_get_events_since_empty, test_prune_events_removes_old (insert events with old created_at, verify pruned), test_prune_events_keeps_recent",
+      "description": "Write TestRunFinalization class with tests: (1) test_run_completed_status_on_success \u2014 when all stages pass, db.update_run called with status='completed', finished_at (ISO string), wall_clock_seconds (float >= 0); (2) test_run_failed_status_on_error \u2014 when a stage errors, final update_run has status='failed'; (3) test_run_completed_event_emitted \u2014 'run_completed' event with payload={'duration': float}; (4) test_run_failed_event_emitted \u2014 'run_failed' event emitted when pipeline has errors",
       "status": "done",
-      "commit": "0f39895"
+      "commit": "8d3cc03"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Implement events CRUD: insert_event(event_type, stage=None, job_id=None, payload_json=None) inserts and returns cursor.lastrowid as int, get_events_since(event_id) selects WHERE event_id > ? ORDER BY event_id, prune_events(hours=24) deletes WHERE created_at < datetime('now', '-N hours') using string formatting for the hours value in the SQL modifier",
+      "description": "After the stage loop and summary logging in run(), determine status='failed' if errored_stages else 'completed'. Call db.update_run(run_id, finished_at=datetime.now(UTC).isoformat(), status=status, wall_clock_seconds=total_elapsed). Emit 'run_completed' or 'run_failed' event with payload={'duration': total_elapsed}.",
       "status": "done",
-      "commit": "e2dc896"
+      "commit": "5f17a81"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write failing tests TestRunsCRUD: test_insert_run_minimal, test_insert_run_all_fields, test_get_run_returns_dict, test_get_run_not_found, test_update_run_modifies_fields, test_get_current_run_returns_latest_running, test_get_current_run_ignores_completed, test_get_current_run_returns_none_when_no_running, test_list_runs_ordered_by_started_at_desc",
+      "description": "Write TestBudgetRemainingTracking class with tests: (1) test_budget_remaining_written_after_each_stage \u2014 with budget_seconds=3600, verify db.update_run called with budget_remaining_seconds after each stage; (2) test_no_budget_remaining_when_no_budget \u2014 with budget_seconds=None, verify update_run not called with budget_remaining_seconds for per-stage updates (only called for current_stage and finalization)",
       "status": "done",
-      "commit": "75d9468"
+      "commit": "7b7f3aa"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Implement runs CRUD: insert_run(run_id, started_at, config_snapshot=None, current_stage=None, status='running', budget_remaining_seconds=None), update_run(run_id, **kwargs) with dynamic SET, get_current_run() selects WHERE status='running' ORDER BY started_at DESC LIMIT 1, get_run(run_id) returns dict|None, list_runs() returns all ORDER BY started_at DESC",
+      "description": "In the progress reporting section of run() (after each stage), if budget_seconds is not None: compute remaining = budget_seconds - cumulative, call db.update_run(run_id, budget_remaining_seconds=remaining).",
       "status": "done",
-      "commit": "8c6f8cf"
+      "commit": "704e462"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write integration tests TestPipelineCrossTable: test_jobs_reference_run_id (insert run, insert jobs with run_id, count_jobs_by_status with run filter works), test_events_reference_job_id (insert event with job_id, retrieve and verify), test_update_nonexistent_gate_is_noop (no error, 0 rows affected), test_update_nonexistent_job_is_noop",
+      "description": "Write TestRunTrackingIntegration class using real in-memory CatalogDB (catalog_db fixture): (1) test_full_run_creates_db_records \u2014 run orchestrator with mock stage funcs and real CatalogDB, verify pipeline_runs row exists with correct status='completed' and wall_clock_seconds > 0; (2) test_full_run_creates_events \u2014 verify pipeline_events table has stage_started + stage_completed events for each stage plus run_completed; (3) test_dry_run_still_creates_run_record \u2014 dry_run=True still creates pipeline_runs record",
       "status": "done",
-      "commit": "e8cb657"
+      "commit": "223b8ce"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Fix any edge cases surfaced by integration tests. Run full test suite: pytest tests/test_db_pipeline.py tests/test_db.py to verify all pass",
+      "description": "Run full test suite (pytest tests/test_orchestrator.py -x) to verify all existing + new tests pass. Fix any issues.",
       "status": "done",
-      "commit": "e8cb657"
+      "commit": "223b8ce"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use kwargs-based dynamic SET clause for update methods (update_gate, update_job, update_run)",
-      "rationale": "Follows existing update_activity_cluster pattern in CatalogDB \u2014 callers pass only the fields they want to change, avoiding None-overwrites. Uses f-string with parameter binding for SQL safety (same as existing code with noqa: S608)."
+      "decision": "Store self._db and self._run_id as instance attributes during run()",
+      "rationale": "_emit_event needs access to db and the helper signature from the task spec (_emit_event(event_type, stage, job_id, payload)) doesn't take db as a parameter. Storing on self is the cleanest approach since run() is never called concurrently on the same instance."
     },
     {
-      "decision": "init_default_gates() uses INSERT OR IGNORE to be idempotent",
-      "rationale": "Pipeline stages are known at design time; INSERT OR IGNORE means calling init_default_gates() multiple times is safe and won't overwrite user-edited gate settings."
+      "decision": "Use str(config) for config_snapshot rather than yaml.dump",
+      "rationale": "AutopilotConfig is a dataclass, so str() gives a readable representation. yaml.dump would require the config to be serializable to YAML which isn't guaranteed. The task suggests 'yaml.dump(config) or str(config)' \u2014 str() is always safe."
     },
     {
-      "decision": "insert_event() returns the auto-generated event_id via cursor.lastrowid",
-      "rationale": "AUTOINCREMENT PK means caller needs the generated id for subsequent operations like get_events_since(); lastrowid is the standard sqlite3 mechanism for this."
+      "decision": "Emit events even in dry_run mode for run start/end but not for stage transitions",
+      "rationale": "In dry_run, stages aren't actually executed (they're logged as DRY-RUN), so stage_started/stage_completed don't apply. However, the run itself is created and finalized so we can track dry runs. The stage loop's dry_run branch continues before reaching the event emission code."
     },
     {
-      "decision": "pipeline_events.created_at uses SQL DEFAULT (datetime('now')) rather than Python-generated timestamps",
-      "rationale": "Keeps timestamps consistent with DB clock, simplifies prune_events() which uses SQL datetime comparison directly. For testing prune_events, we'll manually insert rows with backdated created_at."
+      "decision": "Use datetime.now(timezone.utc).isoformat() for timestamps",
+      "rationale": "Consistent with the DB's existing datetime('now') convention, produces ISO 8601 format that's human-readable and sortable. UTC avoids timezone ambiguity."
     },
     {
-      "decision": "list_jobs() builds WHERE clause dynamically from provided filter kwargs",
-      "rationale": "Avoids N separate query methods; single method handles all filter combinations with parameter binding for SQL safety. Matches the pattern of optional filter in list_narratives()."
+      "decision": "_emit_event logs at DEBUG level rather than INFO",
+      "rationale": "Events are stored in the DB for the web console to query. Debug-level logging avoids cluttering the console output which already has INFO-level RUNNING/DONE logs. This also prevents existing log-assertion tests from breaking."
     },
     {
-      "decision": "count_jobs_by_status() returns dict[str, int] mapping status to count",
-      "rationale": "More useful than raw rows for dashboard display \u2014 caller can immediately check counts.get('running', 0), counts.get('error', 0) etc."
-    },
-    {
-      "decision": "New test file tests/test_db_pipeline.py rather than appending to test_db.py",
-      "rationale": "Task spec explicitly requests this file. Keeps pipeline control tests separate from existing catalog tests, enables concurrent development."
-    },
-    {
-      "decision": "Update EXPECTED_TABLES and table count in test_db.py as a prerequisite",
-      "rationale": "Existing schema tests (test_schema_creates_all_13_tables, test_schema_is_idempotent) will fail when new tables are added. Must update them to expect 19 tables before adding schema."
+      "decision": "Track budget_remaining_seconds only when budget_seconds is set",
+      "rationale": "When budget_seconds is None, budget_remaining_seconds is meaningless. Avoids writing None - cumulative which would error. Matches existing pattern where budget logging is conditional on self.budget_seconds being truthy."
     }
   ],
   "reuse": [
     {
+      "what": "CatalogDB.insert_run() CRUD method",
+      "where": "autopilot/db.py line 1140",
+      "how": "Called at start of run() to create the pipeline_runs record with run_id, started_at, config_snapshot, status, budget_remaining_seconds"
+    },
+    {
+      "what": "CatalogDB.update_run() CRUD method",
+      "where": "autopilot/db.py line 1175",
+      "how": "Called to update current_stage at each transition, budget_remaining_seconds after each stage, and finalize with finished_at/status/wall_clock_seconds at end"
+    },
+    {
+      "what": "CatalogDB.insert_event() CRUD method",
+      "where": "autopilot/db.py line 1108",
+      "how": "Called by _emit_event helper to insert stage_started, stage_completed, stage_error, run_completed, run_failed events"
+    },
+    {
+      "what": "Existing test patterns with MagicMock for db and config",
+      "where": "tests/test_orchestrator.py TestRun class (line 168+)",
+      "how": "New test classes follow same pattern: create PipelineOrchestrator, replace stage funcs with MagicMock, run with MagicMock config/db, assert on db mock calls"
+    },
+    {
       "what": "catalog_db fixture (in-memory CatalogDB with autocommit)",
       "where": "tests/conftest.py line 26-39",
-      "how": "Reuse directly in test_db_pipeline.py \u2014 all new pipeline tests use this fixture for isolated in-memory DB instances"
+      "how": "Used in integration tests to verify actual DB records are created with correct values"
     },
     {
-      "what": "update_activity_cluster pattern (dynamic kwargs-based SET clause)",
-      "where": "autopilot/db.py lines 577-588",
-      "how": "Copy pattern for update_gate(), update_job(), update_run() \u2014 build SET clause from kwargs keys with f-string, append PK to values list, use parameter binding"
-    },
-    {
-      "what": "Row factory dict conversion pattern",
-      "where": "autopilot/db.py throughout (e.g. get_media line 260, list_narratives line 643)",
-      "how": "All query methods return dict(row) for single rows or [dict(row) for row in cur.fetchall()] for multiple rows \u2014 apply to all new methods"
-    },
-    {
-      "what": "_create_schema() executescript pattern with CREATE TABLE IF NOT EXISTS",
-      "where": "autopilot/db.py lines 55-209",
-      "how": "Append new CREATE TABLE and CREATE INDEX statements to the existing executescript string"
-    },
-    {
-      "what": "list_narratives optional filter pattern",
-      "where": "autopilot/db.py lines 638-644",
-      "how": "Reference for list_jobs() \u2014 demonstrates optional WHERE clause with parameter binding when filter is not None"
+      "what": "json.dumps for payload serialization",
+      "where": "Already imported in autopilot/orchestrator.py (line 8)",
+      "how": "Used in _emit_event to serialize payload dict to JSON string for insert_event's payload_json parameter"
     }
   ],
-  "_session_id": "35-4a57af27",
-  "_created_at": "2026-03-21T16:28:57.331230+00:00"
+  "_session_id": "37-23b3e6c2",
+  "_created_at": "2026-03-21T17:12:57.825064+00:00"
 }
