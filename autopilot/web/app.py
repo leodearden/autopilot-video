@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -34,5 +35,11 @@ def create_app(db_path: str) -> FastAPI:
 
     # Mount static files
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
+    # Health check endpoint
+    @app.get("/api/health")
+    def health_check() -> dict:
+        """Return basic health status."""
+        return {"status": "ok"}
 
     return app
