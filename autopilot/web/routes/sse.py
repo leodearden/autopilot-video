@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 
 from fastapi import APIRouter, Request
 from sse_starlette.sse import EventSourceResponse, ServerSentEvent
 
 from autopilot.db import CatalogDB
+
+logger = logging.getLogger(__name__)
+
+_PRUNE_INTERVAL = 60  # prune every ~60 poll cycles (~1 minute)
 
 router = APIRouter()
 
@@ -56,12 +61,21 @@ async def _event_generator(request: Request):
     """Async generator that polls pipeline_events and yields SSE events."""
     db = _get_db(request)
     last_event_id = _get_last_event_id(request)
+    poll_count = 0
     try:
         while True:
             events = db.get_events_since(last_event_id)
             for ev in events:
                 yield _format_event(ev)
                 last_event_id = ev["event_id"]
+
+            poll_count += 1
+            if poll_count % _PRUNE_INTERVAL == 0:
+                try:
+                    db.prune_events(hours=24)
+                except Exception:
+                    logger.warning("Failed to prune events", exc_info=True)
+
             await asyncio.sleep(1)
     except asyncio.CancelledError:
         return
