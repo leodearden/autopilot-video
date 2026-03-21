@@ -97,12 +97,12 @@ def test_pyproject_toml_has_all_dependencies(project_root: pathlib.Path) -> None
         "ultralytics",
         "insightface",
         "transformers",
-        "faiss-gpu",
+        "faiss-cpu",
         "panns-inference",
         "audiocraft",
         "scikit-learn",
         "moviepy",
-        "pyav",
+        "av",
         "opentimelineio",
         "scenedetect",
         "kokoro",
@@ -244,8 +244,112 @@ def test_config_yaml_youtube_section(project_root: pathlib.Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Dependency version constraint tests
+# ---------------------------------------------------------------------------
+
+# ML/volatile dependencies that MUST have lower-bound (>=) and upper-bound (<) constraints
+ML_DEPS = {
+    "whisperx",
+    "faster-whisper",
+    "ultralytics",
+    "insightface",
+    "transformers",
+    "audiocraft",
+    "moviepy",
+    "opentimelineio",
+    "scenedetect",
+    "panns-inference",
+    "kokoro",
+    "av",
+    "qwen-vl-utils",
+    "faiss-cpu",
+    "scikit-learn",
+}
+
+# Stable deps that should NOT be upper-bounded
+STABLE_DEPS = {
+    "click",
+    "pyyaml",
+    "requests",
+    "numpy",
+    "pillow",
+    "anthropic",
+    "google-api-python-client",
+}
+
+
+def _parse_dep_name(dep: str) -> str:
+    """Extract the bare package name (lowercase) from a dependency specifier."""
+    # Strip extras like [cuda], then strip version operators
+    name = dep.split("[")[0]
+    for op in (">=", "<=", "!=", "==", ">", "<", "~="):
+        name = name.split(op)[0]
+    return name.strip().lower()
+
+
+def test_ml_deps_have_version_constraints(project_root: pathlib.Path) -> None:
+    """ML/volatile dependencies must have both lower-bound (>=) and upper-bound (<) constraints."""
+    with open(project_root / "pyproject.toml", "rb") as f:
+        data = tomllib.load(f)
+
+    deps = data["project"].get("dependencies", [])
+    dep_map = {_parse_dep_name(d): d for d in deps}
+
+    for pkg in ML_DEPS:
+        assert pkg in dep_map, f"ML dependency {pkg} not found in pyproject.toml"
+        spec = dep_map[pkg]
+        assert ">=" in spec, f"{pkg} must have a lower-bound (>=) constraint, got: {spec}"
+        assert "<" in spec and "<=" not in spec.replace("<=", ""), (
+            f"{pkg} must have an upper-bound (<) constraint, got: {spec}"
+        )
+
+
+def test_stable_deps_not_overconstrained(project_root: pathlib.Path) -> None:
+    """Stable ecosystem deps must NOT have upper-bound (<) constraints."""
+    with open(project_root / "pyproject.toml", "rb") as f:
+        data = tomllib.load(f)
+
+    deps = data["project"].get("dependencies", [])
+    dep_map = {_parse_dep_name(d): d for d in deps}
+
+    for pkg in STABLE_DEPS:
+        if pkg not in dep_map:
+            continue  # not listed, that's fine for this test
+        spec = dep_map[pkg]
+        # Remove the package name to get just the version specifier part
+        name_end = spec.split(">")[0].split("<")[0]
+        name_end = name_end.split("=")[0].split("!")[0].split("[")[0]
+        version_part = spec[len(name_end):]
+        # Check there's no standalone < (not <=, not part of >=)
+        assert "<" not in version_part.replace("<=", "").replace("<<", ""), (
+            f"Stable dep {pkg} should NOT have upper-bound constraint, got: {spec}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # .gitignore and package version tests
 # ---------------------------------------------------------------------------
+
+
+def test_uv_lock_file_exists(project_root: pathlib.Path) -> None:
+    """uv.lock must exist at the project root for reproducible installs."""
+    lock_path = project_root / "uv.lock"
+    assert lock_path.is_file(), "uv.lock must exist at the project root"
+    content = lock_path.read_text()
+    assert len(content) > 0, "uv.lock must not be empty"
+
+
+def test_uv_lock_not_gitignored(project_root: pathlib.Path) -> None:
+    """uv.lock must NOT be in .gitignore — it should be tracked in git."""
+    gitignore_path = project_root / ".gitignore"
+    if not gitignore_path.is_file():
+        return  # no .gitignore, so uv.lock can't be ignored
+    content = gitignore_path.read_text()
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            continue
+        assert stripped != "uv.lock", ".gitignore must NOT contain 'uv.lock'"
 
 
 def test_gitignore_has_output_dir(project_root: pathlib.Path) -> None:
