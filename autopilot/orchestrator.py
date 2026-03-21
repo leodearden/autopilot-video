@@ -612,6 +612,30 @@ class PipelineOrchestrator:
             s.name: s for s in self.stages
         }
 
+    def _emit_event(
+        self,
+        event_type: str,
+        stage: str | None = None,
+        job_id: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        """Emit a pipeline event to the database.
+
+        Args:
+            event_type: Event type string (e.g. 'stage_started').
+            stage: Stage name associated with the event.
+            job_id: Optional job identifier.
+            payload: Optional dict to serialize as JSON payload.
+        """
+        payload_json = json.dumps(payload) if payload is not None else None
+        self._db.insert_event(
+            event_type=event_type,
+            stage=stage,
+            job_id=job_id,
+            payload_json=payload_json,
+        )
+        logger.debug("Event: %s stage=%s", event_type, stage)
+
     def execution_order(self) -> list[str]:
         """Return stage names in topologically sorted execution order.
 
