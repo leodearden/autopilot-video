@@ -992,6 +992,117 @@ class CatalogDB:
             values,
         )
 
+    # -- pipeline_jobs CRUD ----------------------------------------------------
+
+    def insert_job(
+        self,
+        job_id: str,
+        stage: str,
+        job_type: str,
+        *,
+        target_id: str | None = None,
+        target_label: str | None = None,
+        status: str = "pending",
+        started_at: str | None = None,
+        finished_at: str | None = None,
+        duration_seconds: float | None = None,
+        progress_pct: float | None = None,
+        error_message: str | None = None,
+        worker: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        """Insert a new pipeline job row."""
+        self.conn.execute(
+            "INSERT INTO pipeline_jobs "
+            "(job_id, stage, job_type, target_id, target_label, status, "
+            "started_at, finished_at, duration_seconds, progress_pct, "
+            "error_message, worker, run_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                job_id,
+                stage,
+                job_type,
+                target_id,
+                target_label,
+                status,
+                started_at,
+                finished_at,
+                duration_seconds,
+                progress_pct,
+                error_message,
+                worker,
+                run_id,
+            ),
+        )
+
+    def get_job(self, job_id: str) -> dict[str, object] | None:
+        """Return the job row for *job_id*, or ``None`` if not found."""
+        cur = self.conn.execute(
+            "SELECT * FROM pipeline_jobs WHERE job_id = ?",
+            (job_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+    def update_job(self, job_id: str, **kwargs: object) -> None:
+        """Update fields of a job by keyword arguments."""
+        if not kwargs:
+            return
+        set_clause = ", ".join(f"{k} = ?" for k in kwargs)
+        values = list(kwargs.values())
+        values.append(job_id)
+        self.conn.execute(
+            f"UPDATE pipeline_jobs SET {set_clause} "  # noqa: S608
+            "WHERE job_id = ?",
+            values,
+        )
+
+    def list_jobs(
+        self,
+        *,
+        stage: str | None = None,
+        status: str | None = None,
+        job_type: str | None = None,
+        run_id: str | None = None,
+    ) -> list[dict[str, object]]:
+        """Return jobs matching optional filters (AND logic)."""
+        clauses: list[str] = []
+        params: list[object] = []
+        if stage is not None:
+            clauses.append("stage = ?")
+            params.append(stage)
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status)
+        if job_type is not None:
+            clauses.append("job_type = ?")
+            params.append(job_type)
+        if run_id is not None:
+            clauses.append("run_id = ?")
+            params.append(run_id)
+
+        sql = "SELECT * FROM pipeline_jobs"
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        cur = self.conn.execute(sql, params)
+        return [dict(row) for row in cur.fetchall()]
+
+    def count_jobs_by_status(
+        self, stage: str, *, run_id: str | None = None
+    ) -> dict[str, int]:
+        """Return ``{status: count}`` for jobs in *stage*."""
+        params: list[object] = [stage]
+        sql = (
+            "SELECT status, count(*) FROM pipeline_jobs "
+            "WHERE stage = ?"
+        )
+        if run_id is not None:
+            sql += " AND run_id = ?"
+            params.append(run_id)
+        sql += " GROUP BY status"
+        cur = self.conn.execute(sql, params)
+        return {row[0]: row[1] for row in cur.fetchall()}
+
     def close(self) -> None:
         """Close the underlying database connection."""
         self.conn.close()
