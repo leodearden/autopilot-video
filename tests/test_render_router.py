@@ -716,6 +716,30 @@ class TestTranscriptByMediaId:
 class TestErrorHandling:
     """Verify route_and_render error handling."""
 
+    def test_concat_timeout_error_chains_cause(self) -> None:
+        """RoutingError.__cause__ should be the original TimeoutExpired exception."""
+        import subprocess as _subprocess
+
+        from autopilot.render.router import RoutingError, route_and_render
+
+        edl = _make_edl()
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        config = _make_config()
+
+        timeout_exc = _subprocess.TimeoutExpired(cmd="ffmpeg", timeout=1800)
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run", side_effect=timeout_exc),
+            pytest.raises(RoutingError) as exc_info,
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config)
+
+        assert exc_info.value.__cause__ is timeout_exc
+
     def test_concat_passes_timeout_to_subprocess(self) -> None:
         """Concat subprocess.run call should include timeout=CONCAT_TIMEOUT_SECONDS."""
         from autopilot.render.router import CONCAT_TIMEOUT_SECONDS, route_and_render
