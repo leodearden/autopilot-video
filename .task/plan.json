@@ -1,22 +1,39 @@
 {
-  "task_id": "35",
-  "title": "DB schema: pipeline control tables",
+  "task_id": "36",
+  "title": "FastAPI app skeleton + serve CLI command",
   "files": [
-    "autopilot/db.py",
-    "tests/test_db_pipeline.py",
-    "tests/test_db.py"
+    "autopilot/web/__init__.py",
+    "autopilot/web/app.py",
+    "autopilot/web/routes/__init__.py",
+    "autopilot/web/templates/base.html",
+    "autopilot/web/static/app.css",
+    "autopilot/web/static/app.js",
+    "autopilot/cli.py",
+    "pyproject.toml",
+    "tests/test_web_app.py"
   ],
   "modules": [
+    "autopilot/web",
+    "autopilot/web/routes",
+    "autopilot/web/templates",
+    "autopilot/web/static",
     "autopilot",
     "tests"
   ],
-  "analysis": "CatalogDB in autopilot/db.py uses direct SQL with sqlite3.Row factory, returning dict[str, object] | None for single rows and list[dict[str, object]] for multi-row queries. Schema is created in _create_schema() via executescript with CREATE TABLE IF NOT EXISTS. The existing test suite uses a 'catalog_db' fixture from conftest.py that creates an in-memory DB with autocommit. Tests are organized in classes per table group. We need to: (1) add 4 new tables to _create_schema() with appropriate indexes, (2) implement ~18 CRUD methods following existing patterns, (3) write comprehensive tests in a new test_db_pipeline.py file. The update_activity_cluster pattern (kwargs-based SET clause with f-string) should be reused for update_gate, update_job, and update_run. The EXPECTED_TABLES list in test_db.py and the table count assertion (15) need updating to account for the 4 new tables. The _create_schema docstring says '15 catalog tables' which becomes '19 catalog tables'.",
+  "analysis": "This task creates the web management console skeleton for autopilot-video. The project already has a Click CLI (autopilot/cli.py) with group + subcommands pattern, a CatalogDB class in autopilot/db.py with WAL mode and full pipeline control tables (from task 35), and a mature test suite using pytest with CliRunner and conftest fixtures.\n\nKey observations:\n1. The CLI uses click.Group with @main.command() decorators, _common_options decorator, and _setup_context helper for config+DB loading. The 'serve' command does NOT need _common_options (no --dry-run, --force, etc.) \u2014 it needs its own --host, --port, --output-dir options.\n2. CatalogDB takes a db_path string and sets up WAL mode. The web app factory needs to accept a db_path and store it for lazy connection creation.\n3. pyproject.toml uses hatchling build, has [project.scripts] autopilot = 'autopilot.cli:main'. Dependencies need fastapi, uvicorn[standard], jinja2, python-multipart added.\n4. Task description says create_app(db_path) \u2014 the app factory pattern. The serve CLI command constructs the path from output_dir.\n5. The existing test_scaffolding.py checks for __init__.py in all packages \u2014 adding autopilot/web will need __init__.py.\n6. Tests should use FastAPI's TestClient (from httpx) for testing without starting uvicorn.\n7. The serve command in the task description has output_dir / 'catalog.db' which needs Path conversion since click.Path() returns a string.\n8. Lazy imports in serve command follow the pattern already used in other subcommands (e.g., importing PipelineOrchestrator at module top is fine, but uvicorn should be lazy since it's only needed for serve).\n\nReview fix: The SSE notification listener in app.js line 36 does JSON.parse(event.data) without try/catch. Malformed or truncated SSE payloads would throw an uncaught SyntaxError, silently dropping the notification. Need to wrap in try/catch with console.error logging.",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Update EXPECTED_TABLES in tests/test_db.py to include the 4 new pipeline tables (pipeline_events, pipeline_gates, pipeline_jobs, pipeline_runs \u2014 alphabetically sorted) and change the table count from 15 to 19 in test_schema_is_idempotent. Update _create_schema docstring from 15 to 19.",
+      "description": "Create autopilot/web/ package structure: autopilot/web/__init__.py, autopilot/web/routes/__init__.py. Create empty directories for templates/ and static/.",
       "status": "done",
-      "commit": "9930362",
+      "commit": "d768485",
+      "tests": []
+    },
+    {
+      "id": "pre-2",
+      "description": "Add web dependencies to pyproject.toml [project.dependencies]: fastapi, uvicorn[standard], jinja2, python-multipart. Add httpx to [project.optional-dependencies] dev list for TestClient. Run uv lock to update uv.lock.",
+      "status": "done",
+      "commit": "a388635",
       "tests": []
     }
   ],
@@ -24,149 +41,171 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing test class TestPipelineSchema in test_db_pipeline.py \u2014 verify pipeline_gates, pipeline_jobs, pipeline_events, pipeline_runs tables exist with correct columns (check PRAGMA table_info for each), verify indexes exist on pipeline_jobs(stage,status), pipeline_jobs(run_id), pipeline_events(event_type), pipeline_events(created_at)",
+      "description": "Write failing test in tests/test_web_app.py: TestCreateApp.test_create_app_returns_fastapi_instance \u2014 import create_app from autopilot.web.app, call it with a tmp_path db_path, assert returned object is a FastAPI instance.",
       "status": "done",
-      "commit": "4ac7ed2"
+      "commit": "d77e521"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Add 4 CREATE TABLE IF NOT EXISTS statements to _create_schema(): pipeline_gates (stage TEXT PK, mode TEXT DEFAULT 'auto', status TEXT DEFAULT 'idle', decided_at TEXT, decided_by TEXT DEFAULT 'system', notes TEXT, timeout_hours REAL), pipeline_jobs (job_id TEXT PK, stage TEXT NOT NULL, job_type TEXT NOT NULL, target_id TEXT, target_label TEXT, status TEXT DEFAULT 'pending', started_at TEXT, finished_at TEXT, duration_seconds REAL, progress_pct REAL, error_message TEXT, worker TEXT, run_id TEXT), pipeline_events (event_id INTEGER PK AUTOINCREMENT, event_type TEXT NOT NULL, stage TEXT, job_id TEXT, payload_json TEXT, created_at TEXT DEFAULT (datetime('now'))), pipeline_runs (run_id TEXT PK, started_at TEXT NOT NULL, finished_at TEXT, config_snapshot TEXT, current_stage TEXT, status TEXT DEFAULT 'running', wall_clock_seconds REAL, budget_remaining_seconds REAL). Add CREATE INDEX statements for pipeline_jobs and pipeline_events.",
+      "description": "Implement autopilot/web/app.py with create_app(db_path) factory that returns a FastAPI instance. Configure Jinja2Templates pointing at templates dir. Mount static files at /static. Store db_path in app.state.db_path for later use.",
       "status": "done",
-      "commit": "1847890"
+      "commit": "d1f7ad0"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write failing tests TestGatesCRUD: test_init_default_gates_populates_stages (known pipeline stages get rows), test_init_default_gates_is_idempotent (calling twice doesn't duplicate or overwrite), test_get_gate_returns_dict (returns correct dict with all fields), test_get_gate_not_found_returns_none, test_get_all_gates_returns_list, test_update_gate_modifies_fields (change mode, status, notes etc.), test_update_gate_noop_on_empty_kwargs",
+      "description": "Write failing test: TestHealthCheck.test_health_returns_200_ok \u2014 use httpx TestClient on create_app(tmp_path db), GET /api/health, assert status 200 and JSON body {'status': 'ok'}.",
       "status": "done",
-      "commit": "fb379b6"
+      "commit": "ed00422"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement gates CRUD on CatalogDB: init_default_gates() uses INSERT OR IGNORE for each known pipeline stage (ingest, analyze, classify, narrate, script, edl, source, render, upload), get_gate(stage) returns dict|None, get_all_gates() returns list[dict], update_gate(stage, **kwargs) uses dynamic SET clause following update_activity_cluster pattern",
+      "description": "Add GET /api/health route to the app in app.py that returns {'status': 'ok'}.",
       "status": "done",
-      "commit": "02676e8"
+      "commit": "175cc98"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write failing tests TestJobsCRUD: test_insert_job_all_fields, test_insert_job_minimal_fields (only required fields), test_get_job_returns_dict, test_get_job_not_found, test_update_job_modifies_fields, test_list_jobs_no_filter (returns all), test_list_jobs_filter_by_stage, test_list_jobs_filter_by_status, test_list_jobs_filter_by_job_type, test_list_jobs_filter_by_run_id, test_list_jobs_combined_filters, test_list_jobs_empty_result, test_count_jobs_by_status_returns_dict, test_count_jobs_by_status_with_run_id_filter",
+      "description": "Write failing test: TestStaticFiles.test_app_css_served \u2014 use TestClient, GET /static/app.css, assert 200 response. TestStaticFiles.test_app_js_served \u2014 GET /static/app.js, assert 200.",
       "status": "done",
-      "commit": "7467bc5"
+      "commit": "6430eeb"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Implement jobs CRUD: insert_job(job_id, stage, job_type, **optional fields) with INSERT, get_job(job_id) returns dict|None, update_job(job_id, **kwargs) with dynamic SET, list_jobs(stage=None, status=None, job_type=None, run_id=None) builds WHERE clauses dynamically with parameter binding, count_jobs_by_status(stage, run_id=None) uses GROUP BY status returning dict[str,int]",
+      "description": "Create autopilot/web/static/app.css with minimal custom styles (dark theme overrides if needed) and autopilot/web/static/app.js with SSE connection handler stub, notification support, and toast display helper.",
       "status": "done",
-      "commit": "b336c8e"
+      "commit": "3640887"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write failing tests TestEventsCRUD: test_insert_event_returns_event_id, test_insert_event_auto_creates_at, test_insert_event_with_all_fields, test_get_events_since_returns_newer_events, test_get_events_since_zero_returns_all, test_get_events_since_empty, test_prune_events_removes_old (insert events with old created_at, verify pruned), test_prune_events_keeps_recent",
+      "description": "Write failing test: TestBaseTemplate.test_base_template_contains_tailwind_cdn \u2014 add a test route to the app that renders base.html with Jinja2, GET it via TestClient, assert response HTML contains tailwindcss CDN script tag. TestBaseTemplate.test_base_template_contains_htmx \u2014 assert htmx CDN script present. TestBaseTemplate.test_base_template_has_nav_items \u2014 assert nav contains Dashboard, Media, Pipeline, Review, Gates, Settings. TestBaseTemplate.test_base_template_has_notification_bell \u2014 assert bell placeholder present. TestBaseTemplate.test_base_template_has_toast_container \u2014 assert toast container div present. TestBaseTemplate.test_base_template_has_dark_theme \u2014 assert dark theme class/attribute present.",
       "status": "done",
-      "commit": "0f39895"
+      "commit": "b302234"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Implement events CRUD: insert_event(event_type, stage=None, job_id=None, payload_json=None) inserts and returns cursor.lastrowid as int, get_events_since(event_id) selects WHERE event_id > ? ORDER BY event_id, prune_events(hours=24) deletes WHERE created_at < datetime('now', '-N hours') using string formatting for the hours value in the SQL modifier",
+      "description": "Create autopilot/web/templates/base.html \u2014 Jinja2 base template with: Tailwind CSS CDN play script, HTMX CDN (<14KB), full nav (Dashboard, Media, Pipeline with Stage Detail + Jobs sub-items, Review with Clusters + Narratives + Scripts + Edit Plans + Renders sub-items, Gates, Settings), notification bell placeholder in nav, {% block content %} main area, toast container div, dark theme using Tailwind dark classes and appropriate media workstation styling.",
       "status": "done",
-      "commit": "e2dc896"
+      "commit": "cd2cf57"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write failing tests TestRunsCRUD: test_insert_run_minimal, test_insert_run_all_fields, test_get_run_returns_dict, test_get_run_not_found, test_update_run_modifies_fields, test_get_current_run_returns_latest_running, test_get_current_run_ignores_completed, test_get_current_run_returns_none_when_no_running, test_list_runs_ordered_by_started_at_desc",
+      "description": "Write failing test: TestServeCommand.test_serve_registered_in_main \u2014 assert 'serve' in main.commands. test_serve_has_host_option \u2014 assert --host with default '127.0.0.1'. test_serve_has_port_option \u2014 assert --port with default 8080, type int. test_serve_has_output_dir_option \u2014 assert --output-dir option exists.",
       "status": "done",
-      "commit": "75d9468"
+      "commit": "cfd86c2"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Implement runs CRUD: insert_run(run_id, started_at, config_snapshot=None, current_stage=None, status='running', budget_remaining_seconds=None), update_run(run_id, **kwargs) with dynamic SET, get_current_run() selects WHERE status='running' ORDER BY started_at DESC LIMIT 1, get_run(run_id) returns dict|None, list_runs() returns all ORDER BY started_at DESC",
+      "description": "Add 'autopilot serve' command to autopilot/cli.py: @main.command() with --host (default='127.0.0.1'), --port (default=8080, type=int), --output-dir (type=click.Path(), required=True). Lazy-import uvicorn and create_app. Construct db_path as Path(output_dir) / 'catalog.db'. Call uvicorn.run(app, host=host, port=port).",
       "status": "done",
-      "commit": "8c6f8cf"
+      "commit": "c85799d"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write integration tests TestPipelineCrossTable: test_jobs_reference_run_id (insert run, insert jobs with run_id, count_jobs_by_status with run filter works), test_events_reference_job_id (insert event with job_id, retrieve and verify), test_update_nonexistent_gate_is_noop (no error, 0 rows affected), test_update_nonexistent_job_is_noop",
+      "description": "Write failing test: TestServeCommand.test_serve_invokes_uvicorn \u2014 use CliRunner, mock uvicorn.run and autopilot.web.app.create_app, invoke 'serve --output-dir <tmp_path>', assert uvicorn.run called with the app from create_app, host='127.0.0.1', port=8080. test_serve_passes_custom_host_port \u2014 invoke with --host 0.0.0.0 --port 9090, verify passed through to uvicorn.run.",
       "status": "done",
-      "commit": "e8cb657"
+      "commit": "3906bb3"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Fix any edge cases surfaced by integration tests. Run full test suite: pytest tests/test_db_pipeline.py tests/test_db.py to verify all pass",
+      "description": "Fix any issues from test_serve tests. Ensure serve command correctly passes db_path to create_app and host/port to uvicorn.run. Run full test suite to verify no regressions.",
       "status": "done",
-      "commit": "e8cb657"
+      "commit": "aed3d61"
+    },
+    {
+      "id": "step-13",
+      "type": "test",
+      "description": "Write failing test: TestSSEErrorHandling.test_sse_notification_listener_has_try_catch \u2014 Read the content of autopilot/web/static/app.js, locate the SSE notification event listener (the addEventListener('notification', ...) block), and assert that the JSON.parse call is wrapped in a try/catch. Specifically: assert 'try' and 'catch' appear within the notification listener function body, and that 'console.error' is present in the catch block for logging parse failures. This is a static analysis test of the JS source since browser-level SSE testing is out of scope.",
+      "status": "done",
+      "commit": "35dc2ab"
+    },
+    {
+      "id": "step-14",
+      "type": "impl",
+      "description": "Fix autopilot/web/static/app.js: Wrap the SSE notification listener body in try/catch. Replace the bare `const data = JSON.parse(event.data); showToast(data.message, data.type || 'info');` with `try { const data = JSON.parse(event.data); showToast(data.message, data.type || 'info'); } catch (e) { console.error('SSE notification parse error:', e, event.data); }`. This prevents uncaught SyntaxError from malformed/truncated SSE payloads and logs the error for debugging.",
+      "status": "done",
+      "commit": "f367457"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use kwargs-based dynamic SET clause for update methods (update_gate, update_job, update_run)",
-      "rationale": "Follows existing update_activity_cluster pattern in CatalogDB \u2014 callers pass only the fields they want to change, avoiding None-overwrites. Uses f-string with parameter binding for SQL safety (same as existing code with noqa: S608)."
+      "decision": "Use FastAPI TestClient (backed by httpx) for testing rather than starting a real server",
+      "rationale": "TestClient provides synchronous HTTP testing without binding to a port, making tests fast and reliable. httpx is required by starlette's TestClient."
     },
     {
-      "decision": "init_default_gates() uses INSERT OR IGNORE to be idempotent",
-      "rationale": "Pipeline stages are known at design time; INSERT OR IGNORE means calling init_default_gates() multiple times is safe and won't overwrite user-edited gate settings."
+      "decision": "Store db_path in app.state rather than opening a CatalogDB connection at app creation time",
+      "rationale": "Allows the app factory to work without an actual database file (useful for testing static/template tests). Actual DB connection can be created lazily via FastAPI dependencies in subsequent tasks."
     },
     {
-      "decision": "insert_event() returns the auto-generated event_id via cursor.lastrowid",
-      "rationale": "AUTOINCREMENT PK means caller needs the generated id for subsequent operations like get_events_since(); lastrowid is the standard sqlite3 mechanism for this."
+      "decision": "The serve command does NOT use _common_options decorator",
+      "rationale": "The serve command doesn't need --input-dir, --verbose, --dry-run, --force flags. It only needs --host, --port, and --output-dir. It also doesn't load config or create an orchestrator \u2014 it's a fundamentally different command type."
     },
     {
-      "decision": "pipeline_events.created_at uses SQL DEFAULT (datetime('now')) rather than Python-generated timestamps",
-      "rationale": "Keeps timestamps consistent with DB clock, simplifies prune_events() which uses SQL datetime comparison directly. For testing prune_events, we'll manually insert rows with backdated created_at."
+      "decision": "Health check route defined inline in app.py rather than in routes/",
+      "rationale": "The health check is a fundamental app concern, not a domain route. Keeping it in app.py avoids over-engineering. Domain routes (dashboard, media, pipeline) will go in routes/ per subsequent tasks."
     },
     {
-      "decision": "list_jobs() builds WHERE clause dynamically from provided filter kwargs",
-      "rationale": "Avoids N separate query methods; single method handles all filter combinations with parameter binding for SQL safety. Matches the pattern of optional filter in list_narratives()."
+      "decision": "Add httpx to dev dependencies for TestClient support",
+      "rationale": "FastAPI's TestClient requires httpx. Adding it to dev deps ensures test infrastructure works."
     },
     {
-      "decision": "count_jobs_by_status() returns dict[str, int] mapping status to count",
-      "rationale": "More useful than raw rows for dashboard display \u2014 caller can immediately check counts.get('running', 0), counts.get('error', 0) etc."
+      "decision": "Use Tailwind CDN play script (no build step) and HTMX CDN",
+      "rationale": "Per task spec \u2014 no Node.js toolchain needed. Tailwind play CDN and HTMX CDN (<14KB) are sufficient for a management console."
     },
     {
-      "decision": "New test file tests/test_db_pipeline.py rather than appending to test_db.py",
-      "rationale": "Task spec explicitly requests this file. Keeps pipeline control tests separate from existing catalog tests, enables concurrent development."
+      "decision": "Convert output_dir to Path before joining with 'catalog.db' in serve command",
+      "rationale": "click.Path() returns a string by default. Path(output_dir) / 'catalog.db' is needed for path construction."
     },
     {
-      "decision": "Update EXPECTED_TABLES and table count in test_db.py as a prerequisite",
-      "rationale": "Existing schema tests (test_schema_creates_all_13_tables, test_schema_is_idempotent) will fail when new tables are added. Must update them to expect 19 tables before adding schema."
+      "decision": "Use lazy imports for uvicorn and create_app inside serve command body",
+      "rationale": "Follows existing CLI pattern of importing heavy dependencies inside command functions. Avoids loading FastAPI/uvicorn when running other CLI commands like ingest, analyze, etc."
+    },
+    {
+      "decision": "Test template rendering by adding a temporary test route rather than testing Jinja2 directly",
+      "rationale": "Testing through the HTTP stack via TestClient ensures the full rendering pipeline works (Jinja2 configuration, template discovery, static file references). More realistic than inspecting template strings."
+    },
+    {
+      "decision": "Test SSE error handling via static JS source analysis rather than browser-level testing",
+      "rationale": "Browser-level SSE testing would require a headless browser (Playwright/Selenium), which is out of scope for this task. Reading the JS source and asserting the try/catch pattern exists in the notification listener is a pragmatic and reliable verification approach."
     }
   ],
   "reuse": [
     {
-      "what": "catalog_db fixture (in-memory CatalogDB with autocommit)",
-      "where": "tests/conftest.py line 26-39",
-      "how": "Reuse directly in test_db_pipeline.py \u2014 all new pipeline tests use this fixture for isolated in-memory DB instances"
+      "what": "CatalogDB class with WAL mode and pipeline control tables",
+      "where": "autopilot/db.py",
+      "how": "The web app stores db_path in app.state for CatalogDB(db_path) access. Pipeline tables (gates, jobs, events, runs from task 35) will be queried by subsequent dashboard routes."
     },
     {
-      "what": "update_activity_cluster pattern (dynamic kwargs-based SET clause)",
-      "where": "autopilot/db.py lines 577-588",
-      "how": "Copy pattern for update_gate(), update_job(), update_run() \u2014 build SET clause from kwargs keys with f-string, append PK to values list, use parameter binding"
+      "what": "Click CLI group pattern with @main.command()",
+      "where": "autopilot/cli.py",
+      "how": "Add 'serve' as another @main.command() following the existing pattern of subcommand registration."
     },
     {
-      "what": "Row factory dict conversion pattern",
-      "where": "autopilot/db.py throughout (e.g. get_media line 260, list_narratives line 643)",
-      "how": "All query methods return dict(row) for single rows or [dict(row) for row in cur.fetchall()] for multiple rows \u2014 apply to all new methods"
+      "what": "conftest.py fixtures (project_root, catalog_db)",
+      "where": "tests/conftest.py",
+      "how": "project_root fixture resolves template/static paths. catalog_db provides in-memory DB for testing."
     },
     {
-      "what": "_create_schema() executescript pattern with CREATE TABLE IF NOT EXISTS",
-      "where": "autopilot/db.py lines 55-209",
-      "how": "Append new CREATE TABLE and CREATE INDEX statements to the existing executescript string"
+      "what": "CliRunner test pattern with mock patches",
+      "where": "tests/test_cli.py",
+      "how": "Follow same CliRunner + mock pattern for testing the serve command \u2014 mock uvicorn.run to avoid actually starting a server."
     },
     {
-      "what": "list_narratives optional filter pattern",
-      "where": "autopilot/db.py lines 638-644",
-      "how": "Reference for list_jobs() \u2014 demonstrates optional WHERE clause with parameter binding when filter is not None"
+      "what": "pyproject.toml dependency structure (stable vs ML deps)",
+      "where": "pyproject.toml",
+      "how": "Add web deps (fastapi, jinja2, uvicorn, python-multipart) as stable deps without upper bounds, following existing convention for stable ecosystem packages."
     }
   ],
-  "_session_id": "35-4a57af27",
-  "_created_at": "2026-03-21T16:28:57.331230+00:00"
+  "_session_id": "36-7bf32510",
+  "_created_at": "2026-03-21T17:27:43.147521+00:00"
 }

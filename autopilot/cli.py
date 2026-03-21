@@ -269,6 +269,26 @@ def upload(
 
 
 @main.command()
+@click.option("--host", default="127.0.0.1", help="Bind host address.")
+@click.option("--port", default=8080, type=int, help="Bind port number.")
+@click.option(
+    "--output-dir",
+    type=click.Path(),
+    required=True,
+    help="Project output directory (contains catalog.db).",
+)
+def serve(host: str, port: int, output_dir: str) -> None:
+    """Start the web management console."""
+    import uvicorn
+
+    from autopilot.web.app import create_app
+
+    db_path = str(Path(output_dir) / "catalog.db")
+    app = create_app(db_path)
+    uvicorn.run(app, host=host, port=port)
+
+
+@main.command()
 @_common_options
 @click.pass_context
 def run(
