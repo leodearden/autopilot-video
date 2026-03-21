@@ -1,211 +1,215 @@
 {
-  "task_id": "36",
-  "title": "FastAPI app skeleton + serve CLI command",
+  "task_id": "37",
+  "title": "Orchestrator: run tracking + event emission",
   "files": [
-    "autopilot/web/__init__.py",
-    "autopilot/web/app.py",
-    "autopilot/web/routes/__init__.py",
-    "autopilot/web/templates/base.html",
-    "autopilot/web/static/app.css",
-    "autopilot/web/static/app.js",
-    "autopilot/cli.py",
-    "pyproject.toml",
-    "tests/test_web_app.py"
+    "autopilot/orchestrator.py",
+    "tests/test_orchestrator.py"
   ],
   "modules": [
-    "autopilot/web",
-    "autopilot/web/routes",
-    "autopilot/web/templates",
-    "autopilot/web/static",
     "autopilot",
     "tests"
   ],
-  "analysis": "This task creates the web management console skeleton for autopilot-video. The project already has a Click CLI (autopilot/cli.py) with group + subcommands pattern, a CatalogDB class in autopilot/db.py with WAL mode and full pipeline control tables (from task 35), and a mature test suite using pytest with CliRunner and conftest fixtures.\n\nKey observations:\n1. The CLI uses click.Group with @main.command() decorators, _common_options decorator, and _setup_context helper for config+DB loading. The 'serve' command does NOT need _common_options (no --dry-run, --force, etc.) \u2014 it needs its own --host, --port, --output-dir options.\n2. CatalogDB takes a db_path string and sets up WAL mode. The web app factory needs to accept a db_path and store it for lazy connection creation.\n3. pyproject.toml uses hatchling build, has [project.scripts] autopilot = 'autopilot.cli:main'. Dependencies need fastapi, uvicorn[standard], jinja2, python-multipart added.\n4. Task description says create_app(db_path) \u2014 the app factory pattern. The serve CLI command constructs the path from output_dir.\n5. The existing test_scaffolding.py checks for __init__.py in all packages \u2014 adding autopilot/web will need __init__.py.\n6. Tests should use FastAPI's TestClient (from httpx) for testing without starting uvicorn.\n7. The serve command in the task description has output_dir / 'catalog.db' which needs Path conversion since click.Path() returns a string.\n8. Lazy imports in serve command follow the pattern already used in other subcommands (e.g., importing PipelineOrchestrator at module top is fine, but uvicorn should be lazy since it's only needed for serve).\n\nReview fix: The SSE notification listener in app.js line 36 does JSON.parse(event.data) without try/catch. Malformed or truncated SSE payloads would throw an uncaught SyntaxError, silently dropping the notification. Need to wrap in try/catch with console.error logging.",
-  "prerequisites": [
-    {
-      "id": "pre-1",
-      "description": "Create autopilot/web/ package structure: autopilot/web/__init__.py, autopilot/web/routes/__init__.py. Create empty directories for templates/ and static/.",
-      "status": "done",
-      "commit": "d768485",
-      "tests": []
-    },
-    {
-      "id": "pre-2",
-      "description": "Add web dependencies to pyproject.toml [project.dependencies]: fastapi, uvicorn[standard], jinja2, python-multipart. Add httpx to [project.optional-dependencies] dev list for TestClient. Run uv lock to update uv.lock.",
-      "status": "done",
-      "commit": "a388635",
-      "tests": []
-    }
-  ],
+  "analysis": "PipelineOrchestrator.run() in autopilot/orchestrator.py currently executes stages in topological order, logging progress and returning a dict of StageResult. Task 35 (dependency) already added pipeline_runs and pipeline_events tables plus full CRUD to CatalogDB (db.insert_run, db.update_run, db.insert_event, etc.). This task instruments run() to: (1) create a pipeline_runs record at start via db.insert_run with uuid4 run_id, (2) add a _emit_event helper that calls db.insert_event with JSON payload, (3) emit stage_started/stage_completed/stage_error events at each stage transition with current_stage updates on the run, (4) finalize the run at end with status completed|failed, finished_at, wall_clock_seconds, (5) track budget_remaining_seconds. Existing tests use MagicMock for db, so all new db.insert_run/insert_event/update_run calls are silently accepted \u2014 no existing test breakage. New tests will assert those mock calls happened with correct args. An integration test with real in-memory CatalogDB verifies actual DB records.\n\nREVIEW FEEDBACK ADDENDUM: Three blocking issues identified \u2014 all tracking/monitoring DB calls (insert_run, update_run, insert_event) lack error handling and can abort the core pipeline. The fix strategy: (1) make _emit_event internally swallow exceptions, (2) wrap db.insert_run in try/except with sentinel _run_id=None and guard all subsequent tracking calls, (3) wrap all db.update_run calls in individual try/except blocks so transient DB failures can't propagate, (4) ensure finalization block can't lose results.",
+  "prerequisites": [],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing test in tests/test_web_app.py: TestCreateApp.test_create_app_returns_fastapi_instance \u2014 import create_app from autopilot.web.app, call it with a tmp_path db_path, assert returned object is a FastAPI instance.",
+      "description": "Write TestRunTrackingInit class with tests: (1) test_run_creates_pipeline_run_record \u2014 after run() with mock stages, db.insert_run called once with 32-char hex run_id, started_at ISO string, status='running', config_snapshot is a string; (2) test_run_stores_run_id_on_self \u2014 after run(), orch._run_id is a 32-char hex string; (3) test_run_passes_budget_to_insert_run \u2014 when budget_seconds=3600, insert_run called with budget_remaining_seconds=3600",
       "status": "done",
-      "commit": "d77e521"
+      "commit": "02fb80f"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Implement autopilot/web/app.py with create_app(db_path) factory that returns a FastAPI instance. Configure Jinja2Templates pointing at templates dir. Mount static files at /static. Store db_path in app.state.db_path for later use.",
+      "description": "Add imports (uuid4, datetime, timezone) to orchestrator.py. At start of run(), generate run_id=uuid4().hex, started_at=datetime.now(timezone.utc).isoformat(), store self._run_id=run_id and self._db=db, call db.insert_run(run_id, started_at=started_at, config_snapshot=str(config), status='running', budget_remaining_seconds=self.budget_seconds)",
       "status": "done",
-      "commit": "d1f7ad0"
+      "commit": "5536d12"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write failing test: TestHealthCheck.test_health_returns_200_ok \u2014 use httpx TestClient on create_app(tmp_path db), GET /api/health, assert status 200 and JSON body {'status': 'ok'}.",
+      "description": "Write TestEmitEvent class with tests: (1) test_emit_event_calls_insert_event \u2014 set orch._db to a MagicMock, call _emit_event('test_event', stage='INGEST'), verify db.insert_event called with event_type='test_event', stage='INGEST'; (2) test_emit_event_serializes_payload_to_json \u2014 call with payload={'key': 'val'}, verify payload_json='{\"key\": \"val\"}'; (3) test_emit_event_none_payload \u2014 call without payload, verify payload_json=None; (4) test_emit_event_logs_at_debug_level \u2014 verify debug log emitted",
       "status": "done",
-      "commit": "ed00422"
+      "commit": "586a38a"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Add GET /api/health route to the app in app.py that returns {'status': 'ok'}.",
+      "description": "Add _emit_event(self, event_type, stage=None, job_id=None, payload=None) method to PipelineOrchestrator. Calls self._db.insert_event(event_type, stage=stage, job_id=job_id, payload_json=json.dumps(payload) if payload is not None else None). Logs at debug level.",
       "status": "done",
-      "commit": "175cc98"
+      "commit": "5e7a147"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write failing test: TestStaticFiles.test_app_css_served \u2014 use TestClient, GET /static/app.css, assert 200 response. TestStaticFiles.test_app_js_served \u2014 GET /static/app.js, assert 200.",
+      "description": "Write TestStageTransitionEvents class with tests: (1) test_stage_started_event_emitted_for_each_stage \u2014 run with all mock stages, verify db.insert_event called with event_type='stage_started' and correct stage name for each of the 9 stages; (2) test_stage_completed_event_emitted_with_elapsed \u2014 verify 'stage_completed' events include payload with 'elapsed' key; (3) test_stage_error_event_emitted \u2014 make one stage raise, verify 'stage_error' event with error message in payload; (4) test_current_stage_updated_via_update_run \u2014 verify db.update_run called with current_stage=name before each stage runs",
       "status": "done",
-      "commit": "6430eeb"
+      "commit": "753533d"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Create autopilot/web/static/app.css with minimal custom styles (dark theme overrides if needed) and autopilot/web/static/app.js with SSE connection handler stub, notification support, and toast display helper.",
+      "description": "In run() stage loop, before calling stage.func: emit 'stage_started' event and call db.update_run(run_id, current_stage=stage_name). After successful stage: emit 'stage_completed' event with payload={'elapsed': elapsed}. In exception handler: emit 'stage_error' event with payload={'error': str(exc)}.",
       "status": "done",
-      "commit": "3640887"
+      "commit": "1f54788"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write failing test: TestBaseTemplate.test_base_template_contains_tailwind_cdn \u2014 add a test route to the app that renders base.html with Jinja2, GET it via TestClient, assert response HTML contains tailwindcss CDN script tag. TestBaseTemplate.test_base_template_contains_htmx \u2014 assert htmx CDN script present. TestBaseTemplate.test_base_template_has_nav_items \u2014 assert nav contains Dashboard, Media, Pipeline, Review, Gates, Settings. TestBaseTemplate.test_base_template_has_notification_bell \u2014 assert bell placeholder present. TestBaseTemplate.test_base_template_has_toast_container \u2014 assert toast container div present. TestBaseTemplate.test_base_template_has_dark_theme \u2014 assert dark theme class/attribute present.",
+      "description": "Write TestRunFinalization class with tests: (1) test_run_completed_status_on_success \u2014 when all stages pass, db.update_run called with status='completed', finished_at (ISO string), wall_clock_seconds (float >= 0); (2) test_run_failed_status_on_error \u2014 when a stage errors, final update_run has status='failed'; (3) test_run_completed_event_emitted \u2014 'run_completed' event with payload={'duration': float}; (4) test_run_failed_event_emitted \u2014 'run_failed' event emitted when pipeline has errors",
       "status": "done",
-      "commit": "b302234"
+      "commit": "8d3cc03"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Create autopilot/web/templates/base.html \u2014 Jinja2 base template with: Tailwind CSS CDN play script, HTMX CDN (<14KB), full nav (Dashboard, Media, Pipeline with Stage Detail + Jobs sub-items, Review with Clusters + Narratives + Scripts + Edit Plans + Renders sub-items, Gates, Settings), notification bell placeholder in nav, {% block content %} main area, toast container div, dark theme using Tailwind dark classes and appropriate media workstation styling.",
+      "description": "After the stage loop and summary logging in run(), determine status='failed' if errored_stages else 'completed'. Call db.update_run(run_id, finished_at=datetime.now(UTC).isoformat(), status=status, wall_clock_seconds=total_elapsed). Emit 'run_completed' or 'run_failed' event with payload={'duration': total_elapsed}.",
       "status": "done",
-      "commit": "cd2cf57"
+      "commit": "5f17a81"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write failing test: TestServeCommand.test_serve_registered_in_main \u2014 assert 'serve' in main.commands. test_serve_has_host_option \u2014 assert --host with default '127.0.0.1'. test_serve_has_port_option \u2014 assert --port with default 8080, type int. test_serve_has_output_dir_option \u2014 assert --output-dir option exists.",
+      "description": "Write TestBudgetRemainingTracking class with tests: (1) test_budget_remaining_written_after_each_stage \u2014 with budget_seconds=3600, verify db.update_run called with budget_remaining_seconds after each stage; (2) test_no_budget_remaining_when_no_budget \u2014 with budget_seconds=None, verify update_run not called with budget_remaining_seconds for per-stage updates (only called for current_stage and finalization)",
       "status": "done",
-      "commit": "cfd86c2"
+      "commit": "7b7f3aa"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Add 'autopilot serve' command to autopilot/cli.py: @main.command() with --host (default='127.0.0.1'), --port (default=8080, type=int), --output-dir (type=click.Path(), required=True). Lazy-import uvicorn and create_app. Construct db_path as Path(output_dir) / 'catalog.db'. Call uvicorn.run(app, host=host, port=port).",
+      "description": "In the progress reporting section of run() (after each stage), if budget_seconds is not None: compute remaining = budget_seconds - cumulative, call db.update_run(run_id, budget_remaining_seconds=remaining).",
       "status": "done",
-      "commit": "c85799d"
+      "commit": "704e462"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write failing test: TestServeCommand.test_serve_invokes_uvicorn \u2014 use CliRunner, mock uvicorn.run and autopilot.web.app.create_app, invoke 'serve --output-dir <tmp_path>', assert uvicorn.run called with the app from create_app, host='127.0.0.1', port=8080. test_serve_passes_custom_host_port \u2014 invoke with --host 0.0.0.0 --port 9090, verify passed through to uvicorn.run.",
+      "description": "Write TestRunTrackingIntegration class using real in-memory CatalogDB (catalog_db fixture): (1) test_full_run_creates_db_records \u2014 run orchestrator with mock stage funcs and real CatalogDB, verify pipeline_runs row exists with correct status='completed' and wall_clock_seconds > 0; (2) test_full_run_creates_events \u2014 verify pipeline_events table has stage_started + stage_completed events for each stage plus run_completed; (3) test_dry_run_still_creates_run_record \u2014 dry_run=True still creates pipeline_runs record",
       "status": "done",
-      "commit": "3906bb3"
+      "commit": "223b8ce"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Fix any issues from test_serve tests. Ensure serve command correctly passes db_path to create_app and host/port to uvicorn.run. Run full test suite to verify no regressions.",
+      "description": "Run full test suite (pytest tests/test_orchestrator.py -x) to verify all existing + new tests pass. Fix any issues.",
       "status": "done",
-      "commit": "aed3d61"
+      "commit": "223b8ce"
     },
     {
       "id": "step-13",
       "type": "test",
-      "description": "Write failing test: TestSSEErrorHandling.test_sse_notification_listener_has_try_catch \u2014 Read the content of autopilot/web/static/app.js, locate the SSE notification event listener (the addEventListener('notification', ...) block), and assert that the JSON.parse call is wrapped in a try/catch. Specifically: assert 'try' and 'catch' appear within the notification listener function body, and that 'console.error' is present in the catch block for logging parse failures. This is a static analysis test of the JS source since browser-level SSE testing is out of scope.",
+      "description": "Write TestEmitEventResilience class (addresses reviewer issue #2 \u2014 _emit_event error handling): (1) test_emit_event_swallows_db_error \u2014 set db.insert_event to raise RuntimeError, call _emit_event('test_event', stage='X'), assert no exception propagates; (2) test_emit_event_logs_warning_on_db_error \u2014 when insert_event raises, verify logger.warning is called with a message containing the event_type and the error; (3) test_emit_event_still_works_after_error \u2014 after a failed _emit_event call, a subsequent call with a working db succeeds normally.",
       "status": "done",
-      "commit": "35dc2ab"
+      "commit": "bb4e0b2"
     },
     {
       "id": "step-14",
       "type": "impl",
-      "description": "Fix autopilot/web/static/app.js: Wrap the SSE notification listener body in try/catch. Replace the bare `const data = JSON.parse(event.data); showToast(data.message, data.type || 'info');` with `try { const data = JSON.parse(event.data); showToast(data.message, data.type || 'info'); } catch (e) { console.error('SSE notification parse error:', e, event.data); }`. This prevents uncaught SyntaxError from malformed/truncated SSE payloads and logs the error for debugging.",
+      "description": "Make _emit_event resilient: wrap the entire body (insert_event call + debug log) in try/except Exception that logs at WARNING level ('Failed to emit event %s: %s', event_type, exc) and returns without propagating. This ensures no _emit_event call anywhere in run() can kill the pipeline.",
       "status": "done",
-      "commit": "f367457"
+      "commit": "6d13177"
+    },
+    {
+      "id": "step-15",
+      "type": "test",
+      "description": "Write TestInsertRunResilience class (addresses reviewer issue #1 \u2014 db.insert_run error handling): (1) test_insert_run_failure_does_not_block_pipeline \u2014 set db.insert_run to raise RuntimeError('locked'), run() still executes all stages and returns a results dict with correct StageResult entries; (2) test_insert_run_failure_sets_run_id_none \u2014 after insert_run raises, self._run_id is None; (3) test_insert_run_failure_skips_tracking_calls \u2014 after insert_run raises, db.update_run is never called and db.insert_event is never called (all tracking is skipped gracefully); (4) test_insert_run_failure_logs_warning \u2014 verify a WARNING log is emitted mentioning 'run tracking'.",
+      "status": "done",
+      "commit": "407c055"
+    },
+    {
+      "id": "step-16",
+      "type": "impl",
+      "description": "Wrap db.insert_run(...) in try/except Exception: on failure, log warning ('Run tracking unavailable: %s', exc), set self._run_id = None. Guard all db.update_run() calls in run() with 'if self._run_id is not None'. Guard all _emit_event() calls in run() with 'if self._run_id is not None'. This ensures a failed insert_run causes graceful degradation \u2014 the pipeline runs normally but without tracking.",
+      "status": "done",
+      "commit": "10ca492"
+    },
+    {
+      "id": "step-17",
+      "type": "test",
+      "description": "Write TestTrackingCallResilience class (addresses reviewer issues #2 and #3 \u2014 transient db.update_run failures): (1) test_update_run_failure_in_stage_loop_does_not_abort \u2014 configure db.update_run to raise on first call (current_stage update), verify all stages still execute and results are returned; (2) test_update_run_failure_for_budget_does_not_abort \u2014 configure db.update_run to raise only when called with budget_remaining_seconds kwarg, verify pipeline completes; (3) test_finalization_update_run_failure_returns_results \u2014 configure db.update_run to raise during the final status='completed' call, verify run() still returns the full results dict; (4) test_update_run_failure_logs_warning \u2014 verify WARNING log emitted for each failed db.update_run call.",
+      "status": "done",
+      "commit": "10e5937"
+    },
+    {
+      "id": "step-18",
+      "type": "impl",
+      "description": "Wrap each individual db.update_run() call in run() in its own try/except Exception block that logs at WARNING level and continues. There are 3 sites: (a) current_stage update before stage execution (line 748), (b) budget_remaining_seconds update after each stage (line 780-783), (c) finalization update_run (lines 812-817). For finalization, restructure so that the return statement is outside/after the try/except \u2014 ensure results dict is always returned regardless of tracking failures. The pattern for each: try: db.update_run(...) except Exception as exc: logger.warning('Run tracking update failed: %s', exc). Run full test suite to confirm all tests pass.",
+      "status": "done",
+      "commit": "3265df3"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use FastAPI TestClient (backed by httpx) for testing rather than starting a real server",
-      "rationale": "TestClient provides synchronous HTTP testing without binding to a port, making tests fast and reliable. httpx is required by starlette's TestClient."
+      "decision": "Store self._db and self._run_id as instance attributes during run()",
+      "rationale": "_emit_event needs access to db and the helper signature from the task spec (_emit_event(event_type, stage, job_id, payload)) doesn't take db as a parameter. Storing on self is the cleanest approach since run() is never called concurrently on the same instance."
     },
     {
-      "decision": "Store db_path in app.state rather than opening a CatalogDB connection at app creation time",
-      "rationale": "Allows the app factory to work without an actual database file (useful for testing static/template tests). Actual DB connection can be created lazily via FastAPI dependencies in subsequent tasks."
+      "decision": "Use str(config) for config_snapshot rather than yaml.dump",
+      "rationale": "AutopilotConfig is a dataclass, so str() gives a readable representation. yaml.dump would require the config to be serializable to YAML which isn't guaranteed. The task suggests 'yaml.dump(config) or str(config)' \u2014 str() is always safe."
     },
     {
-      "decision": "The serve command does NOT use _common_options decorator",
-      "rationale": "The serve command doesn't need --input-dir, --verbose, --dry-run, --force flags. It only needs --host, --port, and --output-dir. It also doesn't load config or create an orchestrator \u2014 it's a fundamentally different command type."
+      "decision": "Emit events even in dry_run mode for run start/end but not for stage transitions",
+      "rationale": "In dry_run, stages aren't actually executed (they're logged as DRY-RUN), so stage_started/stage_completed don't apply. However, the run itself is created and finalized so we can track dry runs. The stage loop's dry_run branch continues before reaching the event emission code."
     },
     {
-      "decision": "Health check route defined inline in app.py rather than in routes/",
-      "rationale": "The health check is a fundamental app concern, not a domain route. Keeping it in app.py avoids over-engineering. Domain routes (dashboard, media, pipeline) will go in routes/ per subsequent tasks."
+      "decision": "Use datetime.now(timezone.utc).isoformat() for timestamps",
+      "rationale": "Consistent with the DB's existing datetime('now') convention, produces ISO 8601 format that's human-readable and sortable. UTC avoids timezone ambiguity."
     },
     {
-      "decision": "Add httpx to dev dependencies for TestClient support",
-      "rationale": "FastAPI's TestClient requires httpx. Adding it to dev deps ensures test infrastructure works."
+      "decision": "_emit_event logs at DEBUG level rather than INFO",
+      "rationale": "Events are stored in the DB for the web console to query. Debug-level logging avoids cluttering the console output which already has INFO-level RUNNING/DONE logs. This also prevents existing log-assertion tests from breaking."
     },
     {
-      "decision": "Use Tailwind CDN play script (no build step) and HTMX CDN",
-      "rationale": "Per task spec \u2014 no Node.js toolchain needed. Tailwind play CDN and HTMX CDN (<14KB) are sufficient for a management console."
+      "decision": "Track budget_remaining_seconds only when budget_seconds is set",
+      "rationale": "When budget_seconds is None, budget_remaining_seconds is meaningless. Avoids writing None - cumulative which would error. Matches existing pattern where budget logging is conditional on self.budget_seconds being truthy."
     },
     {
-      "decision": "Convert output_dir to Path before joining with 'catalog.db' in serve command",
-      "rationale": "click.Path() returns a string by default. Path(output_dir) / 'catalog.db' is needed for path construction."
+      "decision": "Tracking is a fire-and-forget side-effect: all DB tracking calls are individually wrapped in try/except",
+      "rationale": "The reviewer correctly identified that monitoring/tracking code must never abort the core pipeline. The fix uses three layers: (1) _emit_event internally swallows exceptions, (2) db.insert_run failure sets _run_id=None sentinel causing all subsequent tracking to be skipped, (3) each db.update_run call is individually wrapped so a transient failure at one site doesn't affect others. This ensures the pipeline always completes and returns results, with tracking being best-effort."
     },
     {
-      "decision": "Use lazy imports for uvicorn and create_app inside serve command body",
-      "rationale": "Follows existing CLI pattern of importing heavy dependencies inside command functions. Avoids loading FastAPI/uvicorn when running other CLI commands like ingest, analyze, etc."
-    },
-    {
-      "decision": "Test template rendering by adding a temporary test route rather than testing Jinja2 directly",
-      "rationale": "Testing through the HTTP stack via TestClient ensures the full rendering pipeline works (Jinja2 configuration, template discovery, static file references). More realistic than inspecting template strings."
-    },
-    {
-      "decision": "Test SSE error handling via static JS source analysis rather than browser-level testing",
-      "rationale": "Browser-level SSE testing would require a headless browser (Playwright/Selenium), which is out of scope for this task. Reading the JS source and asserting the try/catch pattern exists in the notification listener is a pragmatic and reliable verification approach."
+      "decision": "Guard tracking calls with _run_id sentinel rather than wrapping every call in try/except alone",
+      "rationale": "When insert_run fails, there's no run record to update \u2014 calling update_run/insert_event would either fail or create orphan records. The sentinel pattern (_run_id=None means skip all tracking) is semantically cleaner than letting each call fail and be caught independently. Both mechanisms are used together for defense-in-depth."
     }
   ],
   "reuse": [
     {
-      "what": "CatalogDB class with WAL mode and pipeline control tables",
-      "where": "autopilot/db.py",
-      "how": "The web app stores db_path in app.state for CatalogDB(db_path) access. Pipeline tables (gates, jobs, events, runs from task 35) will be queried by subsequent dashboard routes."
+      "what": "CatalogDB.insert_run() CRUD method",
+      "where": "autopilot/db.py line 1140",
+      "how": "Called at start of run() to create the pipeline_runs record with run_id, started_at, config_snapshot, status, budget_remaining_seconds"
     },
     {
-      "what": "Click CLI group pattern with @main.command()",
-      "where": "autopilot/cli.py",
-      "how": "Add 'serve' as another @main.command() following the existing pattern of subcommand registration."
+      "what": "CatalogDB.update_run() CRUD method",
+      "where": "autopilot/db.py line 1175",
+      "how": "Called to update current_stage at each transition, budget_remaining_seconds after each stage, and finalize with finished_at/status/wall_clock_seconds at end"
     },
     {
-      "what": "conftest.py fixtures (project_root, catalog_db)",
-      "where": "tests/conftest.py",
-      "how": "project_root fixture resolves template/static paths. catalog_db provides in-memory DB for testing."
+      "what": "CatalogDB.insert_event() CRUD method",
+      "where": "autopilot/db.py line 1108",
+      "how": "Called by _emit_event helper to insert stage_started, stage_completed, stage_error, run_completed, run_failed events"
     },
     {
-      "what": "CliRunner test pattern with mock patches",
-      "where": "tests/test_cli.py",
-      "how": "Follow same CliRunner + mock pattern for testing the serve command \u2014 mock uvicorn.run to avoid actually starting a server."
+      "what": "Existing test patterns with MagicMock for db and config",
+      "where": "tests/test_orchestrator.py TestRun class (line 168+)",
+      "how": "New test classes follow same pattern: create PipelineOrchestrator, replace stage funcs with MagicMock, run with MagicMock config/db, assert on db mock calls"
     },
     {
-      "what": "pyproject.toml dependency structure (stable vs ML deps)",
-      "where": "pyproject.toml",
-      "how": "Add web deps (fastapi, jinja2, uvicorn, python-multipart) as stable deps without upper bounds, following existing convention for stable ecosystem packages."
+      "what": "catalog_db fixture (in-memory CatalogDB with autocommit)",
+      "where": "tests/conftest.py line 26-39",
+      "how": "Used in integration tests to verify actual DB records are created with correct values"
+    },
+    {
+      "what": "json.dumps for payload serialization",
+      "where": "Already imported in autopilot/orchestrator.py (line 8)",
+      "how": "Used in _emit_event to serialize payload dict to JSON string for insert_event's payload_json parameter"
+    },
+    {
+      "what": "MagicMock side_effect for simulating DB errors",
+      "where": "Standard unittest.mock pattern already used in test_orchestrator.py",
+      "how": "Set db.insert_run.side_effect = RuntimeError('locked') or db.update_run.side_effect = RuntimeError('DB error') to simulate transient failures in resilience tests"
     }
   ],
-  "_session_id": "36-7bf32510",
-  "_created_at": "2026-03-21T17:27:43.147521+00:00"
+  "_session_id": "37-23b3e6c2",
+  "_created_at": "2026-03-21T17:28:07.667353+00:00"
 }

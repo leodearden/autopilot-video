@@ -10,8 +10,10 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from autopilot.analyze import asr, audio_events, embeddings, faces, objects, scenes
 from autopilot.analyze.gpu_scheduler import GPUScheduler
@@ -464,7 +466,9 @@ def _run_render(*, config: Any, db: Any, force: bool = False) -> None:
             logger.warning("Skipping render for %s: no edit plan", nid)
             continue
         try:
-            output_path = router.route_and_render(nid, db, config.output)
+            output_path = router.route_and_render(
+                nid, db, config.output, config.output_dir,
+            )
             edl = json.loads(plan["edl_json"])
             report = render_validate.validate_render(output_path, edl, config.output)
             for issue in report.issues:
@@ -610,6 +614,33 @@ class PipelineOrchestrator:
             s.name: s for s in self.stages
         }
 
+    def _emit_event(
+        self,
+        event_type: str,
+        stage: str | None = None,
+        job_id: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        """Emit a pipeline event to the database.
+
+        Args:
+            event_type: Event type string (e.g. 'stage_started').
+            stage: Stage name associated with the event.
+            job_id: Optional job identifier.
+            payload: Optional dict to serialize as JSON payload.
+        """
+        try:
+            payload_json = json.dumps(payload) if payload is not None else None
+            self._db.insert_event(
+                event_type=event_type,
+                stage=stage,
+                job_id=job_id,
+                payload_json=payload_json,
+            )
+            logger.debug("Event: %s stage=%s", event_type, stage)
+        except Exception as exc:
+            logger.warning("Failed to emit event %s: %s", event_type, exc)
+
     def execution_order(self) -> list[str]:
         """Return stage names in topologically sorted execution order.
 
@@ -660,6 +691,23 @@ class PipelineOrchestrator:
         errored_stages: set[str] = set()
         pipeline_start = time.monotonic()
 
+        # --- Run tracking: create pipeline_runs record ---
+        self._db = db
+        try:
+            run_id = uuid4().hex
+            started_at = datetime.now(timezone.utc).isoformat()
+            self._run_id = run_id
+            db.insert_run(
+                run_id,
+                started_at=started_at,
+                config_snapshot=str(config),
+                status="running",
+                budget_remaining_seconds=self.budget_seconds,
+            )
+        except Exception as exc:
+            logger.warning("Run tracking unavailable: %s", exc)
+            self._run_id = None
+
         for stage_name in order:
             if shutdown_requested():
                 for remaining in order:
@@ -702,6 +750,13 @@ class PipelineOrchestrator:
                 continue
 
             logger.info("[RUNNING] %s", stage_name)
+            # Emit stage_started event and update current_stage on run
+            if self._run_id is not None:
+                self._emit_event("stage_started", stage=stage_name)
+                try:
+                    db.update_run(self._run_id, current_stage=stage_name)
+                except Exception as exc:
+                    logger.warning("Run tracking update failed: %s", exc)
             t0 = time.monotonic()
             try:
                 stage.func(config=config, db=db, force=self.force)
@@ -710,6 +765,11 @@ class PipelineOrchestrator:
                     status=StageStatus.DONE,
                     elapsed_seconds=elapsed,
                 )
+                if self._run_id is not None:
+                    self._emit_event(
+                        "stage_completed", stage=stage_name,
+                        payload={"elapsed": elapsed},
+                    )
                 logger.info("[DONE] %s (%.1fs)", stage_name, elapsed)
             except Exception as exc:
                 elapsed = time.monotonic() - t0
@@ -719,11 +779,27 @@ class PipelineOrchestrator:
                     error_message=str(exc),
                 )
                 errored_stages.add(stage_name)
+                if self._run_id is not None:
+                    self._emit_event(
+                        "stage_error", stage=stage_name,
+                        payload={"error": str(exc)},
+                    )
                 logger.error("[ERROR] %s: %s", stage_name, exc)
 
             # Progress reporting after each stage
             cumulative = time.monotonic() - pipeline_start
             if self.budget_seconds and self.budget_seconds > 0:
+                remaining = self.budget_seconds - cumulative
+                if self._run_id is not None:
+                    try:
+                        db.update_run(
+                            self._run_id,
+                            budget_remaining_seconds=remaining,
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "Run tracking update failed: %s", exc,
+                        )
                 pct = (cumulative / self.budget_seconds) * 100
                 logger.info(
                     "[PROGRESS] %.1fs / %.1fs budget (%.1f%%)",
@@ -749,6 +825,27 @@ class PipelineOrchestrator:
         logger.info(
             "Pipeline complete (%.1fs)\n%s", total_elapsed, summary,
         )
+
+        # --- Run tracking: finalize run record ---
+        if self._run_id is not None:
+            final_status = "failed" if errored_stages else "completed"
+            try:
+                db.update_run(
+                    self._run_id,
+                    finished_at=datetime.now(timezone.utc).isoformat(),
+                    status=final_status,
+                    wall_clock_seconds=total_elapsed,
+                )
+            except Exception as exc:
+                logger.warning("Run tracking update failed: %s", exc)
+            if errored_stages:
+                self._emit_event(
+                    "run_failed", payload={"duration": total_elapsed},
+                )
+            else:
+                self._emit_event(
+                    "run_completed", payload={"duration": total_elapsed},
+                )
 
         # Check budget
         if self.budget_seconds is not None and total_elapsed > self.budget_seconds:

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -2829,3 +2832,596 @@ class TestForceFlagPropagation:
             mock_fn.assert_called_once_with(
                 config=mock_config, db=mock_db, force=False,
             )
+
+
+# --- Run Tracking & Event Emission tests (Task 37) ---
+
+
+class TestRunTrackingInit:
+    """Tests for pipeline run record creation at start of run()."""
+
+    def test_run_creates_pipeline_run_record(self) -> None:
+        """run() calls db.insert_run once with correct args."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        mock_db.insert_run.assert_called_once()
+        call_kwargs = mock_db.insert_run.call_args
+        run_id = call_kwargs[0][0]  # first positional arg
+        assert isinstance(run_id, str)
+        assert len(run_id) == 32
+        assert re.fullmatch(r"[0-9a-f]{32}", run_id), f"run_id not hex: {run_id}"
+
+        kw = call_kwargs[1]
+        assert kw["status"] == "running"
+        # started_at should be an ISO 8601 string
+        assert isinstance(kw["started_at"], str)
+        assert "T" in kw["started_at"]
+        # config_snapshot should be a string
+        assert isinstance(kw["config_snapshot"], str)
+
+    def test_run_stores_run_id_on_self(self) -> None:
+        """After run(), orch._run_id is a 32-char hex string."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=MagicMock())
+
+        assert hasattr(orch, "_run_id")
+        assert isinstance(orch._run_id, str)
+        assert len(orch._run_id) == 32
+        assert re.fullmatch(r"[0-9a-f]{32}", orch._run_id)
+
+    def test_run_passes_budget_to_insert_run(self) -> None:
+        """When budget_seconds=3600, insert_run is called with budget_remaining_seconds=3600."""
+        orch = PipelineOrchestrator(budget_seconds=3600)
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        kw = mock_db.insert_run.call_args[1]
+        assert kw["budget_remaining_seconds"] == 3600
+
+
+class TestEmitEvent:
+    """Tests for the _emit_event helper method."""
+
+    def test_emit_event_calls_insert_event(self) -> None:
+        """_emit_event calls db.insert_event with event_type and stage."""
+        orch = PipelineOrchestrator()
+        orch._db = MagicMock()
+        orch._run_id = "a" * 32
+
+        orch._emit_event("test_event", stage="INGEST")
+
+        orch._db.insert_event.assert_called_once()
+        call_kwargs = orch._db.insert_event.call_args[1]
+        assert call_kwargs["event_type"] == "test_event"
+        assert call_kwargs["stage"] == "INGEST"
+
+    def test_emit_event_serializes_payload_to_json(self) -> None:
+        """_emit_event serializes payload dict to JSON string."""
+        orch = PipelineOrchestrator()
+        orch._db = MagicMock()
+        orch._run_id = "b" * 32
+
+        orch._emit_event("test_event", payload={"key": "val"})
+
+        call_kwargs = orch._db.insert_event.call_args[1]
+        assert call_kwargs["payload_json"] == '{"key": "val"}'
+
+    def test_emit_event_none_payload(self) -> None:
+        """_emit_event passes payload_json=None when no payload given."""
+        orch = PipelineOrchestrator()
+        orch._db = MagicMock()
+        orch._run_id = "c" * 32
+
+        orch._emit_event("test_event")
+
+        call_kwargs = orch._db.insert_event.call_args[1]
+        assert call_kwargs["payload_json"] is None
+
+    def test_emit_event_logs_at_debug_level(
+        self, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """_emit_event emits a debug-level log."""
+        orch = PipelineOrchestrator()
+        orch._db = MagicMock()
+        orch._run_id = "d" * 32
+
+        with caplog.at_level(logging.DEBUG, logger="autopilot.orchestrator"):
+            orch._emit_event("test_event", stage="INGEST")
+
+        debug_records = [
+            r for r in caplog.records
+            if r.levelno == logging.DEBUG and "test_event" in r.message
+        ]
+        assert len(debug_records) >= 1
+
+
+class TestStageTransitionEvents:
+    """Tests for stage_started / stage_completed / stage_error events emitted during run()."""
+
+    def test_stage_started_event_emitted_for_each_stage(self) -> None:
+        """run() emits a 'stage_started' event for each of the 9 stages."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        insert_event_calls = mock_db.insert_event.call_args_list
+        started_calls = [
+            c for c in insert_event_calls
+            if c[1].get("event_type") == "stage_started"
+        ]
+        started_stages = [c[1]["stage"] for c in started_calls]
+        assert started_stages == EXPECTED_STAGES
+
+    def test_stage_completed_event_emitted_with_elapsed(self) -> None:
+        """run() emits 'stage_completed' events with 'elapsed' in payload."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        insert_event_calls = mock_db.insert_event.call_args_list
+        completed_calls = [
+            c for c in insert_event_calls
+            if c[1].get("event_type") == "stage_completed"
+        ]
+        assert len(completed_calls) == 9
+        for c in completed_calls:
+            payload = json.loads(c[1]["payload_json"])
+            assert "elapsed" in payload
+            assert isinstance(payload["elapsed"], float)
+
+    def test_stage_error_event_emitted(self) -> None:
+        """When a stage raises, a 'stage_error' event is emitted with error message."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            if stage.name == "INGEST":
+                stage.func = MagicMock(side_effect=RuntimeError("ingest boom"))
+            else:
+                stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        insert_event_calls = mock_db.insert_event.call_args_list
+        error_calls = [
+            c for c in insert_event_calls
+            if c[1].get("event_type") == "stage_error"
+        ]
+        assert len(error_calls) >= 1
+        payload = json.loads(error_calls[0][1]["payload_json"])
+        assert "error" in payload
+        assert "ingest boom" in payload["error"]
+        assert error_calls[0][1]["stage"] == "INGEST"
+
+    def test_current_stage_updated_via_update_run(self) -> None:
+        """run() calls db.update_run with current_stage before each stage runs."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        update_run_calls = mock_db.update_run.call_args_list
+        # Extract calls that set current_stage
+        current_stage_calls = [
+            c for c in update_run_calls
+            if "current_stage" in c[1]
+        ]
+        stages_set = [c[1]["current_stage"] for c in current_stage_calls]
+        assert stages_set == EXPECTED_STAGES
+
+
+class TestRunFinalization:
+    """Tests for run finalization — status update and run_completed/run_failed events."""
+
+    def test_run_completed_status_on_success(self) -> None:
+        """When all stages pass, final update_run has status='completed' and wall_clock_seconds."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        update_calls = mock_db.update_run.call_args_list
+        # The last update_run call should finalize the run
+        final_calls = [
+            c for c in update_calls
+            if "status" in c[1] and c[1]["status"] in ("completed", "failed")
+        ]
+        assert len(final_calls) >= 1
+        final = final_calls[-1][1]
+        assert final["status"] == "completed"
+        assert "finished_at" in final
+        assert isinstance(final["finished_at"], str)
+        assert "T" in final["finished_at"]
+        assert "wall_clock_seconds" in final
+        assert isinstance(final["wall_clock_seconds"], float)
+        assert final["wall_clock_seconds"] >= 0
+
+    def test_run_failed_status_on_error(self) -> None:
+        """When a stage errors, final update_run has status='failed'."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            if stage.name == "INGEST":
+                stage.func = MagicMock(side_effect=RuntimeError("boom"))
+            else:
+                stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        update_calls = mock_db.update_run.call_args_list
+        final_calls = [
+            c for c in update_calls
+            if "status" in c[1] and c[1]["status"] in ("completed", "failed")
+        ]
+        assert len(final_calls) >= 1
+        assert final_calls[-1][1]["status"] == "failed"
+
+    def test_run_completed_event_emitted(self) -> None:
+        """'run_completed' event emitted on successful run with duration in payload."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        insert_event_calls = mock_db.insert_event.call_args_list
+        completed_calls = [
+            c for c in insert_event_calls
+            if c[1].get("event_type") == "run_completed"
+        ]
+        assert len(completed_calls) == 1
+        payload = json.loads(completed_calls[0][1]["payload_json"])
+        assert "duration" in payload
+        assert isinstance(payload["duration"], float)
+
+    def test_run_failed_event_emitted(self) -> None:
+        """'run_failed' event emitted when pipeline has errors."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            if stage.name == "ANALYZE":
+                stage.func = MagicMock(side_effect=ValueError("analyze fail"))
+            else:
+                stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        insert_event_calls = mock_db.insert_event.call_args_list
+        failed_calls = [
+            c for c in insert_event_calls
+            if c[1].get("event_type") == "run_failed"
+        ]
+        assert len(failed_calls) == 1
+        payload = json.loads(failed_calls[0][1]["payload_json"])
+        assert "duration" in payload
+
+
+class TestBudgetRemainingTracking:
+    """Tests for budget_remaining_seconds updates after each stage."""
+
+    def test_budget_remaining_written_after_each_stage(self) -> None:
+        """With budget_seconds=3600, update_run includes budget_remaining."""
+        orch = PipelineOrchestrator(budget_seconds=3600)
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        update_calls = mock_db.update_run.call_args_list
+        budget_calls = [
+            c for c in update_calls
+            if "budget_remaining_seconds" in c[1]
+        ]
+        # Should have one budget update per stage (9 stages)
+        assert len(budget_calls) == 9
+        # Each budget_remaining value should be a float
+        for c in budget_calls:
+            remaining = c[1]["budget_remaining_seconds"]
+            assert isinstance(remaining, float)
+            # Budget remaining should be <= 3600 (decreasing)
+            assert remaining <= 3600
+
+    def test_no_budget_remaining_when_no_budget(self) -> None:
+        """With budget_seconds=None, no budget_remaining updates."""
+        orch = PipelineOrchestrator(budget_seconds=None)
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        update_calls = mock_db.update_run.call_args_list
+        budget_calls = [
+            c for c in update_calls
+            if "budget_remaining_seconds" in c[1]
+        ]
+        # No per-stage budget updates should occur
+        assert len(budget_calls) == 0
+
+
+class TestRunTrackingIntegration:
+    """Integration tests using real in-memory CatalogDB."""
+
+    def test_full_run_creates_db_records(self, catalog_db) -> None:
+        """Run with real CatalogDB creates a pipeline_runs row with status='completed'."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=catalog_db)
+
+        run_record = catalog_db.get_run(orch._run_id)
+        assert run_record is not None
+        assert run_record["status"] == "completed"
+        assert run_record["wall_clock_seconds"] is not None
+        assert float(run_record["wall_clock_seconds"]) >= 0
+        assert run_record["finished_at"] is not None
+
+    def test_full_run_creates_events(self, catalog_db) -> None:
+        """Run creates stage_started + stage_completed events for each stage plus run_completed."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=catalog_db)
+
+        events = catalog_db.get_events_since(0)
+        event_types = [e["event_type"] for e in events]
+
+        # 9 stages × 2 (started + completed) = 18, plus 1 run_completed = 19
+        assert event_types.count("stage_started") == 9
+        assert event_types.count("stage_completed") == 9
+        assert event_types.count("run_completed") == 1
+
+        # Verify each stage has both started and completed events
+        for stage_name in EXPECTED_STAGES:
+            stage_started = [
+                e for e in events
+                if e["event_type"] == "stage_started"
+                and e["stage"] == stage_name
+            ]
+            stage_completed = [
+                e for e in events
+                if e["event_type"] == "stage_completed"
+                and e["stage"] == stage_name
+            ]
+            assert len(stage_started) == 1, f"Missing stage_started for {stage_name}"
+            assert len(stage_completed) == 1, f"Missing stage_completed for {stage_name}"
+
+    def test_dry_run_still_creates_run_record(self, catalog_db) -> None:
+        """dry_run=True still creates a pipeline_runs record."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        orch.run(config=MagicMock(), db=catalog_db, dry_run=True)
+
+        run_record = catalog_db.get_run(orch._run_id)
+        assert run_record is not None
+        assert run_record["status"] is not None
+
+
+class TestEmitEventResilience:
+    """Tests that _emit_event swallows DB errors and never propagates them."""
+
+    def test_emit_event_swallows_db_error(self) -> None:
+        """_emit_event does not raise when db.insert_event raises RuntimeError."""
+        orch = PipelineOrchestrator()
+        orch._db = MagicMock()
+        orch._db.insert_event.side_effect = RuntimeError("DB locked")
+        orch._run_id = "a" * 32
+
+        # Should NOT raise
+        orch._emit_event("test_event", stage="X")
+
+    def test_emit_event_logs_warning_on_db_error(
+        self, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """When insert_event raises, _emit_event logs a WARNING with event_type and error."""
+        orch = PipelineOrchestrator()
+        orch._db = MagicMock()
+        orch._db.insert_event.side_effect = RuntimeError("connection lost")
+        orch._run_id = "b" * 32
+
+        with caplog.at_level(logging.WARNING, logger="autopilot.orchestrator"):
+            orch._emit_event("test_event", stage="Y")
+
+        warning_records = [
+            r for r in caplog.records
+            if r.levelno == logging.WARNING
+            and "test_event" in r.message
+            and "connection lost" in r.message
+        ]
+        assert len(warning_records) >= 1
+
+    def test_emit_event_still_works_after_error(self) -> None:
+        """After a failed _emit_event, a subsequent call with a working db succeeds."""
+        orch = PipelineOrchestrator()
+        orch._db = MagicMock()
+        orch._run_id = "c" * 32
+
+        # First call: DB raises
+        orch._db.insert_event.side_effect = RuntimeError("transient")
+        orch._emit_event("failing_event", stage="A")
+
+        # Second call: DB works fine
+        orch._db.insert_event.side_effect = None
+        orch._emit_event("ok_event", stage="B")
+
+        # Verify second call went through
+        last_call = orch._db.insert_event.call_args
+        assert last_call[1]["event_type"] == "ok_event"
+
+
+class TestInsertRunResilience:
+    """Tests that db.insert_run failure doesn't block the pipeline."""
+
+    def test_insert_run_failure_does_not_block_pipeline(self) -> None:
+        """When db.insert_run raises, run() still executes all stages and returns results."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        mock_db.insert_run.side_effect = RuntimeError("locked")
+
+        results = orch.run(config=MagicMock(), db=mock_db)
+
+        # All 9 stages should have executed
+        assert len(results) == 9
+        for stage_name, result in results.items():
+            assert result.status == StageStatus.DONE
+
+    def test_insert_run_failure_sets_run_id_none(self) -> None:
+        """When insert_run raises, self._run_id is None."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        mock_db.insert_run.side_effect = RuntimeError("locked")
+
+        orch.run(config=MagicMock(), db=mock_db)
+        assert orch._run_id is None
+
+    def test_insert_run_failure_skips_tracking_calls(self) -> None:
+        """When insert_run raises, update_run and insert_event are never called."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        mock_db.insert_run.side_effect = RuntimeError("locked")
+
+        orch.run(config=MagicMock(), db=mock_db)
+
+        mock_db.update_run.assert_not_called()
+        mock_db.insert_event.assert_not_called()
+
+    def test_insert_run_failure_logs_warning(
+        self, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """When insert_run raises, a WARNING log mentioning 'run tracking' is emitted."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        mock_db.insert_run.side_effect = RuntimeError("locked")
+
+        with caplog.at_level(logging.WARNING, logger="autopilot.orchestrator"):
+            orch.run(config=MagicMock(), db=mock_db)
+
+        warning_records = [
+            r for r in caplog.records
+            if r.levelno == logging.WARNING
+            and "run tracking" in r.message.lower()
+        ]
+        assert len(warning_records) >= 1
+
+
+class TestTrackingCallResilience:
+    """Tests that transient db.update_run failures don't abort the pipeline."""
+
+    def test_update_run_failure_in_stage_loop_does_not_abort(self) -> None:
+        """When db.update_run raises on current_stage update, all stages still execute."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        # update_run raises on the first call (current_stage update)
+        mock_db.update_run.side_effect = RuntimeError("DB error")
+
+        results = orch.run(config=MagicMock(), db=mock_db)
+
+        # All 9 stages should have run
+        assert len(results) == 9
+        for result in results.values():
+            assert result.status == StageStatus.DONE
+
+    def test_update_run_failure_for_budget_does_not_abort(self) -> None:
+        """When db.update_run raises on budget_remaining update, pipeline completes."""
+        orch = PipelineOrchestrator(budget_seconds=3600)
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+
+        # Only raise when budget_remaining_seconds kwarg is present
+        def selective_raise(*args: Any, **kwargs: Any) -> None:
+            if "budget_remaining_seconds" in kwargs:
+                raise RuntimeError("DB error on budget update")
+
+        mock_db.update_run.side_effect = selective_raise
+
+        results = orch.run(config=MagicMock(), db=mock_db)
+
+        assert len(results) == 9
+        for result in results.values():
+            assert result.status == StageStatus.DONE
+
+    def test_finalization_update_run_failure_returns_results(self) -> None:
+        """When db.update_run raises during finalization, run() still returns results."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+
+        # Only raise when status='completed' kwarg is present (finalization)
+        def selective_raise(*args: Any, **kwargs: Any) -> None:
+            if "status" in kwargs and kwargs["status"] == "completed":
+                raise RuntimeError("DB error on finalize")
+
+        mock_db.update_run.side_effect = selective_raise
+
+        results = orch.run(config=MagicMock(), db=mock_db)
+
+        # Should still return all 9 results
+        assert len(results) == 9
+        for result in results.values():
+            assert result.status == StageStatus.DONE
+
+    def test_update_run_failure_logs_warning(
+        self, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """WARNING log emitted for each failed db.update_run call."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        mock_db.update_run.side_effect = RuntimeError("DB error")
+
+        with caplog.at_level(logging.WARNING, logger="autopilot.orchestrator"):
+            orch.run(config=MagicMock(), db=mock_db)
+
+        warning_records = [
+            r for r in caplog.records
+            if r.levelno == logging.WARNING
+            and "tracking" in r.message.lower()
+        ]
+        assert len(warning_records) >= 1
