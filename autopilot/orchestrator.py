@@ -116,6 +116,8 @@ def _run_ingest(*, config: Any, db: Any) -> None:
 
     ingested = 0
     for mf in files:
+        if shutdown_requested():
+            break
         media_id = mf.sha256_prefix or mf.file_path.stem
         try:
             normalizer.normalize_audio(
