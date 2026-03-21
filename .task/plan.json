@@ -9,7 +9,7 @@
     "autopilot",
     "tests"
   ],
-  "analysis": "PipelineOrchestrator.run() in autopilot/orchestrator.py currently executes stages in topological order, logging progress and returning a dict of StageResult. Task 35 (dependency) already added pipeline_runs and pipeline_events tables plus full CRUD to CatalogDB (db.insert_run, db.update_run, db.insert_event, etc.). This task instruments run() to: (1) create a pipeline_runs record at start via db.insert_run with uuid4 run_id, (2) add a _emit_event helper that calls db.insert_event with JSON payload, (3) emit stage_started/stage_completed/stage_error events at each stage transition with current_stage updates on the run, (4) finalize the run at end with status completed|failed, finished_at, wall_clock_seconds, (5) track budget_remaining_seconds. Existing tests use MagicMock for db, so all new db.insert_run/insert_event/update_run calls are silently accepted \u2014 no existing test breakage. New tests will assert those mock calls happened with correct args. An integration test with real in-memory CatalogDB verifies actual DB records.",
+  "analysis": "PipelineOrchestrator.run() in autopilot/orchestrator.py currently executes stages in topological order, logging progress and returning a dict of StageResult. Task 35 (dependency) already added pipeline_runs and pipeline_events tables plus full CRUD to CatalogDB (db.insert_run, db.update_run, db.insert_event, etc.). This task instruments run() to: (1) create a pipeline_runs record at start via db.insert_run with uuid4 run_id, (2) add a _emit_event helper that calls db.insert_event with JSON payload, (3) emit stage_started/stage_completed/stage_error events at each stage transition with current_stage updates on the run, (4) finalize the run at end with status completed|failed, finished_at, wall_clock_seconds, (5) track budget_remaining_seconds. Existing tests use MagicMock for db, so all new db.insert_run/insert_event/update_run calls are silently accepted \u2014 no existing test breakage. New tests will assert those mock calls happened with correct args. An integration test with real in-memory CatalogDB verifies actual DB records.\n\nREVIEW FEEDBACK ADDENDUM: Three blocking issues identified \u2014 all tracking/monitoring DB calls (insert_run, update_run, insert_event) lack error handling and can abort the core pipeline. The fix strategy: (1) make _emit_event internally swallow exceptions, (2) wrap db.insert_run in try/except with sentinel _run_id=None and guard all subsequent tracking calls, (3) wrap all db.update_run calls in individual try/except blocks so transient DB failures can't propagate, (4) ensure finalization block can't lose results.",
   "prerequisites": [],
   "steps": [
     {
@@ -95,6 +95,48 @@
       "description": "Run full test suite (pytest tests/test_orchestrator.py -x) to verify all existing + new tests pass. Fix any issues.",
       "status": "done",
       "commit": "223b8ce"
+    },
+    {
+      "id": "step-13",
+      "type": "test",
+      "description": "Write TestEmitEventResilience class (addresses reviewer issue #2 \u2014 _emit_event error handling): (1) test_emit_event_swallows_db_error \u2014 set db.insert_event to raise RuntimeError, call _emit_event('test_event', stage='X'), assert no exception propagates; (2) test_emit_event_logs_warning_on_db_error \u2014 when insert_event raises, verify logger.warning is called with a message containing the event_type and the error; (3) test_emit_event_still_works_after_error \u2014 after a failed _emit_event call, a subsequent call with a working db succeeds normally.",
+      "status": "done",
+      "commit": "bb4e0b2"
+    },
+    {
+      "id": "step-14",
+      "type": "impl",
+      "description": "Make _emit_event resilient: wrap the entire body (insert_event call + debug log) in try/except Exception that logs at WARNING level ('Failed to emit event %s: %s', event_type, exc) and returns without propagating. This ensures no _emit_event call anywhere in run() can kill the pipeline.",
+      "status": "done",
+      "commit": "6d13177"
+    },
+    {
+      "id": "step-15",
+      "type": "test",
+      "description": "Write TestInsertRunResilience class (addresses reviewer issue #1 \u2014 db.insert_run error handling): (1) test_insert_run_failure_does_not_block_pipeline \u2014 set db.insert_run to raise RuntimeError('locked'), run() still executes all stages and returns a results dict with correct StageResult entries; (2) test_insert_run_failure_sets_run_id_none \u2014 after insert_run raises, self._run_id is None; (3) test_insert_run_failure_skips_tracking_calls \u2014 after insert_run raises, db.update_run is never called and db.insert_event is never called (all tracking is skipped gracefully); (4) test_insert_run_failure_logs_warning \u2014 verify a WARNING log is emitted mentioning 'run tracking'.",
+      "status": "done",
+      "commit": "407c055"
+    },
+    {
+      "id": "step-16",
+      "type": "impl",
+      "description": "Wrap db.insert_run(...) in try/except Exception: on failure, log warning ('Run tracking unavailable: %s', exc), set self._run_id = None. Guard all db.update_run() calls in run() with 'if self._run_id is not None'. Guard all _emit_event() calls in run() with 'if self._run_id is not None'. This ensures a failed insert_run causes graceful degradation \u2014 the pipeline runs normally but without tracking.",
+      "status": "done",
+      "commit": "10ca492"
+    },
+    {
+      "id": "step-17",
+      "type": "test",
+      "description": "Write TestTrackingCallResilience class (addresses reviewer issues #2 and #3 \u2014 transient db.update_run failures): (1) test_update_run_failure_in_stage_loop_does_not_abort \u2014 configure db.update_run to raise on first call (current_stage update), verify all stages still execute and results are returned; (2) test_update_run_failure_for_budget_does_not_abort \u2014 configure db.update_run to raise only when called with budget_remaining_seconds kwarg, verify pipeline completes; (3) test_finalization_update_run_failure_returns_results \u2014 configure db.update_run to raise during the final status='completed' call, verify run() still returns the full results dict; (4) test_update_run_failure_logs_warning \u2014 verify WARNING log emitted for each failed db.update_run call.",
+      "status": "done",
+      "commit": "10e5937"
+    },
+    {
+      "id": "step-18",
+      "type": "impl",
+      "description": "Wrap each individual db.update_run() call in run() in its own try/except Exception block that logs at WARNING level and continues. There are 3 sites: (a) current_stage update before stage execution (line 748), (b) budget_remaining_seconds update after each stage (line 780-783), (c) finalization update_run (lines 812-817). For finalization, restructure so that the return statement is outside/after the try/except \u2014 ensure results dict is always returned regardless of tracking failures. The pattern for each: try: db.update_run(...) except Exception as exc: logger.warning('Run tracking update failed: %s', exc). Run full test suite to confirm all tests pass.",
+      "status": "done",
+      "commit": "3265df3"
     }
   ],
   "design_decisions": [
@@ -121,6 +163,14 @@
     {
       "decision": "Track budget_remaining_seconds only when budget_seconds is set",
       "rationale": "When budget_seconds is None, budget_remaining_seconds is meaningless. Avoids writing None - cumulative which would error. Matches existing pattern where budget logging is conditional on self.budget_seconds being truthy."
+    },
+    {
+      "decision": "Tracking is a fire-and-forget side-effect: all DB tracking calls are individually wrapped in try/except",
+      "rationale": "The reviewer correctly identified that monitoring/tracking code must never abort the core pipeline. The fix uses three layers: (1) _emit_event internally swallows exceptions, (2) db.insert_run failure sets _run_id=None sentinel causing all subsequent tracking to be skipped, (3) each db.update_run call is individually wrapped so a transient failure at one site doesn't affect others. This ensures the pipeline always completes and returns results, with tracking being best-effort."
+    },
+    {
+      "decision": "Guard tracking calls with _run_id sentinel rather than wrapping every call in try/except alone",
+      "rationale": "When insert_run fails, there's no run record to update \u2014 calling update_run/insert_event would either fail or create orphan records. The sentinel pattern (_run_id=None means skip all tracking) is semantically cleaner than letting each call fail and be caught independently. Both mechanisms are used together for defense-in-depth."
     }
   ],
   "reuse": [
@@ -153,8 +203,13 @@
       "what": "json.dumps for payload serialization",
       "where": "Already imported in autopilot/orchestrator.py (line 8)",
       "how": "Used in _emit_event to serialize payload dict to JSON string for insert_event's payload_json parameter"
+    },
+    {
+      "what": "MagicMock side_effect for simulating DB errors",
+      "where": "Standard unittest.mock pattern already used in test_orchestrator.py",
+      "how": "Set db.insert_run.side_effect = RuntimeError('locked') or db.update_run.side_effect = RuntimeError('DB error') to simulate transient failures in resilience tests"
     }
   ],
   "_session_id": "37-23b3e6c2",
-  "_created_at": "2026-03-21T17:12:57.825064+00:00"
+  "_created_at": "2026-03-21T17:28:07.667353+00:00"
 }
