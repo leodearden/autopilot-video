@@ -147,14 +147,14 @@
       "type": "impl",
       "description": "Implement resume logic in _run_upload: check db.get_upload(nid) before uploading, skip if exists. Add force kwarg (default False).",
       "status": "done",
-      "commit": "PENDING"
+      "commit": "2724ae9"
     },
     {
       "id": "step-17",
       "type": "test",
       "description": "Write failing tests for force flag propagation: test_orchestrator_run_passes_force_to_stages (when run(force=True), each stage receives force=True). test_orchestrator_run_defaults_force_false. test_orchestrator_init_accepts_force.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "PENDING"
     },
     {
       "id": "step-18",

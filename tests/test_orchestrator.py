@@ -2735,3 +2735,53 @@ class TestUploadResume:
 
         # Both should get upload_video called
         assert mock_youtube.upload_video.call_count == 2
+
+
+class TestForceFlagPropagation:
+    """Tests for force flag propagation through PipelineOrchestrator."""
+
+    def test_orchestrator_init_accepts_force(self) -> None:
+        """PipelineOrchestrator.__init__ accepts a force parameter."""
+        orch = PipelineOrchestrator(force=True)
+        assert orch.force is True
+
+    def test_orchestrator_init_defaults_force_false(self) -> None:
+        """PipelineOrchestrator defaults force to False."""
+        orch = PipelineOrchestrator()
+        assert orch.force is False
+
+    def test_orchestrator_run_passes_force_true_to_stages(self) -> None:
+        """run() passes force=True to each stage when orchestrator has force=True."""
+        orch = PipelineOrchestrator(force=True)
+        mocks: dict[str, MagicMock] = {}
+        for stage in orch.stages:
+            mock_fn = MagicMock()
+            mocks[stage.name] = mock_fn
+            stage.func = mock_fn
+
+        mock_config = MagicMock()
+        mock_db = MagicMock()
+        orch.run(config=mock_config, db=mock_db)
+
+        for name, mock_fn in mocks.items():
+            mock_fn.assert_called_once_with(
+                config=mock_config, db=mock_db, force=True,
+            )
+
+    def test_orchestrator_run_passes_force_false_to_stages(self) -> None:
+        """run() passes force=False to each stage when orchestrator has force=False."""
+        orch = PipelineOrchestrator(force=False)
+        mocks: dict[str, MagicMock] = {}
+        for stage in orch.stages:
+            mock_fn = MagicMock()
+            mocks[stage.name] = mock_fn
+            stage.func = mock_fn
+
+        mock_config = MagicMock()
+        mock_db = MagicMock()
+        orch.run(config=mock_config, db=mock_db)
+
+        for name, mock_fn in mocks.items():
+            mock_fn.assert_called_once_with(
+                config=mock_config, db=mock_db, force=False,
+            )
