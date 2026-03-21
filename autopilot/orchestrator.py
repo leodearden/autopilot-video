@@ -1011,6 +1011,26 @@ class PipelineOrchestrator:
             self._emit_event("gate_passed", stage=stage_name)
             return "approved"
 
+        if mode == "pause":
+            # Set gate to waiting and emit event
+            self._db.update_gate(gate_name, status="waiting")
+            self._emit_event("gate_waiting", stage=stage_name)
+            logger.info("[GATE-WAITING] %s — waiting for external approval", stage_name)
+
+            # Poll for approval/skip
+            while True:
+                time.sleep(2)
+                current = self._db.get_gate(gate_name)
+                if current is None:
+                    return "approved"
+                status = current.get("status", "waiting")
+                if status == "approved":
+                    self._emit_event("gate_approved", stage=stage_name)
+                    return "approved"
+                if status == "skipped":
+                    self._emit_event("gate_skipped", stage=stage_name)
+                    return "skipped"
+
         return "approved"
 
     def _emit_event(
