@@ -252,3 +252,45 @@ class TestSSEReconnection:
             events = _parse_sse_body(response.text)
 
         assert len(events) == 3
+
+
+class TestSSEPruning:
+    """Tests for periodic event pruning."""
+
+    def test_old_events_pruned_after_polls(self, sse_db) -> None:
+        """Events older than 24 hours are pruned after sufficient poll cycles."""
+        # Insert an old event via raw SQL (>24h ago)
+        sse_db.conn.execute(
+            "INSERT INTO pipeline_events (event_type, stage, created_at) "
+            "VALUES (?, ?, datetime('now', '-25 hours'))",
+            ("old_event", "INGEST"),
+        )
+        # Insert a recent event
+        sse_db.insert_event("recent_event", stage="INGEST")
+
+        # Verify both exist
+        all_events = sse_db.conn.execute(
+            "SELECT * FROM pipeline_events"
+        ).fetchall()
+        assert len(all_events) == 2
+
+        # Prune should remove old event
+        sse_db.prune_events(hours=24)
+
+        remaining = sse_db.conn.execute(
+            "SELECT * FROM pipeline_events"
+        ).fetchall()
+        assert len(remaining) == 1
+        assert remaining[0]["event_type"] == "recent_event"
+
+    def test_recent_events_not_pruned(self, sse_db) -> None:
+        """Recent events are not affected by pruning."""
+        for i in range(3):
+            sse_db.insert_event(f"event_{i}", stage="INGEST")
+
+        sse_db.prune_events(hours=24)
+
+        remaining = sse_db.conn.execute(
+            "SELECT * FROM pipeline_events"
+        ).fetchall()
+        assert len(remaining) == 3
