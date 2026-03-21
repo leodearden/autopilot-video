@@ -1135,6 +1135,73 @@ class CatalogDB:
             f"DELETE FROM pipeline_events WHERE created_at < datetime('now', '-{hours} hours')"  # noqa: S608
         )
 
+    # -- pipeline_runs CRUD ----------------------------------------------------
+
+    def insert_run(
+        self,
+        run_id: str,
+        *,
+        started_at: str,
+        config_snapshot: str | None = None,
+        current_stage: str | None = None,
+        status: str = "running",
+        budget_remaining_seconds: float | None = None,
+    ) -> None:
+        """Insert a new pipeline run row."""
+        self.conn.execute(
+            "INSERT INTO pipeline_runs "
+            "(run_id, started_at, config_snapshot, current_stage, "
+            "status, budget_remaining_seconds) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                run_id,
+                started_at,
+                config_snapshot,
+                current_stage,
+                status,
+                budget_remaining_seconds,
+            ),
+        )
+
+    def get_run(self, run_id: str) -> dict[str, object] | None:
+        """Return the run row for *run_id*, or ``None`` if not found."""
+        cur = self.conn.execute(
+            "SELECT * FROM pipeline_runs WHERE run_id = ?",
+            (run_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+    def update_run(self, run_id: str, **kwargs: object) -> None:
+        """Update fields of a run by keyword arguments."""
+        if not kwargs:
+            return
+        set_clause = ", ".join(f"{k} = ?" for k in kwargs)
+        values = list(kwargs.values())
+        values.append(run_id)
+        self.conn.execute(
+            f"UPDATE pipeline_runs SET {set_clause} "  # noqa: S608
+            "WHERE run_id = ?",
+            values,
+        )
+
+    def get_current_run(self) -> dict[str, object] | None:
+        """Return the most recently started running run, or ``None``."""
+        cur = self.conn.execute(
+            "SELECT * FROM pipeline_runs "
+            "WHERE status = 'running' "
+            "ORDER BY started_at DESC LIMIT 1"
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+    def list_runs(self) -> list[dict[str, object]]:
+        """Return all runs ordered by started_at descending."""
+        cur = self.conn.execute(
+            "SELECT * FROM pipeline_runs ORDER BY started_at DESC"
+        )
+        return [dict(row) for row in cur.fetchall()]
+
     def close(self) -> None:
         """Close the underlying database connection."""
         self.conn.close()
