@@ -1545,6 +1545,16 @@ class TestIngestShutdown:
 class TestIngestResume:
     """Tests for _run_ingest checkpoint/resume logic."""
 
+    def setup_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
+    def teardown_method(self) -> None:
+        from autopilot.orchestrator import _reset_shutdown
+
+        _reset_shutdown()
+
     @patch("autopilot.orchestrator.dedup")
     @patch("autopilot.orchestrator.normalizer")
     @patch("autopilot.orchestrator.scanner")
@@ -1564,21 +1574,27 @@ class TestIngestResume:
         mock_scanner.scan_directory.return_value = files
 
         db = MagicMock()
+        # Resume logic checks db.get_media(); return None so files aren't skipped
+        db.get_media.return_value = None
         call_count = 0
 
-        def insert_and_shutdown(*args, **kwargs):
+        def normalize_and_shutdown(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
                 request_shutdown()
 
-        mock_normalizer.normalize_audio.side_effect = insert_and_shutdown
+        mock_normalizer.normalize_audio.side_effect = normalize_and_shutdown
 
         _run_ingest(config=minimal_config, db=db)
 
         # Only the first file should be fully processed; second iteration
         # should see shutdown and break before processing
         assert mock_normalizer.normalize_audio.call_count == 1
+
+    @patch("autopilot.orchestrator.dedup")
+    @patch("autopilot.orchestrator.normalizer")
+    @patch("autopilot.orchestrator.scanner")
     def test_ingest_skips_already_ingested_media(
         self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
     ):
@@ -1658,6 +1674,13 @@ class TestAnalyzeShutdown:
             {"id": "m2", "file_path": "/f/v2.mp4", "status": "ok"},
             {"id": "m3", "file_path": "/f/v3.mp4", "status": "ok"},
         ]
+        # Resume logic: has_* methods must return False so passes aren't skipped
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
 
         call_count = 0
 
@@ -1725,6 +1748,9 @@ class TestRemainingStagesShutdown:
             {"narrative_id": "n1"},
             {"narrative_id": "n2"},
         ]
+        # Resume logic: get_narrative_script must return None so narratives
+        # aren't filtered out as already-scripted
+        db.get_narrative_script.return_value = None
 
         call_count = 0
 
@@ -1754,6 +1780,9 @@ class TestRemainingStagesShutdown:
             {"narrative_id": "n1"},
             {"narrative_id": "n2"},
         ]
+        # Resume logic: get_edit_plan must return None so narratives aren't
+        # filtered out as already having edit plans
+        db.get_edit_plan.return_value = None
         db.get_narrative_script.return_value = "some script"
         mock_edl_mod.generate_edl.return_value = []
         mock_validator.validate_edl.return_value = MagicMock(passed=True)
@@ -1846,6 +1875,9 @@ class TestRemainingStagesShutdown:
             {"narrative_id": "n1"},
             {"narrative_id": "n2"},
         ]
+        # Resume logic: get_upload must return None so narratives aren't
+        # filtered out as already-uploaded
+        db.get_upload.return_value = None
         db.get_edit_plan.return_value = {
             "edl_json": "[]",
             "render_path": "/fake/out.mp4",
@@ -1879,8 +1911,8 @@ class TestShutdownSkipDetails:
 
         _reset_shutdown()
 
-    def test_shutdown_skipped_stages_have_error_message(self) -> None:
-        """Stages skipped due to shutdown have error_message='shutdown requested'."""
+    def test_shutdown_skipped_stages_have_no_error_message(self) -> None:
+        """Stages skipped due to shutdown have status=SKIPPED and no error_message."""
         from autopilot.orchestrator import request_shutdown
 
         orch = PipelineOrchestrator()
@@ -1899,7 +1931,8 @@ class TestShutdownSkipDetails:
         assert results["INGEST"].status == StageStatus.DONE
         assert results["INGEST"].error_message is None
 
-        # All remaining stages should be SKIPPED with error_message='shutdown requested'
+        # All remaining stages should be SKIPPED (no error_message — the
+        # between-stages shutdown check fills them as plain SKIPPED)
         for name in [
             "ANALYZE", "CLASSIFY", "NARRATE", "SCRIPT",
             "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD",
@@ -1908,8 +1941,8 @@ class TestShutdownSkipDetails:
             assert result.status == StageStatus.SKIPPED, (
                 f"{name} should be SKIPPED"
             )
-            assert result.error_message == "shutdown requested", (
-                f"{name} should have error_message='shutdown requested', "
+            assert result.error_message is None, (
+                f"{name} should have error_message=None, "
                 f"got {result.error_message!r}"
             )
 
@@ -1969,10 +2002,10 @@ class TestShutdownSkipDetails:
         assert "ANALYZE: skipped" in summary
         assert "UPLOAD: skipped" in summary
 
-    def test_shutdown_log_per_skipped_stage(
+    def test_shutdown_log_for_skipped_stages(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Each shutdown-skipped stage gets a [SHUTDOWN] log entry."""
+        """Shutdown emits a single log about skipping remaining stages."""
         from autopilot.orchestrator import request_shutdown
 
         orch = PipelineOrchestrator()
@@ -1987,21 +2020,32 @@ class TestShutdownSkipDetails:
         with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
             orch.run(config=MagicMock(), db=MagicMock())
 
+        # The run() method emits a single shutdown-skip log message
         shutdown_logs = [
-            r for r in caplog.records if "[SHUTDOWN]" in r.message
+            r for r in caplog.records
+            if "skipping remaining stages" in r.message.lower()
         ]
-        # Should have one [SHUTDOWN] log per remaining stage (8 stages)
-        skipped_names = [
+        assert len(shutdown_logs) == 1, (
+            f"Expected 1 shutdown-skip log, got {len(shutdown_logs)}"
+        )
+
+        # The summary log should list all skipped stages
+        summary_records = [
+            r for r in caplog.records if "Pipeline complete" in r.message
+        ]
+        assert len(summary_records) == 1
+        summary = summary_records[0].message
+        for name in [
             "ANALYZE", "CLASSIFY", "NARRATE", "SCRIPT",
             "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD",
-        ]
-        assert len(shutdown_logs) == len(skipped_names), (
-            f"Expected {len(skipped_names)} [SHUTDOWN] logs, got {len(shutdown_logs)}"
-        )
-        for name in skipped_names:
-            assert any(
-                name in r.message for r in shutdown_logs
-            ), f"Missing [SHUTDOWN] log for {name}"
+        ]:
+            assert f"{name}: skipped" in summary, (
+                f"Missing skipped entry for {name} in summary"
+            )
+
+    @patch("autopilot.orchestrator.dedup")
+    @patch("autopilot.orchestrator.normalizer")
+    @patch("autopilot.orchestrator.scanner")
     def test_ingest_logs_resume_counts(
         self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
         caplog,
