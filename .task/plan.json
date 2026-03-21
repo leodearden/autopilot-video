@@ -175,7 +175,7 @@
       "type": "impl",
       "description": "Add --force flag to _common_options decorator in cli.py. Wire it through to PipelineOrchestrator(force=True) in the 'run' command and to individual stage calls in subcommands.",
       "status": "done",
-      "commit": "PENDING"
+      "commit": "b04858a"
     }
   ],
   "design_decisions": [
