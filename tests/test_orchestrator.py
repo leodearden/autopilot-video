@@ -3272,3 +3272,70 @@ class TestEmitEventResilience:
         # Verify second call went through
         last_call = orch._db.insert_event.call_args
         assert last_call[1]["event_type"] == "ok_event"
+
+
+class TestInsertRunResilience:
+    """Tests that db.insert_run failure doesn't block the pipeline."""
+
+    def test_insert_run_failure_does_not_block_pipeline(self) -> None:
+        """When db.insert_run raises, run() still executes all stages and returns results."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        mock_db.insert_run.side_effect = RuntimeError("locked")
+
+        results = orch.run(config=MagicMock(), db=mock_db)
+
+        # All 9 stages should have executed
+        assert len(results) == 9
+        for stage_name, result in results.items():
+            assert result.status == StageStatus.DONE
+
+    def test_insert_run_failure_sets_run_id_none(self) -> None:
+        """When insert_run raises, self._run_id is None."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        mock_db.insert_run.side_effect = RuntimeError("locked")
+
+        orch.run(config=MagicMock(), db=mock_db)
+        assert orch._run_id is None
+
+    def test_insert_run_failure_skips_tracking_calls(self) -> None:
+        """When insert_run raises, update_run and insert_event are never called."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        mock_db.insert_run.side_effect = RuntimeError("locked")
+
+        orch.run(config=MagicMock(), db=mock_db)
+
+        mock_db.update_run.assert_not_called()
+        mock_db.insert_event.assert_not_called()
+
+    def test_insert_run_failure_logs_warning(
+        self, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """When insert_run raises, a WARNING log mentioning 'run tracking' is emitted."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        mock_db.insert_run.side_effect = RuntimeError("locked")
+
+        with caplog.at_level(logging.WARNING, logger="autopilot.orchestrator"):
+            orch.run(config=MagicMock(), db=mock_db)
+
+        warning_records = [
+            r for r in caplog.records
+            if r.levelno == logging.WARNING
+            and "run tracking" in r.message.lower()
+        ]
+        assert len(warning_records) >= 1
