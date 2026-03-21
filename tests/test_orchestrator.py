@@ -4470,3 +4470,42 @@ class TestCheckGateAuto:
         orch._check_gate("SOURCE_ASSETS")
         gate = catalog_db.get_gate("source")
         assert gate["status"] == "approved"
+
+
+class TestCheckGateNotify:
+    """Tests for _check_gate() in 'notify' mode."""
+
+    def test_gate_notify_returns_approved(self, catalog_db) -> None:
+        """Notify mode should return 'approved'."""
+        catalog_db.init_default_gates()
+        catalog_db.update_gate("ingest", mode="notify")
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+        result = orch._check_gate("INGEST")
+        assert result == "approved"
+
+    def test_gate_notify_updates_status(self, catalog_db) -> None:
+        """Notify mode updates the gate to approved with decided_by='system'."""
+        catalog_db.init_default_gates()
+        catalog_db.update_gate("analyze", mode="notify")
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+        orch._check_gate("ANALYZE")
+        gate = catalog_db.get_gate("analyze")
+        assert gate["status"] == "approved"
+        assert gate["decided_by"] == "system"
+
+    def test_gate_notify_emits_gate_passed(self, catalog_db) -> None:
+        """Notify mode emits a 'gate_passed' event."""
+        catalog_db.init_default_gates()
+        catalog_db.update_gate("classify", mode="notify")
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+        orch._check_gate("CLASSIFY")
+        events = catalog_db.get_events_since(0)
+        gate_events = [e for e in events if e["event_type"] == "gate_passed"]
+        assert len(gate_events) == 1
+        assert gate_events[0]["stage"] == "CLASSIFY"
