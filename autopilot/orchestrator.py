@@ -503,10 +503,19 @@ def _run_classify(
 def _run_narrate(
     *, config: Any, db: Any, force: bool = False,
     human_review_fn: Callable | None = None,
+    run_id: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
 ) -> None:
     """NARRATE stage: build storyboard, propose narratives, human review."""
-    storyboard = narratives.build_master_storyboard(db)
-    proposed = narratives.propose_narratives(storyboard, db, config)
+    _jkw: dict[str, Any] = {"run_id": run_id, "emit_fn": emit_fn}
+    if run_id is not None:
+        with _track_job(db, "NARRATE", "build_storyboard", worker="cpu", **_jkw):
+            storyboard = narratives.build_master_storyboard(db)
+        with _track_job(db, "NARRATE", "propose_narratives", worker="cpu", **_jkw):
+            proposed = narratives.propose_narratives(storyboard, db, config)
+    else:
+        storyboard = narratives.build_master_storyboard(db)
+        proposed = narratives.propose_narratives(storyboard, db, config)
     formatted = narratives.format_for_review(proposed)
 
     if human_review_fn is not None:
@@ -528,7 +537,14 @@ def _run_narrate(
     )
 
 
-def _run_script(*, config: Any, db: Any, force: bool = False) -> None:
+def _run_script(
+    *,
+    config: Any,
+    db: Any,
+    force: bool = False,
+    run_id: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
+) -> None:
     """SCRIPT stage: generate scripts for each approved narrative."""
     approved = db.list_narratives("approved")
 
@@ -550,13 +566,21 @@ def _run_script(*, config: Any, db: Any, force: bool = False) -> None:
     else:
         to_process = list(approved)
 
+    _jkw: dict[str, Any] = {"run_id": run_id, "emit_fn": emit_fn}
     successes = 0
     for narr in to_process:
         if shutdown_requested():
             break
         nid = narr["narrative_id"]
         try:
-            script.generate_script(nid, db, config.llm)
+            if run_id is not None:
+                with _track_job(
+                    db, "SCRIPT", "generate_script",
+                    target_id=nid, worker="cpu", **_jkw,
+                ):
+                    script.generate_script(nid, db, config.llm)
+            else:
+                script.generate_script(nid, db, config.llm)
             successes += 1
         except Exception:
             logger.exception("Script generation failed for narrative %s", nid)
@@ -567,7 +591,14 @@ def _run_script(*, config: Any, db: Any, force: bool = False) -> None:
     logger.info("Script complete: %d/%d succeeded", successes, len(approved))
 
 
-def _run_edl(*, config: Any, db: Any, force: bool = False) -> None:
+def _run_edl(
+    *,
+    config: Any,
+    db: Any,
+    force: bool = False,
+    run_id: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
+) -> None:
     """EDL stage: generate EDL, validate, and export OTIO per narrative."""
     approved = db.list_narratives("approved")
 
@@ -590,6 +621,7 @@ def _run_edl(*, config: Any, db: Any, force: bool = False) -> None:
     else:
         to_process = list(approved)
 
+    _jkw: dict[str, Any] = {"run_id": run_id, "emit_fn": emit_fn}
     successes = 0
     for narr in to_process:
         if shutdown_requested():
@@ -600,12 +632,30 @@ def _run_edl(*, config: Any, db: Any, force: bool = False) -> None:
             logger.warning("Skipping EDL for %s: no script", nid)
             continue
         try:
-            edl = edl_mod.generate_edl(nid, db, config.llm)
-            val_result = validator.validate_edl(edl, db)
-            otio_path = config.output_dir / nid / "timeline.otio"
-            otio_path.parent.mkdir(parents=True, exist_ok=True)
-            otio_export.export_otio(edl, otio_path, db)
-
+            if run_id is not None:
+                with _track_job(
+                    db, "EDL", "generate_edl",
+                    target_id=nid, worker="cpu", **_jkw,
+                ):
+                    edl = edl_mod.generate_edl(nid, db, config.llm)
+                with _track_job(
+                    db, "EDL", "validate_edl",
+                    target_id=nid, worker="cpu", **_jkw,
+                ):
+                    val_result = validator.validate_edl(edl, db)
+                otio_path = config.output_dir / nid / "timeline.otio"
+                otio_path.parent.mkdir(parents=True, exist_ok=True)
+                with _track_job(
+                    db, "EDL", "otio_export",
+                    target_id=nid, worker="cpu", **_jkw,
+                ):
+                    otio_export.export_otio(edl, otio_path, db)
+            else:
+                edl = edl_mod.generate_edl(nid, db, config.llm)
+                val_result = validator.validate_edl(edl, db)
+                otio_path = config.output_dir / nid / "timeline.otio"
+                otio_path.parent.mkdir(parents=True, exist_ok=True)
+                otio_export.export_otio(edl, otio_path, db)
 
             db.upsert_edit_plan(
                 nid,
@@ -625,7 +675,14 @@ def _run_edl(*, config: Any, db: Any, force: bool = False) -> None:
     logger.info("EDL complete: %d/%d succeeded", successes, len(approved))
 
 
-def _run_source_assets(*, config: Any, db: Any, force: bool = False) -> None:
+def _run_source_assets(
+    *,
+    config: Any,
+    db: Any,
+    force: bool = False,
+    run_id: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
+) -> None:
     """SOURCE_ASSETS stage: resolve assets for each narrative with an edit plan."""
     approved = db.list_narratives("approved")
 
@@ -648,6 +705,7 @@ def _run_source_assets(*, config: Any, db: Any, force: bool = False) -> None:
     else:
         to_process = list(approved)
 
+    _jkw: dict[str, Any] = {"run_id": run_id, "emit_fn": emit_fn}
     successes = 0
     for narr in to_process:
         if shutdown_requested():
@@ -658,12 +716,24 @@ def _run_source_assets(*, config: Any, db: Any, force: bool = False) -> None:
             logger.warning("Skipping source for %s: no edit plan", nid)
             continue
         try:
-            edl = json.loads(plan["edl_json"])
-            asset_dir = config.output_dir / "assets" / nid
-            asset_dir.mkdir(parents=True, exist_ok=True)
-            resolve.resolve_edl_assets(
-                edl, config.models, asset_dir, db, narrative_id=nid,
-            )
+            if run_id is not None:
+                with _track_job(
+                    db, "SOURCE_ASSETS", "resolve_assets",
+                    target_id=nid, worker="cpu", **_jkw,
+                ):
+                    edl = json.loads(plan["edl_json"])
+                    asset_dir = config.output_dir / "assets" / nid
+                    asset_dir.mkdir(parents=True, exist_ok=True)
+                    resolve.resolve_edl_assets(
+                        edl, config.models, asset_dir, db, narrative_id=nid,
+                    )
+            else:
+                edl = json.loads(plan["edl_json"])
+                asset_dir = config.output_dir / "assets" / nid
+                asset_dir.mkdir(parents=True, exist_ok=True)
+                resolve.resolve_edl_assets(
+                    edl, config.models, asset_dir, db, narrative_id=nid,
+                )
             successes += 1
         except Exception:
             logger.exception("Source resolution failed for narrative %s", nid)
@@ -674,7 +744,14 @@ def _run_source_assets(*, config: Any, db: Any, force: bool = False) -> None:
     logger.info("Source complete: %d/%d succeeded", successes, len(approved))
 
 
-def _run_render(*, config: Any, db: Any, force: bool = False) -> None:
+def _run_render(
+    *,
+    config: Any,
+    db: Any,
+    force: bool = False,
+    run_id: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
+) -> None:
     """RENDER stage: route, render, and validate per narrative."""
     approved = db.list_narratives("approved")
 
@@ -698,6 +775,7 @@ def _run_render(*, config: Any, db: Any, force: bool = False) -> None:
     else:
         to_process = list(approved)
 
+    _jkw: dict[str, Any] = {"run_id": run_id, "emit_fn": emit_fn}
     successes = 0
     for narr in to_process:
         if shutdown_requested():
@@ -708,11 +786,30 @@ def _run_render(*, config: Any, db: Any, force: bool = False) -> None:
             logger.warning("Skipping render for %s: no edit plan", nid)
             continue
         try:
-            output_path = router.route_and_render(
-                nid, db, config.output, config.output_dir,
-            )
-            edl = json.loads(plan["edl_json"])
-            report = render_validate.validate_render(output_path, edl, config.output)
+            if run_id is not None:
+                with _track_job(
+                    db, "RENDER", "render",
+                    target_id=nid, worker="gpu", **_jkw,
+                ):
+                    output_path = router.route_and_render(
+                        nid, db, config.output, config.output_dir,
+                    )
+                edl = json.loads(plan["edl_json"])
+                with _track_job(
+                    db, "RENDER", "validate_render",
+                    target_id=nid, worker="cpu", **_jkw,
+                ):
+                    report = render_validate.validate_render(
+                        output_path, edl, config.output,
+                    )
+            else:
+                output_path = router.route_and_render(
+                    nid, db, config.output, config.output_dir,
+                )
+                edl = json.loads(plan["edl_json"])
+                report = render_validate.validate_render(
+                    output_path, edl, config.output,
+                )
             for issue in report.issues:
                 logger.warning(
                     "Render validation [%s] %s: %s",
@@ -729,7 +826,14 @@ def _run_render(*, config: Any, db: Any, force: bool = False) -> None:
     logger.info("Render complete: %d/%d succeeded", successes, len(approved))
 
 
-def _run_upload(*, config: Any, db: Any, force: bool = False) -> None:
+def _run_upload(
+    *,
+    config: Any,
+    db: Any,
+    force: bool = False,
+    run_id: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
+) -> None:
     """UPLOAD stage: upload video and extract thumbnail per narrative."""
     approved = db.list_narratives("approved")
 
@@ -751,6 +855,7 @@ def _run_upload(*, config: Any, db: Any, force: bool = False) -> None:
     else:
         to_process = list(approved)
 
+    _jkw: dict[str, Any] = {"run_id": run_id, "emit_fn": emit_fn}
     successes = 0
     for narr in to_process:
         if shutdown_requested():
@@ -766,8 +871,20 @@ def _run_upload(*, config: Any, db: Any, force: bool = False) -> None:
             continue
         video_path = Path(render_path)
         try:
-            youtube.upload_video(nid, video_path, db, config.youtube)
-            thumbnail.extract_best_thumbnail(nid, video_path, db)
+            if run_id is not None:
+                with _track_job(
+                    db, "UPLOAD", "upload_video",
+                    target_id=nid, worker="cpu", **_jkw,
+                ):
+                    youtube.upload_video(nid, video_path, db, config.youtube)
+                with _track_job(
+                    db, "UPLOAD", "extract_thumbnail",
+                    target_id=nid, worker="cpu", **_jkw,
+                ):
+                    thumbnail.extract_best_thumbnail(nid, video_path, db)
+            else:
+                youtube.upload_video(nid, video_path, db, config.youtube)
+                thumbnail.extract_best_thumbnail(nid, video_path, db)
             successes += 1
         except Exception:
             logger.exception("Upload failed for narrative %s", nid)
