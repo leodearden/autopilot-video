@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ page_title | default('Autopilot Video') }}{% endblock %} - Autopilot Video</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        surface: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            700: '#1e293b',
+                            800: '#0f172a',
+                            900: '#020617',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
+
+    <!-- Custom styles -->
+    <link rel="stylesheet" href="/static/app.css">
+
+    {% block head %}{% endblock %}
+</head>
+<body class="dark:bg-surface-900 dark:text-gray-100 min-h-screen">
+    <!-- Navigation -->
+    <nav class="dark:bg-surface-800 border-b border-gray-700 px-4 py-3">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center space-x-8">
+                <span class="text-xl font-bold text-white">Autopilot Video</span>
+                <div class="flex space-x-4">
+                    <a href="/dashboard" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Dashboard</a>
+                    <a href="/media" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Media</a>
+
+                    <!-- Pipeline dropdown -->
+                    <div class="relative group">
+                        <a href="/pipeline" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Pipeline</a>
+                        <div class="absolute hidden group-hover:block dark:bg-surface-800 border border-gray-700 rounded-md shadow-lg mt-1 py-1 w-40 z-10">
+                            <a href="/pipeline/stages" class="block px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-surface-700">Stage Detail</a>
+                            <a href="/pipeline/jobs" class="block px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-surface-700">Jobs</a>
+                        </div>
+                    </div>
+
+                    <!-- Review dropdown -->
+                    <div class="relative group">
+                        <a href="/review" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Review</a>
+                        <div class="absolute hidden group-hover:block dark:bg-surface-800 border border-gray-700 rounded-md shadow-lg mt-1 py-1 w-40 z-10">
+                            <a href="/review/clusters" class="block px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-surface-700">Clusters</a>
+                            <a href="/review/narratives" class="block px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-surface-700">Narratives</a>
+                            <a href="/review/scripts" class="block px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-surface-700">Scripts</a>
+                            <a href="/review/edit-plans" class="block px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-surface-700">Edit Plans</a>
+                            <a href="/review/renders" class="block px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-surface-700">Renders</a>
+                        </div>
+                    </div>
+
+                    <a href="/gates" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Gates</a>
+                    <a href="/settings" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Settings</a>
+                </div>
+            </div>
+
+            <!-- Notification bell -->
+            <div class="relative">
+                <button id="notification-bell" class="text-gray-300 hover:text-white p-2 rounded-md" aria-label="Notifications">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                    </svg>
+                    <span class="notification-badge hidden" id="notification-badge"></span>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main content area -->
+    <main class="max-w-7xl mx-auto px-4 py-6">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Toast container -->
+    <div id="toast-container"></div>
+
+    <!-- Custom JavaScript -->
+    <script src="/static/app.js"></script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>
