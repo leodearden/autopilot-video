@@ -429,7 +429,7 @@
         "details": "Update autopilot/orchestrator.py:\n1. Replace stub stage functions with actual implementations:\n   - INGEST: call scanner.scan_directory, normalizer.normalize_audio, dedup.find_duplicates\n   - ANALYZE: call asr, scenes, objects, faces, embeddings, audio_events (with GPU scheduler managing VRAM).\n     Run audio stages (ASR, audio events) concurrently with video stages where possible.\n   - CLASSIFY: call cluster.cluster_activities, classify.label_activities\n   - NARRATE: call narratives.propose_narratives (with human review pause)\n   - SCRIPT: call script.generate_script for each approved narrative\n   - EDL: call edl.generate_edl + validator.validate_edl + otio_export.export_otio\n   - SOURCE: call music, broll, voiceover sourcing; generate fetch list\n   - RENDER: call router.route_and_render + validate.validate_render for each narrative\n   - UPLOAD: call youtube.upload_video + thumbnail.extract_best_thumbnail for each narrative\n2. Implement progress reporting with stage timings and wall-clock budget tracking.\n3. Handle human review checkpoints (NARRATE stage pauses for approval).\n4. Error handling: if a stage fails for one narrative, continue with others.\n\nUpdate autopilot/cli.py:\n- Wire the `run` subcommand to PipelineOrchestrator.run().\n- Wire individual subcommands to their respective stages.\n\nCreate tests/test_e2e.py:\n- E2e test using small fixture files that exercises the full pipeline.\n- Mock LLM API calls. Use small/mock models for ML stages.\n- Verify: catalog populated, activity clusters created, narratives proposed, EDL generated, render output exists.",
         "testStrategy": "Run the full e2e test. Verify pipeline completes without errors. Verify all database tables are populated. Verify output files exist (EDL, OTIO, rendered video, validation report). Test error recovery (inject a stage failure, verify other narratives still complete).",
         "priority": "critical",
-        "status": "blocked",
+        "status": "done",
         "dependencies": [
           "4",
           "5",
@@ -457,14 +457,163 @@
           "tests"
         ],
         "subtasks": [],
-        "updatedAt": "2026-03-20T12:03:25.893Z"
+        "updatedAt": "2026-03-20T12:06:08.683Z"
+      },
+      {
+        "id": "26",
+        "title": "Add subprocess timeout to ffmpeg render calls",
+        "description": "Add timeout parameter to all subprocess.run() calls in render/ffmpeg_render.py and render/router.py to prevent hung ffmpeg processes from blocking the pipeline indefinitely.",
+        "details": "In render/ffmpeg_render.py and render/router.py, subprocess.run() calls to ffmpeg have no timeout parameter. A hung ffmpeg process blocks the entire render stage forever.\n\nFix:\n1. Add a configurable timeout (default 600s for individual clips, 1800s for concat) to all subprocess.run() calls in ffmpeg_render.py and router.py.\n2. Catch subprocess.TimeoutExpired and convert to RenderError/RoutingError with a descriptive message including the clip_id and timeout value.\n3. Add tests: mock subprocess.run to raise TimeoutExpired and verify the correct error type is raised with useful message.",
+        "testStrategy": "Unit tests: mock subprocess.run to raise TimeoutExpired, verify RenderError/RoutingError raised with descriptive message. Test that timeout values are passed correctly to subprocess.run calls.",
+        "priority": "high",
+        "status": "blocked",
+        "dependencies": [],
+        "tags": [
+          "autopilot",
+          "robustness"
+        ],
+        "subtasks": [],
+        "updatedAt": "2026-03-21T08:10:21.900Z"
+      },
+      {
+        "id": "27",
+        "title": "Add SIGINT/SIGTERM signal handlers for graceful shutdown",
+        "description": "Add signal handlers to the orchestrator and CLI so that SIGINT/SIGTERM triggers graceful shutdown: finish current file/clip processing, commit DB transaction, clean up GPU scheduler, and exit cleanly.",
+        "details": "The orchestrator runs for up to 36 hours. Killing it with Ctrl-C or SIGTERM currently leaves orphaned ffmpeg subprocesses, uncommitted DB state, and GPU models loaded.\n\nFix:\n1. In orchestrator.py, add a shutdown flag (threading.Event or simple bool) checked between pipeline stages and between items within a stage.\n2. Register signal handlers in cli.py's main() that set the shutdown flag and log 'Shutdown requested, finishing current work...'\n3. In _run_ingest, _run_analyze, _run_render loops: check the shutdown flag between iterations. If set, break the loop gracefully.\n4. Ensure the finally blocks in orchestrator already handle cleanup (GPU scheduler force_unload_all, db.close).\n5. Add tests: verify that setting the shutdown flag causes stage loops to exit early. Verify signal handler registration.",
+        "testStrategy": "Unit tests: create PipelineOrchestrator, set shutdown flag, verify stage loops exit early. Test signal handler registration via mock. Integration: verify cleanup runs on shutdown.",
+        "priority": "high",
+        "status": "blocked",
+        "dependencies": [],
+        "tags": [
+          "autopilot",
+          "robustness"
+        ],
+        "subtasks": [],
+        "updatedAt": "2026-03-21T09:33:30.102Z"
+      },
+      {
+        "id": "28",
+        "title": "Add bounds validation for numeric config values",
+        "description": "Add bounds checks for numeric configuration values that currently pass type validation but can cause runtime crashes with invalid values (zero, negative).",
+        "details": "config.py validates types and some ranges (quality_crf 0-51, max_wall_clock_hours >= 1) but misses bounds for:\n- yolo_sample_every_n_frames: must be >= 1 (0 causes ZeroDivisionError in frame sampling)\n- batch_size_yolo: must be >= 1\n- batch_size_whisper: must be >= 1\n- num_cpu_workers: must be >= 1\n- gpu_device: must be >= 0 (already checked, verify)\n\nFix:\n1. In the _validate_config function in config.py, add bounds checks for all numeric fields that must be positive.\n2. Raise ConfigError with clear message: 'yolo_sample_every_n_frames must be >= 1, got 0'\n3. Add parametrized tests for each field with boundary values (0, -1, valid).",
+        "testStrategy": "Parametrized pytest: for each numeric field, test value=0 and value=-1 raise ConfigError with descriptive message. Test valid boundary values (1) pass.",
+        "priority": "medium",
+        "status": "done",
+        "dependencies": [],
+        "tags": [
+          "autopilot",
+          "config"
+        ],
+        "subtasks": [],
+        "updatedAt": "2026-03-21T08:07:00.145Z"
+      },
+      {
+        "id": "29",
+        "title": "Lazy-load stage modules in orchestrator",
+        "description": "Replace eager imports in orchestrator.py with lazy imports via importlib so that importing the orchestrator doesn't pull in every ML dependency (WhisperX, YOLO, InsightFace, MoviePy, etc.).",
+        "details": "orchestrator.py currently imports all stage modules at module level:\n  from autopilot.analyze import asr, audio_events, embeddings, faces, objects, scenes\n  from autopilot.ingest import dedup, normalizer, scanner\n  etc.\n\nThis means importing orchestrator.py loads the entire ML stack, causing slow CLI startup and brittle coupling.\n\nFix:\n1. Remove all stage module imports from the top of orchestrator.py.\n2. In each _run_* function, import the needed modules at function scope:\n   def _run_ingest(*, config, db):\n       from autopilot.ingest import dedup, normalizer, scanner\n       ...\n3. Keep non-ML imports (json, logging, Path, dataclass, etc.) at module level.\n4. Verify existing tests still pass — they mock these modules, so ensure mock paths are still correct.\n5. Add a test that imports orchestrator.py without any ML packages installed (mock all stage modules to verify lazy loading).",
+        "testStrategy": "Existing tests must pass (mock paths may need updating). New test: import autopilot.orchestrator with all analyze/ingest/organize/plan/render/source/upload modules mocked at sys.modules level — verify import succeeds without loading real ML packages.",
+        "priority": "medium",
+        "status": "pending",
+        "dependencies": [],
+        "tags": [
+          "autopilot",
+          "orchestrator"
+        ],
+        "subtasks": [],
+        "updatedAt": "2026-03-21T09:36:53.393Z"
+      },
+      {
+        "id": "30",
+        "title": "Add CI/CD GitHub Actions workflow",
+        "description": "Create a GitHub Actions workflow that runs pytest, ruff check, and pyright on every push and PR, failing on any error.",
+        "details": "The project has 1,257 tests but no CI. Create .github/workflows/ci.yml:\n\n1. Trigger: push to main, pull_request to main\n2. Matrix: Python 3.11, 3.12\n3. Steps:\n   a. Checkout\n   b. Install uv\n   c. uv sync (install deps)\n   d. ruff check autopilot/ tests/\n   e. pyright autopilot/ (if pyright is in dev deps, otherwise skip)\n   f. pytest tests/ -x --tb=short\n4. Cache uv/pip cache for speed\n5. No GPU needed — all tests mock ML models\n\nKeep it simple. No coverage reporting in this task (separate task 31).",
+        "testStrategy": "Validate YAML syntax. Verify workflow file references correct paths (autopilot/, tests/). Manual: push to a branch and verify Actions run.",
+        "priority": "medium",
+        "status": "done",
+        "dependencies": [],
+        "tags": [
+          "autopilot",
+          "ci"
+        ],
+        "subtasks": [],
+        "updatedAt": "2026-03-21T08:09:04.083Z"
+      },
+      {
+        "id": "31",
+        "title": "Add pytest-cov configuration and coverage reporting",
+        "description": "Add pytest-cov to dev dependencies, configure coverage settings, and add coverage reporting to the CI workflow.",
+        "details": "1. Add pytest-cov to [project.optional-dependencies] dev section in pyproject.toml.\n2. Add coverage configuration to pyproject.toml:\n   [tool.coverage.run]\n   source = ['autopilot']\n   omit = ['*/tests/*']\n   [tool.coverage.report]\n   show_missing = true\n   fail_under = 70\n3. Update pytest.ini_options in pyproject.toml to add --cov=autopilot --cov-report=term-missing as default addopts.\n4. If task 30 is done, update .github/workflows/ci.yml to include coverage in the pytest step.\n5. Add a test that verifies the coverage config is present in pyproject.toml.",
+        "testStrategy": "Run pytest --cov=autopilot tests/ and verify coverage report is generated. Verify fail_under threshold works by temporarily setting it to 100 and confirming failure.",
+        "priority": "low",
+        "status": "in-progress",
+        "dependencies": [
+          "30"
+        ],
+        "tags": [
+          "autopilot",
+          "tests",
+          "ci"
+        ],
+        "subtasks": [],
+        "updatedAt": "2026-03-21T09:31:18.650Z"
+      },
+      {
+        "id": "32",
+        "title": "Item-level checkpoint/resume for pipeline stages",
+        "description": "Add per-item progress tracking so the pipeline can resume from where it left off after a crash, instead of restarting entire stages from scratch.",
+        "details": "The pipeline runs for up to 36 hours. A crash mid-ANALYZE (the longest stage) loses all progress — there's no checkpoint or resume capability.\n\nThe DB already has the data to support this. The fix is to make each _run_* function in orchestrator.py query what's already been done and skip completed items.\n\nImplementation:\n1. Add a richer status state machine to media_files: 'pending' -> 'ingested' -> 'transcribed' -> 'detected' -> 'embedded' -> 'clustered' -> 'analyzed'. Each analysis pass updates the status after successful completion.\n2. In _run_ingest: skip media where status != 'pending' (already ingested).\n3. In _run_analyze: for each analysis pass (asr, objects, faces, embeddings, scenes, audio_events), check what's already done per media_id. The transcripts/detections/faces/etc tables already serve as implicit checkpoints — if a row exists, skip that pass for that media. Add explicit queries: db.has_transcript(media_id), db.has_detections(media_id), etc.\n4. In _run_classify, _run_narrate, _run_script, _run_edl: check if output already exists in the corresponding table before regenerating.\n5. Add a --force flag to cli.py that bypasses resume logic and reprocesses everything.\n6. Log resume behavior: 'Resuming ANALYZE: 47/100 media already transcribed, processing remaining 53'.\n\nDo NOT add a separate checkpoint file — use the DB as the source of truth (it already is).",
+        "testStrategy": "Unit tests: populate DB with partial analysis results, run _run_analyze, verify only unprocessed media is analyzed. Test --force flag bypasses resume. Test that each has_* helper returns correct bool. Integration: run pipeline twice — second run should be a near-instant no-op.",
+        "priority": "critical",
+        "status": "in-progress",
+        "dependencies": [],
+        "tags": [
+          "autopilot",
+          "orchestrator",
+          "robustness"
+        ],
+        "subtasks": [],
+        "updatedAt": "2026-03-21T09:31:18.602Z"
+      },
+      {
+        "id": "33",
+        "title": "Pin ML dependency versions and generate uv lock file",
+        "description": "Add lower-bound version constraints for ML dependencies in pyproject.toml and generate a uv.lock file for reproducible installs.",
+        "details": "All dependencies in pyproject.toml are unpinned (e.g. just 'whisperx', 'ultralytics'). A fresh install on a different day can produce a completely different environment. ML deps are especially volatile across majors.\n\nImplementation:\n1. For each ML dependency, determine the currently installed version via `uv pip list` or `pip show`.\n2. Add lower-bound + major-version caps for ML packages that break across majors:\n   - whisperx>=0.10,<1.0\n   - ultralytics>=8.0,<9.0\n   - insightface>=0.7,<1.0\n   - faster-whisper>=1.0,<2.0\n   - transformers>=4.40,<5.0\n   - audiocraft>=1.3,<2.0\n   - moviepy>=2.0,<3.0\n   - opentimelineio>=0.17,<1.0\n   (Adjust exact versions based on what's actually installed)\n3. Leave stable deps unpinned (click, pyyaml, requests, etc.)\n4. Run `uv lock` to generate uv.lock.\n5. Add uv.lock to git tracking.\n6. Verify `uv sync` still works from a clean state.\n\nDo NOT pin to exact versions (==) — that's too rigid for a solo project. Lower bounds + major caps strike the right balance.",
+        "testStrategy": "Verify uv.lock is generated and valid. Verify `uv sync` from clean venv succeeds. Verify pyproject.toml parses correctly. Spot-check that key imports still work (import whisperx, import ultralytics, etc.).",
+        "priority": "high",
+        "status": "in-progress",
+        "dependencies": [],
+        "tags": [
+          "autopilot",
+          "dependencies"
+        ],
+        "subtasks": [],
+        "updatedAt": "2026-03-21T09:31:18.476Z"
+      },
+      {
+        "id": "34",
+        "title": "Replace Anthropic SDK calls with Claude CLI invocation (Max plan)",
+        "description": "Replace all 4 direct anthropic.Anthropic() SDK calls with Claude CLI subprocess invocation to use the Claude Max subscription instead of API credits.",
+        "details": "4 modules call anthropic.Anthropic().messages.create() directly, burning API credits:\n\n1. organize/classify.py:154 — utility_model, simple text→JSON (activity labels)\n2. organize/narratives.py:276 — planning_model, simple text→JSON (narrative proposals) \n3. plan/script.py:436 — planning_model, simple text→JSON (scene scripts)\n4. plan/edl.py:144 — planning_model, text→JSON WITH TOOL-USE (EDL generation with validation loop)\n\nImplementation:\n1. Create autopilot/llm.py with an invoke_claude() wrapper modeled on dark-factory's shared/cli_invoke.py pattern:\n   - Subprocess call: claude --print --model <model> --system-prompt <system> --output-format json\n   - Prompt passed via stdin (--append-system-prompt or positional arg)\n   - Parse JSON output (result field from claude CLI)\n   - Handle errors (non-zero exit, timeout)\n   - Support --json-schema for structured output\n   - Accept oauth_token override via CLAUDE_OAUTH_TOKEN env var passthrough\n\n2. For simple calls (classify, narratives, script):\n   - Replace client.messages.create() with invoke_claude(system=..., prompt=..., model=...)\n   - Parse response text same as before (JSON extraction from markdown blocks)\n\n3. For tool-use call (edl.py):\n   - EDL generation uses tool-use for iterative validation. Two options:\n     a) Convert to --json-schema structured output (preferred — single-shot, no iteration needed if prompt is good enough)\n     b) Or provide tools via MCP server (heavier, only if structured output insufficient)\n   - The validation retry loop in edl.py already handles malformed output — structured output with retry is equivalent\n\n4. Remove anthropic from runtime dependencies in pyproject.toml (keep in dev for tests if needed).\n5. Update LLMConfig to map model names: planning_model → 'opus', utility_model → 'sonnet' (CLI uses short names).\n6. Add --api-fallback flag to cli.py for environments where CLI isn't available.\n\nTest strategy: Mock subprocess.run in all 4 modules. Test invoke_claude() with mocked CLI output. Integration: verify prompt formatting matches what CLI expects.",
+        "testStrategy": "Unit tests: mock subprocess.run, verify invoke_claude builds correct command. Test each of the 4 call sites with mocked CLI output. Test error handling (timeout, non-zero exit). Test JSON schema output parsing for EDL.",
+        "priority": "high",
+        "status": "in-progress",
+        "dependencies": [],
+        "tags": [
+          "autopilot",
+          "llm",
+          "cost"
+        ],
+        "subtasks": [],
+        "updatedAt": "2026-03-21T09:36:53.506Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-20T12:03:25.893Z",
-      "taskCount": 25,
-      "completedCount": 24,
+      "lastModified": "2026-03-21T09:36:53.506Z",
+      "taskCount": 34,
+      "completedCount": 27,
       "tags": [
         "master"
       ]
