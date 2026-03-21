@@ -407,6 +407,23 @@ class TestRenderSimpleErrors:
         assert "timeout" in str(exc_info.value).lower() or "timed out" in str(exc_info.value).lower()
         assert "600" in str(exc_info.value)
 
+    def test_timeout_error_chains_cause(self, tmp_path: Path) -> None:
+        """RenderError.__cause__ should be the original TimeoutExpired exception."""
+        from autopilot.render.ffmpeg_render import RenderError, render_simple
+
+        config = _make_config()
+        edl_entry = _make_edl_entry()
+        output = tmp_path / "out.mp4"
+
+        timeout_exc = subprocess.TimeoutExpired(cmd="ffmpeg", timeout=600)
+        with (
+            patch("subprocess.run", side_effect=timeout_exc),
+            pytest.raises(RenderError) as exc_info,
+        ):
+            render_simple(edl_entry, None, output, config)
+
+        assert exc_info.value.__cause__ is timeout_exc
+
     def test_subprocess_error_wrapped_in_render_error(self, tmp_path: Path) -> None:
         """CalledProcessError should be wrapped in RenderError."""
         from autopilot.render.ffmpeg_render import RenderError, render_simple
