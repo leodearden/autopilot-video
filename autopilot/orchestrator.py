@@ -110,6 +110,73 @@ def _stage_stub(name: str) -> Callable[..., Any]:
     return _stub
 
 
+def _start_job(
+    db: Any,
+    stage: str,
+    job_type: str,
+    *,
+    target_id: str | None = None,
+    target_label: str | None = None,
+    worker: str | None = None,
+    run_id: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
+) -> tuple[str, float]:
+    """Create a pipeline_jobs record with status='running' and return (job_id, start_mono).
+
+    All db calls are wrapped in try/except for resilience — job tracking must
+    never break the pipeline.
+    """
+    job_id = uuid4().hex
+    start_mono = time.monotonic()
+    started_at = datetime.now(timezone.utc).isoformat()
+    try:
+        db.insert_job(
+            job_id, stage, job_type,
+            target_id=target_id,
+            target_label=target_label,
+            status="running",
+            started_at=started_at,
+            worker=worker,
+            run_id=run_id,
+        )
+    except Exception as exc:
+        logger.warning("Failed to insert job %s: %s", job_id, exc)
+    if emit_fn is not None:
+        emit_fn("job_started", stage=stage, job_id=job_id)
+    return job_id, start_mono
+
+
+def _finish_job(
+    db: Any,
+    job_id: str,
+    start_mono: float,
+    *,
+    status: str = "done",
+    error_message: str | None = None,
+    emit_fn: Callable[..., Any] | None = None,
+    stage: str | None = None,
+) -> None:
+    """Update a pipeline_jobs record with final status and duration.
+
+    All db calls are wrapped in try/except for resilience.
+    """
+    duration = time.monotonic() - start_mono
+    finished_at = datetime.now(timezone.utc).isoformat()
+    try:
+        db.update_job(
+            job_id,
+            status=status,
+            finished_at=finished_at,
+            duration_seconds=duration,
+            error_message=error_message,
+        )
+    except Exception as exc:
+        logger.warning("Failed to update job %s: %s", job_id, exc)
+    if emit_fn is not None:
+        event_type = "job_completed" if status == "done" else "job_error"
+        emit_fn(event_type, stage=stage, job_id=job_id)
+
+
 def _run_ingest(*, config: Any, db: Any, force: bool = False) -> None:
     """INGEST stage: scan directory, insert media, normalize audio, mark duplicates."""
     files = scanner.scan_directory(config.input_dir, max_workers=None)
