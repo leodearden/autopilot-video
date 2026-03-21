@@ -200,7 +200,11 @@ class TestRun:
         orch.run(config=mock_config, db=mock_db)
 
         for name, mock_fn in mocks.items():
-            mock_fn.assert_called_once_with(config=mock_config, db=mock_db, force=False)
+            mock_fn.assert_called_once()
+            call_kwargs = mock_fn.call_args[1]
+            assert call_kwargs["config"] is mock_config
+            assert call_kwargs["db"] is mock_db
+            assert call_kwargs["force"] is False
 
     def test_run_returns_results_dict(self) -> None:
         """run() returns a dict mapping stage names to StageResult."""
@@ -2811,9 +2815,11 @@ class TestForceFlagPropagation:
         orch.run(config=mock_config, db=mock_db)
 
         for name, mock_fn in mocks.items():
-            mock_fn.assert_called_once_with(
-                config=mock_config, db=mock_db, force=True,
-            )
+            mock_fn.assert_called_once()
+            call_kwargs = mock_fn.call_args[1]
+            assert call_kwargs["config"] is mock_config
+            assert call_kwargs["db"] is mock_db
+            assert call_kwargs["force"] is True
 
     def test_orchestrator_run_passes_force_false_to_stages(self) -> None:
         """run() passes force=False to each stage when orchestrator has force=False."""
@@ -2829,9 +2835,11 @@ class TestForceFlagPropagation:
         orch.run(config=mock_config, db=mock_db)
 
         for name, mock_fn in mocks.items():
-            mock_fn.assert_called_once_with(
-                config=mock_config, db=mock_db, force=False,
-            )
+            mock_fn.assert_called_once()
+            call_kwargs = mock_fn.call_args[1]
+            assert call_kwargs["config"] is mock_config
+            assert call_kwargs["db"] is mock_db
+            assert call_kwargs["force"] is False
 
 
 # --- Run Tracking & Event Emission tests (Task 37) ---
@@ -4204,3 +4212,58 @@ class TestUploadJobTracking:
         _run_upload(config=minimal_config, db=db)
 
         db.insert_job.assert_not_called()
+
+
+class TestOrchestratorPassesJobKwargs:
+    """Test that PipelineOrchestrator.run() passes run_id and emit_fn to stages."""
+
+    def test_run_passes_run_id_to_stage_funcs(self) -> None:
+        """Each stage.func is called with run_id=self._run_id."""
+        orch = PipelineOrchestrator()
+        mock_funcs = []
+        for stage in orch.stages:
+            mf = MagicMock()
+            stage.func = mf
+            mock_funcs.append((stage.name, mf))
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        for stage_name, mf in mock_funcs:
+            mf.assert_called_once()
+            call_kwargs = mf.call_args[1]
+            assert "run_id" in call_kwargs, f"{stage_name} missing run_id"
+            assert call_kwargs["run_id"] == orch._run_id
+
+    def test_run_passes_emit_fn_to_stage_funcs(self) -> None:
+        """Each stage.func is called with emit_fn=self._emit_event."""
+        orch = PipelineOrchestrator()
+        mock_funcs = []
+        for stage in orch.stages:
+            mf = MagicMock()
+            stage.func = mf
+            mock_funcs.append((stage.name, mf))
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        for stage_name, mf in mock_funcs:
+            call_kwargs = mf.call_args[1]
+            assert "emit_fn" in call_kwargs, f"{stage_name} missing emit_fn"
+            assert call_kwargs["emit_fn"] == orch._emit_event
+
+    def test_run_passes_none_run_id_when_insert_run_fails(self) -> None:
+        """When insert_run fails, stages get run_id=None."""
+        orch = PipelineOrchestrator()
+        mock_funcs = []
+        for stage in orch.stages:
+            mf = MagicMock()
+            stage.func = mf
+            mock_funcs.append(mf)
+
+        mock_db = MagicMock()
+        mock_db.insert_run.side_effect = RuntimeError("db error")
+        orch.run(config=MagicMock(), db=mock_db)
+
+        for mf in mock_funcs:
+            assert mf.call_args[1]["run_id"] is None

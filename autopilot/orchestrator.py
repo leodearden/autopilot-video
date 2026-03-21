@@ -1118,7 +1118,10 @@ class PipelineOrchestrator:
                     logger.warning("Run tracking update failed: %s", exc)
             t0 = time.monotonic()
             try:
-                stage.func(config=config, db=db, force=self.force)
+                stage.func(
+                    config=config, db=db, force=self.force,
+                    run_id=self._run_id, emit_fn=self._emit_event,
+                )
                 elapsed = time.monotonic() - t0
                 results[stage_name] = StageResult(
                     status=StageStatus.DONE,
