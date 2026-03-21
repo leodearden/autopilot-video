@@ -1,66 +1,111 @@
 {
-  "task_id": "28",
-  "title": "Add bounds validation for numeric config values",
+  "task_id": "31",
+  "title": "Add pytest-cov configuration and coverage reporting",
   "files": [
-    "autopilot/config.py",
-    "tests/test_config.py"
+    "pyproject.toml",
+    "tests/test_coverage_config.py",
+    "tests/test_ci_workflow.py",
+    ".github/workflows/ci.yml"
   ],
   "modules": [
-    "autopilot",
-    "tests"
+    "tests",
+    ".github/workflows"
   ],
-  "analysis": "The config.py module already contains a _validate_range helper (lines 152-160) and already calls it for all the fields mentioned in the task (lines 366-372): quality_crf 0-51, yolo_sample_every_n_frames >= 1, max_wall_clock_hours >= 1, num_cpu_workers >= 1, batch_size_yolo >= 1, batch_size_whisper >= 1, gpu_device >= 0. The test file already has parametrized tests for invalid bounds (test_load_config_numeric_bounds_invalid) and valid boundaries (test_load_config_numeric_bounds_valid). However, the test coverage is incomplete: (1) Invalid tests are missing -1 cases for yolo_sample_every_n_frames, max_wall_clock_hours, num_cpu_workers, batch_size_yolo, batch_size_whisper. (2) Valid boundary tests are missing value=1 for max_wall_clock_hours, num_cpu_workers, batch_size_yolo, batch_size_whisper. The implementation is already done; only the test parametrization needs to be extended.",
+  "analysis": "The project already has a well-structured pyproject.toml with build-system, project metadata, dev dependencies (pytest, ruff, pyright), and tool configs (pytest.ini_options with testpaths only, ruff, pyright). There are existing test patterns: test_scaffolding.py validates pyproject.toml structure using tomllib, and test_ci_workflow.py validates CI workflow YAML structure using yaml. The CI workflow at .github/workflows/ci.yml runs pytest with '-x --tb=short' but no coverage flags. The task requires: (1) adding pytest-cov to dev deps, (2) adding [tool.coverage.run] and [tool.coverage.report] sections, (3) adding --cov addopts to pytest.ini_options, (4) updating CI to include coverage, and (5) a test verifying coverage config in pyproject.toml. I'll create a dedicated test_coverage_config.py for the pyproject.toml coverage tests (keeping separation of concerns from test_scaffolding.py), and add a CI coverage test to test_ci_workflow.py.",
   "prerequisites": [],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Extend test_load_config_numeric_bounds_invalid parametrize list with -1 cases for yolo_sample_every_n_frames, max_wall_clock_hours, num_cpu_workers, batch_size_yolo, batch_size_whisper. These tests should pass immediately since the validation already exists in config.py.",
+      "description": "Write test_coverage_config.py with tests that: (a) pytest-cov is in dev deps, (b) tool.coverage.run section exists with source=['autopilot'] and omit=['*/tests/*'], (c) tool.coverage.report section exists with show_missing=true and fail_under=70, (d) pytest addopts contains --cov=autopilot and --cov-report=term-missing. All four tests should fail since none of these exist yet.",
       "status": "done",
-      "commit": "2e38a94"
+      "commit": "faefed4"
     },
     {
       "id": "step-2",
-      "type": "test",
-      "description": "Extend test_load_config_numeric_bounds_valid parametrize list with value=1 cases for max_wall_clock_hours, num_cpu_workers, batch_size_yolo, batch_size_whisper. These tests should pass immediately since the validation allows these values.",
+      "type": "impl",
+      "description": "Add pytest-cov to [project.optional-dependencies] dev list in pyproject.toml.",
       "status": "done",
-      "commit": "0d48db2"
+      "commit": "a5401d9"
     },
     {
       "id": "step-3",
       "type": "impl",
-      "description": "Verify all tests pass. No implementation changes needed in config.py \u2014 all _validate_range calls are already present (lines 366-372). This step is a confirmation pass only.",
+      "description": "Add [tool.coverage.run] section with source=['autopilot'] and omit=['*/tests/*'] to pyproject.toml.",
       "status": "done",
-      "commit": "0d48db2"
+      "commit": "1faaee9"
+    },
+    {
+      "id": "step-4",
+      "type": "impl",
+      "description": "Add [tool.coverage.report] section with show_missing=true and fail_under=70 to pyproject.toml.",
+      "status": "done",
+      "commit": "a36891c"
+    },
+    {
+      "id": "step-5",
+      "type": "impl",
+      "description": "Update [tool.pytest.ini_options] addopts in pyproject.toml to include '--cov=autopilot --cov-report=term-missing'. All four tests in test_coverage_config.py should now pass.",
+      "status": "done",
+      "commit": "3312d3c"
+    },
+    {
+      "id": "step-6",
+      "type": "test",
+      "description": "Add test to test_ci_workflow.py (in TestSteps class) verifying the pytest CI step includes --cov coverage flags. Test should fail since CI workflow hasn't been updated yet.",
+      "status": "done",
+      "commit": "e034862"
+    },
+    {
+      "id": "step-7",
+      "type": "impl",
+      "description": "Update .github/workflows/ci.yml Test step to include coverage flags: change 'uv run pytest tests/ -x --tb=short' to 'uv run pytest tests/ -x --tb=short --cov=autopilot --cov-report=term-missing'. The CI coverage test should now pass.",
+      "status": "done",
+      "commit": "f1cc97c"
+    },
+    {
+      "id": "step-8",
+      "type": "test",
+      "description": "Run full test suite to verify all existing tests still pass and the new tests pass. Check that the existing test_scaffolding.py test_pyproject_toml_has_dev_dependencies test picks up pytest-cov without changes (it only checks pytest, ruff, pyright \u2014 no conflict). Verify test_ci_workflow.py test_pytest_flags still passes with the expanded command.",
+      "status": "pending",
+      "commit": null
     }
   ],
   "design_decisions": [
     {
-      "decision": "No changes to config.py \u2014 validation already exists",
-      "rationale": "Lines 366-372 of config.py already call _validate_range for all fields mentioned in the task: quality_crf (0-51), yolo_sample_every_n_frames (>=1), max_wall_clock_hours (>=1), num_cpu_workers (>=1), batch_size_yolo (>=1), batch_size_whisper (>=1), gpu_device (>=0). The error message format from _validate_range already matches the task's requested format."
+      "decision": "Create a separate test_coverage_config.py rather than adding to test_scaffolding.py",
+      "rationale": "test_scaffolding.py tests project structure (dirs, packages, deps, config.yaml). Coverage config is a distinct concern \u2014 a separate file keeps both files focused and makes the concurrency lock footprint smaller."
     },
     {
-      "decision": "Only extend existing parametrized test entries",
-      "rationale": "The test_load_config_numeric_bounds_invalid and test_load_config_numeric_bounds_valid tests already exist with the correct structure. The task asks for boundary values (0, -1, valid) for each field. Some entries are missing: -1 for the >=1 fields and valid=1 for processing fields. Adding parametrize entries is the minimal, non-disruptive change."
+      "decision": "Add --cov flags both to pyproject.toml addopts AND explicitly in CI workflow",
+      "rationale": "The task explicitly requests both. Having addopts means local dev runs also get coverage. CI explicitly passing the flags ensures coverage even if addopts are overridden."
+    },
+    {
+      "decision": "Use fail_under=70 as specified in the task",
+      "rationale": "Task description explicitly specifies fail_under=70. This is a reasonable starting threshold for a project that already has extensive tests across 40+ test files."
+    },
+    {
+      "decision": "Keep existing test_ci_workflow.py test_pytest_flags test intact",
+      "rationale": "The existing test checks for '-x' and '--tb=short' in the pytest command. These flags will still be present in the updated command, so the test remains valid. The new test adds coverage-specific assertions."
     }
   ],
   "reuse": [
     {
-      "what": "_validate_range helper in config.py",
-      "where": "autopilot/config.py lines 152-160",
-      "how": "Already used for all numeric bounds. No new validation code needed."
+      "what": "project_root fixture from conftest.py",
+      "where": "tests/test_coverage_config.py",
+      "how": "Use project_root fixture to locate pyproject.toml, matching the pattern in test_scaffolding.py"
     },
     {
-      "what": "Existing parametrized test structure",
-      "where": "tests/test_config.py lines 322-367",
-      "how": "Extend the existing @pytest.mark.parametrize lists with additional (section, field, value) tuples."
+      "what": "tomllib-based pyproject.toml parsing pattern from test_scaffolding.py",
+      "where": "tests/test_coverage_config.py",
+      "how": "Use the same pattern: open(project_root / 'pyproject.toml', 'rb') + tomllib.load() to parse and validate TOML structure"
     },
     {
-      "what": "_BASE_REQUIRED constant",
-      "where": "tests/test_config.py line 292",
-      "how": "Already used by the parametrized tests to build minimal valid configs with overrides."
+      "what": "workflow fixture and TestSteps helper pattern from test_ci_workflow.py",
+      "where": "tests/test_ci_workflow.py",
+      "how": "Add new test method to existing TestSteps class using the same _step_runs() helper to check for coverage flags"
     }
   ],
-  "_session_id": "28-cc0d3aa5",
-  "_created_at": "2026-03-21T08:04:00.375725+00:00"
+  "_session_id": "31-264fa550",
+  "_created_at": "2026-03-21T08:11:12.252906+00:00"
 }
