@@ -2637,3 +2637,96 @@ class TestRenderResume:
 
         # Both should get route_and_render called
         assert mock_router.route_and_render.call_count == 2
+
+
+# -- Checkpoint/resume tests for _run_upload ----------------------------------
+
+
+class TestUploadResume:
+    """Tests for _run_upload checkpoint/resume logic."""
+
+    @patch("autopilot.orchestrator.thumbnail")
+    @patch("autopilot.orchestrator.youtube")
+    def test_upload_skips_narrative_with_existing_upload(
+        self, mock_youtube, mock_thumbnail, minimal_config,
+    ):
+        """_run_upload skips when db.get_upload returns non-None for a narrative."""
+        from autopilot.orchestrator import _run_upload
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        db.get_edit_plan.return_value = {
+            "edl_json": '{}',
+            "render_path": "/out/renders/output.mp4",
+        }
+        # n1 already uploaded, n2 not
+        db.get_upload.side_effect = lambda nid: (
+            {"narrative_id": "n1", "video_id": "abc"} if nid == "n1" else None
+        )
+
+        mock_youtube.upload_video.return_value = "https://youtu.be/def"
+        mock_thumbnail.extract_best_thumbnail.return_value = Path("/thumb.jpg")
+
+        _run_upload(config=minimal_config, db=db)
+
+        # Only n2 should get upload_video called
+        assert mock_youtube.upload_video.call_count == 1
+
+    @patch("autopilot.orchestrator.thumbnail")
+    @patch("autopilot.orchestrator.youtube")
+    def test_upload_logs_resume_counts(
+        self, mock_youtube, mock_thumbnail, minimal_config, caplog,
+    ):
+        """_run_upload logs 'Resuming UPLOAD: N/M ...'."""
+        from autopilot.orchestrator import _run_upload
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"}, {"narrative_id": "n3"},
+        ]
+        db.get_edit_plan.return_value = {
+            "edl_json": '{}',
+            "render_path": "/out/renders/output.mp4",
+        }
+        # n1 and n2 already uploaded
+        db.get_upload.side_effect = lambda nid: (
+            {"narrative_id": nid, "video_id": "abc"} if nid in ("n1", "n2") else None
+        )
+
+        mock_youtube.upload_video.return_value = "https://youtu.be/def"
+        mock_thumbnail.extract_best_thumbnail.return_value = Path("/thumb.jpg")
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            _run_upload(config=minimal_config, db=db)
+
+        assert any("Resuming UPLOAD" in r.message and "2/3" in r.message
+                    for r in caplog.records)
+
+    @patch("autopilot.orchestrator.thumbnail")
+    @patch("autopilot.orchestrator.youtube")
+    def test_upload_force_re_uploads_all(
+        self, mock_youtube, mock_thumbnail, minimal_config,
+    ):
+        """_run_upload with force=True re-uploads even with existing uploads."""
+        from autopilot.orchestrator import _run_upload
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+        ]
+        db.get_edit_plan.return_value = {
+            "edl_json": '{}',
+            "render_path": "/out/renders/output.mp4",
+        }
+        # Both already uploaded
+        db.get_upload.return_value = {"narrative_id": "n1", "video_id": "abc"}
+
+        mock_youtube.upload_video.return_value = "https://youtu.be/def"
+        mock_thumbnail.extract_best_thumbnail.return_value = Path("/thumb.jpg")
+
+        _run_upload(config=minimal_config, db=db, force=True)
+
+        # Both should get upload_video called
+        assert mock_youtube.upload_video.call_count == 2
