@@ -55,7 +55,6 @@ vllm = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=autopilot --cov-report=term-missing"
 
 [tool.coverage.run]
 source = ["autopilot"]

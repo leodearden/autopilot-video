@@ -54,13 +54,20 @@ class TestCoverageReportConfig:
         assert pyproject["tool"]["coverage"]["report"]["fail_under"] == 70
 
 
-class TestPytestCovAddopts:
-    """Verify pytest addopts includes coverage flags."""
+class TestCICoverageFlags:
+    """Verify CI workflow passes coverage flags to pytest."""
 
-    def test_addopts_has_cov_flag(self, pyproject: dict) -> None:
-        addopts = pyproject["tool"]["pytest"]["ini_options"]["addopts"]
-        assert "--cov=autopilot" in addopts
+    def test_ci_pytest_has_cov_flag(self) -> None:
+        """Coverage flags belong in CI (not addopts) to avoid fail_under on subset runs."""
+        from pathlib import Path
 
-    def test_addopts_has_cov_report_flag(self, pyproject: dict) -> None:
-        addopts = pyproject["tool"]["pytest"]["ini_options"]["addopts"]
-        assert "--cov-report=term-missing" in addopts
+        import yaml
+
+        ci_path = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "ci.yml"
+        data = yaml.safe_load(ci_path.read_text())
+        runs = [s.get("run", "") for s in data["jobs"]["ci"]["steps"]]
+        pytest_cmds = [r for r in runs if "pytest" in r]
+        assert len(pytest_cmds) > 0
+        pytest_cmd = pytest_cmds[0]
+        assert "--cov=autopilot" in pytest_cmd
+        assert "--cov-report=term-missing" in pytest_cmd
