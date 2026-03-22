@@ -947,6 +947,103 @@ class CatalogDB:
         )
         return cur.fetchone() is not None
 
+    # -- Media query (paginated, filtered, with analysis flags) ----------------
+
+    _QUERY_MEDIA_SORT_WHITELIST = frozenset(
+        {
+            "file_path",
+            "duration_seconds",
+            "created_at",
+            "resolution_w",
+            "status",
+        }
+    )
+
+    def query_media(
+        self,
+        *,
+        q: str | None = None,
+        status: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        sort: str = "created_at",
+        order: str = "desc",
+        page: int = 1,
+        per_page: int = 50,
+    ) -> dict:
+        """Query media files with filtering, sorting, pagination, and analysis flags.
+
+        Returns ``{"items": [...], "total": int}`` where each item is a dict
+        with all media_files columns plus boolean ``has_transcript``,
+        ``has_detections``, ``has_faces``, ``has_embeddings``,
+        ``has_audio_events``, and ``has_captions`` flags.
+        """
+        # Validate sort column against whitelist to prevent SQL injection
+        if sort not in self._QUERY_MEDIA_SORT_WHITELIST:
+            sort = "created_at"
+        order_kw = "ASC" if order.lower() == "asc" else "DESC"
+
+        # Build WHERE clauses
+        where_parts: list[str] = []
+        params: list[object] = []
+        if q:
+            where_parts.append("m.file_path LIKE ?")
+            params.append(f"%{q}%")
+        if status:
+            where_parts.append("m.status = ?")
+            params.append(status)
+        if date_from:
+            where_parts.append("m.created_at >= ?")
+            params.append(date_from)
+        if date_to:
+            where_parts.append("m.created_at <= ?")
+            params.append(date_to)
+
+        where_clause = " AND ".join(where_parts) if where_parts else "1"
+
+        # Count total matching rows
+        count_sql = f"SELECT COUNT(*) FROM media_files m WHERE {where_clause}"
+        total = self.conn.execute(count_sql, params).fetchone()[0]
+
+        # Main query with analysis flags via EXISTS subqueries
+        offset = (page - 1) * per_page
+        sql = f"""
+            SELECT m.*,
+                EXISTS(SELECT 1 FROM transcripts  WHERE media_id = m.id)
+                    AS has_transcript,
+                EXISTS(SELECT 1 FROM detections    WHERE media_id = m.id)
+                    AS has_detections,
+                EXISTS(SELECT 1 FROM faces         WHERE media_id = m.id)
+                    AS has_faces,
+                EXISTS(SELECT 1 FROM clip_embeddings WHERE media_id = m.id)
+                    AS has_embeddings,
+                EXISTS(SELECT 1 FROM audio_events  WHERE media_id = m.id)
+                    AS has_audio_events,
+                EXISTS(SELECT 1 FROM captions      WHERE media_id = m.id)
+                    AS has_captions
+            FROM media_files m
+            WHERE {where_clause}
+            ORDER BY m.{sort} {order_kw}
+            LIMIT ? OFFSET ?
+        """
+        rows = self.conn.execute(sql, [*params, per_page, offset]).fetchall()
+        items = []
+        for row in rows:
+            d = dict(row)
+            # SQLite returns 0/1 for EXISTS — normalize to bool
+            for flag in (
+                "has_transcript",
+                "has_detections",
+                "has_faces",
+                "has_embeddings",
+                "has_audio_events",
+                "has_captions",
+            ):
+                d[flag] = bool(d[flag])
+            items.append(d)
+
+        return {"items": items, "total": total}
+
     # -- pipeline_gates CRUD ---------------------------------------------------
 
     _PIPELINE_STAGES = (
