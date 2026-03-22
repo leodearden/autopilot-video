@@ -315,6 +315,42 @@ class CatalogDB:
         row = cur.fetchone()
         return dict(row) if row else None
 
+    def get_media_detail(self, media_id: str) -> dict[str, object] | None:
+        """Get aggregated detail for a media file including all analysis data.
+
+        Returns None if media_id not found. Otherwise returns a dict with keys:
+        media, transcript, detections, faces, audio_events, embeddings,
+        embedding_count, face_clusters.
+        """
+        media = self.get_media(media_id)
+        if media is None:
+            return None
+
+        transcript = self.get_transcript(media_id)
+        detections = self.get_detections_for_media(media_id)
+        faces = self.get_faces_for_media(media_id)
+        audio_events = self.get_audio_events_for_media(media_id)
+        embeddings = self.get_embeddings_for_media(media_id)
+
+        # Build face_clusters lookup for faces that have cluster assignments
+        cluster_ids = {f["cluster_id"] for f in faces if f.get("cluster_id") is not None}
+        face_clusters = {}
+        for cid in cluster_ids:
+            cluster = self.get_face_cluster_by_id(cid)
+            if cluster is not None:
+                face_clusters[cid] = cluster
+
+        return {
+            "media": media,
+            "transcript": transcript,
+            "detections": detections,
+            "faces": faces,
+            "audio_events": audio_events,
+            "embeddings": embeddings,
+            "embedding_count": len(embeddings),
+            "face_clusters": face_clusters,
+        }
+
     def update_media_status(self, media_id: str, status: str) -> None:
         """Update the status of a media file."""
         self.conn.execute(
