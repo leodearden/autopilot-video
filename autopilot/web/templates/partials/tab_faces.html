@@ -1,0 +1,18 @@
+<div class="space-y-4">
+    {% if clusters %}
+    <div class="text-sm text-gray-400 mb-2">{{ total_faces }} face{{ 's' if total_faces != 1 else '' }} in {{ clusters|length }} cluster{{ 's' if clusters|length != 1 else '' }}</div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {% for cluster in clusters %}
+        <div class="dark:bg-surface-800 rounded-lg p-4">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-gray-100 font-medium">{{ cluster.label or 'Unknown' }}</span>
+                <span class="text-sm text-gray-400">{{ cluster.count }} appearance{{ 's' if cluster.count != 1 else '' }}</span>
+            </div>
+            <div class="text-xs text-gray-500">Cluster #{{ cluster.cluster_id }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-gray-500">No faces detected.</p>
+    {% endif %}
+</div>

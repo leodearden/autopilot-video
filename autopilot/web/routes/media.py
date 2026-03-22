@@ -244,9 +244,57 @@ def media_tab(request: Request, media_id: str, tab_name: str):
             class_counts=class_counts,
             frame_details=frame_details,
         )
+    elif tab_name == "faces":
+        faces = detail["faces"]
+        face_clusters = detail.get("face_clusters", {})
+        # Group faces by cluster_id
+        cluster_groups: dict[int | None, int] = {}
+        for f in faces:
+            cid = f.get("cluster_id")
+            cluster_groups[cid] = cluster_groups.get(cid, 0) + 1
+        clusters = []
+        for cid, count in sorted(cluster_groups.items(), key=lambda x: x[1], reverse=True):
+            cluster_info = face_clusters.get(cid, {}) if cid is not None else {}
+            clusters.append({
+                "cluster_id": cid,
+                "label": cluster_info.get("label"),
+                "count": count,
+            })
+        html = templates.get_template("partials/tab_faces.html").render(
+            clusters=clusters, total_faces=len(faces),
+        )
+    elif tab_name == "audio_events":
+        audio_rows = detail["audio_events"]
+        events = []
+        for row in audio_rows:
+            parsed = []
+            if row.get("events_json"):
+                try:
+                    parsed = json.loads(row["events_json"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            classes = [{"name": e.get("class", "unknown"), "confidence": e.get("confidence", 0)}
+                       for e in parsed]
+            events.append({"timestamp": row["timestamp_seconds"], "classes": classes})
+        html = templates.get_template("partials/tab_audio_events.html").render(
+            events=events, format_timestamp=_format_timestamp,
+        )
+    elif tab_name == "embeddings":
+        embedding_count = detail["embedding_count"]
+        fps = media.get("fps") or 0
+        duration = media.get("duration_seconds") or 0
+        total_frames = int(fps * duration) if fps and duration else 0
+        if total_frames > 0:
+            coverage_pct = round(embedding_count / total_frames * 100, 1)
+        else:
+            coverage_pct = 0
+        html = templates.get_template("partials/tab_embeddings.html").render(
+            embedding_count=embedding_count,
+            total_frames=total_frames,
+            coverage_pct=coverage_pct,
+        )
     else:
-        # Placeholder for faces, audio_events, embeddings tabs
-        html = f"<p class='text-gray-500'>{tab_name} tab — coming soon.</p>"
+        raise HTTPException(status_code=404, detail="Invalid tab")
 
     return HTMLResponse(html)
 

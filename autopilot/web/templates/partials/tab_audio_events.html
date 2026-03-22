@@ -1,0 +1,25 @@
+<div class="space-y-4">
+    {% if events %}
+    <div class="text-sm text-gray-400 mb-2">{{ events|length }} audio event window{{ 's' if events|length != 1 else '' }}</div>
+    <div class="dark:bg-surface-800 rounded-lg p-4 max-h-96 overflow-y-auto space-y-3">
+        {% for evt in events %}
+        <div class="flex items-start gap-4 border-b border-gray-700 pb-2 last:border-0">
+            <span class="text-gray-500 text-sm font-mono whitespace-nowrap">{{ format_timestamp(evt.timestamp) }}</span>
+            <div class="flex flex-wrap gap-1">
+                {% for cls in evt.classes %}
+                <span class="px-2 py-0.5 rounded text-xs
+                    {% if cls.confidence >= 0.8 %}bg-green-900 text-green-300
+                    {% elif cls.confidence >= 0.5 %}bg-yellow-900 text-yellow-300
+                    {% else %}bg-gray-700 text-gray-300{% endif %}"
+                    title="Confidence: {{ '%.0f'|format(cls.confidence * 100) }}%">
+                    {{ cls.name }}
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-gray-500">No audio events detected.</p>
+    {% endif %}
+</div>
