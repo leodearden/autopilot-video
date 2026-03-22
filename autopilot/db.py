@@ -333,7 +333,7 @@ class CatalogDB:
         embeddings = self.get_embeddings_for_media(media_id)
 
         # Build face_clusters lookup for faces that have cluster assignments
-        cluster_ids = {f["cluster_id"] for f in faces if f.get("cluster_id") is not None}
+        cluster_ids: set[int] = {cast(int, f["cluster_id"]) for f in faces if f.get("cluster_id") is not None}
         face_clusters = {}
         for cid in cluster_ids:
             cluster = self.get_face_cluster_by_id(cid)

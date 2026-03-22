@@ -273,9 +273,9 @@ def media_tab(request: Request, media_id: str, tab_name: str):
                     parsed = json.loads(row["events_json"])
                 except (json.JSONDecodeError, TypeError):
                     pass
-            classes = [{"name": e.get("class", "unknown"), "confidence": e.get("confidence", 0)}
-                       for e in parsed]
-            events.append({"timestamp": row["timestamp_seconds"], "classes": classes})
+            event_classes = [{"name": e.get("class", "unknown"), "confidence": e.get("confidence", 0)}
+                            for e in parsed]
+            events.append({"timestamp": row["timestamp_seconds"], "classes": event_classes})
         html = templates.get_template("partials/tab_audio_events.html").render(
             events=events, format_timestamp=_format_timestamp,
         )
@@ -325,7 +325,7 @@ def api_media_transcript(request: Request, media_id: str):
         db.close()
     if transcript is None:
         raise HTTPException(status_code=404, detail="Transcript not found")
-    segments = json.loads(transcript["segments_json"]) if transcript["segments_json"] else []
+    segments = json.loads(str(transcript["segments_json"])) if transcript["segments_json"] else []
     return {"language": transcript["language"], "segments": segments}
 
 
@@ -343,7 +343,7 @@ def api_media_detections(request: Request, media_id: str):
     total = 0
     classes: dict[str, int] = {}
     for row in det_rows:
-        dets = json.loads(row["detections_json"]) if row["detections_json"] else []
+        dets = json.loads(str(row["detections_json"])) if row["detections_json"] else []
         total += len(dets)
         for d in dets:
             cls = d.get("class", "unknown")
