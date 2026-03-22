@@ -1,215 +1,167 @@
 {
-  "task_id": "37",
-  "title": "Orchestrator: run tracking + event emission",
+  "task_id": "40",
+  "title": "SSE event endpoint",
   "files": [
-    "autopilot/orchestrator.py",
-    "tests/test_orchestrator.py"
+    "autopilot/web/routes/sse.py",
+    "autopilot/web/routes/__init__.py",
+    "autopilot/web/app.py",
+    "pyproject.toml",
+    "tests/test_sse.py"
   ],
   "modules": [
-    "autopilot",
+    "autopilot/web/routes",
+    "autopilot/web",
     "tests"
   ],
-  "analysis": "PipelineOrchestrator.run() in autopilot/orchestrator.py currently executes stages in topological order, logging progress and returning a dict of StageResult. Task 35 (dependency) already added pipeline_runs and pipeline_events tables plus full CRUD to CatalogDB (db.insert_run, db.update_run, db.insert_event, etc.). This task instruments run() to: (1) create a pipeline_runs record at start via db.insert_run with uuid4 run_id, (2) add a _emit_event helper that calls db.insert_event with JSON payload, (3) emit stage_started/stage_completed/stage_error events at each stage transition with current_stage updates on the run, (4) finalize the run at end with status completed|failed, finished_at, wall_clock_seconds, (5) track budget_remaining_seconds. Existing tests use MagicMock for db, so all new db.insert_run/insert_event/update_run calls are silently accepted \u2014 no existing test breakage. New tests will assert those mock calls happened with correct args. An integration test with real in-memory CatalogDB verifies actual DB records.\n\nREVIEW FEEDBACK ADDENDUM: Three blocking issues identified \u2014 all tracking/monitoring DB calls (insert_run, update_run, insert_event) lack error handling and can abort the core pipeline. The fix strategy: (1) make _emit_event internally swallow exceptions, (2) wrap db.insert_run in try/except with sentinel _run_id=None and guard all subsequent tracking calls, (3) wrap all db.update_run calls in individual try/except blocks so transient DB failures can't propagate, (4) ensure finalization block can't lose results.",
-  "prerequisites": [],
+  "analysis": "The task requires implementing a Server-Sent Events endpoint at GET /api/events that polls the pipeline_events table and pushes real-time updates to the browser.\n\nExisting infrastructure:\n- autopilot/db.py has CatalogDB with pipeline_events CRUD: insert_event(event_type, stage, job_id, payload_json) -> int, get_events_since(event_id) -> list[dict], prune_events(hours=24)\n- pipeline_events schema: event_id INTEGER PRIMARY KEY AUTOINCREMENT, event_type TEXT NOT NULL, stage TEXT, job_id TEXT, payload_json TEXT, created_at TEXT DEFAULT datetime('now')\n- autopilot/web/app.py has create_app(db_path) factory storing db_path in app.state.db_path\n- No existing routers \u2014 this will be the first APIRouter registered via app.include_router()\n- tests/conftest.py has catalog_db fixture (in-memory CatalogDB with autocommit)\n- tests/test_web_app.py shows the pattern: app fixture creates FastAPI via create_app(tmp_path), client fixture wraps with Starlette TestClient\n- Client-side app.js already has connectSSE('/api/events') with EventSource and notification listener expecting event types\n- sse-starlette 3.3.2 is installed in the env (required by mcp) but NOT yet in pyproject.toml\n\nApproach:\n1. Add sse-starlette to pyproject.toml Web dependencies\n2. Create autopilot/web/routes/sse.py with APIRouter containing GET /api/events\n3. Create get_db FastAPI Depends function to construct CatalogDB from app.state.db_path\n4. Implement async generator that polls get_events_since() every 1s, yields ServerSentEvent objects\n5. Use sse-starlette's EventSourceResponse with ping=15 for keepalive (matches 15-second requirement)\n6. Support Last-Event-ID header for reconnection\n7. Prune events periodically (~every 60 polls) rather than every poll\n8. Register the router in app.py\n\nTesting strategy: The SSE endpoint is a streaming response. For tests, we'll insert events into a real in-memory CatalogDB before connecting, then read from the streaming TestClient response. To prevent tests from hanging (the generator is infinite), we'll either use a timeout or inject a mechanism to break the loop after consuming expected events. The pragmatic approach is to use httpx's stream context and read initial events, then close.",
+  "prerequisites": [
+    {
+      "id": "pre-1",
+      "description": "Add 'sse-starlette' to pyproject.toml in the Web dependencies section alongside fastapi/uvicorn/jinja2",
+      "status": "done",
+      "commit": "d5380b7",
+      "tests": []
+    }
+  ],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write TestRunTrackingInit class with tests: (1) test_run_creates_pipeline_run_record \u2014 after run() with mock stages, db.insert_run called once with 32-char hex run_id, started_at ISO string, status='running', config_snapshot is a string; (2) test_run_stores_run_id_on_self \u2014 after run(), orch._run_id is a 32-char hex string; (3) test_run_passes_budget_to_insert_run \u2014 when budget_seconds=3600, insert_run called with budget_remaining_seconds=3600",
+      "description": "Write tests/test_sse.py with fixtures: (1) sse_db fixture that creates an in-memory CatalogDB with autocommit, (2) sse_app fixture that calls create_app with a tmp_path db but then overrides app.state.db_path to point to the in-memory db file or patches the dependency, (3) sse_client fixture with Starlette TestClient. Write TestSSEEndpointBasic class with test_sse_endpoint_returns_200_event_stream \u2014 GET /api/events returns 200 with content-type text/event-stream.",
       "status": "done",
-      "commit": "02fb80f"
+      "commit": "cf2a707"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Add imports (uuid4, datetime, timezone) to orchestrator.py. At start of run(), generate run_id=uuid4().hex, started_at=datetime.now(timezone.utc).isoformat(), store self._run_id=run_id and self._db=db, call db.insert_run(run_id, started_at=started_at, config_snapshot=str(config), status='running', budget_remaining_seconds=self.budget_seconds)",
+      "description": "Create autopilot/web/routes/sse.py with: (1) APIRouter with prefix '', (2) get_db dependency that creates CatalogDB from request.app.state.db_path, (3) GET /api/events endpoint that returns EventSourceResponse from a minimal async generator yielding nothing (just awaits forever with asyncio.sleep). Update autopilot/web/routes/__init__.py to export the router. Register SSE router in app.py via app.include_router(sse_router). Make the basic 200 + content-type test pass.",
       "status": "done",
-      "commit": "5536d12"
+      "commit": "e8fa72f"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write TestEmitEvent class with tests: (1) test_emit_event_calls_insert_event \u2014 set orch._db to a MagicMock, call _emit_event('test_event', stage='INGEST'), verify db.insert_event called with event_type='test_event', stage='INGEST'; (2) test_emit_event_serializes_payload_to_json \u2014 call with payload={'key': 'val'}, verify payload_json='{\"key\": \"val\"}'; (3) test_emit_event_none_payload \u2014 call without payload, verify payload_json=None; (4) test_emit_event_logs_at_debug_level \u2014 verify debug log emitted",
+      "description": "Write TestSSEEventDelivery class: (1) test_events_delivered_in_order \u2014 insert 3 events via CatalogDB (stage_started, job_started, stage_completed), connect to SSE endpoint, verify all 3 events arrive in correct order; (2) test_event_has_correct_sse_fields \u2014 verify each SSE event has id field (event_id), event field (event_type), and data field (JSON with event_type, stage, job_id); (3) test_event_data_payload_structure \u2014 verify the JSON data payload contains event_type, stage, job_id, and original payload_json data.",
       "status": "done",
-      "commit": "586a38a"
+      "commit": "1a7281a"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Add _emit_event(self, event_type, stage=None, job_id=None, payload=None) method to PipelineOrchestrator. Calls self._db.insert_event(event_type, stage=stage, job_id=job_id, payload_json=json.dumps(payload) if payload is not None else None). Logs at debug level.",
+      "description": "Implement the full async event generator in sse.py: poll db.get_events_since(last_event_id) every 1 second using asyncio.sleep(1). For each event, yield a ServerSentEvent with id=str(event_id), event=event_type, data=json.dumps({event_type, stage, job_id, ...payload_json parsed}). Track last_event_id across polls. Make event delivery tests pass.",
       "status": "done",
-      "commit": "5e7a147"
+      "commit": "49b0090"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write TestStageTransitionEvents class with tests: (1) test_stage_started_event_emitted_for_each_stage \u2014 run with all mock stages, verify db.insert_event called with event_type='stage_started' and correct stage name for each of the 9 stages; (2) test_stage_completed_event_emitted_with_elapsed \u2014 verify 'stage_completed' events include payload with 'elapsed' key; (3) test_stage_error_event_emitted \u2014 make one stage raise, verify 'stage_error' event with error message in payload; (4) test_current_stage_updated_via_update_run \u2014 verify db.update_run called with current_stage=name before each stage runs",
+      "description": "Write TestSSEReconnection class: (1) test_last_event_id_header_resumes_from_position \u2014 insert 5 events, connect with Last-Event-ID: 3 header, verify only events 4 and 5 are received; (2) test_missing_last_event_id_starts_from_zero \u2014 connect without header, verify all events are received; (3) test_invalid_last_event_id_starts_from_zero \u2014 connect with Last-Event-ID: 'abc' (non-numeric), verify all events are received.",
       "status": "done",
-      "commit": "753533d"
+      "commit": "ce0ad25"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "In run() stage loop, before calling stage.func: emit 'stage_started' event and call db.update_run(run_id, current_stage=stage_name). After successful stage: emit 'stage_completed' event with payload={'elapsed': elapsed}. In exception handler: emit 'stage_error' event with payload={'error': str(exc)}.",
+      "description": "Implement Last-Event-ID support: read request.headers.get('last-event-id', '0'), parse as int with fallback to 0, use as initial last_event_id for get_events_since(). Make reconnection tests pass.",
       "status": "done",
-      "commit": "1f54788"
+      "commit": "4c7094f"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write TestRunFinalization class with tests: (1) test_run_completed_status_on_success \u2014 when all stages pass, db.update_run called with status='completed', finished_at (ISO string), wall_clock_seconds (float >= 0); (2) test_run_failed_status_on_error \u2014 when a stage errors, final update_run has status='failed'; (3) test_run_completed_event_emitted \u2014 'run_completed' event with payload={'duration': float}; (4) test_run_failed_event_emitted \u2014 'run_failed' event emitted when pipeline has errors",
+      "description": "Write TestSSEPruning class: (1) test_old_events_pruned_after_polls \u2014 insert a backdated event (>24h old via raw SQL) and a recent event, trigger SSE endpoint for enough polls, verify the old event was deleted from the DB; (2) test_recent_events_not_pruned \u2014 insert only recent events, after polling, verify all events still exist in DB.",
       "status": "done",
-      "commit": "8d3cc03"
+      "commit": "24a6982"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "After the stage loop and summary logging in run(), determine status='failed' if errored_stages else 'completed'. Call db.update_run(run_id, finished_at=datetime.now(UTC).isoformat(), status=status, wall_clock_seconds=total_elapsed). Emit 'run_completed' or 'run_failed' event with payload={'duration': total_elapsed}.",
-      "status": "done",
-      "commit": "5f17a81"
+      "description": "Add periodic pruning to the async generator: maintain a poll_count counter, call db.prune_events(hours=24) when poll_count % 60 == 0 (approximately once per minute). Wrap in try/except to avoid killing the SSE stream on pruning errors. Make pruning tests pass.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write TestBudgetRemainingTracking class with tests: (1) test_budget_remaining_written_after_each_stage \u2014 with budget_seconds=3600, verify db.update_run called with budget_remaining_seconds after each stage; (2) test_no_budget_remaining_when_no_budget \u2014 with budget_seconds=None, verify update_run not called with budget_remaining_seconds for per-stage updates (only called for current_stage and finalization)",
-      "status": "done",
-      "commit": "7b7f3aa"
+      "description": "Write TestSSEEventTypes class: (1) test_all_event_types_forwarded \u2014 insert one event for each of the 11 event types (stage_started, stage_completed, stage_error, job_started, job_completed, job_error, job_progress, gate_waiting, gate_approved, gate_skipped, run_completed, run_failed), connect to SSE, verify each event type is received with correct 'event' field. (2) test_valid_event_types_constant_defined \u2014 verify VALID_EVENT_TYPES constant exists and contains all 11 types.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "In the progress reporting section of run() (after each stage), if budget_seconds is not None: compute remaining = budget_seconds - cumulative, call db.update_run(run_id, budget_remaining_seconds=remaining).",
-      "status": "done",
-      "commit": "704e462"
-    },
-    {
-      "id": "step-11",
-      "type": "test",
-      "description": "Write TestRunTrackingIntegration class using real in-memory CatalogDB (catalog_db fixture): (1) test_full_run_creates_db_records \u2014 run orchestrator with mock stage funcs and real CatalogDB, verify pipeline_runs row exists with correct status='completed' and wall_clock_seconds > 0; (2) test_full_run_creates_events \u2014 verify pipeline_events table has stage_started + stage_completed events for each stage plus run_completed; (3) test_dry_run_still_creates_run_record \u2014 dry_run=True still creates pipeline_runs record",
-      "status": "done",
-      "commit": "223b8ce"
-    },
-    {
-      "id": "step-12",
-      "type": "impl",
-      "description": "Run full test suite (pytest tests/test_orchestrator.py -x) to verify all existing + new tests pass. Fix any issues.",
-      "status": "done",
-      "commit": "223b8ce"
-    },
-    {
-      "id": "step-13",
-      "type": "test",
-      "description": "Write TestEmitEventResilience class (addresses reviewer issue #2 \u2014 _emit_event error handling): (1) test_emit_event_swallows_db_error \u2014 set db.insert_event to raise RuntimeError, call _emit_event('test_event', stage='X'), assert no exception propagates; (2) test_emit_event_logs_warning_on_db_error \u2014 when insert_event raises, verify logger.warning is called with a message containing the event_type and the error; (3) test_emit_event_still_works_after_error \u2014 after a failed _emit_event call, a subsequent call with a working db succeeds normally.",
-      "status": "done",
-      "commit": "bb4e0b2"
-    },
-    {
-      "id": "step-14",
-      "type": "impl",
-      "description": "Make _emit_event resilient: wrap the entire body (insert_event call + debug log) in try/except Exception that logs at WARNING level ('Failed to emit event %s: %s', event_type, exc) and returns without propagating. This ensures no _emit_event call anywhere in run() can kill the pipeline.",
-      "status": "done",
-      "commit": "6d13177"
-    },
-    {
-      "id": "step-15",
-      "type": "test",
-      "description": "Write TestInsertRunResilience class (addresses reviewer issue #1 \u2014 db.insert_run error handling): (1) test_insert_run_failure_does_not_block_pipeline \u2014 set db.insert_run to raise RuntimeError('locked'), run() still executes all stages and returns a results dict with correct StageResult entries; (2) test_insert_run_failure_sets_run_id_none \u2014 after insert_run raises, self._run_id is None; (3) test_insert_run_failure_skips_tracking_calls \u2014 after insert_run raises, db.update_run is never called and db.insert_event is never called (all tracking is skipped gracefully); (4) test_insert_run_failure_logs_warning \u2014 verify a WARNING log is emitted mentioning 'run tracking'.",
-      "status": "done",
-      "commit": "407c055"
-    },
-    {
-      "id": "step-16",
-      "type": "impl",
-      "description": "Wrap db.insert_run(...) in try/except Exception: on failure, log warning ('Run tracking unavailable: %s', exc), set self._run_id = None. Guard all db.update_run() calls in run() with 'if self._run_id is not None'. Guard all _emit_event() calls in run() with 'if self._run_id is not None'. This ensures a failed insert_run causes graceful degradation \u2014 the pipeline runs normally but without tracking.",
-      "status": "done",
-      "commit": "10ca492"
-    },
-    {
-      "id": "step-17",
-      "type": "test",
-      "description": "Write TestTrackingCallResilience class (addresses reviewer issues #2 and #3 \u2014 transient db.update_run failures): (1) test_update_run_failure_in_stage_loop_does_not_abort \u2014 configure db.update_run to raise on first call (current_stage update), verify all stages still execute and results are returned; (2) test_update_run_failure_for_budget_does_not_abort \u2014 configure db.update_run to raise only when called with budget_remaining_seconds kwarg, verify pipeline completes; (3) test_finalization_update_run_failure_returns_results \u2014 configure db.update_run to raise during the final status='completed' call, verify run() still returns the full results dict; (4) test_update_run_failure_logs_warning \u2014 verify WARNING log emitted for each failed db.update_run call.",
-      "status": "done",
-      "commit": "10e5937"
-    },
-    {
-      "id": "step-18",
-      "type": "impl",
-      "description": "Wrap each individual db.update_run() call in run() in its own try/except Exception block that logs at WARNING level and continues. There are 3 sites: (a) current_stage update before stage execution (line 748), (b) budget_remaining_seconds update after each stage (line 780-783), (c) finalization update_run (lines 812-817). For finalization, restructure so that the return statement is outside/after the try/except \u2014 ensure results dict is always returned regardless of tracking failures. The pattern for each: try: db.update_run(...) except Exception as exc: logger.warning('Run tracking update failed: %s', exc). Run full test suite to confirm all tests pass.",
-      "status": "done",
-      "commit": "3265df3"
+      "description": "Define VALID_EVENT_TYPES tuple constant in sse.py with all 11 event types for documentation. Ensure event_type from DB is passed through directly as the SSE 'event' field. Run full test suite to verify all tests pass. Final cleanup: ensure proper DB connection cleanup on generator exit (try/finally), consistent error handling.",
+      "status": "pending",
+      "commit": null
     }
   ],
   "design_decisions": [
     {
-      "decision": "Store self._db and self._run_id as instance attributes during run()",
-      "rationale": "_emit_event needs access to db and the helper signature from the task spec (_emit_event(event_type, stage, job_id, payload)) doesn't take db as a parameter. Storing on self is the cleanest approach since run() is never called concurrently on the same instance."
+      "decision": "Use sse-starlette package rather than manual StreamingResponse",
+      "rationale": "sse-starlette 3.3.2 is already installed (required by mcp), provides clean ServerSentEvent/EventSourceResponse abstractions, built-in ping/keepalive support (ping=15), and proper SSE protocol handling including cache-control headers. The task description suggests this approach."
     },
     {
-      "decision": "Use str(config) for config_snapshot rather than yaml.dump",
-      "rationale": "AutopilotConfig is a dataclass, so str() gives a readable representation. yaml.dump would require the config to be serializable to YAML which isn't guaranteed. The task suggests 'yaml.dump(config) or str(config)' \u2014 str() is always safe."
+      "decision": "Use EventSourceResponse(ping=15) for keepalive instead of manual keepalive comments",
+      "rationale": "sse-starlette's EventSourceResponse has a built-in ping parameter that sends keepalive comments every N seconds. Setting ping=15 matches the task requirement of 15-second keepalives without manual timer management in the generator."
     },
     {
-      "decision": "Emit events even in dry_run mode for run start/end but not for stage transitions",
-      "rationale": "In dry_run, stages aren't actually executed (they're logged as DRY-RUN), so stage_started/stage_completed don't apply. However, the run itself is created and finalized so we can track dry runs. The stage loop's dry_run branch continues before reaching the event emission code."
+      "decision": "Create a get_db FastAPI dependency that creates CatalogDB per SSE connection",
+      "rationale": "app.py stores db_path in app.state. Since CatalogDB uses check_same_thread=False and WAL mode, creating a connection per SSE stream is safe and avoids sharing a connection across concurrent streams. The connection is closed when the generator exits via try/finally."
     },
     {
-      "decision": "Use datetime.now(timezone.utc).isoformat() for timestamps",
-      "rationale": "Consistent with the DB's existing datetime('now') convention, produces ISO 8601 format that's human-readable and sortable. UTC avoids timezone ambiguity."
+      "decision": "Prune events every ~60 poll cycles rather than every poll",
+      "rationale": "Running DELETE on every 1-second poll adds unnecessary DB write overhead. Pruning once per minute is sufficient for 24-hour-old data cleanup. A simple counter modulo check achieves this without a separate timer or background task."
     },
     {
-      "decision": "_emit_event logs at DEBUG level rather than INFO",
-      "rationale": "Events are stored in the DB for the web console to query. Debug-level logging avoids cluttering the console output which already has INFO-level RUNNING/DONE logs. This also prevents existing log-assertion tests from breaking."
+      "decision": "Use APIRouter for the SSE routes \u2014 establishing the first router pattern in this codebase",
+      "rationale": "The app currently has no routers (only an inline health check). Using APIRouter establishes the extensible pattern for future route modules (dashboard, media, gates, etc.) and follows FastAPI best practices for route organization."
     },
     {
-      "decision": "Track budget_remaining_seconds only when budget_seconds is set",
-      "rationale": "When budget_seconds is None, budget_remaining_seconds is meaningless. Avoids writing None - cumulative which would error. Matches existing pattern where budget logging is conditional on self.budget_seconds being truthy."
+      "decision": "Parse payload_json from DB into the SSE data dict rather than nesting as a string",
+      "rationale": "The SSE data payload should be a flat(ish) JSON object for easy HTMX consumption. payload_json from the DB is already a JSON string, so we parse it and merge into the data dict alongside event_type/stage/job_id, providing a clean API to the browser."
     },
     {
-      "decision": "Tracking is a fire-and-forget side-effect: all DB tracking calls are individually wrapped in try/except",
-      "rationale": "The reviewer correctly identified that monitoring/tracking code must never abort the core pipeline. The fix uses three layers: (1) _emit_event internally swallows exceptions, (2) db.insert_run failure sets _run_id=None sentinel causing all subsequent tracking to be skipped, (3) each db.update_run call is individually wrapped so a transient failure at one site doesn't affect others. This ensures the pipeline always completes and returns results, with tracking being best-effort."
-    },
-    {
-      "decision": "Guard tracking calls with _run_id sentinel rather than wrapping every call in try/except alone",
-      "rationale": "When insert_run fails, there's no run record to update \u2014 calling update_run/insert_event would either fail or create orphan records. The sentinel pattern (_run_id=None means skip all tracking) is semantically cleaner than letting each call fail and be caught independently. Both mechanisms are used together for defense-in-depth."
+      "decision": "Test SSE using a real in-memory SQLite DB with pre-inserted events, read first batch then close",
+      "rationale": "SSE endpoints are infinite streaming responses. For testing, we pre-insert events so they're available on first poll, then read the initial batch from the TestClient stream and close. This avoids hanging tests while verifying real DB-to-SSE integration."
     }
   ],
   "reuse": [
     {
-      "what": "CatalogDB.insert_run() CRUD method",
-      "where": "autopilot/db.py line 1140",
-      "how": "Called at start of run() to create the pipeline_runs record with run_id, started_at, config_snapshot, status, budget_remaining_seconds"
+      "what": "CatalogDB.get_events_since(event_id)",
+      "where": "autopilot/db.py line 1124",
+      "how": "Core polling method \u2014 returns events with event_id > given id, ordered ascending. Used directly in the SSE async generator on each 1-second poll cycle."
     },
     {
-      "what": "CatalogDB.update_run() CRUD method",
-      "where": "autopilot/db.py line 1175",
-      "how": "Called to update current_stage at each transition, budget_remaining_seconds after each stage, and finalize with finished_at/status/wall_clock_seconds at end"
+      "what": "CatalogDB.prune_events(hours=24)",
+      "where": "autopilot/db.py line 1132",
+      "how": "Existing pruning method \u2014 deletes events older than N hours. Called every ~60 polls in the SSE generator for periodic cleanup."
     },
     {
-      "what": "CatalogDB.insert_event() CRUD method",
+      "what": "CatalogDB.insert_event(event_type, stage, job_id, payload_json)",
       "where": "autopilot/db.py line 1108",
-      "how": "Called by _emit_event helper to insert stage_started, stage_completed, stage_error, run_completed, run_failed events"
+      "how": "Used in tests to seed the pipeline_events table with test data before connecting to the SSE endpoint."
     },
     {
-      "what": "Existing test patterns with MagicMock for db and config",
-      "where": "tests/test_orchestrator.py TestRun class (line 168+)",
-      "how": "New test classes follow same pattern: create PipelineOrchestrator, replace stage funcs with MagicMock, run with MagicMock config/db, assert on db mock calls"
+      "what": "app.state.db_path pattern",
+      "where": "autopilot/web/app.py line 30",
+      "how": "SSE route dependency reads request.app.state.db_path to create a CatalogDB connection for the streaming response."
     },
     {
-      "what": "catalog_db fixture (in-memory CatalogDB with autocommit)",
-      "where": "tests/conftest.py line 26-39",
-      "how": "Used in integration tests to verify actual DB records are created with correct values"
+      "what": "catalog_db conftest fixture",
+      "where": "tests/conftest.py line 26",
+      "how": "Reuse the in-memory CatalogDB fixture pattern for pre-populating events in SSE tests."
     },
     {
-      "what": "json.dumps for payload serialization",
-      "where": "Already imported in autopilot/orchestrator.py (line 8)",
-      "how": "Used in _emit_event to serialize payload dict to JSON string for insert_event's payload_json parameter"
+      "what": "test_web_app.py app/client fixture pattern",
+      "where": "tests/test_web_app.py lines 14-34",
+      "how": "Follow the same create_app(tmp_path) + TestClient pattern for SSE tests, with added DB setup for event data."
     },
     {
-      "what": "MagicMock side_effect for simulating DB errors",
-      "where": "Standard unittest.mock pattern already used in test_orchestrator.py",
-      "how": "Set db.insert_run.side_effect = RuntimeError('locked') or db.update_run.side_effect = RuntimeError('DB error') to simulate transient failures in resilience tests"
+      "what": "sse-starlette EventSourceResponse and ServerSentEvent",
+      "where": "sse-starlette 3.3.2 (installed, dependency of mcp)",
+      "how": "EventSourceResponse wraps the async generator with proper SSE headers and keepalive. ServerSentEvent formats individual events with id/event/data fields."
     }
   ],
-  "_session_id": "37-23b3e6c2",
-  "_created_at": "2026-03-21T17:28:07.667353+00:00"
+  "_session_id": "40-401d88c2",
+  "_created_at": "2026-03-21T17:44:15.537819+00:00"
 }
