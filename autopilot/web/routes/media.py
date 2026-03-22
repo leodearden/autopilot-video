@@ -273,8 +273,10 @@ def media_tab(request: Request, media_id: str, tab_name: str):
                     parsed = json.loads(row["events_json"])
                 except (json.JSONDecodeError, TypeError):
                     pass
-            event_classes = [{"name": e.get("class", "unknown"), "confidence": e.get("confidence", 0)}
-                            for e in parsed]
+            event_classes = [
+                {"name": e.get("class", "unknown"), "confidence": e.get("confidence", 0)}
+                for e in parsed
+            ]
             events.append({"timestamp": row["timestamp_seconds"], "classes": event_classes})
         html = templates.get_template("partials/tab_audio_events.html").render(
             events=events, format_timestamp=_format_timestamp,
