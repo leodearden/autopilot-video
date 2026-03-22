@@ -408,3 +408,47 @@ class TestTabDetections:
         """Detections tab shows total detection count."""
         resp = detail_client.get("/media/test1/tab/detections")
         assert "5" in resp.text  # 2+2+1 = 5 total detections
+
+
+# ---------------------------------------------------------------------------
+# HTMX tab tests: faces, audio events, embeddings
+# ---------------------------------------------------------------------------
+
+
+class TestTabFaces:
+    """Tests for GET /media/{media_id}/tab/faces."""
+
+    def test_faces_tab_shows_cluster_label(self, detail_client) -> None:
+        """Faces tab shows cluster label 'Alice'."""
+        resp = detail_client.get("/media/test1/tab/faces")
+        assert resp.status_code == 200
+        assert "Alice" in resp.text
+
+    def test_faces_tab_shows_face_count(self, detail_client) -> None:
+        """Faces tab shows count of faces per cluster."""
+        resp = detail_client.get("/media/test1/tab/faces")
+        assert "2" in resp.text  # 2 faces in cluster 1
+
+
+class TestTabAudioEvents:
+    """Tests for GET /media/{media_id}/tab/audio_events."""
+
+    def test_audio_events_tab_shows_event_classes(self, detail_client) -> None:
+        """Audio events tab shows event class names."""
+        resp = detail_client.get("/media/test1/tab/audio_events")
+        assert resp.status_code == 200
+        assert "Speech" in resp.text
+        assert "Ocean waves" in resp.text
+
+
+class TestTabEmbeddings:
+    """Tests for GET /media/{media_id}/tab/embeddings."""
+
+    def test_embeddings_tab_shows_coverage(self, detail_client) -> None:
+        """Embeddings tab shows 'X of Y frames sampled' format."""
+        resp = detail_client.get("/media/test1/tab/embeddings")
+        assert resp.status_code == 200
+        html = resp.text
+        # 3 embeddings out of ~3615 frames (30fps * 120.5s)
+        assert "3" in html  # embedding count
+        assert "%" in html  # percentage
