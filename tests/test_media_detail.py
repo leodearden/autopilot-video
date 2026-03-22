@@ -315,3 +315,50 @@ class TestApiMediaDetections:
         assert classes["person"] == 3
         assert classes["car"] == 1
         assert classes["dog"] == 1
+
+
+# ---------------------------------------------------------------------------
+# GET /media/{media_id} HTML detail page tests
+# ---------------------------------------------------------------------------
+
+
+class TestMediaDetailPage:
+    """Tests for GET /media/{media_id} HTML detail page."""
+
+    def test_returns_404_for_nonexistent_media(self, detail_client) -> None:
+        """GET /media/nonexistent returns 404."""
+        resp = detail_client.get("/media/nonexistent")
+        assert resp.status_code == 404
+
+    def test_returns_200_html(self, detail_client) -> None:
+        """GET /media/test1 returns 200 with text/html."""
+        resp = detail_client.get("/media/test1")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers.get("content-type", "")
+
+    def test_contains_tab_navigation(self, detail_client) -> None:
+        """Detail page has tab navigation labels."""
+        resp = detail_client.get("/media/test1")
+        html = resp.text
+        for tab in ("Metadata", "Transcript", "Detections", "Faces", "Audio Events", "Embeddings"):
+            assert tab in html, f"Tab '{tab}' not found in page"
+
+    def test_extends_base_template(self, detail_client) -> None:
+        """Detail page extends base.html (contains nav)."""
+        resp = detail_client.get("/media/test1")
+        assert "Autopilot Video" in resp.text
+
+    def test_metadata_tab_rendered_by_default(self, detail_client) -> None:
+        """Metadata tab content is rendered inline by default (codec, resolution, duration)."""
+        resp = detail_client.get("/media/test1")
+        html = resp.text
+        assert "h264" in html
+        assert "1920" in html
+        assert "1080" in html
+
+    def test_tabs_have_htmx_attributes(self, detail_client) -> None:
+        """Tabs have hx-get attributes pointing to /media/{id}/tab/{name}."""
+        resp = detail_client.get("/media/test1")
+        html = resp.text
+        assert "hx-get" in html
+        assert "/media/test1/tab/" in html
