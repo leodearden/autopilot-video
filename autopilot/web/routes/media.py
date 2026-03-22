@@ -176,8 +176,10 @@ def media_detail_page(request: Request, media_id: str):
     )
 
 
-def _format_timestamp(seconds: float) -> str:
+def _format_timestamp(seconds: float | None) -> str:
     """Format seconds as HH:MM:SS for transcript display."""
+    if seconds is None:
+        return "--:--:--"
     total = int(seconds)
     h, remainder = divmod(total, 3600)
     m, s = divmod(remainder, 60)
@@ -230,7 +232,12 @@ def media_tab(request: Request, media_id: str, tab_name: str):
         classes: dict[str, int] = {}
         frame_details = []
         for row in det_rows:
-            dets = json.loads(row["detections_json"]) if row.get("detections_json") else []
+            dets: list = []
+            if row.get("detections_json"):
+                try:
+                    dets = json.loads(row["detections_json"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
             total_detections += len(dets)
             frame_details.append({"number": row["frame_number"], "count": len(dets)})
             for d in dets:
@@ -327,7 +334,12 @@ def api_media_transcript(request: Request, media_id: str):
         db.close()
     if transcript is None:
         raise HTTPException(status_code=404, detail="Transcript not found")
-    segments = json.loads(str(transcript["segments_json"])) if transcript["segments_json"] else []
+    segments: list = []
+    if transcript["segments_json"]:
+        try:
+            segments = json.loads(str(transcript["segments_json"]))
+        except (json.JSONDecodeError, TypeError):
+            pass
     return {"language": transcript["language"], "segments": segments}
 
 
@@ -345,7 +357,12 @@ def api_media_detections(request: Request, media_id: str):
     total = 0
     classes: dict[str, int] = {}
     for row in det_rows:
-        dets = json.loads(str(row["detections_json"])) if row["detections_json"] else []
+        dets: list = []
+        if row["detections_json"]:
+            try:
+                dets = json.loads(str(row["detections_json"]))
+            except (json.JSONDecodeError, TypeError):
+                pass
         total += len(dets)
         for d in dets:
             cls = d.get("class", "unknown")
