@@ -219,3 +219,37 @@ class TestGetMediaDetail:
         assert result["audio_events"] == []
         assert result["embeddings"] == []
         assert result["embedding_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# GET /api/media/{media_id} JSON endpoint tests
+# ---------------------------------------------------------------------------
+
+
+class TestApiMediaDetail:
+    """Tests for GET /api/media/{media_id} JSON endpoint."""
+
+    def test_returns_404_for_nonexistent_media(self, detail_client) -> None:
+        """GET /api/media/nonexistent returns 404."""
+        resp = detail_client.get("/api/media/nonexistent")
+        assert resp.status_code == 404
+
+    def test_returns_200_with_detail_keys(self, detail_client) -> None:
+        """GET /api/media/test1 returns 200 with all expected keys."""
+        resp = detail_client.get("/api/media/test1")
+        assert resp.status_code == 200
+        data = resp.json()
+        for key in ("media", "transcript", "detections", "faces", "audio_events", "embeddings"):
+            assert key in data, f"Missing key: {key}"
+
+    def test_media_section_has_expected_fields(self, detail_client) -> None:
+        """Media section contains codec, fps, resolution, etc."""
+        resp = detail_client.get("/api/media/test1")
+        data = resp.json()
+        media = data["media"]
+        assert media["codec"] == "h264"
+        assert media["fps"] == 30.0
+        assert media["resolution_w"] == 1920
+        assert media["resolution_h"] == 1080
+        assert media["audio_channels"] == 2
+        assert media["sha256_prefix"] == "abc123def456"
