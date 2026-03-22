@@ -364,3 +364,70 @@ class TestHtmxPartial:
         """Resolution displayed as WxH."""
         resp = media_client.get("/api/media", headers={"HX-Request": "true"})
         assert "1920x1080" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Integration tests
+# ---------------------------------------------------------------------------
+
+
+class TestMediaIntegration:
+    """Integration tests for the media list feature."""
+
+    def test_media_list_empty_database(self, tmp_path: Path) -> None:
+        """GET /media with no media files shows empty state."""
+        from autopilot.web.app import create_app
+        from starlette.testclient import TestClient
+
+        db_path = str(tmp_path / "catalog.db")
+        CatalogDB(db_path).close()  # just create schema
+        app = create_app(db_path)
+        client = TestClient(app)
+        resp = client.get("/media")
+        assert resp.status_code == 200
+        assert "No media files found" in resp.text
+
+    def test_media_list_pagination_navigation(self, tmp_path: Path) -> None:
+        """Insert 60 media files, verify first page shows 50, pagination has 2 pages."""
+        from autopilot.web.app import create_app
+        from starlette.testclient import TestClient
+
+        db_path = str(tmp_path / "catalog.db")
+        db = CatalogDB(db_path)
+        db.conn.isolation_level = None
+        for i in range(60):
+            db.insert_media(f"m{i:03d}", f"/v/clip_{i:03d}.mp4",
+                            created_at=f"2025-01-{(i % 28) + 1:02d}T00:00:00")
+        db.close()
+
+        app = create_app(db_path)
+        client = TestClient(app)
+        resp = client.get("/media")
+        assert resp.status_code == 200
+        # JSON check for total
+        api_resp = client.get("/api/media?per_page=50")
+        data = api_resp.json()
+        assert data["total"] == 60
+        assert len(data["items"]) == 50
+
+    def test_media_list_combined_filters(self, media_client, seeded_db: CatalogDB) -> None:
+        """Filter by status AND text search simultaneously."""
+        # Seed one more item that's analyzed with "beach" in name
+        seeded_db.insert_media("beach_a", "/video/beach_analyzed.mp4", status="analyzed")
+        resp = media_client.get("/api/media?status=analyzed&q=beach")
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["items"][0]["id"] == "beach_a"
+
+    def test_query_media_date_range_filter(self, catalog_db: CatalogDB) -> None:
+        """Filter by date range (date_from, date_to)."""
+        catalog_db.insert_media("jan", "/v/jan.mp4", created_at="2025-01-15T00:00:00")
+        catalog_db.insert_media("feb", "/v/feb.mp4", created_at="2025-02-15T00:00:00")
+        catalog_db.insert_media("mar", "/v/mar.mp4", created_at="2025-03-15T00:00:00")
+
+        result = catalog_db.query_media(
+            date_from="2025-02-01T00:00:00",
+            date_to="2025-02-28T23:59:59",
+        )
+        assert result["total"] == 1
+        assert result["items"][0]["id"] == "feb"
