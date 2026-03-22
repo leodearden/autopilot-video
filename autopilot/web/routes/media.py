@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -154,3 +155,46 @@ def api_media_detail(request: Request, media_id: str):
     if detail is None:
         raise HTTPException(status_code=404, detail="Media not found")
     return detail
+
+
+@router.get("/api/media/{media_id}/transcript")
+def api_media_transcript(request: Request, media_id: str):
+    """Return parsed transcript for a media file."""
+    db = _get_db(request)
+    try:
+        media = db.get_media(media_id)
+        if media is None:
+            raise HTTPException(status_code=404, detail="Media not found")
+        transcript = db.get_transcript(media_id)
+    finally:
+        db.close()
+    if transcript is None:
+        raise HTTPException(status_code=404, detail="Transcript not found")
+    segments = json.loads(transcript["segments_json"]) if transcript["segments_json"] else []
+    return {"language": transcript["language"], "segments": segments}
+
+
+@router.get("/api/media/{media_id}/detections")
+def api_media_detections(request: Request, media_id: str):
+    """Return aggregated detection summary for a media file."""
+    db = _get_db(request)
+    try:
+        media = db.get_media(media_id)
+        if media is None:
+            raise HTTPException(status_code=404, detail="Media not found")
+        det_rows = db.get_detections_for_media(media_id)
+    finally:
+        db.close()
+    total = 0
+    classes: dict[str, int] = {}
+    for row in det_rows:
+        dets = json.loads(row["detections_json"]) if row["detections_json"] else []
+        total += len(dets)
+        for d in dets:
+            cls = d.get("class", "unknown")
+            classes[cls] = classes.get(cls, 0) + 1
+    return {
+        "total_detections": total,
+        "classes": classes,
+        "frame_count": len(det_rows),
+    }
