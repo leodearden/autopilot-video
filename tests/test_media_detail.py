@@ -253,3 +253,65 @@ class TestApiMediaDetail:
         assert media["resolution_h"] == 1080
         assert media["audio_channels"] == 2
         assert media["sha256_prefix"] == "abc123def456"
+
+
+# ---------------------------------------------------------------------------
+# GET /api/media/{media_id}/transcript and /detections tests
+# ---------------------------------------------------------------------------
+
+
+class TestApiMediaTranscript:
+    """Tests for GET /api/media/{media_id}/transcript."""
+
+    def test_returns_404_for_missing_media(self, detail_client) -> None:
+        """GET /api/media/nonexistent/transcript returns 404."""
+        resp = detail_client.get("/api/media/nonexistent/transcript")
+        assert resp.status_code == 404
+
+    def test_returns_200_with_segments(self, detail_client) -> None:
+        """GET /api/media/test1/transcript returns parsed segments and language."""
+        resp = detail_client.get("/api/media/test1/transcript")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["language"] == "en"
+        assert "segments" in data
+        assert len(data["segments"]) == 3
+
+    def test_segment_fields(self, detail_client) -> None:
+        """Each segment has start, end, text, speaker fields."""
+        resp = detail_client.get("/api/media/test1/transcript")
+        data = resp.json()
+        seg = data["segments"][0]
+        assert "start" in seg
+        assert "end" in seg
+        assert "text" in seg
+        assert "speaker" in seg
+
+
+class TestApiMediaDetections:
+    """Tests for GET /api/media/{media_id}/detections."""
+
+    def test_returns_404_for_missing_media(self, detail_client) -> None:
+        """GET /api/media/nonexistent/detections returns 404."""
+        resp = detail_client.get("/api/media/nonexistent/detections")
+        assert resp.status_code == 404
+
+    def test_returns_200_with_summary(self, detail_client) -> None:
+        """GET /api/media/test1/detections returns detection summary."""
+        resp = detail_client.get("/api/media/test1/detections")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "total_detections" in data
+        assert data["total_detections"] == 5  # 2+2+1
+        assert "classes" in data
+        assert "frame_count" in data
+        assert data["frame_count"] == 3
+
+    def test_per_class_counts(self, detail_client) -> None:
+        """Detection summary has per-class counts."""
+        resp = detail_client.get("/api/media/test1/detections")
+        data = resp.json()
+        classes = data["classes"]
+        assert classes["person"] == 3
+        assert classes["car"] == 1
+        assert classes["dog"] == 1
