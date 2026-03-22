@@ -167,3 +167,119 @@ class TestQueryMedia:
         assert m2["has_embeddings"] is False
         assert m2["has_audio_events"] is False
         assert m2["has_captions"] is False
+
+
+# ---------------------------------------------------------------------------
+# API endpoint fixtures (real DB file so the app opens its own connection)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def media_db(tmp_path: Path) -> CatalogDB:
+    """Create a CatalogDB backed by a real file for web endpoint tests."""
+    db_path = str(tmp_path / "catalog.db")
+    db = CatalogDB(db_path)
+    db.conn.isolation_level = None  # autocommit
+    db._test_path = db_path  # stash for fixture chaining
+    return db
+
+
+@pytest.fixture
+def seeded_db(media_db: CatalogDB) -> CatalogDB:
+    """media_db pre-seeded with 5 media files + analysis data on m0."""
+    for i in range(5):
+        mid = f"m{i}"
+        media_db.insert_media(
+            mid,
+            f"/video/clip_{i:03d}.mp4",
+            duration_seconds=float(60 + i),
+            resolution_w=1920,
+            resolution_h=1080,
+            created_at=f"2025-01-{(i + 1):02d}T00:00:00",
+            status="ingested" if i % 2 == 0 else "analyzed",
+        )
+    # Analysis data on m0
+    media_db.upsert_transcript("m0", "[]", "en")
+    media_db.batch_insert_detections([("m0", 0, "[]")])
+    return media_db
+
+
+@pytest.fixture
+def media_app(seeded_db: CatalogDB):
+    """FastAPI app pointing at the seeded DB."""
+    from autopilot.web.app import create_app
+
+    return create_app(seeded_db._test_path)
+
+
+@pytest.fixture
+def media_client(media_app):
+    """TestClient for media endpoint tests."""
+    from starlette.testclient import TestClient
+
+    return TestClient(media_app)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/media JSON tests
+# ---------------------------------------------------------------------------
+
+
+class TestApiMediaJson:
+    """Tests for GET /api/media JSON endpoint."""
+
+    def test_api_media_returns_json(self, media_client) -> None:
+        """GET /api/media returns 200 with JSON containing 'items' and 'total'."""
+        resp = media_client.get("/api/media")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "items" in data
+        assert "total" in data
+        assert data["total"] == 5
+
+    def test_api_media_pagination_params(self, media_client) -> None:
+        """?page=2&per_page=2 returns correct subset."""
+        resp = media_client.get("/api/media?page=2&per_page=2")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["items"]) == 2
+        assert data["total"] == 5
+
+    def test_api_media_filter_by_status(self, media_client) -> None:
+        """?status=analyzed filters correctly."""
+        resp = media_client.get("/api/media?status=analyzed")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert all(item["status"] == "analyzed" for item in data["items"])
+
+    def test_api_media_text_search(self, media_client, seeded_db: CatalogDB) -> None:
+        """?q=clip_000 filters by filename substring."""
+        resp = media_client.get("/api/media?q=clip_000")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert "clip_000" in data["items"][0]["file_path"]
+
+    def test_api_media_sort(self, media_client) -> None:
+        """?sort=file_path&order=asc returns sorted results."""
+        resp = media_client.get("/api/media?sort=file_path&order=asc")
+        assert resp.status_code == 200
+        data = resp.json()
+        paths = [item["file_path"] for item in data["items"]]
+        assert paths == sorted(paths)
+
+    def test_api_media_items_have_analysis_flags(self, media_client) -> None:
+        """Each item has has_transcript, has_detections, etc. boolean fields."""
+        resp = media_client.get("/api/media")
+        data = resp.json()
+        item = data["items"][0]
+        for flag in (
+            "has_transcript",
+            "has_detections",
+            "has_faces",
+            "has_embeddings",
+            "has_audio_events",
+            "has_captions",
+        ):
+            assert flag in item, f"Missing flag: {flag}"
+            assert isinstance(item[flag], bool), f"{flag} should be bool"
