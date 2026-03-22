@@ -141,8 +141,8 @@
       "id": "step-16",
       "type": "impl",
       "description": "Final polish: handle edge cases (empty JSON arrays, null optional fields, zero embeddings yielding 0% coverage, missing face cluster records). Ensure all tests pass end-to-end. Verify templates render gracefully with missing data.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "b358ed3"
     }
   ],
   "design_decisions": [
