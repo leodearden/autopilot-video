@@ -8,7 +8,6 @@ import pytest
 
 from autopilot.db import CatalogDB
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -175,12 +174,16 @@ class TestQueryMedia:
 
 
 @pytest.fixture
-def media_db(tmp_path: Path) -> CatalogDB:
+def media_db_path(tmp_path: Path) -> str:
+    """Return the path for a test catalog DB file."""
+    return str(tmp_path / "catalog.db")
+
+
+@pytest.fixture
+def media_db(media_db_path: str) -> CatalogDB:
     """Create a CatalogDB backed by a real file for web endpoint tests."""
-    db_path = str(tmp_path / "catalog.db")
-    db = CatalogDB(db_path)
+    db = CatalogDB(media_db_path)
     db.conn.isolation_level = None  # autocommit
-    db._test_path = db_path  # stash for fixture chaining
     return db
 
 
@@ -205,11 +208,11 @@ def seeded_db(media_db: CatalogDB) -> CatalogDB:
 
 
 @pytest.fixture
-def media_app(seeded_db: CatalogDB):
+def media_app(seeded_db: CatalogDB, media_db_path: str):
     """FastAPI app pointing at the seeded DB."""
     from autopilot.web.app import create_app
 
-    return create_app(seeded_db._test_path)
+    return create_app(media_db_path)
 
 
 @pytest.fixture
@@ -376,8 +379,9 @@ class TestMediaIntegration:
 
     def test_media_list_empty_database(self, tmp_path: Path) -> None:
         """GET /media with no media files shows empty state."""
-        from autopilot.web.app import create_app
         from starlette.testclient import TestClient
+
+        from autopilot.web.app import create_app
 
         db_path = str(tmp_path / "catalog.db")
         CatalogDB(db_path).close()  # just create schema
@@ -389,8 +393,9 @@ class TestMediaIntegration:
 
     def test_media_list_pagination_navigation(self, tmp_path: Path) -> None:
         """Insert 60 media files, verify first page shows 50, pagination has 2 pages."""
-        from autopilot.web.app import create_app
         from starlette.testclient import TestClient
+
+        from autopilot.web.app import create_app
 
         db_path = str(tmp_path / "catalog.db")
         db = CatalogDB(db_path)
