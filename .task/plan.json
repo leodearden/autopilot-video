@@ -1,30 +1,33 @@
 {
-  "task_id": "43",
-  "title": "Media list page",
+  "task_id": "44",
+  "title": "Media detail page",
   "files": [
     "autopilot/web/routes/media.py",
-    "autopilot/web/routes/__init__.py",
-    "autopilot/web/app.py",
-    "autopilot/web/templates/media/list.html",
+    "autopilot/web/templates/media/detail.html",
     "autopilot/web/templates/partials/media_row.html",
+    "autopilot/web/templates/partials/tab_metadata.html",
+    "autopilot/web/templates/partials/tab_transcript.html",
+    "autopilot/web/templates/partials/tab_detections.html",
+    "autopilot/web/templates/partials/tab_faces.html",
+    "autopilot/web/templates/partials/tab_audio_events.html",
+    "autopilot/web/templates/partials/tab_embeddings.html",
     "autopilot/db.py",
-    "tests/test_media_list.py"
+    "tests/test_media_detail.py"
   ],
   "modules": [
     "autopilot/web/routes",
     "autopilot/web/templates/media",
     "autopilot/web/templates/partials",
-    "autopilot/web",
-    "autopilot",
+    "autopilot/db.py",
     "tests"
   ],
-  "analysis": "Task requires building a media browser at /media (HTML page) and /api/media (JSON endpoint) with sortable, filterable, paginated table of all ingested media files, plus analysis badges.\n\nExisting infrastructure:\n- autopilot/db.py has CatalogDB with media_files CRUD (insert_media, get_media, list_all_media, list_by_status, update_media_status) and per-media has_* methods (has_transcript, has_detections, has_faces, has_embeddings, has_audio_events). No has_captions method exists yet.\n- media_files schema: id TEXT PK, file_path TEXT, sha256_prefix TEXT, codec TEXT, resolution_w INT, resolution_h INT, fps REAL, duration_seconds REAL, created_at TEXT, gps_lat REAL, gps_lon REAL, audio_channels INT, status TEXT DEFAULT 'ingested', metadata_json TEXT.\n- Related tables: transcripts, detections, faces, clip_embeddings, audio_events, captions \u2014 all keyed by media_id.\n- autopilot/web/app.py: create_app(db_path) factory with Jinja2Templates, StaticFiles, currently only registers sse_router.\n- base.html: dark-mode Tailwind CSS + HTMX template with nav including /media link.\n- tests/test_web_app.py and tests/test_sse.py show patterns: app fixture using tmp_path for real DB, TestClient.\n- No list_media_paginated or query method exists \u2014 need to add one to CatalogDB.\n\nApproach:\n1. Add has_captions() convenience method to CatalogDB (mirrors existing has_* pattern).\n2. Add a query_media() method to CatalogDB that supports filtering, sorting, pagination, and returns analysis coverage flags via efficient LEFT JOIN subqueries (avoids N+1).\n3. Create autopilot/web/routes/media.py with APIRouter containing GET /media (HTML) and GET /api/media (JSON).\n4. Create templates: media/list.html (extends base.html) and partials/media_row.html (for HTMX partial swaps).\n5. Register media_router in app.py alongside sse_router.\n6. HTMX: filter changes swap the table body via hx-get targeting /api/media with Accept: text/html or a dedicated partial endpoint.",
+  "analysis": "Task 44 builds the media detail view at /media/{id} with HTMX-powered tabbed UI displaying metadata, transcript, detections, faces, audio events, and embeddings. The existing codebase provides: (1) CatalogDB with all needed query methods: get_media(), get_transcript(), get_detections_for_media(), get_faces_for_media(), get_audio_events_for_media(), get_embeddings_for_media(), get_face_clusters(), get_face_cluster_by_id(). (2) media.py routes with /media list page and /api/media JSON endpoint following _get_db(request) pattern. (3) Jinja2 templates extending base.html with Tailwind CSS dark theme + HTMX. (4) Test patterns in test_media_list.py showing seeded DB fixtures and TestClient testing for both JSON API and HTML endpoints.\n\nApproach: Add new routes to media.py for the detail page + API endpoints. CatalogDB already has all needed per-table query methods; add a get_media_detail() convenience aggregator. Templates use HTMX tab switching: clicking a tab loads a partial via hx-get to /media/{id}/tab/{name}. The detail.html page renders metadata tab by default. Each tab is a separate Jinja2 partial. Three JSON API endpoints (/api/media/{id}, /api/media/{id}/transcript, /api/media/{id}/detections) serve programmatic access. The media_row.html partial gets updated to link filenames to the detail page. Detection/transcript/audio data is parsed from JSON in Python, not templates.",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Create directory structure: autopilot/web/templates/media/ and autopilot/web/templates/partials/ directories",
+      "description": "Create test file tests/test_media_detail.py with shared fixtures: catalog_db (from conftest), media_db_path/media_db (file-backed DB), detail_seeded_db (media file 'test1' with full metadata including codec='h264', fps=30.0, resolution 1920x1080, gps, sha256_prefix, audio_channels=2, metadata_json with extra fields, plus: transcript with segments_json containing 3 segments with timestamps/speakers, detections across 3 frames with objects like 'person'/'car'/'dog', 2 faces on separate frames assigned to cluster_id=1, face_cluster with label='Alice', 2 audio events with events_json containing classified events, 3 clip_embeddings, and a second media 'test2' with no analysis data), detail_app, detail_client.",
       "status": "done",
-      "commit": "64ea075",
+      "commit": "49d46ff",
       "tests": []
     }
   ],
@@ -32,165 +35,183 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write test for CatalogDB.has_captions(media_id) in tests/test_media_list.py \u2014 mirrors existing has_transcript/has_detections pattern. Test returns False when no captions, True after inserting a caption for the media_id.",
+      "description": "Write failing tests for CatalogDB.get_media_detail(media_id) in tests/test_media_detail.py: (1) returns None for non-existent media_id; (2) returns dict with 'media' key containing all media_files columns for existing media; (3) includes 'transcript' key with parsed segments list and language; (4) includes 'detections' key with list of detection rows; (5) includes 'faces' key with list of face rows; (6) includes 'audio_events' key with list of audio event rows; (7) includes 'embeddings' key with count of embeddings; (8) returns empty lists/None for media with no analysis data (test2).",
       "status": "done",
-      "commit": "9081b34"
+      "commit": "c787738"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Add has_captions(media_id) method to CatalogDB in autopilot/db.py \u2014 SELECT 1 FROM captions WHERE media_id = ? LIMIT 1, returns bool. Follows exact pattern of has_transcript, has_detections, etc.",
+      "description": "Implement CatalogDB.get_media_detail(media_id) in autopilot/db.py. Returns None if media_id not found. Otherwise returns dict with keys: 'media' (from get_media), 'transcript' (from get_transcript, or None), 'detections' (from get_detections_for_media), 'faces' (from get_faces_for_media), 'audio_events' (from get_audio_events_for_media), 'embeddings' (from get_embeddings_for_media), 'embedding_count' (len of embeddings list), 'face_clusters' (dict mapping cluster_id to cluster info).",
       "status": "done",
-      "commit": "415243f"
+      "commit": "4f7e39c"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write test for CatalogDB.query_media() method in tests/test_media_list.py. Tests: (1) test_query_media_returns_all_when_no_filters \u2014 insert 3 media, call query_media(), verify all 3 returned with total_count=3; (2) test_query_media_pagination \u2014 insert 5 media, call with per_page=2, page=2, verify 2 items returned and total_count=5; (3) test_query_media_text_filter \u2014 insert media with various filenames, filter with q='beach', verify only matching rows returned; (4) test_query_media_status_filter \u2014 insert media with different statuses, filter by status='analyzed'; (5) test_query_media_sort_by_filename \u2014 verify ascending/descending sort on filename; (6) test_query_media_sort_by_created_at \u2014 verify sort by created_at; (7) test_query_media_analysis_flags \u2014 insert media with/without transcript/detections/faces/embeddings/audio_events/captions, verify has_* flags are correct booleans in results.",
+      "description": "Write failing tests for GET /api/media/{media_id} JSON endpoint: (1) returns 404 for non-existent media_id; (2) returns 200 with JSON containing 'media', 'transcript', 'detections', 'faces', 'audio_events', 'embeddings' keys for existing media; (3) media section has all expected fields (codec, fps, resolution, etc.).",
       "status": "done",
-      "commit": "9e6d444"
+      "commit": "060966e"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Add query_media() method to CatalogDB that accepts q (text search on file_path), status, sort (column name), order (asc/desc), page, per_page. Uses a single SQL query with LEFT JOIN subqueries to compute analysis flags (has_transcript, has_detections, has_faces, has_embeddings, has_audio_events, has_captions) efficiently. Returns dict with 'items' list and 'total' count. Whitelist sort columns to prevent SQL injection.",
+      "description": "Implement GET /api/media/{media_id} route in media.py. Uses _get_db(request), calls db.get_media_detail(media_id), returns 404 HTTPException if None, otherwise returns the detail dict as JSON.",
       "status": "done",
-      "commit": "6bfb44f"
+      "commit": "e35a88d"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write tests for GET /api/media JSON endpoint in tests/test_media_list.py. Create app/client fixtures with pre-populated media data. Tests: (1) test_api_media_returns_json \u2014 GET /api/media returns 200 with JSON containing 'items' and 'total'; (2) test_api_media_pagination_params \u2014 verify ?page=2&per_page=2 returns correct subset; (3) test_api_media_filter_by_status \u2014 verify ?status=analyzed filters correctly; (4) test_api_media_text_search \u2014 verify ?q=beach filters by filename; (5) test_api_media_sort \u2014 verify ?sort=filename&order=asc returns sorted results; (6) test_api_media_items_have_analysis_flags \u2014 verify each item has has_transcript, has_detections, etc. boolean fields.",
+      "description": "Write failing tests for GET /api/media/{media_id}/transcript: (1) returns 404 for missing media; (2) returns 200 with parsed segments list and language for media with transcript; (3) each segment has 'start', 'end', 'text', 'speaker' fields. And GET /api/media/{media_id}/detections: (1) returns 404 for missing media; (2) returns 200 with detection summary including 'total_detections' count, 'classes' dict with per-class counts, 'frame_count' (number of frames with detections).",
       "status": "done",
-      "commit": "b90ac67"
+      "commit": "59adcbb"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Create autopilot/web/routes/media.py with APIRouter. Implement GET /api/media endpoint that accepts query params (q, status, page, per_page, sort, order), creates CatalogDB from request.app.state.db_path, calls query_media(), returns JSON response. Update routes/__init__.py to export media_router. Register in app.py.",
+      "description": "Implement GET /api/media/{media_id}/transcript and GET /api/media/{media_id}/detections routes. Transcript endpoint parses segments_json into list of segment dicts. Detections endpoint aggregates across all frames: parses each frame's detections_json, counts total detections, builds per-class counts, and reports frame count.",
       "status": "done",
-      "commit": "923c3df"
+      "commit": "1dc41c7"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write tests for GET /media HTML page in tests/test_media_list.py. Tests: (1) test_media_page_returns_html \u2014 GET /media returns 200 with text/html content-type; (2) test_media_page_extends_base \u2014 verify response contains nav elements from base.html (e.g., 'Autopilot Video'); (3) test_media_page_contains_table \u2014 verify response contains a table element with expected column headers (Filename, Duration, Resolution, etc.); (4) test_media_page_contains_filter_controls \u2014 verify filter inputs exist (text search, status dropdown); (5) test_media_page_has_htmx_attributes \u2014 verify hx-get and hx-target attributes exist on filter elements for partial swap.",
+      "description": "Write failing tests for GET /media/{media_id} HTML detail page: (1) returns 404 for non-existent media_id; (2) returns 200 with text/html for existing media; (3) contains tab navigation with labels 'Metadata', 'Transcript', 'Detections', 'Faces', 'Audio Events', 'Embeddings'; (4) extends base.html (contains 'Autopilot Video' nav); (5) metadata tab content rendered by default (shows codec, resolution, duration); (6) tabs have hx-get attributes pointing to /media/{id}/tab/{name}.",
       "status": "done",
-      "commit": "aedd346"
+      "commit": "31db1f0"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Create autopilot/web/templates/media/list.html extending base.html. Include: page title 'Media', sortable table with columns (Thumbnail placeholder, Filename, Duration, Resolution, Created, Location, Status, Analysis badges), filter controls (text search input, status dropdown, date range inputs), pagination controls. Add hx-get='/api/media' on filter form targeting table body. Create autopilot/web/templates/partials/media_row.html for a single table row. Implement GET /media route in media.py that renders list.html with initial data.",
+      "description": "Implement GET /media/{media_id} route and create templates/media/detail.html extending base.html. Tab navigation bar with HTMX hx-get attributes. Default active tab is metadata. Create partials/tab_metadata.html showing: codec, FPS, resolution (WxH), audio channels, duration (formatted), file path, SHA-256 prefix, dedup status, GPS coordinates, created_at timestamp, and parsed metadata_json fields.",
       "status": "done",
-      "commit": "eec93f9"
+      "commit": "3b8c847"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write tests for HTMX partial response in tests/test_media_list.py. Tests: (1) test_api_media_htmx_returns_partial \u2014 GET /api/media with HX-Request:true header returns HTML table rows (partial) not full page; (2) test_partial_media_row_has_analysis_badges \u2014 verify partial response contains analysis badge icons/indicators for media with analysis data; (3) test_partial_media_row_duration_format \u2014 verify duration is formatted as HH:MM:SS; (4) test_partial_media_row_resolution_display \u2014 verify resolution displayed as WxH.",
+      "description": "Write failing tests for HTMX tab endpoints GET /media/{media_id}/tab/{tab_name}: (1) transcript tab returns HTML with timestamped lines like '[00:00:10]' and speaker labels; (2) transcript tab shows language indicator; (3) detections tab returns HTML with object class names and counts; (4) detections tab shows total detection count and frame coverage.",
       "status": "done",
-      "commit": "90f268f"
+      "commit": "48cc833"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Implement HTMX partial support in media.py: when HX-Request header is present on GET /api/media, render partials/media_row.html for each item and return HTML fragment instead of JSON. Add duration formatting helper (seconds -> HH:MM:SS) and resolution formatting to the template context. Ensure analysis badges render as icons/indicators based on has_* flags. Verify all tests pass.",
+      "description": "Implement HTMX tab endpoint GET /media/{media_id}/tab/{tab_name} in media.py that dispatches to tab-specific rendering logic. Create partials/tab_transcript.html (scrollable, time-stamped '[HH:MM:SS] Speaker: text' lines with language indicator) and partials/tab_detections.html (summary with top classes, total count, frame coverage, expandable grouped list by object class).",
       "status": "done",
-      "commit": "eec93f9"
+      "commit": "c6a4971"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write integration tests in tests/test_media_list.py. Tests: (1) test_media_list_empty_database \u2014 GET /media with no media files shows empty state; (2) test_media_list_pagination_navigation \u2014 insert 60 media files, verify first page shows 50, pagination indicates 2 pages; (3) test_media_list_combined_filters \u2014 filter by status AND text search simultaneously; (4) test_query_media_date_range_filter \u2014 filter by date range (date_from, date_to).",
+      "description": "Write failing tests for remaining HTMX tab partials: (1) faces tab shows cluster grouping with cluster label 'Alice' and face count; (2) audio events tab shows timeline entries with event class names; (3) embeddings tab shows 'X of Y frames sampled (Z%)' format.",
       "status": "done",
-      "commit": "09164e5"
+      "commit": "3c98e3a"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Add date range filtering support to query_media (date_from, date_to params filtering on created_at). Add empty state display to list.html template. Ensure pagination navigation is correct with page count. Final cleanup and verification that all tests pass.",
+      "description": "Create partials/tab_faces.html (grid grouped by cluster_id, showing cluster label from face_clusters table, count of appearances per cluster), partials/tab_audio_events.html (timeline-style list with parsed events_json, dominant event per time window), and partials/tab_embeddings.html (embedding count vs estimated total frames as 'X of Y frames sampled (Z%)').",
       "status": "done",
-      "commit": "09164e5"
+      "commit": "3eb386a"
+    },
+    {
+      "id": "step-13",
+      "type": "test",
+      "description": "Write failing test: media_row.html partial wraps the filename in a link to /media/{item.id} detail page.",
+      "status": "done",
+      "commit": "d9d5a43"
+    },
+    {
+      "id": "step-14",
+      "type": "impl",
+      "description": "Update partials/media_row.html to wrap the filename text in an <a href='/media/{{ item.id }}'> link styled with hover effect.",
+      "status": "done",
+      "commit": "eb8fcda"
+    },
+    {
+      "id": "step-15",
+      "type": "test",
+      "description": "Write integration test: insert media with ALL analysis types (transcript, detections, faces with clusters, audio events, embeddings, captions), verify: detail page loads with 200, all tab endpoints return 200 with proper content, all 3 JSON API endpoints return correct structured data, edge case of media with no analysis returns empty/null sections gracefully.",
+      "status": "done",
+      "commit": "8dd3a3c"
+    },
+    {
+      "id": "step-16",
+      "type": "impl",
+      "description": "Final polish: handle edge cases (empty JSON arrays, null optional fields, zero embeddings yielding 0% coverage, missing face cluster records). Ensure all tests pass end-to-end. Verify templates render gracefully with missing data.",
+      "status": "pending",
+      "commit": null
     }
   ],
   "design_decisions": [
     {
-      "decision": "Add query_media() method to CatalogDB rather than building SQL in the route handler",
-      "rationale": "Keeps database logic in the DB layer consistent with existing patterns (list_all_media, list_by_status, list_jobs). The route handler stays thin, just mapping query params to method args. Also makes the query testable independently of FastAPI."
+      "decision": "HTMX tab loading via dedicated /media/{id}/tab/{name} endpoint rather than embedding all tabs in initial page load",
+      "rationale": "Matches the HTMX pattern already used in /api/media for partial swaps. Lazy-loads tab content on click, reducing initial page weight. Each tab is a separate Jinja2 partial for clean separation. The metadata tab is inlined in the initial render since it's the default."
     },
     {
-      "decision": "Use LEFT JOIN subqueries for analysis flags instead of N+1 has_* calls",
-      "rationale": "The task explicitly requires efficient SQL. Using EXISTS subqueries in a single query (SELECT m.*, EXISTS(SELECT 1 FROM transcripts WHERE media_id = m.id) as has_transcript, ...) avoids N+1 queries when listing 50 items per page."
+      "decision": "Add get_media_detail() to CatalogDB as a convenience aggregator rather than making multiple DB calls in route handlers",
+      "rationale": "Keeps route handlers thin (matching existing pattern in media.py). Single method aggregates all related data, reusable by both the HTML detail page and the JSON API endpoint. Avoids duplicating query logic across 3+ route handlers."
     },
     {
-      "decision": "Dual response mode for /api/media: JSON by default, HTML partial when HX-Request header present",
-      "rationale": "Keeps a single endpoint for both initial page load (JSON used by template) and HTMX partial swaps (returns rendered table rows). The HX-Request header is set automatically by HTMX. This avoids creating a separate /api/media/partial endpoint."
+      "decision": "Parse JSON (detections_json, segments_json, events_json) in Python route handler, not in Jinja2 templates",
+      "rationale": "Templates should receive pre-processed data. JSON parsing in Jinja2 is fragile and untestable. Route handlers parse JSON and pass structured Python dicts/lists to templates."
     },
     {
-      "decision": "Whitelist sort columns to prevent SQL injection",
-      "rationale": "Since sort column names are interpolated into SQL (can't use parameterized queries for column names), we validate against an explicit whitelist: {filename, duration_seconds, created_at, resolution_w, status}."
+      "decision": "Use 404 HTTPException for missing media_id across all endpoints",
+      "rationale": "Standard REST pattern. Both JSON API and HTML endpoints return 404 when media_id doesn't exist. Consistent with typical FastAPI patterns."
     },
     {
-      "decision": "Use file_path for filename display and search rather than adding a separate filename column",
-      "rationale": "media_files schema has file_path but no filename column. We'll extract the filename portion in SQL (or Python) for display, and text search will use LIKE on file_path. This avoids schema changes."
+      "decision": "Estimate total frames from FPS * duration for embedding coverage calculation",
+      "rationale": "CatalogDB stores fps and duration_seconds on media_files. Total frames = fps * duration gives approximate total. Avoids needing actual frame count metadata that doesn't exist in the schema."
     },
     {
-      "decision": "Render analysis badges as simple CSS-styled spans with title attributes rather than SVG icons",
-      "rationale": "The task says placeholder icons. Using styled text badges (e.g., 'ASR', 'YOLO', 'Face', 'Emb', 'Audio', 'Cap') with color coding is simpler to implement and test than SVG icons, while still conveying the information clearly."
+      "decision": "Detection summary aggregates by parsing detections_json across all frames in Python",
+      "rationale": "Each frame's detections_json contains a list of detection dicts. Aggregating in Python (iterating all frames, counting classes) is simpler and more flexible than doing it in SQL with JSON functions. Frame counts are typically modest (hundreds, not millions)."
     },
     {
-      "decision": "Create tests in a single new file tests/test_media_list.py rather than adding to test_web_app.py",
-      "rationale": "test_web_app.py covers the app skeleton and base template. Media list is a substantial feature with its own DB methods, endpoints, and templates \u2014 a dedicated test file keeps things organized and avoids merge conflicts."
+      "decision": "Single tab dispatch endpoint /media/{id}/tab/{name} rather than per-tab endpoints",
+      "rationale": "Reduces route proliferation. One route with a path parameter dispatches to the right template. Invalid tab names return 404. Keeps the router clean."
     }
   ],
   "reuse": [
     {
-      "what": "CatalogDB has_* pattern (has_transcript, has_detections, has_faces, has_embeddings, has_audio_events)",
-      "where": "autopilot/db.py lines 894-940",
-      "how": "Follow exact same pattern for has_captions. Also reference these as the canonical analysis flags to expose in query_media results."
+      "what": "CatalogDB per-table query methods: get_media(), get_transcript(), get_detections_for_media(), get_faces_for_media(), get_audio_events_for_media(), get_embeddings_for_media(), get_face_clusters(), get_face_cluster_by_id()",
+      "where": "autopilot/db.py",
+      "how": "All needed DB query methods already exist. get_media_detail() composes them. No new SQL needed for individual table queries."
     },
     {
-      "what": "CatalogDB.insert_media() method",
-      "where": "autopilot/db.py line 269",
-      "how": "Used in tests to seed the database with mock media files with varying attributes (status, resolution, duration, GPS, created_at)."
+      "what": "_get_db(request) pattern and _format_duration() helper",
+      "where": "autopilot/web/routes/media.py lines 15-29",
+      "how": "Reuse _get_db() for obtaining CatalogDB from request.app.state.db_path. Reuse _format_duration() for timestamp formatting in transcript tab."
     },
     {
-      "what": "CatalogDB upsert methods (upsert_transcript, upsert_caption, batch_insert_detections, batch_insert_faces, batch_insert_embeddings, batch_insert_audio_events)",
-      "where": "autopilot/db.py various",
-      "how": "Used in tests to seed analysis data so that analysis badges can be verified."
-    },
-    {
-      "what": "app.state.db_path + _get_db(request) pattern",
-      "where": "autopilot/web/routes/sse.py line 21-23",
-      "how": "Reuse exact same _get_db helper pattern for media routes to create CatalogDB from app state."
-    },
-    {
-      "what": "test_web_app.py app/client fixture pattern",
-      "where": "tests/test_web_app.py lines 14-34",
-      "how": "Follow same pattern: app fixture creates FastAPI via create_app(tmp_path), client fixture wraps with TestClient."
-    },
-    {
-      "what": "test_sse.py real DB fixture pattern",
-      "where": "tests/test_sse.py lines 17-36",
-      "how": "Follow same pattern: create CatalogDB with real file path (not :memory:) so the app can open its own connection, use autocommit for test convenience."
-    },
-    {
-      "what": "base.html template with block content/scripts",
+      "what": "base.html template with Tailwind dark theme, HTMX CDN, block structure",
       "where": "autopilot/web/templates/base.html",
-      "how": "media/list.html extends base.html, fills {% block title %}, {% block content %}, and {% block scripts %} blocks."
+      "how": "detail.html extends base.html exactly like list.html does via {% extends 'base.html' %}, filling {% block title %}, {% block content %}, {% block scripts %}."
     },
     {
-      "what": "Tailwind CSS dark mode classes",
-      "where": "autopilot/web/templates/base.html and static/app.css",
-      "how": "Use same dark:bg-surface-* and dark:text-* classes for consistent dark-mode styling in media templates."
+      "what": "Test fixture pattern: tmp_path DB -> CatalogDB -> seed -> create_app -> TestClient",
+      "where": "tests/test_media_list.py lines 176-223",
+      "how": "Replicate the media_db_path/media_db/seeded_db/media_app/media_client fixture chain. Extend seeding to include all analysis types."
     },
     {
-      "what": "conftest.py catalog_db fixture",
-      "where": "tests/conftest.py line 26",
-      "how": "Use for pure CatalogDB unit tests (has_captions, query_media) that don't need FastAPI."
+      "what": "conftest.py catalog_db fixture (in-memory, autocommit)",
+      "where": "tests/conftest.py lines 26-39",
+      "how": "Use the shared catalog_db fixture for DB-level unit tests of get_media_detail()."
+    },
+    {
+      "what": "Jinja2Templates.TemplateResponse and get_template().render() patterns",
+      "where": "autopilot/web/routes/media.py lines 84-93 and 126-143",
+      "how": "Use TemplateResponse for full page renders and get_template().render() for HTMX partial responses, matching the existing dual-mode pattern."
+    },
+    {
+      "what": "CatalogDB insert/upsert methods for test seeding",
+      "where": "autopilot/db.py",
+      "how": "Use insert_media(), upsert_transcript(), batch_insert_detections(), batch_insert_faces(), insert_face_cluster(), batch_insert_audio_events(), batch_insert_embeddings() to seed test data."
     }
   ],
-  "_session_id": "43-ad608a87",
-  "_created_at": "2026-03-22T18:18:35.839039+00:00"
+  "_session_id": "44-4ebfc2b7",
+  "_created_at": "2026-03-22T18:35:08.950867+00:00"
 }
