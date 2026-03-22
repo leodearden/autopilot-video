@@ -469,3 +469,86 @@ class TestMediaRowLink:
         html = resp.text
         # test1 should have a link to /media/test1
         assert 'href="/media/test1"' in html or "href='/media/test1'" in html
+
+
+# ---------------------------------------------------------------------------
+# Integration tests
+# ---------------------------------------------------------------------------
+
+
+class TestMediaDetailIntegration:
+    """End-to-end integration tests across all detail endpoints."""
+
+    def test_detail_page_loads_200(self, detail_client) -> None:
+        """GET /media/test1 returns 200 for fully analysed media."""
+        resp = detail_client.get("/media/test1")
+        assert resp.status_code == 200
+
+    def test_all_tab_endpoints_return_200(self, detail_client) -> None:
+        """All tab endpoints return 200 for media with full analysis."""
+        for tab in ("metadata", "transcript", "detections", "faces", "audio_events", "embeddings"):
+            resp = detail_client.get(f"/media/test1/tab/{tab}")
+            assert resp.status_code == 200, f"Tab {tab} returned {resp.status_code}"
+            assert "text/html" in resp.headers["content-type"]
+
+    def test_all_json_api_endpoints_return_correct_data(self, detail_client) -> None:
+        """All three JSON API endpoints return correct structured data."""
+        # /api/media/test1
+        resp = detail_client.get("/api/media/test1")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["media"]["id"] == "test1"
+        assert data["media"]["codec"] == "h264"
+        assert data["transcript"] is not None
+        assert len(data["detections"]) == 3
+        assert len(data["faces"]) == 2
+        assert len(data["audio_events"]) == 2
+        assert data["embedding_count"] == 3
+
+        # /api/media/test1/transcript
+        resp = detail_client.get("/api/media/test1/transcript")
+        assert resp.status_code == 200
+        transcript = resp.json()
+        assert transcript["language"] == "en"
+        assert len(transcript["segments"]) == 3
+        seg = transcript["segments"][0]
+        assert "start" in seg and "end" in seg and "text" in seg
+
+        # /api/media/test1/detections
+        resp = detail_client.get("/api/media/test1/detections")
+        assert resp.status_code == 200
+        det = resp.json()
+        assert det["total_detections"] == 5  # 2 + 2 + 1
+        assert det["frame_count"] == 3
+        assert det["classes"]["person"] == 3
+
+    def test_no_analysis_media_returns_empty_sections(self, detail_client) -> None:
+        """Detail endpoint for test2 (no analysis) returns gracefully empty data."""
+        resp = detail_client.get("/api/media/test2")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["media"]["id"] == "test2"
+        assert data["transcript"] is None
+        assert data["detections"] == []
+        assert data["faces"] == []
+        assert data["audio_events"] == []
+        assert data["embedding_count"] == 0
+
+    def test_no_analysis_media_detail_page_loads(self, detail_client) -> None:
+        """GET /media/test2 returns 200 even with no analysis data."""
+        resp = detail_client.get("/media/test2")
+        assert resp.status_code == 200
+
+    def test_no_analysis_tabs_render_gracefully(self, detail_client) -> None:
+        """Tab endpoints for media with no data still return 200."""
+        for tab in ("metadata", "transcript", "detections", "faces", "audio_events", "embeddings"):
+            resp = detail_client.get(f"/media/test2/tab/{tab}")
+            assert resp.status_code == 200, f"Tab {tab} for test2 returned {resp.status_code}"
+
+    def test_nonexistent_media_returns_404_everywhere(self, detail_client) -> None:
+        """All endpoints return 404 for non-existent media."""
+        assert detail_client.get("/media/nope").status_code == 404
+        assert detail_client.get("/api/media/nope").status_code == 404
+        assert detail_client.get("/api/media/nope/transcript").status_code == 404
+        assert detail_client.get("/api/media/nope/detections").status_code == 404
+        assert detail_client.get("/media/nope/tab/metadata").status_code == 404
