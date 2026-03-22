@@ -283,3 +283,47 @@ class TestApiMediaJson:
         ):
             assert flag in item, f"Missing flag: {flag}"
             assert isinstance(item[flag], bool), f"{flag} should be bool"
+
+
+# ---------------------------------------------------------------------------
+# GET /media HTML page tests
+# ---------------------------------------------------------------------------
+
+
+class TestMediaPage:
+    """Tests for GET /media HTML page."""
+
+    def test_media_page_returns_html(self, media_client) -> None:
+        """GET /media returns 200 with text/html content-type."""
+        resp = media_client.get("/media")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers.get("content-type", "")
+
+    def test_media_page_extends_base(self, media_client) -> None:
+        """Response contains nav elements from base.html."""
+        resp = media_client.get("/media")
+        assert "Autopilot Video" in resp.text
+
+    def test_media_page_contains_table(self, media_client) -> None:
+        """Response contains a table with expected column headers."""
+        resp = media_client.get("/media")
+        html = resp.text
+        assert "<table" in html
+        for header in ("Filename", "Duration", "Resolution", "Status"):
+            assert header in html, f"Column header '{header}' not found"
+
+    def test_media_page_contains_filter_controls(self, media_client) -> None:
+        """Response contains filter inputs (text search, status dropdown)."""
+        resp = media_client.get("/media")
+        html = resp.text
+        # Text search input
+        assert 'name="q"' in html or 'id="search"' in html
+        # Status dropdown
+        assert "<select" in html
+
+    def test_media_page_has_htmx_attributes(self, media_client) -> None:
+        """Filter elements have hx-get and hx-target for partial swap."""
+        resp = media_client.get("/media")
+        html = resp.text
+        assert "hx-get" in html
+        assert "hx-target" in html
