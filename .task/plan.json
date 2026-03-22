@@ -1,25 +1,30 @@
 {
-  "task_id": "40",
-  "title": "SSE event endpoint",
+  "task_id": "43",
+  "title": "Media list page",
   "files": [
-    "autopilot/web/routes/sse.py",
+    "autopilot/web/routes/media.py",
     "autopilot/web/routes/__init__.py",
     "autopilot/web/app.py",
-    "pyproject.toml",
-    "tests/test_sse.py"
+    "autopilot/web/templates/media/list.html",
+    "autopilot/web/templates/partials/media_row.html",
+    "autopilot/db.py",
+    "tests/test_media_list.py"
   ],
   "modules": [
     "autopilot/web/routes",
+    "autopilot/web/templates/media",
+    "autopilot/web/templates/partials",
     "autopilot/web",
+    "autopilot",
     "tests"
   ],
-  "analysis": "The task requires implementing a Server-Sent Events endpoint at GET /api/events that polls the pipeline_events table and pushes real-time updates to the browser.\n\nExisting infrastructure:\n- autopilot/db.py has CatalogDB with pipeline_events CRUD: insert_event(event_type, stage, job_id, payload_json) -> int, get_events_since(event_id) -> list[dict], prune_events(hours=24)\n- pipeline_events schema: event_id INTEGER PRIMARY KEY AUTOINCREMENT, event_type TEXT NOT NULL, stage TEXT, job_id TEXT, payload_json TEXT, created_at TEXT DEFAULT datetime('now')\n- autopilot/web/app.py has create_app(db_path) factory storing db_path in app.state.db_path\n- No existing routers \u2014 this will be the first APIRouter registered via app.include_router()\n- tests/conftest.py has catalog_db fixture (in-memory CatalogDB with autocommit)\n- tests/test_web_app.py shows the pattern: app fixture creates FastAPI via create_app(tmp_path), client fixture wraps with Starlette TestClient\n- Client-side app.js already has connectSSE('/api/events') with EventSource and notification listener expecting event types\n- sse-starlette 3.3.2 is installed in the env (required by mcp) but NOT yet in pyproject.toml\n\nApproach:\n1. Add sse-starlette to pyproject.toml Web dependencies\n2. Create autopilot/web/routes/sse.py with APIRouter containing GET /api/events\n3. Create get_db FastAPI Depends function to construct CatalogDB from app.state.db_path\n4. Implement async generator that polls get_events_since() every 1s, yields ServerSentEvent objects\n5. Use sse-starlette's EventSourceResponse with ping=15 for keepalive (matches 15-second requirement)\n6. Support Last-Event-ID header for reconnection\n7. Prune events periodically (~every 60 polls) rather than every poll\n8. Register the router in app.py\n\nTesting strategy: The SSE endpoint is a streaming response. For tests, we'll insert events into a real in-memory CatalogDB before connecting, then read from the streaming TestClient response. To prevent tests from hanging (the generator is infinite), we'll either use a timeout or inject a mechanism to break the loop after consuming expected events. The pragmatic approach is to use httpx's stream context and read initial events, then close.",
+  "analysis": "Task requires building a media browser at /media (HTML page) and /api/media (JSON endpoint) with sortable, filterable, paginated table of all ingested media files, plus analysis badges.\n\nExisting infrastructure:\n- autopilot/db.py has CatalogDB with media_files CRUD (insert_media, get_media, list_all_media, list_by_status, update_media_status) and per-media has_* methods (has_transcript, has_detections, has_faces, has_embeddings, has_audio_events). No has_captions method exists yet.\n- media_files schema: id TEXT PK, file_path TEXT, sha256_prefix TEXT, codec TEXT, resolution_w INT, resolution_h INT, fps REAL, duration_seconds REAL, created_at TEXT, gps_lat REAL, gps_lon REAL, audio_channels INT, status TEXT DEFAULT 'ingested', metadata_json TEXT.\n- Related tables: transcripts, detections, faces, clip_embeddings, audio_events, captions \u2014 all keyed by media_id.\n- autopilot/web/app.py: create_app(db_path) factory with Jinja2Templates, StaticFiles, currently only registers sse_router.\n- base.html: dark-mode Tailwind CSS + HTMX template with nav including /media link.\n- tests/test_web_app.py and tests/test_sse.py show patterns: app fixture using tmp_path for real DB, TestClient.\n- No list_media_paginated or query method exists \u2014 need to add one to CatalogDB.\n\nApproach:\n1. Add has_captions() convenience method to CatalogDB (mirrors existing has_* pattern).\n2. Add a query_media() method to CatalogDB that supports filtering, sorting, pagination, and returns analysis coverage flags via efficient LEFT JOIN subqueries (avoids N+1).\n3. Create autopilot/web/routes/media.py with APIRouter containing GET /media (HTML) and GET /api/media (JSON).\n4. Create templates: media/list.html (extends base.html) and partials/media_row.html (for HTMX partial swaps).\n5. Register media_router in app.py alongside sse_router.\n6. HTMX: filter changes swap the table body via hx-get targeting /api/media with Accept: text/html or a dedicated partial endpoint.",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Add 'sse-starlette' to pyproject.toml in the Web dependencies section alongside fastapi/uvicorn/jinja2",
+      "description": "Create directory structure: autopilot/web/templates/media/ and autopilot/web/templates/partials/ directories",
       "status": "done",
-      "commit": "d5380b7",
+      "commit": "64ea075",
       "tests": []
     }
   ],
@@ -27,141 +32,165 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write tests/test_sse.py with fixtures: (1) sse_db fixture that creates an in-memory CatalogDB with autocommit, (2) sse_app fixture that calls create_app with a tmp_path db but then overrides app.state.db_path to point to the in-memory db file or patches the dependency, (3) sse_client fixture with Starlette TestClient. Write TestSSEEndpointBasic class with test_sse_endpoint_returns_200_event_stream \u2014 GET /api/events returns 200 with content-type text/event-stream.",
+      "description": "Write test for CatalogDB.has_captions(media_id) in tests/test_media_list.py \u2014 mirrors existing has_transcript/has_detections pattern. Test returns False when no captions, True after inserting a caption for the media_id.",
       "status": "done",
-      "commit": "cf2a707"
+      "commit": "9081b34"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Create autopilot/web/routes/sse.py with: (1) APIRouter with prefix '', (2) get_db dependency that creates CatalogDB from request.app.state.db_path, (3) GET /api/events endpoint that returns EventSourceResponse from a minimal async generator yielding nothing (just awaits forever with asyncio.sleep). Update autopilot/web/routes/__init__.py to export the router. Register SSE router in app.py via app.include_router(sse_router). Make the basic 200 + content-type test pass.",
+      "description": "Add has_captions(media_id) method to CatalogDB in autopilot/db.py \u2014 SELECT 1 FROM captions WHERE media_id = ? LIMIT 1, returns bool. Follows exact pattern of has_transcript, has_detections, etc.",
       "status": "done",
-      "commit": "e8fa72f"
+      "commit": "415243f"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write TestSSEEventDelivery class: (1) test_events_delivered_in_order \u2014 insert 3 events via CatalogDB (stage_started, job_started, stage_completed), connect to SSE endpoint, verify all 3 events arrive in correct order; (2) test_event_has_correct_sse_fields \u2014 verify each SSE event has id field (event_id), event field (event_type), and data field (JSON with event_type, stage, job_id); (3) test_event_data_payload_structure \u2014 verify the JSON data payload contains event_type, stage, job_id, and original payload_json data.",
+      "description": "Write test for CatalogDB.query_media() method in tests/test_media_list.py. Tests: (1) test_query_media_returns_all_when_no_filters \u2014 insert 3 media, call query_media(), verify all 3 returned with total_count=3; (2) test_query_media_pagination \u2014 insert 5 media, call with per_page=2, page=2, verify 2 items returned and total_count=5; (3) test_query_media_text_filter \u2014 insert media with various filenames, filter with q='beach', verify only matching rows returned; (4) test_query_media_status_filter \u2014 insert media with different statuses, filter by status='analyzed'; (5) test_query_media_sort_by_filename \u2014 verify ascending/descending sort on filename; (6) test_query_media_sort_by_created_at \u2014 verify sort by created_at; (7) test_query_media_analysis_flags \u2014 insert media with/without transcript/detections/faces/embeddings/audio_events/captions, verify has_* flags are correct booleans in results.",
       "status": "done",
-      "commit": "1a7281a"
+      "commit": "9e6d444"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement the full async event generator in sse.py: poll db.get_events_since(last_event_id) every 1 second using asyncio.sleep(1). For each event, yield a ServerSentEvent with id=str(event_id), event=event_type, data=json.dumps({event_type, stage, job_id, ...payload_json parsed}). Track last_event_id across polls. Make event delivery tests pass.",
+      "description": "Add query_media() method to CatalogDB that accepts q (text search on file_path), status, sort (column name), order (asc/desc), page, per_page. Uses a single SQL query with LEFT JOIN subqueries to compute analysis flags (has_transcript, has_detections, has_faces, has_embeddings, has_audio_events, has_captions) efficiently. Returns dict with 'items' list and 'total' count. Whitelist sort columns to prevent SQL injection.",
       "status": "done",
-      "commit": "49b0090"
+      "commit": "6bfb44f"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write TestSSEReconnection class: (1) test_last_event_id_header_resumes_from_position \u2014 insert 5 events, connect with Last-Event-ID: 3 header, verify only events 4 and 5 are received; (2) test_missing_last_event_id_starts_from_zero \u2014 connect without header, verify all events are received; (3) test_invalid_last_event_id_starts_from_zero \u2014 connect with Last-Event-ID: 'abc' (non-numeric), verify all events are received.",
+      "description": "Write tests for GET /api/media JSON endpoint in tests/test_media_list.py. Create app/client fixtures with pre-populated media data. Tests: (1) test_api_media_returns_json \u2014 GET /api/media returns 200 with JSON containing 'items' and 'total'; (2) test_api_media_pagination_params \u2014 verify ?page=2&per_page=2 returns correct subset; (3) test_api_media_filter_by_status \u2014 verify ?status=analyzed filters correctly; (4) test_api_media_text_search \u2014 verify ?q=beach filters by filename; (5) test_api_media_sort \u2014 verify ?sort=filename&order=asc returns sorted results; (6) test_api_media_items_have_analysis_flags \u2014 verify each item has has_transcript, has_detections, etc. boolean fields.",
       "status": "done",
-      "commit": "ce0ad25"
+      "commit": "b90ac67"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Implement Last-Event-ID support: read request.headers.get('last-event-id', '0'), parse as int with fallback to 0, use as initial last_event_id for get_events_since(). Make reconnection tests pass.",
+      "description": "Create autopilot/web/routes/media.py with APIRouter. Implement GET /api/media endpoint that accepts query params (q, status, page, per_page, sort, order), creates CatalogDB from request.app.state.db_path, calls query_media(), returns JSON response. Update routes/__init__.py to export media_router. Register in app.py.",
       "status": "done",
-      "commit": "4c7094f"
+      "commit": "923c3df"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write TestSSEPruning class: (1) test_old_events_pruned_after_polls \u2014 insert a backdated event (>24h old via raw SQL) and a recent event, trigger SSE endpoint for enough polls, verify the old event was deleted from the DB; (2) test_recent_events_not_pruned \u2014 insert only recent events, after polling, verify all events still exist in DB.",
+      "description": "Write tests for GET /media HTML page in tests/test_media_list.py. Tests: (1) test_media_page_returns_html \u2014 GET /media returns 200 with text/html content-type; (2) test_media_page_extends_base \u2014 verify response contains nav elements from base.html (e.g., 'Autopilot Video'); (3) test_media_page_contains_table \u2014 verify response contains a table element with expected column headers (Filename, Duration, Resolution, etc.); (4) test_media_page_contains_filter_controls \u2014 verify filter inputs exist (text search, status dropdown); (5) test_media_page_has_htmx_attributes \u2014 verify hx-get and hx-target attributes exist on filter elements for partial swap.",
       "status": "done",
-      "commit": "24a6982"
+      "commit": "aedd346"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Add periodic pruning to the async generator: maintain a poll_count counter, call db.prune_events(hours=24) when poll_count % 60 == 0 (approximately once per minute). Wrap in try/except to avoid killing the SSE stream on pruning errors. Make pruning tests pass.",
-      "status": "pending",
-      "commit": null
+      "description": "Create autopilot/web/templates/media/list.html extending base.html. Include: page title 'Media', sortable table with columns (Thumbnail placeholder, Filename, Duration, Resolution, Created, Location, Status, Analysis badges), filter controls (text search input, status dropdown, date range inputs), pagination controls. Add hx-get='/api/media' on filter form targeting table body. Create autopilot/web/templates/partials/media_row.html for a single table row. Implement GET /media route in media.py that renders list.html with initial data.",
+      "status": "done",
+      "commit": "eec93f9"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write TestSSEEventTypes class: (1) test_all_event_types_forwarded \u2014 insert one event for each of the 11 event types (stage_started, stage_completed, stage_error, job_started, job_completed, job_error, job_progress, gate_waiting, gate_approved, gate_skipped, run_completed, run_failed), connect to SSE, verify each event type is received with correct 'event' field. (2) test_valid_event_types_constant_defined \u2014 verify VALID_EVENT_TYPES constant exists and contains all 11 types.",
-      "status": "pending",
-      "commit": null
+      "description": "Write tests for HTMX partial response in tests/test_media_list.py. Tests: (1) test_api_media_htmx_returns_partial \u2014 GET /api/media with HX-Request:true header returns HTML table rows (partial) not full page; (2) test_partial_media_row_has_analysis_badges \u2014 verify partial response contains analysis badge icons/indicators for media with analysis data; (3) test_partial_media_row_duration_format \u2014 verify duration is formatted as HH:MM:SS; (4) test_partial_media_row_resolution_display \u2014 verify resolution displayed as WxH.",
+      "status": "done",
+      "commit": "90f268f"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Define VALID_EVENT_TYPES tuple constant in sse.py with all 11 event types for documentation. Ensure event_type from DB is passed through directly as the SSE 'event' field. Run full test suite to verify all tests pass. Final cleanup: ensure proper DB connection cleanup on generator exit (try/finally), consistent error handling.",
-      "status": "pending",
-      "commit": null
+      "description": "Implement HTMX partial support in media.py: when HX-Request header is present on GET /api/media, render partials/media_row.html for each item and return HTML fragment instead of JSON. Add duration formatting helper (seconds -> HH:MM:SS) and resolution formatting to the template context. Ensure analysis badges render as icons/indicators based on has_* flags. Verify all tests pass.",
+      "status": "done",
+      "commit": "eec93f9"
+    },
+    {
+      "id": "step-11",
+      "type": "test",
+      "description": "Write integration tests in tests/test_media_list.py. Tests: (1) test_media_list_empty_database \u2014 GET /media with no media files shows empty state; (2) test_media_list_pagination_navigation \u2014 insert 60 media files, verify first page shows 50, pagination indicates 2 pages; (3) test_media_list_combined_filters \u2014 filter by status AND text search simultaneously; (4) test_query_media_date_range_filter \u2014 filter by date range (date_from, date_to).",
+      "status": "done",
+      "commit": "09164e5"
+    },
+    {
+      "id": "step-12",
+      "type": "impl",
+      "description": "Add date range filtering support to query_media (date_from, date_to params filtering on created_at). Add empty state display to list.html template. Ensure pagination navigation is correct with page count. Final cleanup and verification that all tests pass.",
+      "status": "done",
+      "commit": "09164e5"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use sse-starlette package rather than manual StreamingResponse",
-      "rationale": "sse-starlette 3.3.2 is already installed (required by mcp), provides clean ServerSentEvent/EventSourceResponse abstractions, built-in ping/keepalive support (ping=15), and proper SSE protocol handling including cache-control headers. The task description suggests this approach."
+      "decision": "Add query_media() method to CatalogDB rather than building SQL in the route handler",
+      "rationale": "Keeps database logic in the DB layer consistent with existing patterns (list_all_media, list_by_status, list_jobs). The route handler stays thin, just mapping query params to method args. Also makes the query testable independently of FastAPI."
     },
     {
-      "decision": "Use EventSourceResponse(ping=15) for keepalive instead of manual keepalive comments",
-      "rationale": "sse-starlette's EventSourceResponse has a built-in ping parameter that sends keepalive comments every N seconds. Setting ping=15 matches the task requirement of 15-second keepalives without manual timer management in the generator."
+      "decision": "Use LEFT JOIN subqueries for analysis flags instead of N+1 has_* calls",
+      "rationale": "The task explicitly requires efficient SQL. Using EXISTS subqueries in a single query (SELECT m.*, EXISTS(SELECT 1 FROM transcripts WHERE media_id = m.id) as has_transcript, ...) avoids N+1 queries when listing 50 items per page."
     },
     {
-      "decision": "Create a get_db FastAPI dependency that creates CatalogDB per SSE connection",
-      "rationale": "app.py stores db_path in app.state. Since CatalogDB uses check_same_thread=False and WAL mode, creating a connection per SSE stream is safe and avoids sharing a connection across concurrent streams. The connection is closed when the generator exits via try/finally."
+      "decision": "Dual response mode for /api/media: JSON by default, HTML partial when HX-Request header present",
+      "rationale": "Keeps a single endpoint for both initial page load (JSON used by template) and HTMX partial swaps (returns rendered table rows). The HX-Request header is set automatically by HTMX. This avoids creating a separate /api/media/partial endpoint."
     },
     {
-      "decision": "Prune events every ~60 poll cycles rather than every poll",
-      "rationale": "Running DELETE on every 1-second poll adds unnecessary DB write overhead. Pruning once per minute is sufficient for 24-hour-old data cleanup. A simple counter modulo check achieves this without a separate timer or background task."
+      "decision": "Whitelist sort columns to prevent SQL injection",
+      "rationale": "Since sort column names are interpolated into SQL (can't use parameterized queries for column names), we validate against an explicit whitelist: {filename, duration_seconds, created_at, resolution_w, status}."
     },
     {
-      "decision": "Use APIRouter for the SSE routes \u2014 establishing the first router pattern in this codebase",
-      "rationale": "The app currently has no routers (only an inline health check). Using APIRouter establishes the extensible pattern for future route modules (dashboard, media, gates, etc.) and follows FastAPI best practices for route organization."
+      "decision": "Use file_path for filename display and search rather than adding a separate filename column",
+      "rationale": "media_files schema has file_path but no filename column. We'll extract the filename portion in SQL (or Python) for display, and text search will use LIKE on file_path. This avoids schema changes."
     },
     {
-      "decision": "Parse payload_json from DB into the SSE data dict rather than nesting as a string",
-      "rationale": "The SSE data payload should be a flat(ish) JSON object for easy HTMX consumption. payload_json from the DB is already a JSON string, so we parse it and merge into the data dict alongside event_type/stage/job_id, providing a clean API to the browser."
+      "decision": "Render analysis badges as simple CSS-styled spans with title attributes rather than SVG icons",
+      "rationale": "The task says placeholder icons. Using styled text badges (e.g., 'ASR', 'YOLO', 'Face', 'Emb', 'Audio', 'Cap') with color coding is simpler to implement and test than SVG icons, while still conveying the information clearly."
     },
     {
-      "decision": "Test SSE using a real in-memory SQLite DB with pre-inserted events, read first batch then close",
-      "rationale": "SSE endpoints are infinite streaming responses. For testing, we pre-insert events so they're available on first poll, then read the initial batch from the TestClient stream and close. This avoids hanging tests while verifying real DB-to-SSE integration."
+      "decision": "Create tests in a single new file tests/test_media_list.py rather than adding to test_web_app.py",
+      "rationale": "test_web_app.py covers the app skeleton and base template. Media list is a substantial feature with its own DB methods, endpoints, and templates \u2014 a dedicated test file keeps things organized and avoids merge conflicts."
     }
   ],
   "reuse": [
     {
-      "what": "CatalogDB.get_events_since(event_id)",
-      "where": "autopilot/db.py line 1124",
-      "how": "Core polling method \u2014 returns events with event_id > given id, ordered ascending. Used directly in the SSE async generator on each 1-second poll cycle."
+      "what": "CatalogDB has_* pattern (has_transcript, has_detections, has_faces, has_embeddings, has_audio_events)",
+      "where": "autopilot/db.py lines 894-940",
+      "how": "Follow exact same pattern for has_captions. Also reference these as the canonical analysis flags to expose in query_media results."
     },
     {
-      "what": "CatalogDB.prune_events(hours=24)",
-      "where": "autopilot/db.py line 1132",
-      "how": "Existing pruning method \u2014 deletes events older than N hours. Called every ~60 polls in the SSE generator for periodic cleanup."
+      "what": "CatalogDB.insert_media() method",
+      "where": "autopilot/db.py line 269",
+      "how": "Used in tests to seed the database with mock media files with varying attributes (status, resolution, duration, GPS, created_at)."
     },
     {
-      "what": "CatalogDB.insert_event(event_type, stage, job_id, payload_json)",
-      "where": "autopilot/db.py line 1108",
-      "how": "Used in tests to seed the pipeline_events table with test data before connecting to the SSE endpoint."
+      "what": "CatalogDB upsert methods (upsert_transcript, upsert_caption, batch_insert_detections, batch_insert_faces, batch_insert_embeddings, batch_insert_audio_events)",
+      "where": "autopilot/db.py various",
+      "how": "Used in tests to seed analysis data so that analysis badges can be verified."
     },
     {
-      "what": "app.state.db_path pattern",
-      "where": "autopilot/web/app.py line 30",
-      "how": "SSE route dependency reads request.app.state.db_path to create a CatalogDB connection for the streaming response."
-    },
-    {
-      "what": "catalog_db conftest fixture",
-      "where": "tests/conftest.py line 26",
-      "how": "Reuse the in-memory CatalogDB fixture pattern for pre-populating events in SSE tests."
+      "what": "app.state.db_path + _get_db(request) pattern",
+      "where": "autopilot/web/routes/sse.py line 21-23",
+      "how": "Reuse exact same _get_db helper pattern for media routes to create CatalogDB from app state."
     },
     {
       "what": "test_web_app.py app/client fixture pattern",
       "where": "tests/test_web_app.py lines 14-34",
-      "how": "Follow the same create_app(tmp_path) + TestClient pattern for SSE tests, with added DB setup for event data."
+      "how": "Follow same pattern: app fixture creates FastAPI via create_app(tmp_path), client fixture wraps with TestClient."
     },
     {
-      "what": "sse-starlette EventSourceResponse and ServerSentEvent",
-      "where": "sse-starlette 3.3.2 (installed, dependency of mcp)",
-      "how": "EventSourceResponse wraps the async generator with proper SSE headers and keepalive. ServerSentEvent formats individual events with id/event/data fields."
+      "what": "test_sse.py real DB fixture pattern",
+      "where": "tests/test_sse.py lines 17-36",
+      "how": "Follow same pattern: create CatalogDB with real file path (not :memory:) so the app can open its own connection, use autocommit for test convenience."
+    },
+    {
+      "what": "base.html template with block content/scripts",
+      "where": "autopilot/web/templates/base.html",
+      "how": "media/list.html extends base.html, fills {% block title %}, {% block content %}, and {% block scripts %} blocks."
+    },
+    {
+      "what": "Tailwind CSS dark mode classes",
+      "where": "autopilot/web/templates/base.html and static/app.css",
+      "how": "Use same dark:bg-surface-* and dark:text-* classes for consistent dark-mode styling in media templates."
+    },
+    {
+      "what": "conftest.py catalog_db fixture",
+      "where": "tests/conftest.py line 26",
+      "how": "Use for pure CatalogDB unit tests (has_captions, query_media) that don't need FastAPI."
     }
   ],
-  "_session_id": "40-401d88c2",
-  "_created_at": "2026-03-21T17:44:15.537819+00:00"
+  "_session_id": "43-ad608a87",
+  "_created_at": "2026-03-22T18:18:35.839039+00:00"
 }
