@@ -35,6 +35,11 @@ def create_app(db_path: str) -> FastAPI:
     # Mount static files
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
+    # Register routers
+    from autopilot.web.routes import sse_router
+
+    app.include_router(sse_router)
+
     # Health check endpoint
     @app.get("/api/health")
     def health_check() -> dict:
