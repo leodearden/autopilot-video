@@ -1,10 +1,10 @@
-"""Media list page and API endpoint."""
+"""Media list page, detail page, and API endpoints."""
 
 from __future__ import annotations
 
 import math
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 
 from autopilot.db import CatalogDB
@@ -141,3 +141,16 @@ def media_page(
             "format_duration": _format_duration,
         },
     )
+
+
+@router.get("/api/media/{media_id}")
+def api_media_detail(request: Request, media_id: str):
+    """Return detail for a single media file as JSON."""
+    db = _get_db(request)
+    try:
+        detail = db.get_media_detail(media_id)
+    finally:
+        db.close()
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Media not found")
+    return detail
