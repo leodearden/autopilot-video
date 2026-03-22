@@ -362,3 +362,49 @@ class TestMediaDetailPage:
         html = resp.text
         assert "hx-get" in html
         assert "/media/test1/tab/" in html
+
+
+# ---------------------------------------------------------------------------
+# HTMX tab endpoint tests (transcript & detections)
+# ---------------------------------------------------------------------------
+
+
+class TestTabTranscript:
+    """Tests for GET /media/{media_id}/tab/transcript."""
+
+    def test_transcript_tab_has_timestamps(self, detail_client) -> None:
+        """Transcript tab returns HTML with timestamped lines."""
+        resp = detail_client.get("/media/test1/tab/transcript")
+        assert resp.status_code == 200
+        html = resp.text
+        assert "[00:00:00]" in html or "[0:00]" in html  # first segment starts at 0.0
+
+    def test_transcript_tab_has_speaker_labels(self, detail_client) -> None:
+        """Transcript tab shows speaker labels."""
+        resp = detail_client.get("/media/test1/tab/transcript")
+        html = resp.text
+        assert "Alice" in html
+        assert "Bob" in html
+
+    def test_transcript_tab_shows_language(self, detail_client) -> None:
+        """Transcript tab shows language indicator."""
+        resp = detail_client.get("/media/test1/tab/transcript")
+        assert "en" in resp.text
+
+
+class TestTabDetections:
+    """Tests for GET /media/{media_id}/tab/detections."""
+
+    def test_detections_tab_has_class_names(self, detail_client) -> None:
+        """Detections tab returns HTML with object class names."""
+        resp = detail_client.get("/media/test1/tab/detections")
+        assert resp.status_code == 200
+        html = resp.text
+        assert "person" in html
+        assert "car" in html
+        assert "dog" in html
+
+    def test_detections_tab_has_total_count(self, detail_client) -> None:
+        """Detections tab shows total detection count."""
+        resp = detail_client.get("/media/test1/tab/detections")
+        assert "5" in resp.text  # 2+2+1 = 5 total detections
