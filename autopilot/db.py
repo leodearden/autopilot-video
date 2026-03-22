@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Self, cast
+from typing import Any, Self, cast
 
 
 class CatalogDB:
@@ -315,7 +315,7 @@ class CatalogDB:
         row = cur.fetchone()
         return dict(row) if row else None
 
-    def get_media_detail(self, media_id: str) -> dict[str, object] | None:
+    def get_media_detail(self, media_id: str) -> dict[str, Any] | None:
         """Get aggregated detail for a media file including all analysis data.
 
         Returns None if media_id not found. Otherwise returns a dict with keys:
