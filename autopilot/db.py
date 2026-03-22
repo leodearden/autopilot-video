@@ -939,6 +939,14 @@ class CatalogDB:
         )
         return cur.fetchone() is not None
 
+    def has_captions(self, media_id: str) -> bool:
+        """Return True if any captions exist for the given media_id."""
+        cur = self.conn.execute(
+            "SELECT 1 FROM captions WHERE media_id = ? LIMIT 1",
+            (media_id,),
+        )
+        return cur.fetchone() is not None
+
     # -- pipeline_gates CRUD ---------------------------------------------------
 
     _PIPELINE_STAGES = (
