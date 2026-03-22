@@ -1,0 +1,37 @@
+<div class="space-y-4">
+    {% if detections %}
+    <div class="flex items-center gap-4 mb-2">
+        <span class="text-sm text-gray-300">{{ total_detections }} detection{{ 's' if total_detections != 1 else '' }} across {{ frame_count }} frame{{ 's' if frame_count != 1 else '' }}</span>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Summary by class -->
+        <div class="dark:bg-surface-800 rounded-lg p-4">
+            <h3 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-3">By Class</h3>
+            <div class="space-y-2">
+                {% for cls, count in class_counts %}
+                <div class="flex justify-between items-center">
+                    <span class="text-gray-100">{{ cls }}</span>
+                    <span class="text-sm text-gray-400">{{ count }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Frame breakdown -->
+        <div class="dark:bg-surface-800 rounded-lg p-4">
+            <h3 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-3">Frame Detail</h3>
+            <div class="space-y-2 text-sm">
+                {% for frame in frame_details %}
+                <div class="flex justify-between items-center">
+                    <span class="text-gray-400">Frame {{ frame.number }}</span>
+                    <span class="text-gray-100">{{ frame.count }} object{{ 's' if frame.count != 1 else '' }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <p class="text-gray-500">No detections available.</p>
+    {% endif %}
+</div>

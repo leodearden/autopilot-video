@@ -176,6 +176,81 @@ def media_detail_page(request: Request, media_id: str):
     )
 
 
+def _format_timestamp(seconds: float) -> str:
+    """Format seconds as HH:MM:SS for transcript display."""
+    total = int(seconds)
+    h, remainder = divmod(total, 3600)
+    m, s = divmod(remainder, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+_VALID_TABS = {"metadata", "transcript", "detections", "faces", "audio_events", "embeddings"}
+
+
+@router.get("/media/{media_id}/tab/{tab_name}")
+def media_tab(request: Request, media_id: str, tab_name: str):
+    """Render a single tab partial for HTMX swap."""
+    if tab_name not in _VALID_TABS:
+        raise HTTPException(status_code=404, detail="Invalid tab")
+    db = _get_db(request)
+    try:
+        detail = db.get_media_detail(media_id)
+    finally:
+        db.close()
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Media not found")
+
+    media = detail["media"]
+    templates = request.app.state.templates
+
+    if tab_name == "metadata":
+        extra_metadata = {}
+        if media.get("metadata_json"):
+            try:
+                extra_metadata = json.loads(media["metadata_json"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        html = templates.get_template("partials/tab_metadata.html").render(
+            media=media, extra_metadata=extra_metadata, format_duration=_format_duration,
+        )
+    elif tab_name == "transcript":
+        transcript = detail["transcript"]
+        segments = []
+        if transcript and transcript.get("segments_json"):
+            try:
+                segments = json.loads(transcript["segments_json"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        html = templates.get_template("partials/tab_transcript.html").render(
+            transcript=transcript, segments=segments, format_timestamp=_format_timestamp,
+        )
+    elif tab_name == "detections":
+        det_rows = detail["detections"]
+        total_detections = 0
+        classes: dict[str, int] = {}
+        frame_details = []
+        for row in det_rows:
+            dets = json.loads(row["detections_json"]) if row.get("detections_json") else []
+            total_detections += len(dets)
+            frame_details.append({"number": row["frame_number"], "count": len(dets)})
+            for d in dets:
+                cls = d.get("class", "unknown")
+                classes[cls] = classes.get(cls, 0) + 1
+        class_counts = sorted(classes.items(), key=lambda x: x[1], reverse=True)
+        html = templates.get_template("partials/tab_detections.html").render(
+            detections=det_rows,
+            total_detections=total_detections,
+            frame_count=len(det_rows),
+            class_counts=class_counts,
+            frame_details=frame_details,
+        )
+    else:
+        # Placeholder for faces, audio_events, embeddings tabs
+        html = f"<p class='text-gray-500'>{tab_name} tab — coming soon.</p>"
+
+    return HTMLResponse(html)
+
+
 @router.get("/api/media/{media_id}")
 def api_media_detail(request: Request, media_id: str):
     """Return detail for a single media file as JSON."""
