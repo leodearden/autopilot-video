@@ -141,3 +141,81 @@ def detail_client(detail_app):
     from starlette.testclient import TestClient
 
     return TestClient(detail_app)
+
+
+# ---------------------------------------------------------------------------
+# CatalogDB.get_media_detail() tests
+# ---------------------------------------------------------------------------
+
+
+class TestGetMediaDetail:
+    """Tests for CatalogDB.get_media_detail(media_id)."""
+
+    def test_returns_none_for_nonexistent_media(self, catalog_db: CatalogDB) -> None:
+        """get_media_detail returns None when media_id does not exist."""
+        result = catalog_db.get_media_detail("nonexistent")
+        assert result is None
+
+    def test_returns_dict_with_media_key(self, detail_seeded_db: CatalogDB) -> None:
+        """get_media_detail returns a dict with 'media' key containing media row data."""
+        result = detail_seeded_db.get_media_detail("test1")
+        assert result is not None
+        assert "media" in result
+        assert result["media"]["id"] == "test1"
+        assert result["media"]["codec"] == "h264"
+        assert result["media"]["fps"] == 30.0
+        assert result["media"]["resolution_w"] == 1920
+        assert result["media"]["resolution_h"] == 1080
+
+    def test_includes_transcript(self, detail_seeded_db: CatalogDB) -> None:
+        """get_media_detail includes 'transcript' with parsed segments and language."""
+        result = detail_seeded_db.get_media_detail("test1")
+        assert result is not None
+        assert "transcript" in result
+        transcript = result["transcript"]
+        assert transcript is not None
+        assert transcript["language"] == "en"
+        segments = json.loads(transcript["segments_json"])
+        assert len(segments) == 3
+
+    def test_includes_detections(self, detail_seeded_db: CatalogDB) -> None:
+        """get_media_detail includes 'detections' with list of detection rows."""
+        result = detail_seeded_db.get_media_detail("test1")
+        assert result is not None
+        assert "detections" in result
+        assert len(result["detections"]) == 3  # 3 frames
+
+    def test_includes_faces(self, detail_seeded_db: CatalogDB) -> None:
+        """get_media_detail includes 'faces' with list of face rows."""
+        result = detail_seeded_db.get_media_detail("test1")
+        assert result is not None
+        assert "faces" in result
+        assert len(result["faces"]) == 2
+
+    def test_includes_audio_events(self, detail_seeded_db: CatalogDB) -> None:
+        """get_media_detail includes 'audio_events' with list of audio event rows."""
+        result = detail_seeded_db.get_media_detail("test1")
+        assert result is not None
+        assert "audio_events" in result
+        assert len(result["audio_events"]) == 2
+
+    def test_includes_embeddings_with_count(self, detail_seeded_db: CatalogDB) -> None:
+        """get_media_detail includes 'embeddings' list and 'embedding_count'."""
+        result = detail_seeded_db.get_media_detail("test1")
+        assert result is not None
+        assert "embeddings" in result
+        assert "embedding_count" in result
+        assert len(result["embeddings"]) == 3
+        assert result["embedding_count"] == 3
+
+    def test_empty_analysis_for_media_without_data(self, detail_seeded_db: CatalogDB) -> None:
+        """get_media_detail returns empty/None for media with no analysis data."""
+        result = detail_seeded_db.get_media_detail("test2")
+        assert result is not None
+        assert result["media"]["id"] == "test2"
+        assert result["transcript"] is None
+        assert result["detections"] == []
+        assert result["faces"] == []
+        assert result["audio_events"] == []
+        assert result["embeddings"] == []
+        assert result["embedding_count"] == 0
