@@ -552,3 +552,98 @@ class TestMediaDetailIntegration:
         assert detail_client.get("/api/media/nope/transcript").status_code == 404
         assert detail_client.get("/api/media/nope/detections").status_code == 404
         assert detail_client.get("/media/nope/tab/metadata").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Robustness tests (malformed data / None guards)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def robustness_db_path(tmp_path: Path) -> str:
+    """Return the path for the robustness test catalog DB file."""
+    return str(tmp_path / "robustness.db")
+
+
+@pytest.fixture
+def robustness_db(robustness_db_path: str) -> CatalogDB:
+    """Create a CatalogDB seeded with malformed JSON data."""
+    db = CatalogDB(robustness_db_path)
+    db.conn.isolation_level = None
+
+    # Media with malformed transcript segments_json
+    db.insert_media(
+        "mal_transcript",
+        "/video/mal_transcript.mp4",
+        duration_seconds=60.0,
+        fps=30.0,
+    )
+    db.upsert_transcript("mal_transcript", "{{corrupt", "en")
+
+    # Media with malformed detections_json (plus one valid frame)
+    db.insert_media(
+        "mal_detect",
+        "/video/mal_detect.mp4",
+        duration_seconds=60.0,
+        fps=30.0,
+    )
+    valid_dets = [{"class": "person", "confidence": 0.9}]
+    db.batch_insert_detections([
+        ("mal_detect", 0, "not-json"),
+        ("mal_detect", 30, json.dumps(valid_dets)),
+    ])
+
+    return db
+
+
+@pytest.fixture
+def robustness_app(robustness_db: CatalogDB, robustness_db_path: str):
+    """FastAPI app pointing at the robustness DB."""
+    from autopilot.web.app import create_app
+
+    return create_app(robustness_db_path)
+
+
+@pytest.fixture
+def robustness_client(robustness_app):
+    """TestClient for robustness tests."""
+    from starlette.testclient import TestClient
+
+    return TestClient(robustness_app)
+
+
+class TestRobustness:
+    """Tests for graceful handling of None and malformed JSON."""
+
+    def test_format_timestamp_with_none(self) -> None:
+        """_format_timestamp(None) returns '--:--:--' instead of TypeError."""
+        from autopilot.web.routes.media import _format_timestamp
+
+        result = _format_timestamp(None)
+        assert result == "--:--:--"
+
+    def test_api_transcript_malformed_segments(self, robustness_client) -> None:
+        """GET /api/media/{id}/transcript with corrupt segments_json returns 200."""
+        resp = robustness_client.get("/api/media/mal_transcript/transcript")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["segments"] == []
+        assert data["language"] == "en"
+
+    def test_api_detections_malformed_json(self, robustness_client) -> None:
+        """GET /api/media/{id}/detections with corrupt detections_json returns 200."""
+        resp = robustness_client.get("/api/media/mal_detect/detections")
+        assert resp.status_code == 200
+        data = resp.json()
+        # Valid frame still counted
+        assert data["total_detections"] >= 1
+        assert data["frame_count"] == 2
+        assert data["classes"].get("person", 0) == 1
+
+    def test_detections_tab_malformed_json(self, robustness_client) -> None:
+        """GET /media/{id}/tab/detections with corrupt detections_json returns 200."""
+        resp = robustness_client.get("/media/mal_detect/tab/detections")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        # Valid frame's detections should still be aggregated
+        assert "person" in resp.text
