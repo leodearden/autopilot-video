@@ -327,3 +327,40 @@ class TestMediaPage:
         html = resp.text
         assert "hx-get" in html
         assert "hx-target" in html
+
+
+# ---------------------------------------------------------------------------
+# HTMX partial response tests
+# ---------------------------------------------------------------------------
+
+
+class TestHtmxPartial:
+    """Tests for HTMX partial response from GET /api/media."""
+
+    def test_api_media_htmx_returns_partial(self, media_client) -> None:
+        """GET /api/media with HX-Request:true returns HTML table rows, not JSON."""
+        resp = media_client.get("/api/media", headers={"HX-Request": "true"})
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers.get("content-type", "")
+        # Should contain <tr> elements, not JSON
+        assert "<tr" in resp.text
+
+    def test_partial_media_row_has_analysis_badges(self, media_client) -> None:
+        """Partial response has analysis badge indicators for media with analysis data."""
+        # seeded_db has transcript + detections on m0
+        resp = media_client.get("/api/media", headers={"HX-Request": "true"})
+        html = resp.text
+        assert "ASR" in html  # transcript badge
+        assert "YOLO" in html  # detections badge
+
+    def test_partial_media_row_duration_format(self, media_client) -> None:
+        """Duration is formatted as M:SS or H:MM:SS, not raw seconds."""
+        resp = media_client.get("/api/media", headers={"HX-Request": "true"})
+        html = resp.text
+        # seeded items have 60-64 seconds → "1:00", "1:01", etc.
+        assert "1:00" in html
+
+    def test_partial_media_row_resolution_display(self, media_client) -> None:
+        """Resolution displayed as WxH."""
+        resp = media_client.get("/api/media", headers={"HX-Request": "true"})
+        assert "1920x1080" in resp.text
