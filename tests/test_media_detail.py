@@ -452,3 +452,20 @@ class TestTabEmbeddings:
         # 3 embeddings out of ~3615 frames (30fps * 120.5s)
         assert "3" in html  # embedding count
         assert "%" in html  # percentage
+
+
+# ---------------------------------------------------------------------------
+# media_row.html link test
+# ---------------------------------------------------------------------------
+
+
+class TestMediaRowLink:
+    """Test that media_row.html links filename to detail page."""
+
+    def test_filename_links_to_detail_page(self, detail_client) -> None:
+        """media_row.html partial wraps filename in link to /media/{id}."""
+        resp = detail_client.get("/api/media", headers={"HX-Request": "true"})
+        assert resp.status_code == 200
+        html = resp.text
+        # test1 should have a link to /media/test1
+        assert 'href="/media/test1"' in html or "href='/media/test1'" in html
