@@ -144,6 +144,38 @@ def media_page(
     )
 
 
+@router.get("/media/{media_id}")
+def media_detail_page(request: Request, media_id: str):
+    """Render the media detail HTML page."""
+    db = _get_db(request)
+    try:
+        detail = db.get_media_detail(media_id)
+    finally:
+        db.close()
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Media not found")
+
+    media = detail["media"]
+    extra_metadata = {}
+    if media.get("metadata_json"):
+        try:
+            extra_metadata = json.loads(media["metadata_json"])
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "media/detail.html",
+        {
+            "media": media,
+            "detail": detail,
+            "extra_metadata": extra_metadata,
+            "format_duration": _format_duration,
+        },
+    )
+
+
 @router.get("/api/media/{media_id}")
 def api_media_detail(request: Request, media_id: str):
     """Return detail for a single media file as JSON."""
