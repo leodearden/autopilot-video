@@ -1,0 +1,36 @@
+<tr class="hover:bg-surface-800/50">
+    <td class="px-4 py-3 font-medium text-gray-100">
+        {{ item.file_path.split('/')[-1] }}
+    </td>
+    <td class="px-4 py-3 text-gray-300">
+        {{ format_duration(item.duration_seconds) }}
+    </td>
+    <td class="px-4 py-3 text-gray-300">
+        {% if item.resolution_w and item.resolution_h %}
+            {{ item.resolution_w }}x{{ item.resolution_h }}
+        {% else %}
+            &mdash;
+        {% endif %}
+    </td>
+    <td class="px-4 py-3 text-gray-300">
+        {{ item.created_at[:10] if item.created_at else '&mdash;' }}
+    </td>
+    <td class="px-4 py-3">
+        <span class="px-2 py-0.5 rounded text-xs font-medium
+            {% if item.status == 'analyzed' %}bg-green-900 text-green-300
+            {% elif item.status == 'ingested' %}bg-blue-900 text-blue-300
+            {% else %}bg-gray-700 text-gray-300{% endif %}">
+            {{ item.status }}
+        </span>
+    </td>
+    <td class="px-4 py-3">
+        <div class="flex gap-1">
+            {% if item.has_transcript %}<span class="px-1.5 py-0.5 rounded text-xs bg-purple-900 text-purple-300" title="Transcript">ASR</span>{% endif %}
+            {% if item.has_detections %}<span class="px-1.5 py-0.5 rounded text-xs bg-orange-900 text-orange-300" title="Object Detections">YOLO</span>{% endif %}
+            {% if item.has_faces %}<span class="px-1.5 py-0.5 rounded text-xs bg-pink-900 text-pink-300" title="Face Detection">Face</span>{% endif %}
+            {% if item.has_embeddings %}<span class="px-1.5 py-0.5 rounded text-xs bg-cyan-900 text-cyan-300" title="CLIP Embeddings">Emb</span>{% endif %}
+            {% if item.has_audio_events %}<span class="px-1.5 py-0.5 rounded text-xs bg-yellow-900 text-yellow-300" title="Audio Events">Audio</span>{% endif %}
+            {% if item.has_captions %}<span class="px-1.5 py-0.5 rounded text-xs bg-teal-900 text-teal-300" title="Captions">Cap</span>{% endif %}
+        </div>
+    </td>
+</tr>
