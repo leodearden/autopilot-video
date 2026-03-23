@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}{{ media.file_path.split('/')[-1] }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <a href="/media" class="text-sm text-gray-400 hover:text-white">&larr; Back to Media</a>
+            <h1 class="text-2xl font-bold text-white mt-1">{{ media.file_path.split('/')[-1] }}</h1>
+            <p class="text-sm text-gray-400 mt-1">{{ media.file_path }}</p>
+        </div>
+        <span class="px-2 py-0.5 rounded text-xs font-medium
+            {% if media.status == 'analyzed' %}bg-green-900 text-green-300
+            {% elif media.status == 'ingested' %}bg-blue-900 text-blue-300
+            {% else %}bg-gray-700 text-gray-300{% endif %}">
+            {{ media.status }}
+        </span>
+    </div>
+
+    <!-- Tab navigation -->
+    <div class="border-b border-gray-700">
+        <nav class="flex space-x-4" role="tablist">
+            <button class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-blue-500 text-white"
+                    hx-get="/media/{{ media.id }}/tab/metadata"
+                    hx-target="#tab-content"
+                    hx-swap="innerHTML">Metadata</button>
+            <button class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white"
+                    hx-get="/media/{{ media.id }}/tab/transcript"
+                    hx-target="#tab-content"
+                    hx-swap="innerHTML">Transcript</button>
+            <button class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white"
+                    hx-get="/media/{{ media.id }}/tab/detections"
+                    hx-target="#tab-content"
+                    hx-swap="innerHTML">Detections</button>
+            <button class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white"
+                    hx-get="/media/{{ media.id }}/tab/faces"
+                    hx-target="#tab-content"
+                    hx-swap="innerHTML">Faces</button>
+            <button class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white"
+                    hx-get="/media/{{ media.id }}/tab/audio_events"
+                    hx-target="#tab-content"
+                    hx-swap="innerHTML">Audio Events</button>
+            <button class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white"
+                    hx-get="/media/{{ media.id }}/tab/embeddings"
+                    hx-target="#tab-content"
+                    hx-swap="innerHTML">Embeddings</button>
+        </nav>
+    </div>
+
+    <!-- Tab content -->
+    <div id="tab-content">
+        {% include "partials/tab_metadata.html" %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('tab-btn')) {
+        document.querySelectorAll('.tab-btn').forEach(function(btn) {
+            btn.classList.remove('border-blue-500', 'text-white');
+            btn.classList.add('border-transparent', 'text-gray-400');
+        });
+        e.target.classList.remove('border-transparent', 'text-gray-400');
+        e.target.classList.add('border-blue-500', 'text-white');
+    }
+});
+</script>
+{% endblock %}

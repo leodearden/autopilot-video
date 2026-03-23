@@ -1,0 +1,78 @@
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- Technical details -->
+    <div class="dark:bg-surface-800 rounded-lg p-4 space-y-3">
+        <h3 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Technical</h3>
+        <dl class="space-y-2 text-sm">
+            <div class="flex justify-between">
+                <dt class="text-gray-400">Codec</dt>
+                <dd class="text-gray-100">{{ media.codec or '&mdash;' }}</dd>
+            </div>
+            <div class="flex justify-between">
+                <dt class="text-gray-400">FPS</dt>
+                <dd class="text-gray-100">{{ media.fps or '&mdash;' }}</dd>
+            </div>
+            <div class="flex justify-between">
+                <dt class="text-gray-400">Resolution</dt>
+                <dd class="text-gray-100">
+                    {% if media.resolution_w and media.resolution_h %}
+                        {{ media.resolution_w }}x{{ media.resolution_h }}
+                    {% else %}
+                        &mdash;
+                    {% endif %}
+                </dd>
+            </div>
+            <div class="flex justify-between">
+                <dt class="text-gray-400">Duration</dt>
+                <dd class="text-gray-100">{{ format_duration(media.duration_seconds) }}</dd>
+            </div>
+            <div class="flex justify-between">
+                <dt class="text-gray-400">Audio Channels</dt>
+                <dd class="text-gray-100">{{ media.audio_channels if media.audio_channels is not none else '&mdash;' }}</dd>
+            </div>
+        </dl>
+    </div>
+
+    <!-- File details -->
+    <div class="dark:bg-surface-800 rounded-lg p-4 space-y-3">
+        <h3 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">File</h3>
+        <dl class="space-y-2 text-sm">
+            <div class="flex justify-between">
+                <dt class="text-gray-400">Path</dt>
+                <dd class="text-gray-100 break-all">{{ media.file_path }}</dd>
+            </div>
+            <div class="flex justify-between">
+                <dt class="text-gray-400">SHA-256</dt>
+                <dd class="text-gray-100 font-mono text-xs">{{ media.sha256_prefix or '&mdash;' }}</dd>
+            </div>
+            <div class="flex justify-between">
+                <dt class="text-gray-400">Dedup</dt>
+                <dd class="text-gray-100">{{ media.is_duplicate if media.is_duplicate is defined else '&mdash;' }}</dd>
+            </div>
+            <div class="flex justify-between">
+                <dt class="text-gray-400">Created</dt>
+                <dd class="text-gray-100">{{ media.created_at or '&mdash;' }}</dd>
+            </div>
+            {% if media.gps_lat and media.gps_lon %}
+            <div class="flex justify-between">
+                <dt class="text-gray-400">GPS</dt>
+                <dd class="text-gray-100">{{ "%.4f"|format(media.gps_lat) }}, {{ "%.4f"|format(media.gps_lon) }}</dd>
+            </div>
+            {% endif %}
+        </dl>
+    </div>
+
+    <!-- Extra metadata from metadata_json -->
+    {% if extra_metadata %}
+    <div class="dark:bg-surface-800 rounded-lg p-4 space-y-3 md:col-span-2">
+        <h3 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Extra Metadata</h3>
+        <dl class="space-y-2 text-sm">
+            {% for key, value in extra_metadata.items() %}
+            <div class="flex justify-between">
+                <dt class="text-gray-400">{{ key }}</dt>
+                <dd class="text-gray-100">{{ value }}</dd>
+            </div>
+            {% endfor %}
+        </dl>
+    </div>
+    {% endif %}
+</div>

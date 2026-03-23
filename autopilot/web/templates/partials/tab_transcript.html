@@ -1,0 +1,21 @@
+<div class="space-y-4">
+    {% if transcript %}
+    <div class="flex items-center gap-2 mb-2">
+        <span class="text-xs px-2 py-0.5 rounded bg-purple-900 text-purple-300">{{ transcript.language or 'unknown' }}</span>
+        <span class="text-sm text-gray-400">{{ segments|length }} segment{{ 's' if segments|length != 1 else '' }}</span>
+    </div>
+    <div class="dark:bg-surface-800 rounded-lg p-4 max-h-96 overflow-y-auto space-y-1 font-mono text-sm">
+        {% for seg in segments %}
+        <div class="flex gap-3">
+            <span class="text-gray-500 whitespace-nowrap">[{{ format_timestamp(seg.start) }}]</span>
+            {% if seg.speaker %}
+            <span class="text-blue-400 font-semibold whitespace-nowrap">{{ seg.speaker }}:</span>
+            {% endif %}
+            <span class="text-gray-100">{{ seg.text }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-gray-500">No transcript available.</p>
+    {% endif %}
+</div>

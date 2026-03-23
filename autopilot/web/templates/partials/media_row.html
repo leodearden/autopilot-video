@@ -1,6 +1,8 @@
 <tr class="hover:bg-surface-800/50">
     <td class="px-4 py-3 font-medium text-gray-100">
-        {{ item.file_path.split('/')[-1] }}
+        <a href="/media/{{ item.id }}" class="hover:text-blue-400 hover:underline transition-colors">
+            {{ item.file_path.split('/')[-1] }}
+        </a>
     </td>
     <td class="px-4 py-3 text-gray-300">
         {{ format_duration(item.duration_seconds) }}
