@@ -453,3 +453,20 @@ class TestSSEIntegration:
         """Handlers contain htmx.ajax or fetch call to /dashboard/stage/ for card updates."""
         content = _APP_JS.read_text()
         assert "htmx.ajax" in content or "/dashboard/stage/" in content
+
+
+# ---------------------------------------------------------------------------
+# Step 13: GET / redirect test
+# ---------------------------------------------------------------------------
+
+
+class TestRootRedirect:
+    """Tests for GET / redirecting to /dashboard."""
+
+    def test_root_redirects_to_dashboard(
+        self, dashboard_client: TestClient
+    ) -> None:
+        """GET / returns redirect (307 or 302) to /dashboard."""
+        resp = dashboard_client.get("/", follow_redirects=False)
+        assert resp.status_code in (302, 307)
+        assert "/dashboard" in resp.headers["location"]
