@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from autopilot.db import CatalogDB
 
@@ -92,6 +92,12 @@ def _build_stage_data(
         _build_single_stage(db, name, run_id, gates.get(name, {}))
         for name in _PIPELINE_STAGES
     ]
+
+
+@router.get("/")
+def root_redirect() -> RedirectResponse:
+    """Redirect root URL to the dashboard page."""
+    return RedirectResponse(url="/dashboard", status_code=307)
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
