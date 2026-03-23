@@ -14,8 +14,45 @@ import pytest
 # Ensure the project's .venv site-packages is on sys.path so that tests
 # can find project dependencies (fastapi, starlette, etc.) even when pytest
 # is invoked from an external Python interpreter (e.g. the orchestrator).
+#
+# In a git worktree the .venv lives in the main repo, not in the worktree
+# checkout.  We detect this by reading the .git file (worktrees have a file,
+# not a directory) and resolving back to the main repo root.
 # ---------------------------------------------------------------------------
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+def _resolve_project_root(worktree_root: Path) -> Path:
+    """Resolve the main project root from a git worktree checkout.
+
+    In a git worktree the ``.git`` entry is a file (not a directory) containing
+    ``gitdir: <path>``.  This function reads that file and walks up from the
+    gitdir to find the main repo root.
+
+    Falls back to *worktree_root* unchanged when:
+    - ``.git`` is a directory (normal, non-worktree repo)
+    - ``.git`` is missing or unreadable (OSError)
+    - ``.git`` content doesn't start with ``gitdir:``
+    """
+    dot_git = worktree_root / ".git"
+    if not dot_git.is_file():
+        return worktree_root
+    try:
+        gitdir_line = dot_git.read_text().strip()
+    except OSError:
+        return worktree_root
+    if not gitdir_line.startswith("gitdir:"):
+        return worktree_root
+    gitdir_rel = Path(gitdir_line.split(":", 1)[1].strip())
+    # Resolve relative paths against worktree_root (not CWD)
+    if gitdir_rel.is_absolute():
+        gitdir = gitdir_rel.resolve()
+    else:
+        gitdir = (worktree_root / gitdir_rel).resolve()
+    # gitdir is e.g. /repo/.git/worktrees/45 — main repo is three parents up
+    return gitdir.parent.parent.parent
+
+
+_WORKTREE_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = _resolve_project_root(_WORKTREE_ROOT)
+
 _PY_VER = f"python{sys.version_info.major}.{sys.version_info.minor}"
 _VENV_SP = _PROJECT_ROOT / ".venv" / "lib" / _PY_VER / "site-packages"
 if _VENV_SP.is_dir() and str(_VENV_SP) not in sys.path:
