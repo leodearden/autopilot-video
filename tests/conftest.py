@@ -4,10 +4,22 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Generator
 
 import pytest
+
+# ---------------------------------------------------------------------------
+# Ensure the project's .venv site-packages is on sys.path so that tests
+# can find project dependencies (fastapi, starlette, etc.) even when pytest
+# is invoked from an external Python interpreter (e.g. the orchestrator).
+# ---------------------------------------------------------------------------
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PY_VER = f"python{sys.version_info.major}.{sys.version_info.minor}"
+_VENV_SP = _PROJECT_ROOT / ".venv" / "lib" / _PY_VER / "site-packages"
+if _VENV_SP.is_dir() and str(_VENV_SP) not in sys.path:
+    sys.path.insert(0, str(_VENV_SP))
 
 
 @pytest.fixture
