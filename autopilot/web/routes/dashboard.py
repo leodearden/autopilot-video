@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -106,8 +108,8 @@ def dashboard_page(request: Request) -> HTMLResponse:
     db = _get_db(request)
     try:
         run = db.get_current_run()
-        gates = {g["stage"]: g for g in db.get_all_gates()}
-        run_id = run["run_id"] if run else None
+        gates: dict[str, dict] = {str(g["stage"]): dict(g) for g in db.get_all_gates()}
+        run_id = str(run["run_id"]) if run else None
         stages = _build_stage_data(db, run_id, gates)
 
         # Compute timeline data
@@ -117,12 +119,10 @@ def dashboard_page(request: Request) -> HTMLResponse:
             int(total_done / total_jobs * 100) if total_jobs > 0 else 0
         )
 
-        elapsed = _format_duration(
-            run.get("wall_clock_seconds") if run else None
-        )
-        budget_remaining = _format_duration(
-            run.get("budget_remaining_seconds") if run else None
-        )
+        _wall = cast(float | None, run.get("wall_clock_seconds") if run else None)
+        elapsed = _format_duration(_wall)
+        _budget = cast(float | None, run.get("budget_remaining_seconds") if run else None)
+        budget_remaining = _format_duration(_budget)
 
         templates = request.app.state.templates
         context = {
@@ -158,8 +158,8 @@ def api_stages(request: Request) -> list[dict]:
     db = _get_db(request)
     try:
         run = db.get_current_run()
-        gates = {g["stage"]: g for g in db.get_all_gates()}
-        run_id = run["run_id"] if run else None
+        gates: dict[str, dict] = {str(g["stage"]): dict(g) for g in db.get_all_gates()}
+        run_id = str(run["run_id"]) if run else None
         stages = _build_stage_data(db, run_id, gates)
         return [
             {
@@ -182,7 +182,7 @@ def stage_card_partial(request: Request, stage_name: str) -> HTMLResponse:
     db = _get_db(request)
     try:
         run = db.get_current_run()
-        run_id = run["run_id"] if run else None
+        run_id = str(run["run_id"]) if run else None
         gate = db.get_gate(stage_name) or {}
         stage = _build_single_stage(db, stage_name, run_id, gate)
 
