@@ -150,3 +150,22 @@ def api_approve_gate(request: Request, stage: str) -> dict:
 def api_skip_gate(request: Request, stage: str) -> dict:
     """Skip a waiting gate."""
     return _gate_decision(request, stage, "skipped")
+
+
+@router.put("/api/gates/preset/{preset_name}")
+def api_apply_preset(request: Request, preset_name: str) -> list[dict]:
+    """Apply a gate preset, updating all gate modes."""
+    if preset_name not in GATE_PRESETS:
+        raise HTTPException(status_code=404, detail=f"Unknown preset: {preset_name}")
+    preset = GATE_PRESETS[preset_name]
+    db = _get_db(request)
+    try:
+        for stage in _PIPELINE_STAGES:
+            mode = preset.get(stage, "auto")
+            db.update_gate(stage, mode=mode)
+        db.conn.commit()
+        gates = db.get_all_gates()
+    finally:
+        db.close()
+    gates.sort(key=lambda g: _STAGE_ORDER.get(g["stage"], 999))
+    return gates

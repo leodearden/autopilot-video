@@ -159,3 +159,52 @@ class TestGateSkipAPI:
         """POST /api/gates/nonexistent/skip returns 404."""
         response = client.post("/api/gates/nonexistent/skip")
         assert response.status_code == 404
+
+
+class TestGatePresetsAPI:
+    """Tests for PUT /api/gates/preset/{preset_name} endpoint."""
+
+    def test_preset_full_auto(self, client: TestClient) -> None:
+        """PUT /api/gates/preset/full_auto sets all gates to mode='auto'."""
+        response = client.put("/api/gates/preset/full_auto")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 9
+        for gate in data:
+            assert gate["mode"] == "auto"
+
+    def test_preset_review_creative(self, client: TestClient) -> None:
+        """review_creative pauses narrate, script, upload; rest auto."""
+        response = client.put("/api/gates/preset/review_creative")
+        assert response.status_code == 200
+        data = response.json()
+        modes = {g["stage"]: g["mode"] for g in data}
+        assert modes["narrate"] == "pause"
+        assert modes["script"] == "pause"
+        assert modes["upload"] == "pause"
+        for stage in ("ingest", "analyze", "classify", "edl", "source", "render"):
+            assert modes[stage] == "auto"
+
+    def test_preset_review_everything(self, client: TestClient) -> None:
+        """review_everything pauses all 9 gates."""
+        response = client.put("/api/gates/preset/review_everything")
+        assert response.status_code == 200
+        data = response.json()
+        for gate in data:
+            assert gate["mode"] == "pause"
+
+    def test_preset_review_before_render(self, client: TestClient) -> None:
+        """review_before_render pauses source and upload; rest auto."""
+        response = client.put("/api/gates/preset/review_before_render")
+        assert response.status_code == 200
+        data = response.json()
+        modes = {g["stage"]: g["mode"] for g in data}
+        assert modes["source"] == "pause"
+        assert modes["upload"] == "pause"
+        for stage in ("ingest", "analyze", "classify", "narrate", "script", "edl", "render"):
+            assert modes[stage] == "auto"
+
+    def test_preset_unknown_returns_404(self, client: TestClient) -> None:
+        """PUT /api/gates/preset/nonexistent returns 404."""
+        response = client.put("/api/gates/preset/nonexistent")
+        assert response.status_code == 404
