@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -116,3 +117,36 @@ def api_update_gate(request: Request, stage: str, body: GateUpdate) -> dict:
     if gate is None:
         raise HTTPException(status_code=404, detail=f"Gate not found: {stage}")
     return gate
+
+
+def _gate_decision(request: Request, stage: str, status: str) -> dict:
+    """Apply a gate decision (approve/skip) and return updated gate."""
+    if stage not in _STAGE_ORDER:
+        raise HTTPException(status_code=404, detail=f"Unknown stage: {stage}")
+    db = _get_db(request)
+    try:
+        db.update_gate(
+            stage,
+            status=status,
+            decided_by="console",
+            decided_at=datetime.now(timezone.utc).isoformat(),
+        )
+        db.conn.commit()
+        gate = db.get_gate(stage)
+    finally:
+        db.close()
+    if gate is None:
+        raise HTTPException(status_code=404, detail=f"Gate not found: {stage}")
+    return gate
+
+
+@router.post("/api/gates/{stage}/approve")
+def api_approve_gate(request: Request, stage: str) -> dict:
+    """Approve a waiting gate."""
+    return _gate_decision(request, stage, "approved")
+
+
+@router.post("/api/gates/{stage}/skip")
+def api_skip_gate(request: Request, stage: str) -> dict:
+    """Skip a waiting gate."""
+    return _gate_decision(request, stage, "skipped")

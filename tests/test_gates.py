@@ -123,3 +123,39 @@ class TestGateUpdateAPI:
         """PUT /api/gates/nonexistent returns 404."""
         response = client.put("/api/gates/nonexistent", json={"mode": "auto"})
         assert response.status_code == 404
+
+
+class TestGateApproveAPI:
+    """Tests for POST /api/gates/{stage}/approve endpoint."""
+
+    def test_approve_gate(self, client: TestClient) -> None:
+        """POST /api/gates/classify/approve returns 200 with approved status."""
+        response = client.post("/api/gates/classify/approve")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "approved"
+        assert data["decided_by"] == "console"
+        assert data["decided_at"] is not None
+
+    def test_approve_unknown_stage_returns_404(self, client: TestClient) -> None:
+        """POST /api/gates/nonexistent/approve returns 404."""
+        response = client.post("/api/gates/nonexistent/approve")
+        assert response.status_code == 404
+
+
+class TestGateSkipAPI:
+    """Tests for POST /api/gates/{stage}/skip endpoint."""
+
+    def test_skip_gate(self, client: TestClient) -> None:
+        """POST /api/gates/classify/skip returns 200 with skipped status."""
+        response = client.post("/api/gates/classify/skip")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "skipped"
+        assert data["decided_by"] == "console"
+        assert data["decided_at"] is not None
+
+    def test_skip_unknown_stage_returns_404(self, client: TestClient) -> None:
+        """POST /api/gates/nonexistent/skip returns 404."""
+        response = client.post("/api/gates/nonexistent/skip")
+        assert response.status_code == 404
