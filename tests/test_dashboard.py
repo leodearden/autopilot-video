@@ -158,3 +158,52 @@ def empty_app(dashboard_db: CatalogDB, dashboard_db_path: str) -> FastAPI:
 def empty_client(empty_app: FastAPI) -> TestClient:
     """TestClient for empty-state dashboard tests."""
     return TestClient(empty_app)
+
+
+# ---------------------------------------------------------------------------
+# Step 1: GET /dashboard basic page tests
+# ---------------------------------------------------------------------------
+
+PIPELINE_STAGES = (
+    "ingest", "analyze", "classify", "narrate", "script",
+    "edl", "source", "render", "upload",
+)
+
+
+class TestDashboardPage:
+    """Tests for GET /dashboard HTML page."""
+
+    def test_dashboard_returns_200_html(self, dashboard_client: TestClient) -> None:
+        """GET /dashboard returns 200 with text/html."""
+        resp = dashboard_client.get("/dashboard")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_dashboard_contains_all_stage_names(
+        self, dashboard_client: TestClient
+    ) -> None:
+        """Dashboard page contains all 9 pipeline stage names."""
+        resp = dashboard_client.get("/dashboard")
+        html = resp.text
+        for stage in PIPELINE_STAGES:
+            assert stage in html, f"Stage '{stage}' not found in dashboard HTML"
+
+    def test_dashboard_extends_base_template(
+        self, dashboard_client: TestClient
+    ) -> None:
+        """Dashboard extends base.html (contains nav with 'Autopilot Video')."""
+        resp = dashboard_client.get("/dashboard")
+        assert "Autopilot Video" in resp.text
+
+    def test_dashboard_has_title(self, dashboard_client: TestClient) -> None:
+        """Dashboard page contains 'Dashboard' in the title."""
+        resp = dashboard_client.get("/dashboard")
+        assert "Dashboard" in resp.text
+
+    def test_dashboard_no_active_run_shows_banner(
+        self, empty_client: TestClient
+    ) -> None:
+        """When no active run, dashboard shows 'Pipeline not running' banner."""
+        resp = empty_client.get("/dashboard")
+        assert resp.status_code == 200
+        assert "not running" in resp.text.lower()
