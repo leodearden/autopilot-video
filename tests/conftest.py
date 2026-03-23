@@ -62,7 +62,7 @@ if _VENV_SP.is_dir() and str(_VENV_SP) not in sys.path:
 @pytest.fixture
 def project_root() -> Path:
     """Return the project root directory."""
-    return Path(__file__).resolve().parent.parent
+    return _PROJECT_ROOT
 
 
 @pytest.fixture
