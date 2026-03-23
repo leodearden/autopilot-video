@@ -376,3 +376,51 @@ class TestApiStages:
             assert "name" in stage
             assert "status_counts" in stage
             assert "gate_mode" in stage
+
+
+# ---------------------------------------------------------------------------
+# Step 9: HTMX stage card partial endpoint tests
+# ---------------------------------------------------------------------------
+
+
+class TestStageCardPartial:
+    """Tests for GET /dashboard/stage/{stage_name} partial endpoint."""
+
+    def test_stage_partial_returns_200_html(
+        self, dashboard_client: TestClient
+    ) -> None:
+        """GET /dashboard/stage/ingest returns 200 with HTML."""
+        resp = dashboard_client.get("/dashboard/stage/ingest")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "ingest" in resp.text
+
+    def test_stage_partial_has_id_for_swap(
+        self, dashboard_client: TestClient
+    ) -> None:
+        """Response includes id='stage-ingest' for HTMX swap targeting."""
+        resp = dashboard_client.get("/dashboard/stage/ingest")
+        assert 'id="stage-ingest"' in resp.text
+
+    def test_invalid_stage_returns_404(
+        self, dashboard_client: TestClient
+    ) -> None:
+        """Invalid stage name returns 404."""
+        resp = dashboard_client.get("/dashboard/stage/nonexistent")
+        assert resp.status_code == 404
+
+    def test_stage_partial_reflects_db_state(
+        self,
+        dashboard_seeded_db: CatalogDB,
+        dashboard_db_path: str,
+    ) -> None:
+        """After updating a job to done, re-fetching shows updated progress."""
+        db = dashboard_seeded_db
+        # Update one running ingest job to done
+        db.update_job("ingest-run-0", status="done")
+
+        app = create_app(dashboard_db_path)
+        client = TestClient(app)
+        resp = client.get("/dashboard/stage/ingest")
+        # Now 6/7 done
+        assert "6/7" in resp.text
