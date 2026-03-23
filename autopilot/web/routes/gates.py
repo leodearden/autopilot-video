@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Literal, Optional
+
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, ConfigDict
 
 from autopilot.db import CatalogDB
 
@@ -72,6 +75,41 @@ def api_gate_detail(request: Request, stage: str) -> dict:
         raise HTTPException(status_code=404, detail=f"Unknown stage: {stage}")
     db = _get_db(request)
     try:
+        gate = db.get_gate(stage)
+    finally:
+        db.close()
+    if gate is None:
+        raise HTTPException(status_code=404, detail=f"Gate not found: {stage}")
+    return gate
+
+
+class GateUpdate(BaseModel):
+    """Request body for updating a gate."""
+
+    mode: Optional[Literal["auto", "pause", "notify"]] = None
+    timeout_hours: Optional[float] = None
+
+    model_config = ConfigDict(
+        json_schema_extra={"examples": [{"mode": "pause", "timeout_hours": 24.0}]},
+    )
+
+
+@router.put("/api/gates/{stage}")
+def api_update_gate(request: Request, stage: str, body: GateUpdate) -> dict:
+    """Update a gate's mode and/or timeout."""
+    if stage not in _STAGE_ORDER:
+        raise HTTPException(status_code=404, detail=f"Unknown stage: {stage}")
+    db = _get_db(request)
+    try:
+        updates: dict[str, object] = {}
+        if body.mode is not None:
+            updates["mode"] = body.mode
+        # timeout_hours: check if it was explicitly provided (even as None)
+        if "timeout_hours" in (body.model_fields_set or set()):
+            updates["timeout_hours"] = body.timeout_hours
+        if updates:
+            db.update_gate(stage, **updates)
+            db.conn.commit()
         gate = db.get_gate(stage)
     finally:
         db.close()

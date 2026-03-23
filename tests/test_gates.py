@@ -85,3 +85,41 @@ class TestGateDetailAPI:
         """GET /api/gates/nonexistent returns 404."""
         response = client.get("/api/gates/nonexistent")
         assert response.status_code == 404
+
+
+class TestGateUpdateAPI:
+    """Tests for PUT /api/gates/{stage} endpoint."""
+
+    def test_update_gate_mode(self, client: TestClient) -> None:
+        """PUT /api/gates/analyze with mode='pause' updates and persists."""
+        response = client.put("/api/gates/analyze", json={"mode": "pause"})
+        assert response.status_code == 200
+        assert response.json()["mode"] == "pause"
+        # Re-GET confirms persistence
+        check = client.get("/api/gates/analyze")
+        assert check.json()["mode"] == "pause"
+
+    def test_update_gate_invalid_mode(self, client: TestClient) -> None:
+        """PUT with invalid mode returns 422."""
+        response = client.put("/api/gates/analyze", json={"mode": "invalid"})
+        assert response.status_code == 422
+
+    def test_update_gate_timeout(self, client: TestClient) -> None:
+        """PUT /api/gates/render with timeout_hours=24.0 persists."""
+        response = client.put("/api/gates/render", json={"timeout_hours": 24.0})
+        assert response.status_code == 200
+        assert response.json()["timeout_hours"] == 24.0
+
+    def test_update_gate_clear_timeout(self, client: TestClient) -> None:
+        """PUT with timeout_hours=null clears the timeout."""
+        # Set a timeout first
+        client.put("/api/gates/render", json={"timeout_hours": 12.0})
+        # Clear it
+        response = client.put("/api/gates/render", json={"timeout_hours": None})
+        assert response.status_code == 200
+        assert response.json()["timeout_hours"] is None
+
+    def test_update_gate_unknown_stage(self, client: TestClient) -> None:
+        """PUT /api/gates/nonexistent returns 404."""
+        response = client.put("/api/gates/nonexistent", json={"mode": "auto"})
+        assert response.status_code == 404
