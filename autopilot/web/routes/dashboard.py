@@ -7,6 +7,18 @@ from fastapi.responses import HTMLResponse
 
 from autopilot.db import CatalogDB
 
+
+def _format_duration(seconds: float | int | None) -> str:
+    """Format seconds as H:MM:SS or M:SS, or '--:--' if None."""
+    if seconds is None:
+        return "--:--"
+    total = int(seconds)
+    h, remainder = divmod(total, 3600)
+    m, s = divmod(remainder, 60)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
+
 router = APIRouter()
 
 _PIPELINE_STAGES = CatalogDB._PIPELINE_STAGES
@@ -83,6 +95,20 @@ def dashboard_page(request: Request) -> HTMLResponse:
         run_id = run["run_id"] if run else None
         stages = _build_stage_data(db, run_id, gates)
 
+        # Compute timeline data
+        total_done = sum(s["done"] for s in stages)
+        total_jobs = sum(s["total"] for s in stages)
+        progress_pct = (
+            int(total_done / total_jobs * 100) if total_jobs > 0 else 0
+        )
+
+        elapsed = _format_duration(
+            run.get("wall_clock_seconds") if run else None
+        )
+        budget_remaining = _format_duration(
+            run.get("budget_remaining_seconds") if run else None
+        )
+
         templates = request.app.state.templates
         return templates.TemplateResponse(
             "dashboard.html",
@@ -92,6 +118,11 @@ def dashboard_page(request: Request) -> HTMLResponse:
                 "run": run,
                 "stages": stages,
                 "pipeline_stages": _PIPELINE_STAGES,
+                "total_done": total_done,
+                "total_jobs": total_jobs,
+                "progress_pct": progress_pct,
+                "elapsed": elapsed,
+                "budget_remaining": budget_remaining,
             },
         )
     finally:
