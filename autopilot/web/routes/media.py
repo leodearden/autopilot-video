@@ -30,28 +30,6 @@ def _format_duration(seconds: float | None) -> str:
     return f"{m}:{s:02d}"
 
 
-def _query_params(
-    q: str | None,
-    status: str | None,
-    sort: str,
-    order: str,
-    page: int,
-    per_page: int,
-    date_from: str | None,
-    date_to: str | None,
-) -> dict:
-    """Bundle query parameters into a dict for reuse."""
-    return {
-        "q": q,
-        "status": status,
-        "sort": sort,
-        "order": order,
-        "page": page,
-        "per_page": per_page,
-        "date_from": date_from,
-        "date_to": date_to,
-    }
-
 
 @router.get("/api/media")
 def api_media(
@@ -302,8 +280,6 @@ def media_tab(request: Request, media_id: str, tab_name: str):
             total_frames=total_frames,
             coverage_pct=coverage_pct,
         )
-    else:
-        raise HTTPException(status_code=404, detail="Invalid tab")
 
     return HTMLResponse(html)
 

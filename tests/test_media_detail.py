@@ -86,14 +86,14 @@ def detail_seeded_db(detail_db: CatalogDB) -> CatalogDB:
         ("test1", 60, json.dumps(det_frame2)),
     ])
 
-    # 2 faces on separate frames, assigned to cluster_id=1
+    # 2 faces on separate frames, assigned to cluster_id=1 (with real BLOB embeddings)
     db.batch_insert_faces([
-        ("test1", 0, 0, json.dumps({"x": 10, "y": 20, "w": 50, "h": 50}), None, 1),
-        ("test1", 30, 0, json.dumps({"x": 15, "y": 25, "w": 55, "h": 55}), None, 1),
+        ("test1", 0, 0, json.dumps({"x": 10, "y": 20, "w": 50, "h": 50}), b"\x00" * 8, 1),
+        ("test1", 30, 0, json.dumps({"x": 15, "y": 25, "w": 55, "h": 55}), b"\x00" * 8, 1),
     ])
 
-    # Face cluster with label 'Alice'
-    db.insert_face_cluster(1, label="Alice")
+    # Face cluster with label 'Alice' (with real BLOB representative_embedding)
+    db.insert_face_cluster(1, label="Alice", representative_embedding=b"\x00" * 8)
 
     # 2 audio events with classified events_json
     audio_events_0 = [
@@ -199,14 +199,13 @@ class TestGetMediaDetail:
         assert "audio_events" in result
         assert len(result["audio_events"]) == 2
 
-    def test_includes_embeddings_with_count(self, detail_seeded_db: CatalogDB) -> None:
-        """get_media_detail includes 'embeddings' list and 'embedding_count'."""
+    def test_includes_embedding_count(self, detail_seeded_db: CatalogDB) -> None:
+        """get_media_detail includes 'embedding_count' (no full embeddings list)."""
         result = detail_seeded_db.get_media_detail("test1")
         assert result is not None
-        assert "embeddings" in result
         assert "embedding_count" in result
-        assert len(result["embeddings"]) == 3
         assert result["embedding_count"] == 3
+        assert "embeddings" not in result
 
     def test_empty_analysis_for_media_without_data(self, detail_seeded_db: CatalogDB) -> None:
         """get_media_detail returns empty/None for media with no analysis data."""
@@ -217,7 +216,6 @@ class TestGetMediaDetail:
         assert result["detections"] == []
         assert result["faces"] == []
         assert result["audio_events"] == []
-        assert result["embeddings"] == []
         assert result["embedding_count"] == 0
 
 
@@ -239,8 +237,21 @@ class TestApiMediaDetail:
         resp = detail_client.get("/api/media/test1")
         assert resp.status_code == 200
         data = resp.json()
-        for key in ("media", "transcript", "detections", "faces", "audio_events", "embeddings"):
+        for key in (
+            "media", "transcript", "detections", "faces",
+            "audio_events", "embedding_count",
+        ):
             assert key in data, f"Missing key: {key}"
+
+    def test_no_blob_fields_in_json_response(self, detail_client) -> None:
+        """JSON API must not contain binary BLOB fields (embedding, representative_embedding)."""
+        resp = detail_client.get("/api/media/test1")
+        assert resp.status_code == 200
+        data = resp.json()
+        for face in data["faces"]:
+            assert "embedding" not in face
+        for cluster in data.get("face_clusters", {}).values():
+            assert "representative_embedding" not in cluster
 
     def test_media_section_has_expected_fields(self, detail_client) -> None:
         """Media section contains codec, fps, resolution, etc."""
