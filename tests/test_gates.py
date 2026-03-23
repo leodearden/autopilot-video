@@ -46,3 +46,28 @@ def app(tmp_path: Path) -> FastAPI:
 def client(app: FastAPI) -> TestClient:
     """Create a TestClient for the app."""
     return TestClient(app)
+
+
+class TestGateListAPI:
+    """Tests for GET /api/gates endpoint."""
+
+    def test_api_gates_returns_all_gates(self, client: TestClient) -> None:
+        """GET /api/gates returns 200 with JSON list of 9 gate dicts."""
+        response = client.get("/api/gates")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) == 9
+
+        # Each gate has required keys
+        required_keys = {"stage", "mode", "status", "timeout_hours", "decided_at", "decided_by"}
+        for gate in data:
+            assert required_keys.issubset(gate.keys()), f"Missing keys in {gate}"
+
+        # Stages match _PIPELINE_STAGES order
+        stages = [g["stage"] for g in data]
+        assert stages == list(CatalogDB._PIPELINE_STAGES)
+
+        # Default mode is 'auto'
+        for gate in data:
+            assert gate["mode"] == "auto"
