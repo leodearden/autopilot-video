@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from autopilot.db import CatalogDB
@@ -55,34 +55,43 @@ def _compute_stage_status(counts: dict[str, int]) -> str:
     return "waiting"
 
 
+def _build_single_stage(
+    db: CatalogDB,
+    stage_name: str,
+    run_id: str | None,
+    gate: dict,
+) -> dict:
+    """Build a stage summary dict for a single pipeline stage."""
+    if run_id:
+        counts = db.count_jobs_by_status(stage_name, run_id=run_id)
+    else:
+        counts = {}
+
+    total = sum(counts.values())
+    done = counts.get("done", 0)
+    status = _compute_stage_status(counts)
+
+    return {
+        "name": stage_name,
+        "status": status,
+        "status_color": _STATUS_COLORS.get(status, "gray"),
+        "done": done,
+        "total": total,
+        "counts": counts,
+        "gate_mode": gate.get("mode", "auto"),
+    }
+
+
 def _build_stage_data(
     db: CatalogDB,
     run_id: str | None,
     gates: dict[str, dict],
 ) -> list[dict]:
     """Build stage summary dicts for all pipeline stages."""
-    stages = []
-    for name in _PIPELINE_STAGES:
-        if run_id:
-            counts = db.count_jobs_by_status(name, run_id=run_id)
-        else:
-            counts = {}
-
-        total = sum(counts.values())
-        done = counts.get("done", 0)
-        status = _compute_stage_status(counts)
-        gate = gates.get(name, {})
-
-        stages.append({
-            "name": name,
-            "status": status,
-            "status_color": _STATUS_COLORS.get(status, "gray"),
-            "done": done,
-            "total": total,
-            "counts": counts,
-            "gate_mode": gate.get("mode", "auto"),
-        })
-    return stages
+    return [
+        _build_single_stage(db, name, run_id, gates.get(name, {}))
+        for name in _PIPELINE_STAGES
+    ]
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
@@ -110,21 +119,18 @@ def dashboard_page(request: Request) -> HTMLResponse:
         )
 
         templates = request.app.state.templates
-        return templates.TemplateResponse(
-            "dashboard.html",
-            {
-                "request": request,
-                "page_title": "Dashboard",
-                "run": run,
-                "stages": stages,
-                "pipeline_stages": _PIPELINE_STAGES,
-                "total_done": total_done,
-                "total_jobs": total_jobs,
-                "progress_pct": progress_pct,
-                "elapsed": elapsed,
-                "budget_remaining": budget_remaining,
-            },
-        )
+        context = {
+            "page_title": "Dashboard",
+            "run": run,
+            "stages": stages,
+            "pipeline_stages": _PIPELINE_STAGES,
+            "total_done": total_done,
+            "total_jobs": total_jobs,
+            "progress_pct": progress_pct,
+            "elapsed": elapsed,
+            "budget_remaining": budget_remaining,
+        }
+        return templates.TemplateResponse(request, "dashboard.html", context)
     finally:
         db.close()
 
@@ -157,5 +163,26 @@ def api_stages(request: Request) -> list[dict]:
             }
             for s in stages
         ]
+    finally:
+        db.close()
+
+
+@router.get("/dashboard/stage/{stage_name}", response_class=HTMLResponse)
+def stage_card_partial(request: Request, stage_name: str) -> HTMLResponse:
+    """Render a single stage card partial for HTMX swap updates."""
+    if stage_name not in _PIPELINE_STAGES:
+        raise HTTPException(status_code=404, detail=f"Unknown stage: {stage_name}")
+
+    db = _get_db(request)
+    try:
+        run = db.get_current_run()
+        run_id = run["run_id"] if run else None
+        gate = db.get_gate(stage_name) or {}
+        stage = _build_single_stage(db, stage_name, run_id, gate)
+
+        templates = request.app.state.templates
+        template = templates.get_template("partials/stage_card.html")
+        html = template.render(stage=stage)
+        return HTMLResponse(content=html)
     finally:
         db.close()
