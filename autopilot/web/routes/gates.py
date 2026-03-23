@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from autopilot.db import CatalogDB
 
@@ -63,3 +63,18 @@ def api_gates(request: Request) -> list[dict]:
         db.close()
     gates.sort(key=lambda g: _STAGE_ORDER.get(g["stage"], 999))
     return gates
+
+
+@router.get("/api/gates/{stage}")
+def api_gate_detail(request: Request, stage: str) -> dict:
+    """Return a single gate by stage name."""
+    if stage not in _STAGE_ORDER:
+        raise HTTPException(status_code=404, detail=f"Unknown stage: {stage}")
+    db = _get_db(request)
+    try:
+        gate = db.get_gate(stage)
+    finally:
+        db.close()
+    if gate is None:
+        raise HTTPException(status_code=404, detail=f"Gate not found: {stage}")
+    return gate

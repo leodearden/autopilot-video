@@ -68,3 +68,20 @@ class TestGateListAPI:
         # Default mode is 'auto'
         for gate in data:
             assert gate["mode"] == "auto"
+
+
+class TestGateDetailAPI:
+    """Tests for GET /api/gates/{stage} endpoint."""
+
+    def test_api_gate_detail_returns_single_gate(self, client: TestClient) -> None:
+        """GET /api/gates/analyze returns 200 with gate dict for 'analyze'."""
+        response = client.get("/api/gates/analyze")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["stage"] == "analyze"
+        assert data["mode"] == "auto"
+
+    def test_api_gate_detail_unknown_stage_returns_404(self, client: TestClient) -> None:
+        """GET /api/gates/nonexistent returns 404."""
+        response = client.get("/api/gates/nonexistent")
+        assert response.status_code == 404
