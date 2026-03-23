@@ -10,6 +10,7 @@ from typing import Generator
 
 import pytest
 
+
 # ---------------------------------------------------------------------------
 # Ensure the project's .venv site-packages is on sys.path so that tests
 # can find project dependencies (fastapi, starlette, etc.) even when pytest
