@@ -12,6 +12,9 @@ _PIPELINE_STAGES = CatalogDB._PIPELINE_STAGES
 
 VALID_MODES = ("auto", "pause", "notify")
 
+# Lookup for sorting gates by pipeline order
+_STAGE_ORDER = {s: i for i, s in enumerate(_PIPELINE_STAGES)}
+
 _GATE_STATUS_COLORS = {
     "idle": "gray",
     "waiting": "amber",
@@ -48,3 +51,15 @@ GATE_PRESETS = {
 def _get_db(request: Request) -> CatalogDB:
     """Create a CatalogDB connection from the app's db_path."""
     return CatalogDB(request.app.state.db_path)
+
+
+@router.get("/api/gates")
+def api_gates(request: Request) -> list[dict]:
+    """Return all pipeline gates as a JSON list."""
+    db = _get_db(request)
+    try:
+        gates = db.get_all_gates()
+    finally:
+        db.close()
+    gates.sort(key=lambda g: _STAGE_ORDER.get(g["stage"], 999))
+    return gates

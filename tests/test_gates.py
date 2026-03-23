@@ -34,11 +34,8 @@ def app(tmp_path: Path) -> FastAPI:
     """Create a FastAPI app with a file-backed CatalogDB via tmp_path."""
     db_path = str(tmp_path / "catalog.db")
     # Seed the gate rows
-    db = CatalogDB(db_path)
-    try:
+    with CatalogDB(db_path) as db:
         db.init_default_gates()
-    finally:
-        db.close()
     return create_app(db_path)
 
 
