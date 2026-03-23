@@ -127,3 +127,35 @@ def dashboard_page(request: Request) -> HTMLResponse:
         )
     finally:
         db.close()
+
+
+@router.get("/api/run")
+def api_run(request: Request) -> dict:
+    """Return the current pipeline run as JSON."""
+    db = _get_db(request)
+    try:
+        run = db.get_current_run()
+        return {"run": run}
+    finally:
+        db.close()
+
+
+@router.get("/api/stages")
+def api_stages(request: Request) -> list[dict]:
+    """Return stage summaries as a JSON list."""
+    db = _get_db(request)
+    try:
+        run = db.get_current_run()
+        gates = {g["stage"]: g for g in db.get_all_gates()}
+        run_id = run["run_id"] if run else None
+        stages = _build_stage_data(db, run_id, gates)
+        return [
+            {
+                "name": s["name"],
+                "status_counts": s["counts"],
+                "gate_mode": s["gate_mode"],
+            }
+            for s in stages
+        ]
+    finally:
+        db.close()
