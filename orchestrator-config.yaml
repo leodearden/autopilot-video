@@ -44,7 +44,7 @@ type_check_command: "pyright"
 
 # Fused memory HTTP server
 fused_memory:
-  url: "http://localhost:8001"
+  url: "http://localhost:8002"
   project_id: "autopilot_video"
   config_path: "/home/leo/src/autopilot-video/fused-memory-config.yaml"
   server_command:
