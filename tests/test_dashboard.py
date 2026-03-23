@@ -274,3 +274,46 @@ class TestStageCardContent:
         analyze_end = html.find("</div>", html.find("</div>", analyze_start) + 1) + 6
         analyze_card = html[analyze_start:analyze_end]
         assert "manual" in analyze_card.lower()
+
+
+# ---------------------------------------------------------------------------
+# Step 5: Timeline bar tests
+# ---------------------------------------------------------------------------
+
+
+class TestTimelineBar:
+    """Tests for the pipeline timeline/progress bar."""
+
+    def test_dashboard_contains_overall_progress(
+        self, dashboard_client: TestClient
+    ) -> None:
+        """Dashboard HTML contains overall progress percentage."""
+        resp = dashboard_client.get("/dashboard")
+        html = resp.text
+        # Overall: 5 done out of 11 total = ~45%
+        assert "id=\"timeline-bar\"" in html
+
+    def test_dashboard_shows_budget_info(
+        self, dashboard_client: TestClient
+    ) -> None:
+        """Dashboard shows budget remaining display."""
+        resp = dashboard_client.get("/dashboard")
+        html = resp.text
+        # budget_remaining_seconds=3600 -> 1:00:00 or similar
+        assert "3600" in html or "1:00:00" in html or "60:00" in html
+
+    def test_dashboard_shows_run_duration(
+        self, dashboard_client: TestClient
+    ) -> None:
+        """Dashboard shows elapsed run duration."""
+        resp = dashboard_client.get("/dashboard")
+        html = resp.text
+        # wall_clock_seconds=120 -> 2:00
+        assert "2:00" in html or "120" in html
+
+    def test_timeline_bar_not_shown_when_no_run(
+        self, empty_client: TestClient
+    ) -> None:
+        """Timeline bar is not rendered when no active run."""
+        resp = empty_client.get("/dashboard")
+        assert "id=\"timeline-bar\"" not in resp.text
