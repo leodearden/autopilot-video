@@ -11,10 +11,66 @@ router = APIRouter()
 
 _PIPELINE_STAGES = CatalogDB._PIPELINE_STAGES
 
+# Status-to-Tailwind color class mapping
+_STATUS_COLORS = {
+    "idle": "gray",
+    "running": "blue",
+    "waiting": "amber",
+    "done": "green",
+    "error": "red",
+}
+
 
 def _get_db(request: Request) -> CatalogDB:
     """Create a CatalogDB connection from the app's db_path."""
     return CatalogDB(request.app.state.db_path)
+
+
+def _compute_stage_status(counts: dict[str, int]) -> str:
+    """Derive aggregate status from job status counts.
+
+    Priority: error > running > done > waiting > idle.
+    """
+    if counts.get("error", 0) > 0:
+        return "error"
+    if counts.get("running", 0) > 0:
+        return "running"
+    total = sum(counts.values())
+    if total == 0:
+        return "idle"
+    if counts.get("done", 0) == total:
+        return "done"
+    return "waiting"
+
+
+def _build_stage_data(
+    db: CatalogDB,
+    run_id: str | None,
+    gates: dict[str, dict],
+) -> list[dict]:
+    """Build stage summary dicts for all pipeline stages."""
+    stages = []
+    for name in _PIPELINE_STAGES:
+        if run_id:
+            counts = db.count_jobs_by_status(name, run_id=run_id)
+        else:
+            counts = {}
+
+        total = sum(counts.values())
+        done = counts.get("done", 0)
+        status = _compute_stage_status(counts)
+        gate = gates.get(name, {})
+
+        stages.append({
+            "name": name,
+            "status": status,
+            "status_color": _STATUS_COLORS.get(status, "gray"),
+            "done": done,
+            "total": total,
+            "counts": counts,
+            "gate_mode": gate.get("mode", "auto"),
+        })
+    return stages
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
@@ -24,14 +80,8 @@ def dashboard_page(request: Request) -> HTMLResponse:
     try:
         run = db.get_current_run()
         gates = {g["stage"]: g for g in db.get_all_gates()}
-
-        stages = []
-        for name in _PIPELINE_STAGES:
-            gate = gates.get(name, {})
-            stages.append({
-                "name": name,
-                "gate_mode": gate.get("mode", "auto"),
-            })
+        run_id = run["run_id"] if run else None
+        stages = _build_stage_data(db, run_id, gates)
 
         templates = request.app.state.templates
         return templates.TemplateResponse(
