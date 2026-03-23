@@ -10,7 +10,9 @@
     "autopilot/web/templates/partials/timeline_bar.html",
     "autopilot/web/static/app.js",
     "autopilot/web/static/app.css",
-    "tests/test_dashboard.py"
+    "tests/test_dashboard.py",
+    "tests/conftest.py",
+    "tests/test_conftest_worktree.py"
   ],
   "modules": [
     "autopilot/web/routes",
@@ -19,7 +21,7 @@
     "autopilot/web/static",
     "tests"
   ],
-  "analysis": "This task builds the primary pipeline dashboard page. The existing codebase has: (1) FastAPI app factory in app.py that registers routers and configures Jinja2 templates; (2) CatalogDB with full CRUD for pipeline_runs (get_current_run, list_runs, insert_run, update_run), pipeline_jobs (list_jobs, count_jobs_by_status, insert_job, update_job), pipeline_gates (get_all_gates, get_gate, update_gate, init_default_gates), and pipeline_events (insert_event, get_events_since, prune_events); (3) SSE endpoint at /api/events streaming pipeline events via sse-starlette; (4) base.html template with Tailwind CSS (CDN), HTMX, dark theme, and nav (already has /dashboard link); (5) app.js with SSE connectSSE() stub and toast system; (6) app.css with toast styles.\n\nThe 9 pipeline stages are defined in CatalogDB._PIPELINE_STAGES: ingest, analyze, classify, narrate, script, edl, source, render, upload.\n\nKey DB schema: pipeline_runs has run_id, started_at, finished_at, config_snapshot, current_stage, status, wall_clock_seconds, budget_remaining_seconds. pipeline_jobs has job_id, stage, job_type, target_id, target_label, status, started_at, finished_at, duration_seconds, progress_pct, error_message, worker, run_id. pipeline_gates has stage, mode, status, decided_at, decided_by, notes, timeout_hours.\n\nApproach: Create dashboard.py route module with GET /dashboard (HTML page), GET / (redirect to /dashboard), GET /api/run (JSON current run status), GET /api/stages (JSON stage summaries). Create dashboard.html template extending base.html with a responsive grid of 9 stage cards, pipeline timeline bar, and 'no active run' banner. Create stage_card.html partial for HTMX OOB swaps. Create timeline_bar.html partial. Wire SSE events in app.js to trigger HTMX fetches for stage card partials. Register dashboard_router in routes/__init__.py and app.py.\n\nThe test pattern follows test_sse.py and test_media_detail.py: file-backed CatalogDB fixture, create_app(db_path), TestClient. Seed with pipeline runs, jobs across stages, gates, and events to validate rendering.",
+  "analysis": "This task builds the primary pipeline dashboard page. The existing codebase has: (1) FastAPI app factory in app.py that registers routers and configures Jinja2 templates; (2) CatalogDB with full CRUD for pipeline_runs (get_current_run, list_runs, insert_run, update_run), pipeline_jobs (list_jobs, count_jobs_by_status, insert_job, update_job), pipeline_gates (get_all_gates, get_gate, update_gate, init_default_gates), and pipeline_events (insert_event, get_events_since, prune_events); (3) SSE endpoint at /api/events streaming pipeline events via sse-starlette; (4) base.html template with Tailwind CSS (CDN), HTMX, dark theme, and nav (already has /dashboard link); (5) app.js with SSE connectSSE() stub and toast system; (6) app.css with toast styles.\n\nThe 9 pipeline stages are defined in CatalogDB._PIPELINE_STAGES: ingest, analyze, classify, narrate, script, edl, source, render, upload.\n\nKey DB schema: pipeline_runs has run_id, started_at, finished_at, config_snapshot, current_stage, status, wall_clock_seconds, budget_remaining_seconds. pipeline_jobs has job_id, stage, job_type, target_id, target_label, status, started_at, finished_at, duration_seconds, progress_pct, error_message, worker, run_id. pipeline_gates has stage, mode, status, decided_at, decided_by, notes, timeout_hours.\n\nApproach: Create dashboard.py route module with GET /dashboard (HTML page), GET / (redirect to /dashboard), GET /api/run (JSON current run status), GET /api/stages (JSON stage summaries). Create dashboard.html template extending base.html with a responsive grid of 9 stage cards, pipeline timeline bar, and 'no active run' banner. Create stage_card.html partial for HTMX OOB swaps. Create timeline_bar.html partial. Wire SSE events in app.js to trigger HTMX fetches for stage card partials. Register dashboard_router in routes/__init__.py and app.py.\n\nThe test pattern follows test_sse.py and test_media_detail.py: file-backed CatalogDB fixture, create_app(db_path), TestClient. Seed with pipeline runs, jobs across stages, gates, and events to validate rendering.\n\nPost-review: Two blocking robustness issues found in tests/conftest.py: (1) unhandled OSError when reading .git file at import time; (2) relative gitdir paths resolved against CWD instead of worktree root. Both must be fixed with TDD steps.",
   "prerequisites": [
     {
       "id": "pre-1",
@@ -127,6 +129,20 @@
       "description": "Add GET / route to dashboard.py that uses RedirectResponse to redirect to /dashboard. Verify all tests pass end-to-end.",
       "status": "done",
       "commit": "a428826"
+    },
+    {
+      "id": "step-15",
+      "type": "test",
+      "description": "Write tests in tests/test_conftest_worktree.py for conftest.py worktree path resolution robustness. Extract the .git file parsing and project root resolution logic from conftest.py into a testable helper function `_resolve_project_root(worktree_root: Path) -> Path`. Tests: (1) When .git file exists and is readable with valid 'gitdir: /abs/path/.git/worktrees/45' content, returns correct project root (3 parents up from gitdir); (2) When .git file exists but read_text() raises OSError (simulate with mock or unreadable tmp file), falls back to worktree_root without raising; (3) When .git file exists but content doesn't start with 'gitdir:', falls back to worktree_root; (4) When .git file contains a relative gitdir path like 'gitdir: ../.git/worktrees/45', the relative path is resolved against worktree_root (not CWD) \u2014 verify by running with CWD set to a different directory (e.g. /tmp) and checking the result still points to the correct location; (5) When .git is a directory (not a file), returns worktree_root unchanged; (6) When gitdir path is absolute, _WORKTREE_ROOT prefix is effectively ignored (Path('/')  / Path('/abs') == Path('/abs') behavior).",
+      "status": "done",
+      "commit": "e869348"
+    },
+    {
+      "id": "step-16",
+      "type": "impl",
+      "description": "Refactor tests/conftest.py to fix both blocking issues. Extract the .git file parsing into a helper function `_resolve_project_root(worktree_root: Path) -> Path` so it is testable. Fix 1 (unhandled_exception_at_import): Wrap the entire read-and-parse block (lines 27-32) in a `try/except OSError` that falls back to returning worktree_root on any I/O failure. Fix 2 (incorrect_path_resolution): When parsing the gitdir line, check if the extracted path is relative using `_gitdir_rel.is_absolute()`. If relative, resolve against worktree_root: `_gitdir = (_WORKTREE_ROOT / _gitdir_rel).resolve()`. If absolute, resolve directly: `_gitdir = _gitdir_rel.resolve()`. This ensures relative gitdir paths (as found in submodule .git files) are resolved correctly regardless of CWD. Module-level code calls `_PROJECT_ROOT = _resolve_project_root(_WORKTREE_ROOT)`. Verify all existing tests plus new tests pass.",
+      "status": "done",
+      "commit": "086a3f0"
     }
   ],
   "design_decisions": [
@@ -157,6 +173,10 @@
     {
       "decision": "Reuse _format_duration pattern for elapsed/ETA display",
       "rationale": "media.py already has _format_duration(seconds) for HH:MM:SS formatting. Dashboard needs the same for elapsed time and ETA. Will either import or duplicate this small utility."
+    },
+    {
+      "decision": "Extract conftest.py worktree resolution into a testable _resolve_project_root() helper",
+      "rationale": "The module-level .git file parsing code had two robustness issues (unhandled OSError, CWD-dependent relative path resolution). Extracting into a function with a worktree_root parameter makes it unit-testable and fixes both issues: try/except OSError for graceful fallback, and resolving relative gitdir paths against worktree_root instead of CWD."
     }
   ],
   "reuse": [
@@ -201,6 +221,6 @@
       "how": "Use templates.get_template('partials/stage_card.html').render(...) for partial responses returned as HTMLResponse, matching the existing tab endpoint pattern."
     }
   ],
-  "_session_id": "41-9fecd969",
-  "_created_at": "2026-03-23T15:11:10.056509+00:00"
+  "_session_id": "45-a4fd5efb",
+  "_created_at": "2026-03-23T17:51:40.218607+00:00"
 }
