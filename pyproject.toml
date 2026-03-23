@@ -2,6 +2,9 @@
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.wheel]
+packages = ["autopilot"]
+
 [project]
 name = "autopilot-video"
 version = "0.1.0"
@@ -31,7 +34,7 @@ dependencies = [
     "kokoro>=0.9,<1.0",
     # Video
     "moviepy>=2.0,<3.0",
-    "av>=11.0,<14.0",
+    "av>=14.0,<18.0",
     "opentimelineio>=0.17,<1.0",
     "scenedetect>=0.6,<1.0",
     # APIs
@@ -61,12 +64,20 @@ vllm = [
 ]
 
 [tool.uv]
-# Override audiocraft's strict torch/torchaudio pins (torch==2.1.0) to allow
-# compatibility with whisperx which needs torch>=2.7.  At runtime both
-# libraries work fine with PyTorch 2.x; the upstream pin is overly cautious.
+# Override audiocraft's strict torch/torchaudio/torchtext/torchvision/xformers
+# pins (torch==2.1.0, torchtext==0.16.0, xformers==0.0.22.post7) to allow
+# compatibility with whisperx (needs torch>=2.7) and Python 3.12 (torchtext
+# 0.16 and torchvision 0.16 lack cp312 wheels; xformers 0.0.22 requires torch
+# at build time without declaring it).
 override-dependencies = [
     "torch>=2.1,<3.0",
     "torchaudio>=2.1,<3.0",
+    "torchtext>=0.18,<1.0",
+    "torchvision>=0.18,<1.0",
+    "xformers>=0.0.28",
+    "av>=14.0,<18.0",
+    "pydantic>=2.0,<3.0",
+    "gradio>=4.0,<6.0",
 ]
 
 [tool.pytest.ini_options]
