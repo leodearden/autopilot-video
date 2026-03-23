@@ -10,7 +10,8 @@
     "autopilot/web/templates/partials/timeline_bar.html",
     "autopilot/web/static/app.js",
     "autopilot/web/static/app.css",
-    "tests/test_dashboard.py"
+    "tests/test_dashboard.py",
+    "tests/conftest.py"
   ],
   "modules": [
     "autopilot/web/routes",
@@ -19,7 +20,7 @@
     "autopilot/web/static",
     "tests"
   ],
-  "analysis": "This task builds the primary pipeline dashboard page. The existing codebase has: (1) FastAPI app factory in app.py that registers routers and configures Jinja2 templates; (2) CatalogDB with full CRUD for pipeline_runs (get_current_run, list_runs, insert_run, update_run), pipeline_jobs (list_jobs, count_jobs_by_status, insert_job, update_job), pipeline_gates (get_all_gates, get_gate, update_gate, init_default_gates), and pipeline_events (insert_event, get_events_since, prune_events); (3) SSE endpoint at /api/events streaming pipeline events via sse-starlette; (4) base.html template with Tailwind CSS (CDN), HTMX, dark theme, and nav (already has /dashboard link); (5) app.js with SSE connectSSE() stub and toast system; (6) app.css with toast styles.\n\nThe 9 pipeline stages are defined in CatalogDB._PIPELINE_STAGES: ingest, analyze, classify, narrate, script, edl, source, render, upload.\n\nKey DB schema: pipeline_runs has run_id, started_at, finished_at, config_snapshot, current_stage, status, wall_clock_seconds, budget_remaining_seconds. pipeline_jobs has job_id, stage, job_type, target_id, target_label, status, started_at, finished_at, duration_seconds, progress_pct, error_message, worker, run_id. pipeline_gates has stage, mode, status, decided_at, decided_by, notes, timeout_hours.\n\nApproach: Create dashboard.py route module with GET /dashboard (HTML page), GET / (redirect to /dashboard), GET /api/run (JSON current run status), GET /api/stages (JSON stage summaries). Create dashboard.html template extending base.html with a responsive grid of 9 stage cards, pipeline timeline bar, and 'no active run' banner. Create stage_card.html partial for HTMX OOB swaps. Create timeline_bar.html partial. Wire SSE events in app.js to trigger HTMX fetches for stage card partials. Register dashboard_router in routes/__init__.py and app.py.\n\nThe test pattern follows test_sse.py and test_media_detail.py: file-backed CatalogDB fixture, create_app(db_path), TestClient. Seed with pipeline runs, jobs across stages, gates, and events to validate rendering.",
+  "analysis": "This task builds the primary pipeline dashboard page. The existing codebase has: (1) FastAPI app factory in app.py that registers routers and configures Jinja2 templates; (2) CatalogDB with full CRUD for pipeline_runs (get_current_run, list_runs, insert_run, update_run), pipeline_jobs (list_jobs, count_jobs_by_status, insert_job, update_job), pipeline_gates (get_all_gates, get_gate, update_gate, init_default_gates), and pipeline_events (insert_event, get_events_since, prune_events); (3) SSE endpoint at /api/events streaming pipeline events via sse-starlette; (4) base.html template with Tailwind CSS (CDN), HTMX, dark theme, and nav (already has /dashboard link); (5) app.js with SSE connectSSE() stub and toast system; (6) app.css with toast styles.\n\nThe 9 pipeline stages are defined in CatalogDB._PIPELINE_STAGES: ingest, analyze, classify, narrate, script, edl, source, render, upload.\n\nKey DB schema: pipeline_runs has run_id, started_at, finished_at, config_snapshot, current_stage, status, wall_clock_seconds, budget_remaining_seconds. pipeline_jobs has job_id, stage, job_type, target_id, target_label, status, started_at, finished_at, duration_seconds, progress_pct, error_message, worker, run_id. pipeline_gates has stage, mode, status, decided_at, decided_by, notes, timeout_hours.\n\nApproach: Create dashboard.py route module with GET /dashboard (HTML page), GET / (redirect to /dashboard), GET /api/run (JSON current run status), GET /api/stages (JSON stage summaries). Create dashboard.html template extending base.html with a responsive grid of 9 stage cards, pipeline timeline bar, and 'no active run' banner. Create stage_card.html partial for HTMX OOB swaps. Create timeline_bar.html partial. Wire SSE events in app.js to trigger HTMX fetches for stage card partials. Register dashboard_router in routes/__init__.py and app.py.\n\nThe test pattern follows test_sse.py and test_media_detail.py: file-backed CatalogDB fixture, create_app(db_path), TestClient. Seed with pipeline runs, jobs across stages, gates, and events to validate rendering.\n\n**Review fix (step-15/16):** The `project_root` pytest fixture in tests/conftest.py re-computes the path as `Path(__file__).resolve().parent.parent` instead of returning the module-level `_PROJECT_ROOT` that was correctly resolved by `_resolve_project_root()`. In a worktree context this means the fixture returns the worktree path, not the main repo path, defeating the purpose of the worktree resolution logic for any test that uses the fixture to locate files (prompts, configs, etc.) that only exist in the main repo.",
   "prerequisites": [
     {
       "id": "pre-1",
@@ -127,6 +128,20 @@
       "description": "Add GET / route to dashboard.py that uses RedirectResponse to redirect to /dashboard. Verify all tests pass end-to-end.",
       "status": "done",
       "commit": "a428826"
+    },
+    {
+      "id": "step-15",
+      "type": "test",
+      "description": "Write failing test in tests/test_dashboard.py (or a dedicated test) that verifies the `project_root` fixture from conftest.py returns the same path as `conftest._PROJECT_ROOT` (the module-level resolved root), not `Path(__file__).resolve().parent.parent` (the worktree root). Import `_PROJECT_ROOT` from conftest and assert `project_root == _PROJECT_ROOT`. This test will currently fail in a worktree context where the two values differ, exposing the inconsistency.",
+      "status": "done",
+      "commit": "556072b"
+    },
+    {
+      "id": "step-16",
+      "type": "impl",
+      "description": "Fix the `project_root` fixture in tests/conftest.py to return the module-level `_PROJECT_ROOT` instead of re-computing `Path(__file__).resolve().parent.parent`. Change line 65 from `return Path(__file__).resolve().parent.parent` to `return _PROJECT_ROOT`. This ensures the fixture is consistent with the `_resolve_project_root` logic and correctly resolves to the main repo root in worktree contexts.",
+      "status": "done",
+      "commit": "2a830dc"
     }
   ],
   "design_decisions": [
@@ -157,6 +172,10 @@
     {
       "decision": "Reuse _format_duration pattern for elapsed/ETA display",
       "rationale": "media.py already has _format_duration(seconds) for HH:MM:SS formatting. Dashboard needs the same for elapsed time and ETA. Will either import or duplicate this small utility."
+    },
+    {
+      "decision": "Fix project_root fixture to use _PROJECT_ROOT instead of re-computing path",
+      "rationale": "The _resolve_project_root() function correctly resolves the main repo path from a worktree checkout by reading the .git file. The project_root fixture was bypassing this by re-computing Path(__file__).parent.parent, which returns the worktree root in a worktree context. Any test using the fixture to locate files only present in the main repo (prompts, configs) would get the wrong path. The fix is a one-line change to return _PROJECT_ROOT."
     }
   ],
   "reuse": [
@@ -199,8 +218,13 @@
       "what": "HTMX partial rendering pattern",
       "where": "autopilot/web/routes/media.py lines 62-70 and 170-284",
       "how": "Use templates.get_template('partials/stage_card.html').render(...) for partial responses returned as HTMLResponse, matching the existing tab endpoint pattern."
+    },
+    {
+      "what": "Existing _resolve_project_root and _PROJECT_ROOT in conftest.py",
+      "where": "tests/conftest.py lines 22-54",
+      "how": "The module-level _PROJECT_ROOT already correctly resolves the main repo root from a worktree. The project_root fixture just needs to return this value instead of re-computing the path."
     }
   ],
-  "_session_id": "41-9fecd969",
-  "_created_at": "2026-03-23T15:11:10.056509+00:00"
+  "_session_id": "42-48f4cc53",
+  "_created_at": "2026-03-23T18:05:31.870016+00:00"
 }
