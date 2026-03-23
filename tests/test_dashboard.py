@@ -207,3 +207,70 @@ class TestDashboardPage:
         resp = empty_client.get("/dashboard")
         assert resp.status_code == 200
         assert "not running" in resp.text.lower()
+
+
+# ---------------------------------------------------------------------------
+# Step 3: Stage card content tests (with seeded data)
+# ---------------------------------------------------------------------------
+
+
+class TestStageCardContent:
+    """Tests for stage card status, progress, and gate badges."""
+
+    def test_ingest_card_shows_running_status(
+        self, dashboard_client: TestClient
+    ) -> None:
+        """Ingest card shows 'running' status (has 2 running jobs)."""
+        resp = dashboard_client.get("/dashboard")
+        html = resp.text
+        # Find the ingest card section
+        ingest_start = html.find('id="stage-ingest"')
+        ingest_end = html.find("</div>", html.find("</div>", ingest_start) + 1) + 6
+        ingest_card = html[ingest_start:ingest_end]
+        assert "running" in ingest_card.lower()
+
+    def test_analyze_card_shows_running_status(
+        self, dashboard_client: TestClient
+    ) -> None:
+        """Analyze card shows 'running' status (has running jobs)."""
+        resp = dashboard_client.get("/dashboard")
+        html = resp.text
+        analyze_start = html.find('id="stage-analyze"')
+        analyze_end = html.find("</div>", html.find("</div>", analyze_start) + 1) + 6
+        analyze_card = html[analyze_start:analyze_end]
+        assert "running" in analyze_card.lower()
+
+    def test_classify_card_shows_error_status(
+        self, dashboard_client: TestClient
+    ) -> None:
+        """Classify card shows 'error' status (has error job)."""
+        resp = dashboard_client.get("/dashboard")
+        html = resp.text
+        classify_start = html.find('id="stage-classify"')
+        classify_end = html.find(
+            "</div>", html.find("</div>", classify_start) + 1
+        ) + 6
+        classify_card = html[classify_start:classify_end]
+        assert "error" in classify_card.lower()
+
+    def test_ingest_card_shows_progress(
+        self, dashboard_client: TestClient
+    ) -> None:
+        """Ingest card shows progress like '5/7' (5 done of 7 total)."""
+        resp = dashboard_client.get("/dashboard")
+        html = resp.text
+        ingest_start = html.find('id="stage-ingest"')
+        ingest_end = html.find("</div>", html.find("</div>", ingest_start) + 1) + 6
+        ingest_card = html[ingest_start:ingest_end]
+        assert "5/7" in ingest_card
+
+    def test_analyze_gate_badge_shows_manual(
+        self, dashboard_client: TestClient
+    ) -> None:
+        """Analyze card gate badge shows 'manual' mode."""
+        resp = dashboard_client.get("/dashboard")
+        html = resp.text
+        analyze_start = html.find('id="stage-analyze"')
+        analyze_end = html.find("</div>", html.find("</div>", analyze_start) + 1) + 6
+        analyze_card = html[analyze_start:analyze_end]
+        assert "manual" in analyze_card.lower()
