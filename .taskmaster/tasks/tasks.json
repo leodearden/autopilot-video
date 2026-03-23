@@ -54,7 +54,7 @@
         "id": "4",
         "title": "CLI entry point and pipeline orchestrator skeleton",
         "description": "Implement cli.py with Click subcommands and orchestrator.py DAG runner skeleton.",
-        "details": "Create autopilot/cli.py with Click:\n1. Main group: `autopilot` with --config option (default: config.yaml)\n2. Subcommands: `ingest`, `analyze`, `plan`, `edit`, `render`, `upload`, `run` (full pipeline)\n3. Each subcommand loads config, opens the catalog DB, and delegates to the appropriate stage function.\n4. `run` executes all stages in sequence with progress reporting.\n5. Common options: --input-dir (override), --output-dir (override), --verbose, --dry-run.\n\nCreate autopilot/orchestrator.py:\n1. A PipelineOrchestrator class that defines the stage DAG.\n2. Stages: INGEST -> ANALYZE -> CLASSIFY -> NARRATE -> SCRIPT -> EDL -> SOURCE_ASSETS -> RENDER -> UPLOAD\n3. Each stage has: name, function reference, dependencies, estimated_time.\n4. run() method executes stages in topological order, tracking elapsed time vs the wall-clock budget.\n5. Stage functions are initially stubs that log 'Stage X not yet implemented' \u2014 they'll be filled in by later tasks.\n6. Progress reporting: print stage name, status (running/done/skipped/error), elapsed time.",
+        "details": "Create autopilot/cli.py with Click:\n1. Main group: `autopilot` with --config option (default: config.yaml)\n2. Subcommands: `ingest`, `analyze`, `plan`, `edit`, `render`, `upload`, `run` (full pipeline)\n3. Each subcommand loads config, opens the catalog DB, and delegates to the appropriate stage function.\n4. `run` executes all stages in sequence with progress reporting.\n5. Common options: --input-dir (override), --output-dir (override), --verbose, --dry-run.\n\nCreate autopilot/orchestrator.py:\n1. A PipelineOrchestrator class that defines the stage DAG.\n2. Stages: INGEST -> ANALYZE -> CLASSIFY -> NARRATE -> SCRIPT -> EDL -> SOURCE_ASSETS -> RENDER -> UPLOAD\n3. Each stage has: name, function reference, dependencies, estimated_time.\n4. run() method executes stages in topological order, tracking elapsed time vs the wall-clock budget.\n5. Stage functions are initially stubs that log 'Stage X not yet implemented' — they'll be filled in by later tasks.\n6. Progress reporting: print stage name, status (running/done/skipped/error), elapsed time.",
         "testStrategy": "Test CLI invocation with --help for each subcommand. Test orchestrator DAG ordering is correct. Test orchestrator handles stage errors gracefully (skips dependents, reports failure).",
         "priority": "high",
         "status": "done",
@@ -89,7 +89,7 @@
         "id": "6",
         "title": "GPU scheduler",
         "description": "Implement gpu_scheduler.py for VRAM-aware model loading/unloading with context-manager API.",
-        "details": "Create autopilot/analyze/gpu_scheduler.py:\n1. A GPUScheduler class that tracks currently loaded models and their VRAM usage.\n2. Model registry: dict mapping model_name -> ModelSpec(load_fn, unload_fn, vram_bytes, warmup_fn).\n3. Context manager API: `with scheduler.model('whisperx') as model:` \u2014 loads if not loaded, unloads others if VRAM insufficient.\n4. VRAM tracking: query torch.cuda.mem_get_info() for available VRAM. If loading a model would exceed available VRAM, unload the least-recently-used model first.\n5. Device selection from config (gpu_device index).\n6. Eager unloading: after context manager exits, model stays loaded (LRU cache) unless another model needs the VRAM.\n7. Force-unload method to clear all models (useful between pipeline stages).\n8. Thread safety: use a threading.Lock since the pipeline may run audio analysis concurrently with video analysis.\n\nVRAM budget from PRD:\n- whisperx large-v3: ~3 GB\n- TransNetV2: <1 GB\n- YOLO11x: ~8 GB\n- InsightFace buffalo_l: ~2 GB\n- SigLIP 2: ~3 GB\n- PANNs CNN14: <1 GB\n- Qwen2.5-VL-7B: ~14 GB\n- Total GPU: 24 GB (RTX 3090)",
+        "details": "Create autopilot/analyze/gpu_scheduler.py:\n1. A GPUScheduler class that tracks currently loaded models and their VRAM usage.\n2. Model registry: dict mapping model_name -> ModelSpec(load_fn, unload_fn, vram_bytes, warmup_fn).\n3. Context manager API: `with scheduler.model('whisperx') as model:` — loads if not loaded, unloads others if VRAM insufficient.\n4. VRAM tracking: query torch.cuda.mem_get_info() for available VRAM. If loading a model would exceed available VRAM, unload the least-recently-used model first.\n5. Device selection from config (gpu_device index).\n6. Eager unloading: after context manager exits, model stays loaded (LRU cache) unless another model needs the VRAM.\n7. Force-unload method to clear all models (useful between pipeline stages).\n8. Thread safety: use a threading.Lock since the pipeline may run audio analysis concurrently with video analysis.\n\nVRAM budget from PRD:\n- whisperx large-v3: ~3 GB\n- TransNetV2: <1 GB\n- YOLO11x: ~8 GB\n- InsightFace buffalo_l: ~2 GB\n- SigLIP 2: ~3 GB\n- PANNs CNN14: <1 GB\n- Qwen2.5-VL-7B: ~14 GB\n- Total GPU: 24 GB (RTX 3090)",
         "testStrategy": "Unit tests with mock VRAM tracking (don't require GPU). Test LRU eviction logic. Test context manager loads/unloads correctly. Test VRAM overflow triggers eviction. Test thread safety with concurrent access.",
         "priority": "high",
         "status": "done",
@@ -160,7 +160,7 @@
         "id": "10",
         "title": "Face detection and clustering",
         "description": "Implement faces.py with InsightFace SCRFD + ArcFace 512-d embeddings and DBSCAN clustering.",
-        "details": "Create autopilot/analyze/faces.py:\n1. detect_faces(media_id: str, video_path: Path, db: CatalogDB, scheduler: GPUScheduler) -> None\n   - Load InsightFace buffalo_l model pack via GPU scheduler.\n   - Run SCRFD face detection on sampled frames (1 FPS, same as YOLO sparse mode).\n   - For each detected face, extract 512-d ArcFace embedding.\n   - Store per-frame face data in a faces table or within detections.\n\n2. cluster_faces(db: CatalogDB) -> None\n   - Collect all face embeddings across all media files.\n   - Run DBSCAN or agglomerative clustering on embeddings (cosine distance).\n   - Populate face_clusters table: cluster_id, representative_embedding (centroid), sample_image_paths.\n   - The label field starts as NULL \u2014 human assigns names via scripts/label_faces.py.\n\n3. Also create scripts/label_faces.py:\n   - Interactive script that displays sample face crops per cluster.\n   - User assigns a name to each cluster.\n   - Updates face_clusters.label in the database.\n\nPerformance: SCRFD at ~100 FPS on RTX 3090. 50h at 1 FPS = 180K frames -> ~30 min.",
+        "details": "Create autopilot/analyze/faces.py:\n1. detect_faces(media_id: str, video_path: Path, db: CatalogDB, scheduler: GPUScheduler) -> None\n   - Load InsightFace buffalo_l model pack via GPU scheduler.\n   - Run SCRFD face detection on sampled frames (1 FPS, same as YOLO sparse mode).\n   - For each detected face, extract 512-d ArcFace embedding.\n   - Store per-frame face data in a faces table or within detections.\n\n2. cluster_faces(db: CatalogDB) -> None\n   - Collect all face embeddings across all media files.\n   - Run DBSCAN or agglomerative clustering on embeddings (cosine distance).\n   - Populate face_clusters table: cluster_id, representative_embedding (centroid), sample_image_paths.\n   - The label field starts as NULL — human assigns names via scripts/label_faces.py.\n\n3. Also create scripts/label_faces.py:\n   - Interactive script that displays sample face crops per cluster.\n   - User assigns a name to each cluster.\n   - Updates face_clusters.label in the database.\n\nPerformance: SCRFD at ~100 FPS on RTX 3090. 50h at 1 FPS = 180K frames -> ~30 min.",
         "testStrategy": "Test face detection with a fixture image containing faces. Verify embedding dimensionality is 512. Test clustering produces distinct clusters for distinct people. Test label_faces.py updates the database correctly.",
         "priority": "medium",
         "status": "done",
@@ -233,7 +233,7 @@
         "id": "14",
         "title": "Activity clustering and labeling",
         "description": "Implement cluster.py for temporal-spatial-semantic DBSCAN clustering and classify.py for Claude Sonnet activity labeling.",
-        "details": "Create autopilot/organize/cluster.py:\n1. cluster_activities(db: CatalogDB) -> list[ActivityCluster]\n   - Load all media files with timestamps and GPS coordinates.\n   - Step 1: Temporal-spatial clustering via DBSCAN with custom distance metric combining:\n     a. Temporal: clips within 30 minutes of each other.\n     b. Spatial: clips within 500 meters (haversine distance on GPS coords).\n   - Step 2: Semantic refinement within each cluster:\n     a. Load SigLIP embeddings for clips in the cluster.\n     b. Compute mean CLIP embedding per 5-minute sliding window.\n     c. Detect embedding-space discontinuities (cosine distance > threshold) as activity boundaries.\n     d. Also use transcript text similarity to validate splits.\n   - Step 3: Handle missing GPS (some clips may lack GPS) \u2014 fall back to temporal-only clustering.\n   - Store clusters in activity_clusters table.\n\nCreate autopilot/organize/classify.py:\n1. label_activities(db: CatalogDB, config: LLMConfig) -> None\n   - For each activity cluster, assemble a summary: transcript excerpts, top YOLO classes, top audio events, GPS reverse-geocode (via simple offline lookup or Nominatim), time range.\n   - Call Claude Sonnet via Anthropic API with the activity_label.md prompt.\n   - Parse response: short descriptive label + 1-paragraph description.\n   - Also ask LLM to flag clusters that should be split.\n   - Update activity_clusters table with labels and descriptions.",
+        "details": "Create autopilot/organize/cluster.py:\n1. cluster_activities(db: CatalogDB) -> list[ActivityCluster]\n   - Load all media files with timestamps and GPS coordinates.\n   - Step 1: Temporal-spatial clustering via DBSCAN with custom distance metric combining:\n     a. Temporal: clips within 30 minutes of each other.\n     b. Spatial: clips within 500 meters (haversine distance on GPS coords).\n   - Step 2: Semantic refinement within each cluster:\n     a. Load SigLIP embeddings for clips in the cluster.\n     b. Compute mean CLIP embedding per 5-minute sliding window.\n     c. Detect embedding-space discontinuities (cosine distance > threshold) as activity boundaries.\n     d. Also use transcript text similarity to validate splits.\n   - Step 3: Handle missing GPS (some clips may lack GPS) — fall back to temporal-only clustering.\n   - Store clusters in activity_clusters table.\n\nCreate autopilot/organize/classify.py:\n1. label_activities(db: CatalogDB, config: LLMConfig) -> None\n   - For each activity cluster, assemble a summary: transcript excerpts, top YOLO classes, top audio events, GPS reverse-geocode (via simple offline lookup or Nominatim), time range.\n   - Call Claude Sonnet via Anthropic API with the activity_label.md prompt.\n   - Parse response: short descriptive label + 1-paragraph description.\n   - Also ask LLM to flag clusters that should be split.\n   - Update activity_clusters table with labels and descriptions.",
         "testStrategy": "Test clustering with synthetic data (known cluster centers, verify correct assignment). Test semantic refinement splits distinct activities within a spatial cluster. Test LLM labeling with mocked API response. Test handling of missing GPS data.",
         "priority": "high",
         "status": "done",
@@ -253,7 +253,7 @@
         "id": "15",
         "title": "Narrative organization",
         "description": "Implement narratives.py for master storyboard construction and Claude Opus narrative proposals.",
-        "details": "Create autopilot/organize/narratives.py:\n1. build_master_storyboard(db: CatalogDB) -> str\n   - For each activity cluster, produce a structured summary:\n     a. Label and description (from Stage 2)\n     b. Duration of usable footage\n     c. Key moments: transcript highlights + YOLO event density peaks\n     d. People present: from face clusters\n     e. Emotional tone: transcript sentiment + audio events\n     f. Visual quality notes: YOLO detection confidence distributions (low confidence = motion blur / poor framing)\n   - Format as structured text for LLM consumption.\n\n2. propose_narratives(storyboard: str, db: CatalogDB, config: LLMConfig) -> list[Narrative]\n   - Call Claude Opus with the master storyboard + narrative_planner.md system prompt.\n   - System prompt includes creator's style preferences, target durations, audience from config.\n   - Request: proposed narratives with titles, included activities, duration, narrative arc, emotional journey, reasoning.\n   - Parse structured response into Narrative objects.\n   - Store in narratives table with status='proposed'.\n\n3. This is a human review checkpoint \u2014 output should be formatted for creator review (clear summary of each proposed narrative).",
+        "details": "Create autopilot/organize/narratives.py:\n1. build_master_storyboard(db: CatalogDB) -> str\n   - For each activity cluster, produce a structured summary:\n     a. Label and description (from Stage 2)\n     b. Duration of usable footage\n     c. Key moments: transcript highlights + YOLO event density peaks\n     d. People present: from face clusters\n     e. Emotional tone: transcript sentiment + audio events\n     f. Visual quality notes: YOLO detection confidence distributions (low confidence = motion blur / poor framing)\n   - Format as structured text for LLM consumption.\n\n2. propose_narratives(storyboard: str, db: CatalogDB, config: LLMConfig) -> list[Narrative]\n   - Call Claude Opus with the master storyboard + narrative_planner.md system prompt.\n   - System prompt includes creator's style preferences, target durations, audience from config.\n   - Request: proposed narratives with titles, included activities, duration, narrative arc, emotional journey, reasoning.\n   - Parse structured response into Narrative objects.\n   - Store in narratives table with status='proposed'.\n\n3. This is a human review checkpoint — output should be formatted for creator review (clear summary of each proposed narrative).",
         "testStrategy": "Test storyboard construction with mock DB data. Test LLM call with mocked API response. Verify narrative objects have all required fields. Test formatting of review output.",
         "priority": "high",
         "status": "done",
@@ -287,7 +287,7 @@
         "id": "17",
         "title": "EDL generation and validation",
         "description": "Implement edl.py for Claude Opus tool-use EDL construction and validator.py for automated EDL checks.",
-        "details": "Create autopilot/plan/edl.py:\n1. generate_edl(narrative_id: str, db: CatalogDB, config: LLMConfig) -> dict\n   - Load the script (from Stage 4) and detailed storyboard data for candidate clips.\n   - Call Claude Opus with edit_planner.md system prompt using function-calling/tool-use.\n   - Available tools for the LLM:\n     a. select_clip(clip_id, in_timecode, out_timecode, track)\n     b. add_transition(type, duration, position)\n     c. set_crop_mode(clip_id, mode, subject_track_id)\n     d. add_title(text, style, position, duration)\n     e. set_audio(clip_id, level_db, fade_in, fade_out)\n     f. add_music(mood, duration, start_time)\n     g. add_voiceover(text, start_time, duration)\n     h. request_broll(description, duration, start_time)\n   - Collect all tool calls into a JSON EDL structure.\n   - Store in edit_plans table. Update narrative status to 'planned'.\n\nCreate autopilot/plan/validator.py:\n1. validate_edl(edl: dict, db: CatalogDB) -> ValidationResult\n   - Check: no overlapping clips on same track\n   - Check: total duration within \u00b110% of scripted target\n   - Check: all referenced clip_ids exist in catalog\n   - Check: all in/out points within clip duration bounds\n   - Check: audio levels within broadcast-safe ranges (-24 to 0 dBFS)\n   - Return: ValidationResult with pass/fail, list of errors, list of warnings.\n2. If validation fails, re-prompt the LLM with error feedback (up to 3 retries).",
+        "details": "Create autopilot/plan/edl.py:\n1. generate_edl(narrative_id: str, db: CatalogDB, config: LLMConfig) -> dict\n   - Load the script (from Stage 4) and detailed storyboard data for candidate clips.\n   - Call Claude Opus with edit_planner.md system prompt using function-calling/tool-use.\n   - Available tools for the LLM:\n     a. select_clip(clip_id, in_timecode, out_timecode, track)\n     b. add_transition(type, duration, position)\n     c. set_crop_mode(clip_id, mode, subject_track_id)\n     d. add_title(text, style, position, duration)\n     e. set_audio(clip_id, level_db, fade_in, fade_out)\n     f. add_music(mood, duration, start_time)\n     g. add_voiceover(text, start_time, duration)\n     h. request_broll(description, duration, start_time)\n   - Collect all tool calls into a JSON EDL structure.\n   - Store in edit_plans table. Update narrative status to 'planned'.\n\nCreate autopilot/plan/validator.py:\n1. validate_edl(edl: dict, db: CatalogDB) -> ValidationResult\n   - Check: no overlapping clips on same track\n   - Check: total duration within ±10% of scripted target\n   - Check: all referenced clip_ids exist in catalog\n   - Check: all in/out points within clip duration bounds\n   - Check: audio levels within broadcast-safe ranges (-24 to 0 dBFS)\n   - Return: ValidationResult with pass/fail, list of errors, list of warnings.\n2. If validation fails, re-prompt the LLM with error feedback (up to 3 retries).",
         "testStrategy": "Test EDL generation with mocked LLM tool-use response. Test validator catches: overlapping clips, invalid clip_ids, out-of-bounds timecodes, excessive duration, unsafe audio levels. Test retry logic with initially-invalid then valid EDL.",
         "priority": "high",
         "status": "done",
@@ -322,7 +322,7 @@
         "id": "19",
         "title": "Auto-crop viewport computation",
         "description": "Implement crop.py for subject tracking, rule-of-thirds framing, Kalman filter smoothing with activity-aware tau, and detection gap handling.",
-        "details": "Create autopilot/render/crop.py:\n1. compute_crop_path(media_id: str, target_aspect: str, db: CatalogDB, config: CameraConfig, edl_entry: dict) -> np.ndarray\n   - Load tracking data from detections table for the clip.\n   - Source is 4K\u00d74K (4096\u00d74096). Target: 1920\u00d71080 (16:9) or 1080\u00d71920 (9:16).\n   - Crop window is ~47-50% of source width for 16:9.\n\n2. Subject selection:\n   - If EDL specifies subject_track_id: use that track.\n   - If 'auto': select track with highest cumulative (bbox_area \u00d7 frame_count).\n\n3. Raw crop center per frame:\n   - Position subject according to rule of thirds (horizontally: center at 1/3 or 2/3; vertically: eyes at 1/3 from top).\n   - For multiple subjects: compute bounding box containing all, center on that.\n\n4. Smoothing via Kalman filter (or EMA with configurable tau):\n   - Slow activities (walking, talking): tau = 1.0s\n   - Medium activities (hiking): tau = 0.5s\n   - Fast activities (sports): tau = 0.2s\n   - Tau comes from config or EDL per-clip override.\n\n5. Clamp to frame bounds: crop window never extends beyond source frame.\n\n6. Detection gap handling:\n   - Subject not detected: hold last position for up to 2 seconds.\n   - After 2s: smoothly drift to frame center over 1 second.\n   - Subject reappears: smooth transition back.\n\n7. Output: per-frame (crop_x, crop_y) array stored in crop_paths table as packed binary.\n\n8. Fallback modes: 'center' (fixed center crop), 'manual_offset' (static offset), 'stabilize_only' (gyro-based).",
+        "details": "Create autopilot/render/crop.py:\n1. compute_crop_path(media_id: str, target_aspect: str, db: CatalogDB, config: CameraConfig, edl_entry: dict) -> np.ndarray\n   - Load tracking data from detections table for the clip.\n   - Source is 4K×4K (4096×4096). Target: 1920×1080 (16:9) or 1080×1920 (9:16).\n   - Crop window is ~47-50% of source width for 16:9.\n\n2. Subject selection:\n   - If EDL specifies subject_track_id: use that track.\n   - If 'auto': select track with highest cumulative (bbox_area × frame_count).\n\n3. Raw crop center per frame:\n   - Position subject according to rule of thirds (horizontally: center at 1/3 or 2/3; vertically: eyes at 1/3 from top).\n   - For multiple subjects: compute bounding box containing all, center on that.\n\n4. Smoothing via Kalman filter (or EMA with configurable tau):\n   - Slow activities (walking, talking): tau = 1.0s\n   - Medium activities (hiking): tau = 0.5s\n   - Fast activities (sports): tau = 0.2s\n   - Tau comes from config or EDL per-clip override.\n\n5. Clamp to frame bounds: crop window never extends beyond source frame.\n\n6. Detection gap handling:\n   - Subject not detected: hold last position for up to 2 seconds.\n   - After 2s: smoothly drift to frame center over 1 second.\n   - Subject reappears: smooth transition back.\n\n7. Output: per-frame (crop_x, crop_y) array stored in crop_paths table as packed binary.\n\n8. Fallback modes: 'center' (fixed center crop), 'manual_offset' (static offset), 'stabilize_only' (gyro-based).",
         "testStrategy": "Test with synthetic detection data (known bounding boxes). Verify crop follows subject. Test smoothing eliminates frame-to-frame jitter (max delta < 2% frame width). Test gap handling (hold, drift, reacquire). Test clamp to bounds. Test all fallback modes.",
         "priority": "high",
         "status": "done",
@@ -376,7 +376,7 @@
         "id": "22",
         "title": "Post-render quality validation",
         "description": "Implement validate.py for duration, loudness, black frames, silence, codec, and file size checks.",
-        "details": "Create autopilot/render/validate.py:\n1. validate_render(rendered_path: Path, edl: dict, config: OutputConfig) -> ValidationReport\n   - Duration: within \u00b11 second of EDL target.\n   - Audio loudness: within -16 \u00b11 LUFS (measure via ffmpeg loudnorm analysis pass).\n   - Black frames: scan for frames with mean pixel value < 5 (via ffmpeg blackdetect or frame sampling).\n   - Silent audio gaps: detect silence > 2 seconds (unless marked intentional in EDL) via ffmpeg silencedetect.\n   - Resolution and codec: match target specs from config.\n   - File size: 8-15 MB per minute for 1080p H.264 (warn if outside range).\n\n2. Return ValidationReport with: pass/fail, list of issues with severity (error/warning), measurements.\n3. Write validation_report.json to output/{narrative_title}/.\n\nAll checks use ffprobe/ffmpeg analysis \u2014 no need for frame-by-frame Python processing.",
+        "details": "Create autopilot/render/validate.py:\n1. validate_render(rendered_path: Path, edl: dict, config: OutputConfig) -> ValidationReport\n   - Duration: within ±1 second of EDL target.\n   - Audio loudness: within -16 ±1 LUFS (measure via ffmpeg loudnorm analysis pass).\n   - Black frames: scan for frames with mean pixel value < 5 (via ffmpeg blackdetect or frame sampling).\n   - Silent audio gaps: detect silence > 2 seconds (unless marked intentional in EDL) via ffmpeg silencedetect.\n   - Resolution and codec: match target specs from config.\n   - File size: 8-15 MB per minute for 1080p H.264 (warn if outside range).\n\n2. Return ValidationReport with: pass/fail, list of issues with severity (error/warning), measurements.\n3. Write validation_report.json to output/{narrative_title}/.\n\nAll checks use ffprobe/ffmpeg analysis — no need for frame-by-frame Python processing.",
         "testStrategy": "Test with a fixture rendered video. Test duration check (pass and fail cases). Test loudness measurement. Test black frame detection with a video containing intentional black frames. Test file size bounds.",
         "priority": "medium",
         "status": "done",
@@ -511,23 +511,26 @@
         "id": "29",
         "title": "Lazy-load stage modules in orchestrator",
         "description": "Replace eager imports in orchestrator.py with lazy imports via importlib so that importing the orchestrator doesn't pull in every ML dependency (WhisperX, YOLO, InsightFace, MoviePy, etc.).",
-        "details": "orchestrator.py currently imports all stage modules at module level:\n  from autopilot.analyze import asr, audio_events, embeddings, faces, objects, scenes\n  from autopilot.ingest import dedup, normalizer, scanner\n  etc.\n\nThis means importing orchestrator.py loads the entire ML stack, causing slow CLI startup and brittle coupling.\n\nFix:\n1. Remove all stage module imports from the top of orchestrator.py.\n2. In each _run_* function, import the needed modules at function scope:\n   def _run_ingest(*, config, db):\n       from autopilot.ingest import dedup, normalizer, scanner\n       ...\n3. Keep non-ML imports (json, logging, Path, dataclass, etc.) at module level.\n4. Verify existing tests still pass \u2014 they mock these modules, so ensure mock paths are still correct.\n5. Add a test that imports orchestrator.py without any ML packages installed (mock all stage modules to verify lazy loading).",
-        "testStrategy": "Existing tests must pass (mock paths may need updating). New test: import autopilot.orchestrator with all analyze/ingest/organize/plan/render/source/upload modules mocked at sys.modules level \u2014 verify import succeeds without loading real ML packages.",
+        "details": "orchestrator.py currently imports all stage modules at module level:\n  from autopilot.analyze import asr, audio_events, embeddings, faces, objects, scenes\n  from autopilot.ingest import dedup, normalizer, scanner\n  etc.\n\nThis means importing orchestrator.py loads the entire ML stack, causing slow CLI startup and brittle coupling.\n\nFix:\n1. Remove all stage module imports from the top of orchestrator.py.\n2. In each _run_* function, import the needed modules at function scope:\n   def _run_ingest(*, config, db):\n       from autopilot.ingest import dedup, normalizer, scanner\n       ...\n3. Keep non-ML imports (json, logging, Path, dataclass, etc.) at module level.\n4. Verify existing tests still pass — they mock these modules, so ensure mock paths are still correct.\n5. Add a test that imports orchestrator.py without any ML packages installed (mock all stage modules to verify lazy loading).",
+        "testStrategy": "Existing tests must pass (mock paths may need updating). New test: import autopilot.orchestrator with all analyze/ingest/organize/plan/render/source/upload modules mocked at sys.modules level — verify import succeeds without loading real ML packages.",
         "priority": "medium",
-        "status": "pending",
+        "status": "cancelled",
         "dependencies": [],
         "tags": [
           "autopilot",
           "orchestrator"
         ],
         "subtasks": [],
-        "updatedAt": "2026-03-21T12:03:02.000Z"
+        "updatedAt": "2026-03-21T17:06:54.414Z",
+        "metadata": {
+          "prd": "/home/leo/src/autopilot-video/docs/prd-web-console.md"
+        }
       },
       {
         "id": "30",
         "title": "Add CI/CD GitHub Actions workflow",
         "description": "Create a GitHub Actions workflow that runs pytest, ruff check, and pyright on every push and PR, failing on any error.",
-        "details": "The project has 1,257 tests but no CI. Create .github/workflows/ci.yml:\n\n1. Trigger: push to main, pull_request to main\n2. Matrix: Python 3.11, 3.12\n3. Steps:\n   a. Checkout\n   b. Install uv\n   c. uv sync (install deps)\n   d. ruff check autopilot/ tests/\n   e. pyright autopilot/ (if pyright is in dev deps, otherwise skip)\n   f. pytest tests/ -x --tb=short\n4. Cache uv/pip cache for speed\n5. No GPU needed \u2014 all tests mock ML models\n\nKeep it simple. No coverage reporting in this task (separate task 31).",
+        "details": "The project has 1,257 tests but no CI. Create .github/workflows/ci.yml:\n\n1. Trigger: push to main, pull_request to main\n2. Matrix: Python 3.11, 3.12\n3. Steps:\n   a. Checkout\n   b. Install uv\n   c. uv sync (install deps)\n   d. ruff check autopilot/ tests/\n   e. pyright autopilot/ (if pyright is in dev deps, otherwise skip)\n   f. pytest tests/ -x --tb=short\n4. Cache uv/pip cache for speed\n5. No GPU needed — all tests mock ML models\n\nKeep it simple. No coverage reporting in this task (separate task 31).",
         "testStrategy": "Validate YAML syntax. Verify workflow file references correct paths (autopilot/, tests/). Manual: push to a branch and verify Actions run.",
         "priority": "medium",
         "status": "done",
@@ -562,8 +565,8 @@
         "id": "32",
         "title": "Item-level checkpoint/resume for pipeline stages",
         "description": "Add per-item progress tracking so the pipeline can resume from where it left off after a crash, instead of restarting entire stages from scratch.",
-        "details": "The pipeline runs for up to 36 hours. A crash mid-ANALYZE (the longest stage) loses all progress \u2014 there's no checkpoint or resume capability.\n\nThe DB already has the data to support this. The fix is to make each _run_* function in orchestrator.py query what's already been done and skip completed items.\n\nImplementation:\n1. Add a richer status state machine to media_files: 'pending' -> 'ingested' -> 'transcribed' -> 'detected' -> 'embedded' -> 'clustered' -> 'analyzed'. Each analysis pass updates the status after successful completion.\n2. In _run_ingest: skip media where status != 'pending' (already ingested).\n3. In _run_analyze: for each analysis pass (asr, objects, faces, embeddings, scenes, audio_events), check what's already done per media_id. The transcripts/detections/faces/etc tables already serve as implicit checkpoints \u2014 if a row exists, skip that pass for that media. Add explicit queries: db.has_transcript(media_id), db.has_detections(media_id), etc.\n4. In _run_classify, _run_narrate, _run_script, _run_edl: check if output already exists in the corresponding table before regenerating.\n5. Add a --force flag to cli.py that bypasses resume logic and reprocesses everything.\n6. Log resume behavior: 'Resuming ANALYZE: 47/100 media already transcribed, processing remaining 53'.\n\nDo NOT add a separate checkpoint file \u2014 use the DB as the source of truth (it already is).",
-        "testStrategy": "Unit tests: populate DB with partial analysis results, run _run_analyze, verify only unprocessed media is analyzed. Test --force flag bypasses resume. Test that each has_* helper returns correct bool. Integration: run pipeline twice \u2014 second run should be a near-instant no-op.",
+        "details": "The pipeline runs for up to 36 hours. A crash mid-ANALYZE (the longest stage) loses all progress — there's no checkpoint or resume capability.\n\nThe DB already has the data to support this. The fix is to make each _run_* function in orchestrator.py query what's already been done and skip completed items.\n\nImplementation:\n1. Add a richer status state machine to media_files: 'pending' -> 'ingested' -> 'transcribed' -> 'detected' -> 'embedded' -> 'clustered' -> 'analyzed'. Each analysis pass updates the status after successful completion.\n2. In _run_ingest: skip media where status != 'pending' (already ingested).\n3. In _run_analyze: for each analysis pass (asr, objects, faces, embeddings, scenes, audio_events), check what's already done per media_id. The transcripts/detections/faces/etc tables already serve as implicit checkpoints — if a row exists, skip that pass for that media. Add explicit queries: db.has_transcript(media_id), db.has_detections(media_id), etc.\n4. In _run_classify, _run_narrate, _run_script, _run_edl: check if output already exists in the corresponding table before regenerating.\n5. Add a --force flag to cli.py that bypasses resume logic and reprocesses everything.\n6. Log resume behavior: 'Resuming ANALYZE: 47/100 media already transcribed, processing remaining 53'.\n\nDo NOT add a separate checkpoint file — use the DB as the source of truth (it already is).",
+        "testStrategy": "Unit tests: populate DB with partial analysis results, run _run_analyze, verify only unprocessed media is analyzed. Test --force flag bypasses resume. Test that each has_* helper returns correct bool. Integration: run pipeline twice — second run should be a near-instant no-op.",
         "priority": "critical",
         "status": "done",
         "dependencies": [],
@@ -579,7 +582,7 @@
         "id": "33",
         "title": "Pin ML dependency versions and generate uv lock file",
         "description": "Add lower-bound version constraints for ML dependencies in pyproject.toml and generate a uv.lock file for reproducible installs.",
-        "details": "All dependencies in pyproject.toml are unpinned (e.g. just 'whisperx', 'ultralytics'). A fresh install on a different day can produce a completely different environment. ML deps are especially volatile across majors.\n\nImplementation:\n1. For each ML dependency, determine the currently installed version via `uv pip list` or `pip show`.\n2. Add lower-bound + major-version caps for ML packages that break across majors:\n   - whisperx>=0.10,<1.0\n   - ultralytics>=8.0,<9.0\n   - insightface>=0.7,<1.0\n   - faster-whisper>=1.0,<2.0\n   - transformers>=4.40,<5.0\n   - audiocraft>=1.3,<2.0\n   - moviepy>=2.0,<3.0\n   - opentimelineio>=0.17,<1.0\n   (Adjust exact versions based on what's actually installed)\n3. Leave stable deps unpinned (click, pyyaml, requests, etc.)\n4. Run `uv lock` to generate uv.lock.\n5. Add uv.lock to git tracking.\n6. Verify `uv sync` still works from a clean state.\n\nDo NOT pin to exact versions (==) \u2014 that's too rigid for a solo project. Lower bounds + major caps strike the right balance.",
+        "details": "All dependencies in pyproject.toml are unpinned (e.g. just 'whisperx', 'ultralytics'). A fresh install on a different day can produce a completely different environment. ML deps are especially volatile across majors.\n\nImplementation:\n1. For each ML dependency, determine the currently installed version via `uv pip list` or `pip show`.\n2. Add lower-bound + major-version caps for ML packages that break across majors:\n   - whisperx>=0.10,<1.0\n   - ultralytics>=8.0,<9.0\n   - insightface>=0.7,<1.0\n   - faster-whisper>=1.0,<2.0\n   - transformers>=4.40,<5.0\n   - audiocraft>=1.3,<2.0\n   - moviepy>=2.0,<3.0\n   - opentimelineio>=0.17,<1.0\n   (Adjust exact versions based on what's actually installed)\n3. Leave stable deps unpinned (click, pyyaml, requests, etc.)\n4. Run `uv lock` to generate uv.lock.\n5. Add uv.lock to git tracking.\n6. Verify `uv sync` still works from a clean state.\n\nDo NOT pin to exact versions (==) — that's too rigid for a solo project. Lower bounds + major caps strike the right balance.",
         "testStrategy": "Verify uv.lock is generated and valid. Verify `uv sync` from clean venv succeeds. Verify pyproject.toml parses correctly. Spot-check that key imports still work (import whisperx, import ultralytics, etc.).",
         "priority": "high",
         "status": "done",
@@ -595,10 +598,10 @@
         "id": "34",
         "title": "Replace Anthropic SDK calls with Claude CLI invocation (Max plan)",
         "description": "Replace all 4 direct anthropic.Anthropic() SDK calls with Claude CLI subprocess invocation to use the Claude Max subscription instead of API credits.",
-        "details": "4 modules call anthropic.Anthropic().messages.create() directly, burning API credits:\n\n1. organize/classify.py:154 \u2014 utility_model, simple text\u2192JSON (activity labels)\n2. organize/narratives.py:276 \u2014 planning_model, simple text\u2192JSON (narrative proposals) \n3. plan/script.py:436 \u2014 planning_model, simple text\u2192JSON (scene scripts)\n4. plan/edl.py:144 \u2014 planning_model, text\u2192JSON WITH TOOL-USE (EDL generation with validation loop)\n\nImplementation:\n1. Create autopilot/llm.py with an invoke_claude() wrapper modeled on dark-factory's shared/cli_invoke.py pattern:\n   - Subprocess call: claude --print --model <model> --system-prompt <system> --output-format json\n   - Prompt passed via stdin (--append-system-prompt or positional arg)\n   - Parse JSON output (result field from claude CLI)\n   - Handle errors (non-zero exit, timeout)\n   - Support --json-schema for structured output\n   - Accept oauth_token override via CLAUDE_OAUTH_TOKEN env var passthrough\n\n2. For simple calls (classify, narratives, script):\n   - Replace client.messages.create() with invoke_claude(system=..., prompt=..., model=...)\n   - Parse response text same as before (JSON extraction from markdown blocks)\n\n3. For tool-use call (edl.py):\n   - EDL generation uses tool-use for iterative validation. Two options:\n     a) Convert to --json-schema structured output (preferred \u2014 single-shot, no iteration needed if prompt is good enough)\n     b) Or provide tools via MCP server (heavier, only if structured output insufficient)\n   - The validation retry loop in edl.py already handles malformed output \u2014 structured output with retry is equivalent\n\n4. Remove anthropic from runtime dependencies in pyproject.toml (keep in dev for tests if needed).\n5. Update LLMConfig to map model names: planning_model \u2192 'opus', utility_model \u2192 'sonnet' (CLI uses short names).\n6. Add --api-fallback flag to cli.py for environments where CLI isn't available.\n\nTest strategy: Mock subprocess.run in all 4 modules. Test invoke_claude() with mocked CLI output. Integration: verify prompt formatting matches what CLI expects.",
+        "details": "4 modules call anthropic.Anthropic().messages.create() directly, burning API credits:\n\n1. organize/classify.py:154 — utility_model, simple text→JSON (activity labels)\n2. organize/narratives.py:276 — planning_model, simple text→JSON (narrative proposals) \n3. plan/script.py:436 — planning_model, simple text→JSON (scene scripts)\n4. plan/edl.py:144 — planning_model, text→JSON WITH TOOL-USE (EDL generation with validation loop)\n\nImplementation:\n1. Create autopilot/llm.py with an invoke_claude() wrapper modeled on dark-factory's shared/cli_invoke.py pattern:\n   - Subprocess call: claude --print --model <model> --system-prompt <system> --output-format json\n   - Prompt passed via stdin (--append-system-prompt or positional arg)\n   - Parse JSON output (result field from claude CLI)\n   - Handle errors (non-zero exit, timeout)\n   - Support --json-schema for structured output\n   - Accept oauth_token override via CLAUDE_OAUTH_TOKEN env var passthrough\n\n2. For simple calls (classify, narratives, script):\n   - Replace client.messages.create() with invoke_claude(system=..., prompt=..., model=...)\n   - Parse response text same as before (JSON extraction from markdown blocks)\n\n3. For tool-use call (edl.py):\n   - EDL generation uses tool-use for iterative validation. Two options:\n     a) Convert to --json-schema structured output (preferred — single-shot, no iteration needed if prompt is good enough)\n     b) Or provide tools via MCP server (heavier, only if structured output insufficient)\n   - The validation retry loop in edl.py already handles malformed output — structured output with retry is equivalent\n\n4. Remove anthropic from runtime dependencies in pyproject.toml (keep in dev for tests if needed).\n5. Update LLMConfig to map model names: planning_model → 'opus', utility_model → 'sonnet' (CLI uses short names).\n6. Add --api-fallback flag to cli.py for environments where CLI isn't available.\n\nTest strategy: Mock subprocess.run in all 4 modules. Test invoke_claude() with mocked CLI output. Integration: verify prompt formatting matches what CLI expects.",
         "testStrategy": "Unit tests: mock subprocess.run, verify invoke_claude builds correct command. Test each of the 4 call sites with mocked CLI output. Test error handling (timeout, non-zero exit). Test JSON schema output parsing for EDL.",
         "priority": "high",
-        "status": "pending",
+        "status": "cancelled",
         "dependencies": [],
         "tags": [
           "autopilot",
@@ -606,14 +609,488 @@
           "cost"
         ],
         "subtasks": [],
-        "updatedAt": "2026-03-21T12:03:02.000Z"
+        "updatedAt": "2026-03-21T17:06:54.741Z",
+        "metadata": {
+          "prd": "/home/leo/src/autopilot-video/docs/prd-web-console.md"
+        }
+      },
+      {
+        "id": "35",
+        "title": "DB schema: pipeline control tables",
+        "description": "Add 4 new tables to CatalogDB for web console coordination: pipeline_gates, pipeline_jobs, pipeline_events, pipeline_runs. Include full CRUD methods for each table.",
+        "details": "Add to autopilot/db.py's _init_schema():\n\n1. pipeline_gates — stage TEXT PK, mode TEXT DEFAULT 'auto' (auto|pause|notify), status TEXT DEFAULT 'idle' (idle|waiting|approved|rejected|skipped), decided_at TEXT, decided_by TEXT DEFAULT 'system', notes TEXT, timeout_hours REAL\n\n2. pipeline_jobs — job_id TEXT PK, stage TEXT NOT NULL, job_type TEXT NOT NULL (asr|yolo|face|embed|cluster|narrate|script|edl|render_clip|upload), target_id TEXT, target_label TEXT, status TEXT DEFAULT 'pending' (pending|running|done|error|skipped), started_at TEXT, finished_at TEXT, duration_seconds REAL, progress_pct REAL, error_message TEXT, worker TEXT, run_id TEXT\n\n3. pipeline_events — event_id INTEGER PK AUTOINCREMENT, event_type TEXT NOT NULL, stage TEXT, job_id TEXT, payload_json TEXT, created_at TEXT DEFAULT datetime('now')\n\n4. pipeline_runs — run_id TEXT PK, started_at TEXT NOT NULL, finished_at TEXT, config_snapshot TEXT, current_stage TEXT, status TEXT DEFAULT 'running' (running|paused|completed|failed|cancelled), wall_clock_seconds REAL, budget_remaining_seconds REAL\n\nCRUD methods needed:\n- Gates: get_gate(stage), get_all_gates(), update_gate(stage, **kwargs), init_default_gates()\n- Jobs: insert_job(), update_job(), get_job(job_id), list_jobs(stage=None, status=None, job_type=None, run_id=None), count_jobs_by_status(stage, run_id)\n- Events: insert_event(), get_events_since(event_id), prune_events(hours=24)\n- Runs: insert_run(), update_run(), get_current_run(), get_run(run_id), list_runs()\n\nFollow existing CatalogDB style: direct SQL with parameter binding, no ORM. Add tests in tests/test_db_pipeline.py.\n\nmemory_hints: search \"CatalogDB schema\" \"pipeline_gates table\" ; entities: CatalogDB, PipelineOrchestrator",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-03-21T16:39:57.720Z"
+      },
+      {
+        "id": "36",
+        "title": "FastAPI app skeleton + serve CLI command",
+        "description": "Create the autopilot/web/ package with FastAPI app factory, Jinja2 template config, base HTML template with Tailwind CDN + HTMX, static files, and an 'autopilot serve' CLI command.",
+        "details": "Create the following structure:\n\nautopilot/web/__init__.py\nautopilot/web/app.py — FastAPI app factory: create_app(db_path) that configures Jinja2 templates, static file mounting, and includes all route blueprints. The app should accept a CatalogDB path and create a read connection (WAL mode). Mount static files at /static.\n\nautopilot/web/templates/base.html — Jinja2 base template with:\n- Tailwind CSS via CDN play script (no build step)\n- HTMX via CDN (< 14 KB)\n- Full nav structure pre-defined: Dashboard, Media, Pipeline (Stage Detail, Jobs), Review (Clusters, Narratives, Scripts, Edit Plans, Renders), Gates, Settings\n- Notification bell placeholder in nav\n- Main content block\n- Toast container for notifications\n- Dark theme appropriate for a media workstation\n\nautopilot/web/static/app.css — Minimal custom styles beyond Tailwind\nautopilot/web/static/app.js — Minimal JS: SSE connection handler, notification support\n\nautopilot/web/routes/__init__.py — Empty, routes will be added by subsequent tasks\n\nAdd 'autopilot serve' command to autopilot/cli.py:\n  @main.command()\n  @click.option('--host', default='127.0.0.1')\n  @click.option('--port', default=8080, type=int)\n  @click.option('--output-dir', type=click.Path())\n  def serve(host, port, output_dir):\n      \"\"\"Start the web management console.\"\"\"\n      import uvicorn\n      from autopilot.web.app import create_app\n      app = create_app(db_path=output_dir / 'catalog.db')\n      uvicorn.run(app, host=host, port=port)\n\nAdd to pyproject.toml dependencies: fastapi, uvicorn[standard], jinja2, python-multipart\n\nAdd a basic health check route GET /api/health that returns {\"status\": \"ok\"}.\n\nTest: verify app starts, health check returns 200, base template renders.\n\nmemory_hints: search \"CLI commands\" \"CatalogDB\" ; entities: CatalogDB, AutopilotConfig",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "35"
+        ],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-03-21T17:32:14.047Z"
+      },
+      {
+        "id": "37",
+        "title": "Orchestrator: run tracking + event emission",
+        "description": "Instrument PipelineOrchestrator to create pipeline_runs records at start/finish and emit pipeline_events at every stage transition.",
+        "details": "Modify autopilot/orchestrator.py:\n\n1. At the start of run(), create a pipeline_runs record:\n   - run_id = uuid4().hex\n   - started_at = datetime.now(UTC).isoformat()\n   - config_snapshot = yaml.dump(config) or str(config)\n   - status = 'running'\n   Store run_id as self._run_id for use by job tracking\n\n2. Add _emit_event(event_type, stage=None, job_id=None, payload=None) helper:\n   - Calls db.insert_event(event_type, stage, job_id, json.dumps(payload))\n   - Log the event at debug level\n\n3. Emit events at stage transitions:\n   - Before running a stage: _emit_event('stage_started', stage=name)\n   - After stage completes: _emit_event('stage_completed', stage=name, payload={'elapsed': elapsed})\n   - On stage error: _emit_event('stage_error', stage=name, payload={'error': str(e)})\n   - Update pipeline_runs.current_stage at each transition\n\n4. At pipeline end:\n   - Update pipeline_runs: finished_at, status (completed|failed), wall_clock_seconds\n   - _emit_event('run_completed' or 'run_failed', payload={'duration': total_seconds})\n\n5. Update budget tracking to also write budget_remaining_seconds to pipeline_runs\n\nKeep all existing behavior unchanged. The orchestrator must still work without the web console.\n\nTest: run orchestrator with a mock/minimal config, verify pipeline_runs and pipeline_events records are created.\n\nmemory_hints: search \"PipelineOrchestrator\" \"stage transitions\" ; entities: PipelineOrchestrator, CatalogDB, StageResult",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "35"
+        ],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-03-21T17:40:38.330Z"
+      },
+      {
+        "id": "38",
+        "title": "Orchestrator: per-job tracking",
+        "description": "Instrument every sub-task in the orchestrator to create/update pipeline_jobs records with status, duration, progress, and worker info.",
+        "details": "Modify autopilot/orchestrator.py to track individual jobs within each stage:\n\nAdd a context manager or helper pair for job tracking:\n  def _start_job(self, stage, job_type, target_id=None, target_label=None, worker=None) -> str:\n      job_id = uuid4().hex\n      db.insert_job(job_id, stage, job_type, target_id, target_label, 'running', worker=worker, run_id=self._run_id)\n      self._emit_event('job_started', stage=stage, job_id=job_id)\n      return job_id\n\n  def _finish_job(self, job_id, status='done', error_message=None):\n      db.update_job(job_id, status=status, error_message=error_message, finished_at=now)\n      self._emit_event('job_completed' or 'job_error', job_id=job_id)\n\nInstrument each stage's sub-tasks:\n\nINGEST: job per file (scan, normalize, dedup)\nANALYZE: job per (media_file × analysis_type) — asr, scenes, objects, faces, embeddings, audio_events, captions\nCLASSIFY: job for clustering, job per cluster for labeling\nNARRATE: job for storyboard building, job for narrative proposal\nSCRIPT: job per narrative for script generation\nEDL: job per narrative for EDL generation, job for validation, job for OTIO export\nSOURCE_ASSETS: job per asset type (music, voiceover, broll, fetch_list)\nRENDER: job per clip/narrative for rendering, job for validation\nUPLOAD: job per narrative for upload, job for thumbnail\n\nEach job should record:\n- started_at/finished_at with duration_seconds calculated\n- worker ('gpu' for ML jobs, 'cpu' for others)\n- progress_pct where applicable (e.g., batch processing)\n- error_message on failure\n\nThe _run_* functions in orchestrator.py need modification to wrap each sub-task with _start_job/_finish_job.\n\nTest: run a stage, verify pipeline_jobs records created with correct status transitions.\n\nmemory_hints: search \"orchestrator stage functions\" \"_run_analyze\" \"_run_ingest\" ; entities: PipelineOrchestrator, GPUScheduler",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "37"
+        ],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-03-21T18:10:04.034Z"
+      },
+      {
+        "id": "39",
+        "title": "Orchestrator: gate system",
+        "description": "Add gate checking logic to PipelineOrchestrator: _check_gate method, gate polling, default gate initialization, gate-aware stage transitions replacing the single-point human_review_fn.",
+        "details": "Modify autopilot/orchestrator.py:\n\n1. Gate initialization — at pipeline start (in run()), call db.init_default_gates() to ensure all 9 stage gates exist with default mode 'auto'.\n\n2. Add async-compatible _check_gate(stage) method:\n   gate = db.get_gate(stage)\n   if gate.mode == 'auto':\n       db.update_gate(stage, status='approved', decided_by='system')\n       _emit_event('gate_passed', stage=stage)\n       return 'approved'\n   if gate.mode == 'notify':\n       _emit_event('gate_passed', stage=stage)\n       db.update_gate(stage, status='approved', decided_by='system')\n       return 'approved'\n   # mode == 'pause'\n   db.update_gate(stage, status='waiting')\n   _emit_event('gate_waiting', stage=stage)\n   while not shutdown_requested():\n       gate = db.get_gate(stage)\n       if gate.status in ('approved', 'skipped'):\n           _emit_event('gate_approved' or 'gate_skipped', stage=stage)\n           return gate.status\n       # Check timeout\n       if gate.timeout_hours and time_since_waiting > timeout_hours:\n           db.update_gate(stage, status='approved', decided_by='system', notes='auto-approved: timeout')\n           _emit_event('gate_approved', stage=stage, payload={'reason': 'timeout'})\n           return 'approved'\n       time.sleep(2)  # Poll interval\n   return 'skipped'  # Shutdown requested\n\n3. Integrate gate checks into the stage execution loop:\n   Before each stage runs, call _check_gate(stage_name).\n   If result is 'skipped', set StageResult to SKIPPED and skip the stage.\n\n4. Replace human_review_fn mechanism:\n   The NARRATE stage currently uses human_review_fn callback for narrative approval.\n   Refactor: when gate mode is 'pause' at NARRATE, the gate system handles the wait.\n   The web console (or CLI) writes approved narrative IDs + gate approval to pipeline_gates.\n   Keep human_review_fn as a fallback: if provided AND gate mode is 'auto', use the callback (backwards compatibility for CLI-only usage).\n\n5. Reset gate statuses to 'idle' at the start of each pipeline run.\n\nTest: verify gate modes (auto proceeds, pause waits until approved, notify proceeds with event). Test timeout auto-approval. Test backwards compatibility with human_review_fn.\n\nmemory_hints: search \"human_review_fn\" \"narrative approval\" \"gate\" ; entities: PipelineOrchestrator, _run_narrate",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "38"
+        ],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-03-21T18:39:36.144Z"
+      },
+      {
+        "id": "40",
+        "title": "SSE event endpoint",
+        "description": "Implement /api/events Server-Sent Events endpoint that polls pipeline_events table and pushes real-time updates to the browser.",
+        "details": "Create autopilot/web/routes/sse.py:\n\n1. GET /api/events — SSE endpoint using FastAPI's StreamingResponse or sse-starlette:\n   - Accept Last-Event-ID header for reconnection\n   - Poll pipeline_events table every 1 second for new events since last_event_id\n   - Format as SSE: \"id: {event_id}\\nevent: {event_type}\\ndata: {json}\\n\\n\"\n   - Send keepalive comment (\": keepalive\\n\\n\") every 15 seconds if no events\n   - Event types: stage_started, stage_completed, stage_error, job_started, job_completed, job_error, job_progress, gate_waiting, gate_approved, gate_skipped, run_completed, run_failed\n\n2. Add event pruning — delete events older than 24 hours on each poll cycle (or on a separate timer to avoid doing it on every poll)\n\n3. Register the router in app.py\n\n4. The SSE data payload should include:\n   - event_type, stage, job_id\n   - Relevant data for HTMX partial swaps (e.g., which stage card to update)\n   - HTMX trigger headers where appropriate\n\nConsider using sse-starlette package for cleaner SSE support, or implement manually with StreamingResponse and async generator. If using sse-starlette, add it to pyproject.toml dependencies.\n\nTest: create events in DB, connect to SSE endpoint, verify events are received in correct order with correct formatting. Test reconnection with Last-Event-ID.\n\nmemory_hints: search \"pipeline_events\" \"SSE\" ; entities: pipeline_events, FastAPI",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "36"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-03-22T18:12:39.387Z"
+      },
+      {
+        "id": "41",
+        "title": "Dashboard page with stage cards",
+        "description": "Build the primary pipeline dashboard showing all 9 stages as cards with real-time status, progress bars, elapsed/ETA, gate badges, and HTMX live updates via SSE.",
+        "details": "Create autopilot/web/routes/dashboard.py and templates:\n\n1. GET / — Dashboard page route:\n   - Query pipeline_runs for current run status\n   - Query pipeline_jobs grouped by stage for progress (done/total counts)\n   - Query pipeline_gates for gate modes and statuses\n   - Query pipeline_events for recent errors\n   - Render dashboard.html\n\n2. autopilot/web/templates/dashboard.html (extends base.html):\n   - 9 stage cards in a horizontal scrollable row (or responsive grid)\n   - Each card shows: stage name, status color (grey=idle, blue=running, amber=waiting, green=done, red=error), progress bar (\"47/128 files\"), elapsed time, ETA based on throughput, gate badge (auto/pause/notify with quick-toggle link), error count badge\n\n3. Pipeline timeline bar below cards:\n   - Overall progress percentage\n   - Budget consumed vs remaining (out of configured max_wall_clock_hours)\n   - Current run duration\n   - Estimated completion time\n\n4. autopilot/web/templates/partials/stage_card.html — HTMX partial for individual stage card updates:\n   - hx-swap-oob for targeted updates\n   - Triggered by SSE events (stage_started, stage_completed, job_progress, etc.)\n\n5. HTMX SSE integration in dashboard:\n   - Connect to /api/events via EventSource (in app.js or inline)\n   - On relevant events, use hx-swap to update the specific stage card partial\n   - Use hx-trigger=\"sse:stage_started\" or similar\n\n6. \"Pipeline not running\" banner when no active run exists\n\n7. GET /api/run — JSON endpoint returning current run status\n   GET /api/stages — JSON endpoint returning all stages with job count summaries\n\nTest: create mock run/job/gate data, verify dashboard renders correctly, verify stage cards show correct status and progress.\n\nmemory_hints: search \"pipeline stages\" \"stage cards\" ; entities: PipelineOrchestrator, pipeline_runs, pipeline_jobs, pipeline_gates",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "40"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-03-23T17:43:23.136Z",
+        "metadata": {
+          "prd": "/home/leo/src/autopilot-video/docs/prd-web-console.md",
+          "files": [
+            "autopilot/web/routes/dashboard.py",
+            "autopilot/web/templates/dashboard/index.html",
+            "autopilot/web/templates/partials/stage_card.html",
+            "autopilot/web/app.py",
+            "autopilot/web/routes/__init__.py",
+            "autopilot/web/templates/base.html",
+            "autopilot/web/static/app.js",
+            "autopilot/web/static/app.css",
+            "tests/test_dashboard.py"
+          ],
+          "modules": [
+            "autopilot/web/routes",
+            "autopilot/web/templates/dashboard",
+            "autopilot/web/templates/partials",
+            "autopilot/web/static",
+            "tests"
+          ]
+        }
+      },
+      {
+        "id": "42",
+        "title": "Pipeline stage detail + job list",
+        "description": "Build per-stage detail pages and a cross-stage job list with filters, showing fine-grained job tracking information.",
+        "details": "Create autopilot/web/routes/pipeline.py and templates:\n\n1. GET /pipeline/{stage} — Stage detail page:\n   - Stage name and overall status\n   - Job breakdown by type and status (table or card grid)\n   - Per-sub-stage progress (e.g., ANALYZE shows ASR, scenes, objects, faces, embeddings, audio_events, captions separately)\n   - Error log for failed jobs in this stage\n   - Template: autopilot/web/templates/pipeline/stage.html\n\n2. GET /pipeline/jobs — Cross-stage job list:\n   - Filterable table of all jobs\n   - Columns: Job ID (short), Stage, Type, Target, Status, Duration, Progress bar, Worker, Error (expandable)\n   - Filters: stage dropdown, status multi-select, type multi-select, text search on target_label\n   - Pagination (50 per page)\n   - Template: autopilot/web/templates/pipeline/jobs.html\n\n3. GET /pipeline/jobs/{job_id} — Job detail page:\n   - Full job info: all fields from pipeline_jobs\n   - Error traceback (if failed)\n   - Link to target (media file or narrative)\n   - Template: reuse jobs.html with detail modal or separate page\n\n4. JSON API endpoints:\n   GET /api/stages/{stage} — Stage detail with job counts by type and status\n   GET /api/jobs — Job list (filterable: ?stage=&status=&type=&q=&page=)\n   GET /api/jobs/{job_id} — Job detail\n\n5. Partials:\n   autopilot/web/templates/partials/job_row.html — Single job table row for HTMX updates\n\n6. HTMX: job list auto-refreshes via SSE (job_started, job_completed events trigger row updates)\n\nTest: create mock jobs across multiple stages, verify filtering, pagination, stage detail views.\n\nmemory_hints: search \"pipeline_jobs\" \"job tracking\" ; entities: pipeline_jobs, PipelineOrchestrator",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "41"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "metadata": {
+          "prd": "/home/leo/src/autopilot-video/docs/prd-web-console.md",
+          "files": [
+            "autopilot/web/routes/pipeline.py",
+            "autopilot/web/templates/pipeline/stage_detail.html",
+            "autopilot/web/templates/pipeline/job_list.html",
+            "autopilot/web/templates/partials/job_row.html",
+            "autopilot/web/app.py",
+            "autopilot/web/routes/__init__.py",
+            "tests/test_pipeline.py"
+          ],
+          "modules": [
+            "autopilot/web/routes",
+            "autopilot/web/templates/pipeline",
+            "autopilot/web/templates/partials",
+            "tests"
+          ]
+        },
+        "updatedAt": "2026-03-23T18:13:28.000Z"
+      },
+      {
+        "id": "43",
+        "title": "Media list page",
+        "description": "Build the media browser list view at /media with a sortable, filterable, paginated table of all ingested media files.",
+        "details": "Create autopilot/web/routes/media.py and templates:\n\n1. GET /media — Media list page:\n   - Sortable, filterable table of all media files from media_files table\n   - Columns: Thumbnail (placeholder/icon for now), Filename, Duration (HH:MM:SS), Resolution, Created date, Location (GPS or reverse-geocoded), Status (ingested/analyzing/analyzed/error), Analysis badges (icons for completed: ASR, YOLO, faces, embeddings, audio)\n   - Sorting: by filename, duration, created_at, resolution (click column headers)\n   - Filters: text search on filename, status dropdown, date range, resolution class, \"has transcript\", \"has detections\", \"has faces\"\n   - Pagination: 50 per page with page navigation\n   - Template: autopilot/web/templates/media/list.html\n\n2. GET /api/media — JSON endpoint:\n   - Accepts query params: ?q=&status=&page=&per_page=50&sort=created_at&order=desc\n   - Returns paginated results with total count\n   - Each item includes analysis coverage flags (has_transcript, has_detections, etc.) by checking related tables\n\n3. Analysis badge logic — for each media file, check:\n   - has transcript (transcripts table)\n   - has detections (detections table)\n   - has faces (faces table)\n   - has embeddings (clip_embeddings table)\n   - has audio events (audio_events table)\n   - has captions (captions table)\n   Use efficient SQL (LEFT JOINs or subqueries) to avoid N+1 queries\n\n4. Partial template:\n   autopilot/web/templates/partials/media_row.html — Single row for HTMX updates\n\n5. HTMX: filter changes trigger partial page swap of the table body (not full page reload)\n\nTest: insert mock media files with varying analysis coverage, verify filtering, sorting, pagination, and analysis badge display.\n\nmemory_hints: search \"media_files table\" \"analysis coverage\" ; entities: CatalogDB, media_files",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "36"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-03-22T18:30:56.002Z"
+      },
+      {
+        "id": "44",
+        "title": "Media detail page",
+        "description": "Build the media detail view at /media/{id} with tabbed display of metadata, transcript, detections, faces, audio events, and embeddings.",
+        "details": "Create templates and extend autopilot/web/routes/media.py:\n\n1. GET /media/{media_id} — Media detail page:\n   - Template: autopilot/web/templates/media/detail.html\n   - Tab navigation (HTMX-powered, no full page reload per tab)\n\n2. Metadata tab (default):\n   - Full technical metadata: codec, FPS, resolution, audio channels, duration\n   - File path, SHA-256 prefix, dedup status\n   - GPS coordinates and created_at timestamp\n   - All fields from media_files table + metadata_json parsed\n\n3. Transcript tab:\n   - Scrollable transcript with timestamps and speaker labels\n   - Parse segments_json from transcripts table\n   - Display as time-stamped lines: [00:05:23] Speaker 1: \"text...\"\n   - Language indicator\n\n4. Detections tab:\n   - Summary: top object classes detected (aggregate from detections_json), total detection count, frame coverage\n   - Expandable list grouped by object class showing frame ranges and counts\n\n5. Faces tab:\n   - Grid of face entries grouped by cluster_id\n   - Show cluster label (from face_clusters table) with link\n   - Count of face appearances per cluster\n\n6. Audio Events tab:\n   - Timeline-style list of audio events from audio_events table\n   - Parse events_json, show dominant event per time window\n   - Filterable by event class\n\n7. Embeddings tab:\n   - Embedding coverage: count of frames with embeddings vs total frames\n   - Display as \"X of Y frames sampled (Z%)\"\n\n8. JSON API endpoints:\n   GET /api/media/{media_id} — Full media detail with all analysis\n   GET /api/media/{media_id}/transcript — Transcript segments\n   GET /api/media/{media_id}/detections — Detection summary\n\nTest: insert media file with all analysis types, verify each tab renders correctly with proper data parsing.\n\nmemory_hints: search \"media analysis tables\" \"transcripts\" \"detections\" \"faces\" ; entities: media_files, transcripts, detections, faces, face_clusters, audio_events, clip_embeddings",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "43"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-03-23T14:53:29.297Z"
+      },
+      {
+        "id": "45",
+        "title": "Gate configuration page + API",
+        "description": "Build the gate configuration page at /gates with toggle switches for each stage transition (auto/pause/notify), presets, and timeout configuration.",
+        "details": "Create autopilot/web/routes/gates.py and templates:\n\n1. GET /gates — Gate configuration page:\n   - Vertical list of all stage transitions with current mode\n   - Each row: STAGE_A ──[mode ▼]──▶ STAGE_B with description\n   - Dropdown/toggle for mode selection (auto/pause/notify)\n   - HTMX: changing a toggle sends PUT /api/gates/{stage} and swaps the gate_toggle partial\n   - Template: autopilot/web/templates/gates/config.html\n\n2. Gate presets section:\n   - Quick-apply buttons for presets:\n     * Full Auto — all gates to 'auto'\n     * Review Creative — pause at CLASSIFY→NARRATE, NARRATE→SCRIPT, RENDER→UPLOAD\n     * Review Everything — all gates to 'pause'\n     * Review Before Render — pause at EDL→SOURCE, RENDER→UPLOAD\n   - PUT /api/gates/preset/{preset_name} — applies preset, returns updated gate list\n\n3. Per-gate timeout config:\n   - Optional timeout_hours field per gate\n   - \"If no decision in N hours, auto-approve\"\n   - Default: no timeout (null)\n\n4. Current gate status display:\n   - Show current status (idle/waiting/approved/rejected/skipped) with color coding\n   - If a gate is in 'waiting' status, show prominent \"Approve\" / \"Skip\" buttons\n   - Show decided_at timestamp and decided_by for recent decisions\n\n5. JSON API endpoints:\n   GET /api/gates — All gate configurations\n   GET /api/gates/{stage} — Single gate detail\n   PUT /api/gates/{stage} — Update gate mode, timeout_hours\n   POST /api/gates/{stage}/approve — Set status to 'approved', decided_by='console'\n   POST /api/gates/{stage}/skip — Set status to 'skipped', decided_by='console'\n   PUT /api/gates/preset/{preset} — Apply preset\n\n6. Partial template:\n   autopilot/web/templates/partials/gate_toggle.html — Single gate row for HTMX swaps\n\nTest: verify all gate modes can be toggled, presets apply correctly, approve/skip work, timeout config persists.\n\nmemory_hints: search \"pipeline_gates\" \"gate modes\" ; entities: pipeline_gates, PipelineOrchestrator",
+        "testStrategy": "",
+        "status": "in-progress",
+        "dependencies": [
+          "36"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-03-23T18:13:28.100Z",
+        "metadata": {
+          "prd": "/home/leo/src/autopilot-video/docs/prd-web-console.md",
+          "files": [
+            "autopilot/web/routes/gates.py",
+            "autopilot/web/templates/gates/index.html",
+            "autopilot/web/app.py",
+            "autopilot/web/routes/__init__.py",
+            "autopilot/web/static/app.js",
+            "autopilot/web/static/app.css",
+            "tests/test_gates.py"
+          ],
+          "modules": [
+            "autopilot/web/routes",
+            "autopilot/web/templates/gates",
+            "autopilot/web/static",
+            "tests"
+          ]
+        }
+      },
+      {
+        "id": "46",
+        "title": "Review hub + narrative review",
+        "description": "Build the review hub at /review showing pending gate reviews, and the narrative review page at /review/narratives with approve/reject/edit functionality.",
+        "details": "Create autopilot/web/routes/review.py and templates:\n\n1. GET /review — Review hub page:\n   - Shows which gates are currently in 'waiting' status\n   - For each waiting gate, show: stage name, what's waiting (e.g., \"3 narratives pending review\"), link to the specific review page\n   - If no gates are waiting, show \"No pending reviews\" message\n   - Template: autopilot/web/templates/review/hub.html\n\n2. GET /review/narratives — Narrative review page:\n   - List of proposed narratives from narratives table (status='proposed')\n   - Each narrative card shows: title, description, proposed duration, emotional arc notes, activity clusters included, status badge\n   - Template: autopilot/web/templates/review/narratives.html\n\n3. Narrative actions (HTMX-powered):\n   - Approve: POST /api/narratives/{id}/approve — sets status='approved' in DB\n   - Reject: POST /api/narratives/{id}/reject — sets status='rejected'\n   - Edit: inline editing of title, description, duration via PUT /api/narratives/{id}\n   - Approve Selected: checkbox selection + bulk approve button\n   - Each action returns updated narrative card partial\n\n4. Gate integration:\n   - When all narratives are approved/rejected, show \"Approve Gate\" button\n   - Clicking it calls POST /api/gates/NARRATE/approve\n   - The orchestrator (polling gate) will then proceed to SCRIPT stage\n\n5. JSON API endpoints:\n   GET /api/narratives — Narrative list (filterable by status)\n   GET /api/narratives/{id} — Narrative detail with cluster info\n   POST /api/narratives/{id}/approve\n   POST /api/narratives/{id}/reject\n   PUT /api/narratives/{id} — Update narrative fields\n\n6. Backwards compatibility: Keep human_review_fn working for CLI-only mode. The web review is an alternative path — both write to the same narratives table and pipeline_gates table.\n\nTest: create proposed narratives, verify approve/reject/edit work, verify gate approval triggers.\n\nmemory_hints: search \"narrative approval\" \"human_review_fn\" \"narratives table\" ; entities: narratives, pipeline_gates, _run_narrate",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          "45"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "metadata": {
+          "prd": "/home/leo/src/autopilot-video/docs/prd-web-console.md",
+          "files": [
+            "autopilot/web/routes/review.py",
+            "autopilot/web/templates/review/index.html",
+            "autopilot/web/templates/review/narratives.html",
+            "autopilot/web/app.py",
+            "autopilot/web/routes/__init__.py",
+            "tests/test_review.py"
+          ],
+          "modules": [
+            "autopilot/web/routes",
+            "autopilot/web/templates/review",
+            "tests"
+          ]
+        }
+      },
+      {
+        "id": "47",
+        "title": "Cluster review page",
+        "description": "Build the activity cluster review page at /review/clusters with card grid, merge, relabel, and exclude functionality.",
+        "details": "Create templates and extend autopilot/web/routes/review.py:\n\n1. GET /review/clusters — Cluster review page:\n   - Card grid of all activity clusters from activity_clusters table\n   - Each card: label, description, time range (time_start – time_end), location_label, clip count (from clip_ids_json), representative thumbnail placeholder\n   - Expandable: full clip list with IDs and durations\n   - Template: autopilot/web/templates/review/clusters.html\n\n2. Actions:\n   - Approve All: POST /api/gates/CLASSIFY/approve — proceed to NARRATE\n   - Merge Clusters: select 2+ clusters via checkboxes, POST /api/clusters/merge with {cluster_ids: [...]}\n     * Merge logic: combine clip_ids_json, pick label from largest cluster, merge time ranges\n     * Delete merged clusters, keep the combined one\n   - Relabel: inline edit of label and description via POST /api/clusters/{id}/relabel\n   - Exclude: POST /api/clusters/{id}/exclude — remove from consideration (don't delete from DB, just mark excluded)\n     * Add an 'excluded' boolean/status field to activity_clusters or track via a separate mechanism\n\n3. JSON API endpoints:\n   GET /api/clusters — All activity clusters\n   GET /api/clusters/{cluster_id} — Cluster detail with full clip list\n   POST /api/clusters/merge — Merge clusters\n   POST /api/clusters/{id}/relabel — Update label/description\n   POST /api/clusters/{id}/exclude — Exclude from narratives\n\n4. HTMX: all actions return updated partial content (card grid or individual card)\n\nTest: create mock clusters, verify merge combines correctly, relabel persists, exclude marks cluster.\n\nmemory_hints: search \"activity_clusters\" \"cluster_activities\" ; entities: activity_clusters, classify, cluster",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          "46"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "metadata": {
+          "prd": "/home/leo/src/autopilot-video/docs/prd-web-console.md",
+          "files": [
+            "autopilot/web/routes/review.py",
+            "autopilot/web/templates/review/clusters.html",
+            "tests/test_review_clusters.py"
+          ],
+          "modules": [
+            "autopilot/web/routes",
+            "autopilot/web/templates/review",
+            "tests"
+          ]
+        }
+      },
+      {
+        "id": "48",
+        "title": "Script review page",
+        "description": "Build the script review page at /review/scripts/{id} with scene list display and inline editing.",
+        "details": "Create templates and extend autopilot/web/routes/review.py:\n\n1. GET /review/scripts/{narrative_id} — Script review page:\n   - Fetch narrative_scripts for this narrative_id\n   - Parse script_json into ordered scene list\n   - Display each scene: scene number, shot type (interview/broll/music), estimated duration, voiceover text, visual direction, music mood\n   - Template: autopilot/web/templates/review/scripts.html\n\n2. Actions:\n   - Approve: POST /api/gates/SCRIPT/approve (after reviewing all scripts)\n   - Inline Edit: click on voiceover text, shot type, or music mood to edit in-place\n     * PUT /api/scripts/{narrative_id} with updated script_json\n   - Delete Scene: remove a scene from the script_json array\n   - Add Scene: append a new scene (simple form with required fields)\n   - Reorder: scene number editing or simple up/down arrows (defer drag-and-drop to later)\n   - Regenerate: POST /api/scripts/{narrative_id}/regenerate (re-run LLM — for now just mark as needing regeneration; actual LLM call requires orchestrator)\n\n3. Script list view:\n   GET /review/scripts — List of all narratives with scripts, showing status\n   - Link to individual script review pages\n\n4. JSON API endpoints:\n   GET /api/scripts/{narrative_id} — Script JSON for narrative\n   PUT /api/scripts/{narrative_id} — Update script\n   POST /api/scripts/{narrative_id}/regenerate — Flag for regeneration\n\n5. HTMX: inline edits swap individual scene rows, approve/reject swap status badge\n\nTest: create narrative with script_json, verify scene rendering, inline edit persists, scene add/delete work.\n\nmemory_hints: search \"narrative_scripts\" \"script_json\" \"generate_script\" ; entities: narrative_scripts, script",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          "46"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "metadata": {
+          "prd": "/home/leo/src/autopilot-video/docs/prd-web-console.md",
+          "files": [
+            "autopilot/web/routes/review.py",
+            "autopilot/web/templates/review/scripts.html",
+            "tests/test_review_scripts.py"
+          ],
+          "modules": [
+            "autopilot/web/routes",
+            "autopilot/web/templates/review",
+            "tests"
+          ]
+        }
+      },
+      {
+        "id": "49",
+        "title": "EDL review + timeline visualization",
+        "description": "Build the EDL review page at /review/edl/{id} with SVG timeline visualization, validation report, and OTIO download.",
+        "details": "Create templates, extend routes, and add timeline JS:\n\n1. GET /review/edl/{narrative_id} — EDL review page:\n   - Fetch edit_plans for this narrative_id\n   - Parse edl_json for clip data, parse validation_json for validation results\n   - Template: autopilot/web/templates/review/edl.html\n\n2. SVG Timeline Visualization:\n   - Server-rendered SVG (generated in Python, embedded in template) or minimal Canvas JS\n   - Horizontal timeline with time ruler (minutes:seconds)\n   - Tracks stacked vertically:\n     * V1: Primary video clips (colored blocks, source filename, duration, in/out timecodes)\n     * V2: B-roll overlay clips (if any)\n     * A1: Source audio (block with label)\n     * A2: Music track (colored block with label)\n     * A3: Voiceover (colored block with text preview)\n     * Subtitles: caption text markers\n   - Each clip block: source filename (truncated), duration, crop mode icon, transition type at edges\n   - Color coding by source file for visual grouping\n   - For SVG approach: generate SVG string in route handler, pass to template\n   - Add to autopilot/web/static/app.js: hover tooltips for clip metadata, basic zoom (scale transform)\n\n3. Validation Report:\n   - Summary: pass/fail with count of issues\n   - Per-check detail: validation_json contains check results\n   - Re-validate button: POST /api/edl/{narrative_id}/validate\n\n4. OTIO Download:\n   - GET /api/edl/{narrative_id}/otio — serve the OTIO file for download\n   - Check otio_path from edit_plans table\n\n5. Actions:\n   - Approve: POST /api/gates/EDL/approve\n   - Regenerate: POST /api/edl/{narrative_id}/regenerate (flag for re-generation)\n\n6. JSON API endpoints:\n   GET /api/edl/{narrative_id} — EDL data with parsed clip list\n   PUT /api/edl/{narrative_id} — Update EDL\n   POST /api/edl/{narrative_id}/validate — Run validation\n   GET /api/edl/{narrative_id}/otio — OTIO file download\n\nTest: create edit_plan with sample edl_json, verify SVG timeline renders with correct track layout, verify OTIO download works, verify validation display.\n\nmemory_hints: search \"edit_plans\" \"edl_json\" \"validation_json\" \"otio_path\" ; entities: edit_plans, edl, validator, otio_export",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          "46"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "metadata": {
+          "prd": "/home/leo/src/autopilot-video/docs/prd-web-console.md",
+          "files": [
+            "autopilot/web/routes/review.py",
+            "autopilot/web/templates/review/edl.html",
+            "autopilot/web/static/app.js",
+            "autopilot/web/static/app.css",
+            "tests/test_review_edl.py"
+          ],
+          "modules": [
+            "autopilot/web/routes",
+            "autopilot/web/templates/review",
+            "autopilot/web/static",
+            "tests"
+          ]
+        }
+      },
+      {
+        "id": "50",
+        "title": "Render + upload review",
+        "description": "Build render preview at /review/render/{id} with video player and quality validation, and upload review at /review/uploads.",
+        "details": "Create templates and extend autopilot/web/routes/review.py:\n\n1. GET /review/render/{narrative_id} — Render review page:\n   - Fetch edit_plans for render_path and validation results\n   - If render_path exists, embed HTML5 video player pointing to /api/renders/{id}/video\n   - Quality validation results from render validation\n   - Side-by-side: script scene list alongside video (for reference)\n   - Template: autopilot/web/templates/review/renders.html\n\n2. Render actions:\n   - Approve for Upload: POST /api/gates/RENDER/approve\n   - Reject: flag for re-render with notes textarea\n   - Download: direct link to rendered file\n   - Skip Upload: mark as complete without uploading\n\n3. Video streaming endpoint:\n   GET /api/renders/{narrative_id}/video — Stream rendered video file\n   - Use FileResponse with media_type='video/mp4'\n   - Support Range headers for seeking\n\n4. GET /review/uploads — Upload status page:\n   - List all narratives with upload status from uploads table\n   - Show: narrative title, YouTube video ID, YouTube URL, privacy status, uploaded_at\n   - Template: autopilot/web/templates/review/uploads.html (can be simple table)\n\n5. JSON API endpoints:\n   GET /api/renders/{narrative_id} — Render status and output path\n   GET /api/renders/{narrative_id}/video — Stream video\n   GET /api/uploads — Upload status list\n\nTest: create edit_plan with mock render_path, verify video player renders, verify upload status display.\n\nmemory_hints: search \"edit_plans render_path\" \"uploads table\" \"youtube\" ; entities: edit_plans, uploads, render, validate",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          "46"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "metadata": {
+          "prd": "/home/leo/src/autopilot-video/docs/prd-web-console.md",
+          "files": [
+            "autopilot/web/routes/review.py",
+            "autopilot/web/templates/review/render.html",
+            "autopilot/web/templates/review/uploads.html",
+            "tests/test_review_render.py"
+          ],
+          "modules": [
+            "autopilot/web/routes",
+            "autopilot/web/templates/review",
+            "tests"
+          ]
+        }
+      },
+      {
+        "id": "51",
+        "title": "Notifications + toast messages",
+        "description": "Add browser notification support, in-console toast messages, notification bell with unread count, and gate timeout alerts.",
+        "details": "Extend autopilot/web/static/app.js and templates:\n\n1. Browser Notifications (in app.js):\n   - On first visit, request Notification permission\n   - Listen to SSE events, trigger browser Notification for:\n     * gate_waiting: \"Pipeline paused at {stage}. Review required.\" (click opens review page)\n     * stage_error: \"Stage {stage} failed: {error}\" (click opens stage detail)\n     * run_completed: \"Pipeline finished. {summary}\" (click opens dashboard)\n     * gate timeout approaching (if implemented): \"Gate will auto-approve in 30 min\"\n\n2. Toast Messages (in app.js + base.html):\n   - Toast container in base.html (fixed position, bottom-right)\n   - On SSE events, show toast notification with:\n     * Icon (color-coded by severity)\n     * Title and message\n     * Auto-dismiss after 5 seconds (or click to dismiss)\n     * Click to navigate to relevant page\n   - Toast for: stage transitions, job errors, gate waiting, run complete\n\n3. Notification Bell (in base.html nav):\n   - Bell icon with unread count badge\n   - Click opens dropdown with recent notifications (last 20)\n   - Each notification: timestamp, type icon, message, link\n   - Mark as read on click\n   - Store notification state in localStorage (no server-side notification tracking needed)\n\n4. Gate Timeout Alerts:\n   - When a gate has timeout_hours configured and is in 'waiting' status\n   - Show countdown in the gate card/row\n   - Trigger browser notification when timeout is approaching (e.g., 30 min before)\n\n5. SSE event to notification mapping (in app.js):\n   const EVENT_NOTIFICATIONS = {\n     'gate_waiting': {title: 'Review Required', severity: 'warning'},\n     'stage_error': {title: 'Stage Error', severity: 'error'},\n     'run_completed': {title: 'Pipeline Complete', severity: 'success'},\n     'run_failed': {title: 'Pipeline Failed', severity: 'error'},\n   }\n\nTest: verify toast messages appear on SSE events, verify browser notification permission flow, verify bell icon updates.\n\nmemory_hints: search \"SSE events\" \"notifications\" ; entities: pipeline_events, pipeline_gates",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          "41",
+          "45"
+        ],
+        "priority": "low",
+        "subtasks": [],
+        "metadata": {
+          "prd": "/home/leo/src/autopilot-video/docs/prd-web-console.md",
+          "files": [
+            "autopilot/web/routes/notifications.py",
+            "autopilot/web/templates/base.html",
+            "autopilot/web/static/app.js",
+            "autopilot/web/static/app.css",
+            "autopilot/web/app.py",
+            "autopilot/web/routes/__init__.py",
+            "tests/test_notifications.py"
+          ],
+          "modules": [
+            "autopilot/web/routes",
+            "autopilot/web/templates",
+            "autopilot/web/static",
+            "tests"
+          ]
+        }
+      },
+      {
+        "id": "52",
+        "title": "Job retry/skip + error drilldown + run history",
+        "description": "Add job retry/skip API endpoints, error detail pages with full tracebacks, and pipeline run history view.",
+        "details": "Extend autopilot/web/routes/pipeline.py and templates:\n\n1. Job retry/skip endpoints:\n   POST /api/jobs/{job_id}/retry — Set job status back to 'pending', clear error_message\n   POST /api/jobs/{job_id}/skip — Set job status to 'skipped'\n   - Both return updated job row partial for HTMX swap\n   - Emit events: job_retried, job_skipped\n\n2. Error drilldown — enhance job detail view:\n   - Full error traceback display (pre-formatted, scrollable)\n   - Job parameters: target file, model config, worker assignment\n   - Retry and Skip buttons prominently displayed\n   - Link to related media file or narrative\n\n3. Pipeline run history:\n   GET /api/run/history — List of past pipeline_runs\n   GET /run/history — Run history page\n   - Table: run_id (short), started_at, finished_at, duration, status, stage reached\n   - Click to view run detail (jobs for that run_id, events for that run)\n   - Template: autopilot/web/templates/pipeline/history.html\n\n4. Error summary on dashboard:\n   - Add an error count and \"View Errors\" link to the dashboard\n   - Quick filter to show only errored jobs across all stages\n\n5. HTMX: retry/skip buttons trigger inline updates without page reload\n\nTest: create errored jobs, verify retry resets status, skip marks as skipped, error detail shows traceback, run history displays past runs.\n\nmemory_hints: search \"pipeline_jobs error\" \"pipeline_runs\" ; entities: pipeline_jobs, pipeline_runs",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          "42"
+        ],
+        "priority": "low",
+        "subtasks": [],
+        "metadata": {
+          "prd": "/home/leo/src/autopilot-video/docs/prd-web-console.md",
+          "files": [
+            "autopilot/web/routes/pipeline.py",
+            "autopilot/web/templates/pipeline/error_detail.html",
+            "autopilot/web/templates/pipeline/run_history.html",
+            "autopilot/web/static/app.js",
+            "tests/test_job_actions.py"
+          ],
+          "modules": [
+            "autopilot/web/routes",
+            "autopilot/web/templates/pipeline",
+            "autopilot/web/static",
+            "tests"
+          ]
+        }
+      },
+      {
+        "id": "53",
+        "title": "E2E integration tests",
+        "description": "End-to-end integration tests verifying the full web console: app startup, dashboard rendering, SSE event flow, gate approve/reject workflow, media browsing, and review flows.",
+        "details": "Create tests/test_web_e2e.py with comprehensive integration tests:\n\n1. App startup test:\n   - Create in-memory CatalogDB with all tables\n   - Instantiate FastAPI app via create_app()\n   - Use httpx.AsyncClient (or FastAPI TestClient) to hit /api/health\n   - Verify 200 response\n\n2. Dashboard rendering test:\n   - Seed DB with pipeline_runs, pipeline_jobs, pipeline_gates\n   - GET / and verify HTML contains stage cards for all 9 stages\n   - Verify correct status colors and progress numbers\n\n3. SSE event flow test:\n   - Insert events into pipeline_events\n   - Connect to /api/events with TestClient\n   - Verify events arrive as SSE formatted data\n   - Test Last-Event-ID reconnection\n\n4. Gate workflow test:\n   - Set gate mode to 'pause' for NARRATE\n   - Verify GET /api/gates returns correct mode\n   - Simulate gate waiting: update gate status to 'waiting'\n   - POST /api/gates/NARRATE/approve\n   - Verify gate status is now 'approved'\n   - Test preset application: PUT /api/gates/preset/review_creative\n\n5. Media browsing test:\n   - Seed DB with 10+ media files with varying analysis coverage\n   - GET /media — verify table renders with correct columns\n   - Test filtering: ?status=analyzed, ?q=filename\n   - GET /media/{id} — verify detail page with tabs\n\n6. Narrative review flow test:\n   - Seed DB with proposed narratives\n   - GET /review — verify review hub shows pending review\n   - GET /review/narratives — verify narrative cards render\n   - POST /api/narratives/{id}/approve — verify status changes\n   - POST /api/narratives/{id}/reject — verify status changes\n\n7. Cluster review test:\n   - Seed DB with activity clusters\n   - POST /api/clusters/merge — verify merge logic\n   - POST /api/clusters/{id}/relabel — verify update\n\n8. Script review test:\n   - Seed DB with narrative_scripts\n   - GET /review/scripts/{id} — verify scene list renders\n   - PUT /api/scripts/{id} — verify edit persists\n\n9. EDL + timeline test:\n   - Seed DB with edit_plans containing edl_json\n   - GET /review/edl/{id} — verify SVG timeline renders\n   - GET /api/edl/{id}/otio — verify OTIO download (if file exists)\n\n10. Job management test:\n    - Seed DB with errored jobs\n    - POST /api/jobs/{id}/retry — verify status reset\n    - POST /api/jobs/{id}/skip — verify skip\n\n11. Full pipeline simulation:\n    - Create a minimal pipeline run with all stages\n    - Walk through the complete gate workflow: set gates to pause, trigger waiting, approve each\n    - Verify final run status\n\nUse pytest fixtures for DB seeding. Use FastAPI TestClient for sync tests or httpx.AsyncClient for async. All tests should be self-contained with in-memory DB.\n\nmemory_hints: search \"CatalogDB\" \"FastAPI TestClient\" \"web console\" ; entities: CatalogDB, create_app, pipeline_gates, pipeline_jobs",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          "39",
+          "44",
+          "47",
+          "48",
+          "49",
+          "50",
+          "51",
+          "52"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "metadata": {
+          "prd": "/home/leo/src/autopilot-video/docs/prd-web-console.md",
+          "files": [
+            "tests/test_e2e_console.py",
+            "tests/conftest.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
+      },
+      {
+        "id": "54",
+        "title": "Media routes cleanup: over-fetching, duplication, organization",
+        "description": "Address non-blocking review issues from task 44 in autopilot/web/routes/media.py and autopilot/db.py.",
+        "details": "Review issues to address:\n\n1. **Over-fetching in tab endpoint (S1)**: media_tab() calls get_media_detail() for every tab click, loading all 6 analysis types regardless of tab. Refactor to fetch only data needed per tab. Modules: media.py, db.py.\n\n2. **Detection aggregation duplication (S4)**: Same loop/counting logic in api_media_detections (lines ~346-374) and media_tab detections branch (lines ~230-252). Extract a shared _aggregate_detections(det_rows) helper.\n\n3. **metadata_json parsing duplication (S5)**: Identical try/except (json.JSONDecodeError, TypeError) blocks in media_detail_page and metadata tab branch. Extract _parse_metadata_json() helper.\n\n4. **Near-duplicate time formatters (S6)**: _format_duration and _format_timestamp differ only in hour zero-padding. Unify into a single helper with a parameter, or document why they differ.\n\n5. **API contract inconsistency (S8)**: /api/media/{id}/transcript returns 404 for missing transcript; /api/media/{id} returns null. Decide on one contract.\n\n6. **Redundant template context (S11)**: Both 'media' and 'detail' passed to detail.html template. Pass only 'detail'.\n\n7. **Helper placement (S12)**: _format_timestamp defined after route handlers. Move next to _format_duration.\n\nmemory_hints: search \"media detail page design decisions\" \"tab endpoint architecture\"; entities: media.py, CatalogDB, get_media_detail",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          "44"
+        ],
+        "priority": "low",
+        "subtasks": [],
+        "metadata": {
+          "prd": "/home/leo/src/autopilot-video/docs/prd-web-console.md"
+        },
+        "updatedAt": "2026-03-23T20:04:25.996Z"
+      },
+      {
+        "id": "55",
+        "title": "Test hardening for media detail: weak assertions, missing tests, db optimization",
+        "description": "Address non-blocking review issues from task 44 in tests/test_media_detail.py and autopilot/db.py.",
+        "details": "Review issues to address:\n\n1. **face_clusters key normalization (S3)**: Python dict uses int keys, JSON coerces to strings. Normalize to string keys in get_media_detail() and update media_tab lookup to use str(cid). Files: db.py, media.py.\n\n2. **N+1 face cluster queries (S7)**: get_media_detail() issues one get_face_cluster_by_id() per unique cluster_id. Replace with single IN-query. File: db.py.\n\n3. **Weak test assertions (S9)**: Bare substring checks like '2' in html, '5' in html, '3' in html that match incidental HTML content. Replace with more specific patterns matching template output (e.g. 'Alice (2)', '5 detections'). File: tests/test_media_detail.py.\n\n4. **Missing test cases (S10)**: (a) No test for GET /api/media/{id}/transcript returning 404 when media exists but has no transcript (test2 fixture available). (b) No assertion for face_clusters in empty-analysis test. (c) Segment field validation only covers first element. (d) detail_db fixture never calls db.close() — convert to yield fixture. File: tests/test_media_detail.py.\n\nmemory_hints: search \"test patterns media detail\" \"face clusters\"; entities: test_media_detail.py, CatalogDB, face_clusters",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          "44"
+        ],
+        "priority": "low",
+        "subtasks": [],
+        "metadata": {
+          "prd": "/home/leo/src/autopilot-video/docs/prd-web-console.md"
+        },
+        "updatedAt": "2026-03-23T20:04:25.998Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-21T12:03:02.000Z",
-      "taskCount": 34,
-      "completedCount": 32,
+      "lastModified": "2026-03-23T20:04:25.998Z",
+      "taskCount": 55,
+      "completedCount": 42,
       "tags": [
         "master"
       ]
