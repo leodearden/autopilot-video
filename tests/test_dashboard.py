@@ -424,3 +424,32 @@ class TestStageCardPartial:
         resp = client.get("/dashboard/stage/ingest")
         # Now 6/7 done
         assert "6/7" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Step 11: SSE integration tests (content-based checks on app.js)
+# ---------------------------------------------------------------------------
+
+_APP_JS = Path(__file__).resolve().parent.parent / "autopilot" / "web" / "static" / "app.js"
+
+
+class TestSSEIntegration:
+    """Verify app.js contains SSE event handlers for dashboard updates."""
+
+    def test_app_js_uses_connect_sse(self) -> None:
+        """app.js contains EventSource or connectSSE usage for '/api/events'."""
+        content = _APP_JS.read_text()
+        assert "connectSSE" in content or "EventSource" in content
+        assert "/api/events" in content
+
+    def test_app_js_has_stage_event_handlers(self) -> None:
+        """app.js has event handlers for stage_started, stage_completed, and job_progress."""
+        content = _APP_JS.read_text()
+        assert "stage_started" in content
+        assert "stage_completed" in content
+        assert "job_progress" in content
+
+    def test_app_js_triggers_htmx_stage_update(self) -> None:
+        """Handlers contain htmx.ajax or fetch call to /dashboard/stage/ for card updates."""
+        content = _APP_JS.read_text()
+        assert "htmx.ajax" in content or "/dashboard/stage/" in content
