@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div id="dashboard-page">
+    <h1 class="text-2xl font-bold mb-6">Dashboard</h1>
+
+    {% if not run %}
+    <!-- No active run banner -->
+    <div id="no-run-banner" class="bg-gray-800 border border-gray-600 rounded-lg p-6 text-center mb-6">
+        <p class="text-gray-400 text-lg">Pipeline not running</p>
+        <p class="text-gray-500 text-sm mt-2">Start a pipeline run to see stage progress here.</p>
+    </div>
+    {% else %}
+    {% include "partials/timeline_bar.html" %}
+    {% endif %}
+
+    <!-- Stage cards grid -->
+    <div id="dashboard-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {% for stage in stages %}
+        {% include "partials/stage_card.html" %}
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,34 @@
+<div id="stage-{{ stage.name }}" class="dark:bg-surface-800 border border-gray-700 rounded-lg p-4">
+    <div class="flex items-center justify-between mb-2">
+        <h3 class="text-lg font-semibold text-white capitalize">{{ stage.name }}</h3>
+        <span class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300">{{ stage.gate_mode }}</span>
+    </div>
+
+    <!-- Status indicator -->
+    <div class="flex items-center justify-between mb-2">
+        <span class="stage-status inline-flex items-center text-sm
+            {% if stage.status == 'running' %}text-blue-400
+            {% elif stage.status == 'done' %}text-green-400
+            {% elif stage.status == 'error' %}text-red-400
+            {% elif stage.status == 'waiting' %}text-amber-400
+            {% else %}text-gray-400{% endif %}">
+            {{ stage.status }}
+        </span>
+        {% if stage.total > 0 %}
+        <span class="text-sm text-gray-400">{{ stage.done }}/{{ stage.total }}</span>
+        {% endif %}
+    </div>
+
+    <!-- Progress bar -->
+    {% if stage.total > 0 %}
+    <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
+        <div class="h-2 rounded-full
+            {% if stage.status == 'error' %}bg-red-500
+            {% elif stage.status == 'done' %}bg-green-500
+            {% elif stage.status == 'running' %}bg-blue-500
+            {% else %}bg-gray-500{% endif %}"
+            style="width: {{ (stage.done / stage.total * 100) | int }}%">
+        </div>
+    </div>
+    {% endif %}
+</div>

@@ -48,7 +48,68 @@ function connectSSE(url) {
     return source;
 }
 
+/**
+ * Refresh a single stage card via HTMX ajax.
+ * @param {string} stage - The pipeline stage name.
+ */
+function refreshStageCard(stage) {
+    if (typeof htmx !== 'undefined') {
+        htmx.ajax('GET', '/dashboard/stage/' + stage, {
+            target: '#stage-' + stage,
+            swap: 'outerHTML'
+        });
+    }
+}
+
+/**
+ * Set up SSE event listeners for dashboard stage card updates.
+ * @param {EventSource} source - The SSE EventSource connection.
+ */
+function setupDashboardSSE(source) {
+    source.addEventListener('stage_started', function(event) {
+        try {
+            var data = JSON.parse(event.data);
+            var stage = data.stage;
+            if (stage) {
+                refreshStageCard(stage);
+            }
+        } catch (e) {
+            console.error('SSE stage_started parse error:', e);
+        }
+    });
+
+    source.addEventListener('stage_completed', function(event) {
+        try {
+            var data = JSON.parse(event.data);
+            var stage = data.stage;
+            if (stage) {
+                refreshStageCard(stage);
+            }
+        } catch (e) {
+            console.error('SSE stage_completed parse error:', e);
+        }
+    });
+
+    source.addEventListener('job_progress', function(event) {
+        try {
+            var data = JSON.parse(event.data);
+            var stage = data.stage;
+            if (stage) {
+                refreshStageCard(stage);
+            }
+        } catch (e) {
+            console.error('SSE job_progress parse error:', e);
+        }
+    });
+}
+
 /* Initialize on DOM ready */
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Autopilot Video Console loaded');
+
+    /* If the dashboard grid is present, wire up SSE for live updates */
+    if (document.getElementById('dashboard-grid')) {
+        var source = connectSSE('/api/events');
+        setupDashboardSSE(source);
+    }
 });

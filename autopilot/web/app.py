@@ -36,8 +36,9 @@ def create_app(db_path: str) -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
     # Register routers
-    from autopilot.web.routes import media_router, sse_router
+    from autopilot.web.routes import dashboard_router, media_router, sse_router
 
+    app.include_router(dashboard_router)
     app.include_router(sse_router)
     app.include_router(media_router)
 
