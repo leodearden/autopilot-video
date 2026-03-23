@@ -12,6 +12,7 @@ import pytest
 # Mock helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_mock_kokoro() -> MagicMock:
     """Create a MagicMock module mimicking the kokoro TTS library."""
     mock_kokoro = MagicMock()
@@ -36,6 +37,7 @@ def _make_model_config(tts_engine: str = "kokoro") -> MagicMock:
 # ---------------------------------------------------------------------------
 # Public API surface tests
 # ---------------------------------------------------------------------------
+
 
 class TestVoiceoverPublicAPI:
     """Verify VoiceoverError, generate_voiceover surface."""
@@ -76,6 +78,7 @@ class TestVoiceoverPublicAPI:
 # Kokoro engine tests
 # ---------------------------------------------------------------------------
 
+
 class TestKokoroEngine:
     """Tests for the Kokoro TTS engine path."""
 
@@ -86,6 +89,7 @@ class TestKokoroEngine:
 
         # Mock pipeline that yields (graphemes, phonemes, audio_chunk)
         import numpy as np
+
         audio_chunk = np.zeros(24000, dtype=np.float32)
         pipeline_instance = MagicMock()
         pipeline_instance.return_value = iter([("hello", "h@loU", audio_chunk)])
@@ -110,6 +114,7 @@ class TestKokoroEngine:
         mock_sf = _make_mock_soundfile()
 
         import numpy as np
+
         audio_chunk = np.zeros(24000, dtype=np.float32)
         pipeline_instance = MagicMock()
         pipeline_instance.return_value = iter([("hello", "h@loU", audio_chunk)])
@@ -133,6 +138,7 @@ class TestKokoroEngine:
 # ---------------------------------------------------------------------------
 # ElevenLabs engine tests
 # ---------------------------------------------------------------------------
+
 
 class TestElevenLabsEngine:
     """Tests for the ElevenLabs API engine path."""
@@ -220,6 +226,7 @@ class TestElevenLabsEngine:
 
         with patch.dict("os.environ", {}, clear=True):
             import os
+
             os.environ.pop("ELEVENLABS_API_KEY", None)
             with pytest.raises(VoiceoverError, match="ELEVENLABS_API_KEY"):
                 generate_voiceover("Hello", output_path, config)
@@ -228,6 +235,7 @@ class TestElevenLabsEngine:
 # ---------------------------------------------------------------------------
 # Error handling tests
 # ---------------------------------------------------------------------------
+
 
 class TestVoiceoverErrors:
     """Error handling in voiceover generation."""

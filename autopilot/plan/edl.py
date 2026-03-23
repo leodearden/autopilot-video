@@ -146,8 +146,8 @@ def _call_llm_with_messages(
             model=config.planning_model,
             max_tokens=16384,
             system=system_prompt,
-            messages=messages,
-            tools=tools,
+            messages=messages,  # type: ignore[arg-type]
+            tools=tools,  # type: ignore[arg-type]
         )
     except Exception as e:
         raise EdlError(f"LLM API call failed: {e}") from e
@@ -218,7 +218,10 @@ def generate_edl(narrative_id: str, db: CatalogDB, config: LLMConfig) -> dict:
     for attempt in range(1 + max_retries):
         # Call LLM
         content_blocks = _call_llm_with_messages(
-            messages, system_prompt, config, TOOL_DEFINITIONS,
+            messages,
+            system_prompt,
+            config,
+            TOOL_DEFINITIONS,
         )
 
         # Collect tool calls into EDL
@@ -264,11 +267,11 @@ def generate_edl(narrative_id: str, db: CatalogDB, config: LLMConfig) -> dict:
             ]
             logger.info(
                 "EDL validation failed (attempt %d/%d): %s",
-                attempt + 1, 1 + max_retries, validation.errors,
+                attempt + 1,
+                1 + max_retries,
+                validation.errors,
             )
 
     # All retries exhausted
     all_errors = "; ".join(validation.errors)
-    raise EdlError(
-        f"Validation failed after {1 + max_retries} attempts: {all_errors}"
-    )
+    raise EdlError(f"Validation failed after {1 + max_retries} attempts: {all_errors}")

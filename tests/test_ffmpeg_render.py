@@ -397,7 +397,8 @@ class TestRenderSimpleErrors:
             patch(
                 "subprocess.run",
                 side_effect=subprocess.TimeoutExpired(
-                    cmd="ffmpeg", timeout=600,
+                    cmd="ffmpeg",
+                    timeout=600,
                 ),
             ),
             pytest.raises(RenderError, match="clip_1") as exc_info,

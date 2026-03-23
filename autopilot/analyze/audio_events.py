@@ -71,10 +71,7 @@ def _extract_top_k(
     """
     k = min(k, len(labels))
     top_indices = np.argsort(probabilities)[::-1][:k]
-    return [
-        {"class": str(labels[i]), "probability": float(probabilities[i])}
-        for i in top_indices
-    ]
+    return [{"class": str(labels[i]), "probability": float(probabilities[i])} for i in top_indices]
 
 
 def classify_audio_events(
@@ -142,6 +139,4 @@ def classify_audio_events(
     except AudioEventError:
         raise
     except Exception as exc:
-        raise AudioEventError(
-            f"Audio event classification failed for {media_id}: {exc}"
-        ) from exc
+        raise AudioEventError(f"Audio event classification failed for {media_id}: {exc}") from exc

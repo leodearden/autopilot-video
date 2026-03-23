@@ -108,9 +108,7 @@ def render_simple(
         # Compute clip duration for fade-out placement (zero-based from setpts)
         if clip_dur is not None:
             fade_out_start = max(0.0, clip_dur - duration)
-            vf_parts.append(
-                f"fade=t=out:st={fade_out_start}:duration={duration}"
-            )
+            vf_parts.append(f"fade=t=out:st={fade_out_start}:duration={duration}")
 
     if vf_parts:
         cmd.extend(["-vf", ",".join(vf_parts)])
@@ -122,11 +120,16 @@ def render_simple(
     cmd.extend(["-crf", str(config.quality_crf)])
 
     # Audio: loudnorm + AAC
-    cmd.extend([
-        "-af", f"loudnorm=I={config.target_loudness_lufs}:TP=-1.5:LRA=11",
-        "-c:a", "aac",
-        "-b:a", config.audio_bitrate,
-    ])
+    cmd.extend(
+        [
+            "-af",
+            f"loudnorm=I={config.target_loudness_lufs}:TP=-1.5:LRA=11",
+            "-c:a",
+            "aac",
+            "-b:a",
+            config.audio_bitrate,
+        ]
+    )
 
     # Output
     cmd.append(str(output_path))

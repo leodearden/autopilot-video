@@ -88,58 +88,56 @@ def resolve_edl_assets(
     vo_dir = output_dir / "voiceovers"
     vo_dir.mkdir(parents=True, exist_ok=True)
     for i, entry in enumerate(edl.get("voiceovers", [])):
-        request = VoiceoverRequest(
+        vo_request = VoiceoverRequest(
             text=entry.get("text", ""),
             start_time=entry.get("start_time", "00:00:00.000"),
             duration=float(entry.get("duration", 0)),
         )
         vo_output = vo_dir / f"voiceover_{i:03d}.wav"
         try:
-            path = generate_voiceover(request.text, vo_output, config)
+            path = generate_voiceover(vo_request.text, vo_output, config)
         except Exception as e:
             logger.warning("Voiceover generation failed: %s", e)
             path = None
 
         if path is not None:
             entry["resolved_path"] = str(path)
-            request.resolved_path = path
+            vo_request.resolved_path = path
             logger.info("Resolved voiceover %d → %s", i, path)
         else:
             entry["resolved_path"] = None
-            unresolved.append(request)
+            unresolved.append(vo_request)
             logger.info("Unresolved voiceover %d", i)
 
     # --- Resolve B-roll ---
     broll_dir = output_dir / "broll"
     broll_dir.mkdir(parents=True, exist_ok=True)
     for entry in edl.get("broll_requests", []):
-        request = BrollRequest(
+        broll_request = BrollRequest(
             description=entry.get("description", ""),
             duration=float(entry.get("duration", 0)),
             start_time=entry.get("start_time", "00:00:00.000"),
         )
         try:
-            paths = source_broll(request, broll_dir)
+            paths = source_broll(broll_request, broll_dir)
         except Exception as e:
-            logger.warning(
-                "B-roll sourcing failed for %r: %s", request.description, e
-            )
+            logger.warning("B-roll sourcing failed for %r: %s", broll_request.description, e)
             paths = None
 
         if paths:
             # Use the first downloaded file as the resolved path
             entry["resolved_path"] = str(paths[0])
-            request.resolved_path = paths[0]
+            broll_request.resolved_path = paths[0]
             logger.info(
                 "Resolved B-roll: %s → %s (%d options)",
-                request.description,
+                broll_request.description,
                 paths[0],
                 len(paths),
             )
         else:
             entry["resolved_path"] = None
-            unresolved.append(request)
-            logger.info("Unresolved B-roll: %s", request.description)
+            unresolved.append(broll_request)
+            logger.info("Unresolved B-roll: %s", broll_request.description)
 
     # --- Generate fetch list for unresolved ---
     fetch_list_path = None
@@ -166,7 +164,7 @@ def resolve_edl_assets(
         except Exception as e:
             logger.warning("Failed to persist updated EDL: %s", e)
 
-    result = {
+    result: dict[str, Any] = {
         "edl": edl,
         "unresolved": unresolved,
     }

@@ -13,6 +13,7 @@ from autopilot.source import BrollRequest
 # Mock helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_broll_request(
     description: str = "aerial view of mountains",
     duration: float = 5.0,
@@ -65,6 +66,7 @@ def _make_download_response(content: bytes = b"fake_video_data") -> MagicMock:
 # Public API surface tests
 # ---------------------------------------------------------------------------
 
+
 class TestBrollPublicAPI:
     """Verify BrollError, source_broll surface."""
 
@@ -102,6 +104,7 @@ class TestBrollPublicAPI:
 # ---------------------------------------------------------------------------
 # Pexels API tests
 # ---------------------------------------------------------------------------
+
 
 class TestPexelsSearch:
     """Tests for the Pexels video API search."""
@@ -229,6 +232,7 @@ class TestPexelsSearch:
 # Pixabay fallback tests
 # ---------------------------------------------------------------------------
 
+
 class TestPixabayFallback:
     """Tests for the Pixabay fallback when Pexels returns no results."""
 
@@ -259,18 +263,20 @@ class TestPixabayFallback:
                 del sys.modules["autopilot.source.broll"]
             from autopilot.source.broll import source_broll
 
-            with patch.dict("os.environ", {
-                "PEXELS_API_KEY": "test-key",
-                "PIXABAY_API_KEY": "test-pixabay-key",
-            }):
+            with patch.dict(
+                "os.environ",
+                {
+                    "PEXELS_API_KEY": "test-key",
+                    "PIXABAY_API_KEY": "test-pixabay-key",
+                },
+            ):
                 result = source_broll(request, tmp_path)
 
         assert result is not None
 
-
-# ---------------------------------------------------------------------------
-# Error handling tests
-# ---------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
+    # Error handling tests
+    # ---------------------------------------------------------------------------
 
     def test_pixabay_downloads_use_streaming(self, tmp_path):
         """Pixabay downloads use stream=True and iter_content instead of .content."""
@@ -362,10 +368,13 @@ class TestBrollErrors:
                 del sys.modules["autopilot.source.broll"]
             from autopilot.source.broll import source_broll
 
-            with patch.dict("os.environ", {
-                "PEXELS_API_KEY": "test-key",
-                "PIXABAY_API_KEY": "test-key",
-            }):
+            with patch.dict(
+                "os.environ",
+                {
+                    "PEXELS_API_KEY": "test-key",
+                    "PIXABAY_API_KEY": "test-key",
+                },
+            ):
                 result = source_broll(request, tmp_path)
 
         assert result is None
@@ -380,6 +389,7 @@ class TestBrollErrors:
 
         with patch.dict("os.environ", {}, clear=True):
             import os
+
             os.environ.pop("PEXELS_API_KEY", None)
             os.environ.pop("PIXABAY_API_KEY", None)
             result = source_broll(request, tmp_path)

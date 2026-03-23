@@ -189,16 +189,18 @@ class TestNormalizeSegments:
         """Input with all PRD fields produces correct output dict."""
         from autopilot.analyze.asr import _normalize_segments
 
-        segments = [{
-            "start": 0.5,
-            "end": 2.3,
-            "text": "Hello world",
-            "speaker": "SPEAKER_01",
-            "words": [
-                {"word": "Hello", "start": 0.5, "end": 1.0, "score": 0.95},
-                {"word": "world", "start": 1.1, "end": 2.3, "score": 0.88},
-            ],
-        }]
+        segments = [
+            {
+                "start": 0.5,
+                "end": 2.3,
+                "text": "Hello world",
+                "speaker": "SPEAKER_01",
+                "words": [
+                    {"word": "Hello", "start": 0.5, "end": 1.0, "score": 0.95},
+                    {"word": "world", "start": 1.1, "end": 2.3, "score": 0.88},
+                ],
+            }
+        ]
         result = _normalize_segments(segments)
         assert len(result) == 1
         seg = result[0]
@@ -208,10 +210,16 @@ class TestNormalizeSegments:
         assert seg["speaker"] == "SPEAKER_01"
         assert len(seg["words"]) == 2
         assert seg["words"][0] == {
-            "word": "Hello", "start": 0.5, "end": 1.0, "score": 0.95,
+            "word": "Hello",
+            "start": 0.5,
+            "end": 1.0,
+            "score": 0.95,
         }
         assert seg["words"][1] == {
-            "word": "world", "start": 1.1, "end": 2.3, "score": 0.88,
+            "word": "world",
+            "start": 1.1,
+            "end": 2.3,
+            "score": 0.88,
         }
 
     def test_multiple_segments(self):
@@ -253,12 +261,14 @@ class TestNormalizeSegments:
         """Word without 'score' gets score=0.0."""
         from autopilot.analyze.asr import _normalize_segments
 
-        segments = [{
-            "start": 0.0,
-            "end": 1.0,
-            "text": "Test",
-            "words": [{"word": "Test", "start": 0.0, "end": 1.0}],
-        }]
+        segments = [
+            {
+                "start": 0.0,
+                "end": 1.0,
+                "text": "Test",
+                "words": [{"word": "Test", "start": 0.0, "end": 1.0}],
+            }
+        ]
         result = _normalize_segments(segments)
         assert result[0]["words"][0]["score"] == 0.0
 
@@ -266,16 +276,18 @@ class TestNormalizeSegments:
         """WhisperX internal fields are not present in output."""
         from autopilot.analyze.asr import _normalize_segments
 
-        segments = [{
-            "start": 0.0,
-            "end": 1.0,
-            "text": "Test",
-            "tokens": [123, 456],
-            "avg_logprob": -0.5,
-            "temperature": 0.0,
-            "compression_ratio": 1.2,
-            "no_speech_prob": 0.01,
-        }]
+        segments = [
+            {
+                "start": 0.0,
+                "end": 1.0,
+                "text": "Test",
+                "tokens": [123, 456],
+                "avg_logprob": -0.5,
+                "temperature": 0.0,
+                "compression_ratio": 1.2,
+                "no_speech_prob": 0.01,
+            }
+        ]
         result = _normalize_segments(segments)
         seg = result[0]
         assert "tokens" not in seg
@@ -292,17 +304,21 @@ class TestNormalizeSegments:
 
         from autopilot.analyze.asr import _normalize_segments
 
-        segments = [{
-            "start": np.float32(0.5),
-            "end": np.float64(2.3),
-            "text": "Hello",
-            "words": [{
-                "word": "Hello",
+        segments = [
+            {
                 "start": np.float32(0.5),
                 "end": np.float64(2.3),
-                "score": np.float32(0.95),
-            }],
-        }]
+                "text": "Hello",
+                "words": [
+                    {
+                        "word": "Hello",
+                        "start": np.float32(0.5),
+                        "end": np.float64(2.3),
+                        "score": np.float32(0.95),
+                    }
+                ],
+            }
+        ]
         result = _normalize_segments(segments)
         # Should not raise
         serialized = json.dumps(result)
@@ -576,8 +592,9 @@ class TestForcedAlignment:
         assert transcript is not None
 
         # Warning should be logged
-        assert any("align" in r.message.lower() for r in caplog.records
-                    if r.levelno >= logging.WARNING)
+        assert any(
+            "align" in r.message.lower() for r in caplog.records if r.levelno >= logging.WARNING
+        )
 
 
 class TestDiarization:
@@ -692,8 +709,9 @@ class TestDiarization:
         assert transcript is not None
 
         # Warning should be logged
-        assert any("diariz" in r.message.lower() for r in caplog.records
-                    if r.levelno >= logging.WARNING)
+        assert any(
+            "diariz" in r.message.lower() for r in caplog.records if r.levelno >= logging.WARNING
+        )
 
 
 class TestDBStorage:
@@ -728,7 +746,9 @@ class TestDBStorage:
         ]
 
         mock_wx, scheduler = _make_full_pipeline_mocks(
-            catalog_db, "vid1", segments,
+            catalog_db,
+            "vid1",
+            segments,
         )
         # Make assign_word_speakers return segments with speakers
         mock_wx.assign_word_speakers.return_value = {"segments": segments}
@@ -756,7 +776,10 @@ class TestDBStorage:
         assert seg0["speaker"] == "SPEAKER_01"
         assert len(seg0["words"]) == 2
         assert seg0["words"][0] == {
-            "word": "Hello", "start": 0.0, "end": 0.7, "score": 0.95,
+            "word": "Hello",
+            "start": 0.0,
+            "end": 0.7,
+            "score": 0.95,
         }
 
     def test_language_stored(self, catalog_db):
@@ -789,7 +812,9 @@ class TestDBStorage:
         from autopilot.analyze.asr import transcribe_media
 
         mock_wx, scheduler = _make_full_pipeline_mocks(
-            catalog_db, "vid1", [],
+            catalog_db,
+            "vid1",
+            [],
         )
 
         with patch.dict(sys.modules, {"whisperx": mock_wx}):
@@ -823,9 +848,7 @@ class TestErrorHandling:
 
         scheduler = MagicMock()
         scheduler.device = 0
-        scheduler.model.return_value.__enter__ = MagicMock(
-            return_value=mock_model
-        )
+        scheduler.model.return_value.__enter__ = MagicMock(return_value=mock_model)
         scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
 
         with patch.dict(sys.modules, {"whisperx": mock_wx}):
@@ -913,8 +936,7 @@ class TestLogging:
                         MagicMock(whisper_size="large-v3"),
                     )
 
-        info_messages = [r.message for r in caplog.records
-                         if r.levelno == logging.INFO]
+        info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
         assert any("vid1" in m for m in info_messages)
 
     def test_completion_log(self, catalog_db, caplog):
@@ -941,8 +963,7 @@ class TestLogging:
                         MagicMock(whisper_size="large-v3"),
                     )
 
-        info_messages = [r.message for r in caplog.records
-                         if r.levelno == logging.INFO]
+        info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
         assert any("2 segments" in m for m in info_messages)
 
     def test_skip_log(self, catalog_db, caplog):
@@ -950,7 +971,7 @@ class TestLogging:
         from autopilot.analyze.asr import transcribe_media
 
         catalog_db.insert_media("vid1", "/tmp/audio.wav")
-        catalog_db.upsert_transcript("vid1", '[]', "en")
+        catalog_db.upsert_transcript("vid1", "[]", "en")
 
         with caplog.at_level(logging.INFO):
             transcribe_media(
@@ -961,8 +982,7 @@ class TestLogging:
                 MagicMock(whisper_size="large-v3"),
             )
 
-        info_messages = [r.message for r in caplog.records
-                         if r.levelno == logging.INFO]
+        info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
         assert any("skipping" in m.lower() for m in info_messages)
 
     def test_diarization_skip_log(self, catalog_db, caplog, monkeypatch):
@@ -988,8 +1008,7 @@ class TestLogging:
                         MagicMock(whisper_size="large-v3"),
                     )
 
-        info_messages = [r.message for r in caplog.records
-                         if r.levelno == logging.INFO]
+        info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
         assert any("diariz" in m.lower() for m in info_messages)
 
     def test_alignment_failure_log(self, catalog_db, caplog):
@@ -1014,8 +1033,7 @@ class TestLogging:
                         MagicMock(whisper_size="large-v3"),
                     )
 
-        warn_messages = [r.message for r in caplog.records
-                         if r.levelno >= logging.WARNING]
+        warn_messages = [r.message for r in caplog.records if r.levelno >= logging.WARNING]
         assert any("align" in m.lower() for m in warn_messages)
 
 
@@ -1053,7 +1071,9 @@ class TestIntegration:
         ]
 
         mock_wx, scheduler = _make_full_pipeline_mocks(
-            catalog_db, "vid1", segments,
+            catalog_db,
+            "vid1",
+            segments,
         )
         # Override assign_word_speakers to return the segments with speakers
         mock_wx.assign_word_speakers.return_value = {"segments": segments}
@@ -1080,11 +1100,18 @@ class TestIntegration:
         # PRD schema validation
         for seg in stored:
             assert set(seg.keys()) == {
-                "start", "end", "text", "speaker", "words",
+                "start",
+                "end",
+                "text",
+                "speaker",
+                "words",
             }
             for word in seg["words"]:
                 assert set(word.keys()) == {
-                    "word", "start", "end", "score",
+                    "word",
+                    "start",
+                    "end",
+                    "score",
                 }
 
         # First segment has all data

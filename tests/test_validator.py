@@ -342,7 +342,8 @@ class TestTimeccodeBounds:
         result = validate_edl(edl, db)
         assert result.passed is False
         bounds_errors = [
-            e for e in result.errors
+            e
+            for e in result.errors
             if "bound" in e.lower() or "exceed" in e.lower() or "beyond" in e.lower()
         ]
         assert len(bounds_errors) >= 1
@@ -356,9 +357,12 @@ class TestTimeccodeBounds:
         result = validate_edl(edl, db)
         assert result.passed is False
         order_errors = [
-            e for e in result.errors
-            if "before" in e.lower() or "after" in e.lower() or "order" in e.lower()
-                or "in_timecode" in e.lower()
+            e
+            for e in result.errors
+            if "before" in e.lower()
+            or "after" in e.lower()
+            or "order" in e.lower()
+            or "in_timecode" in e.lower()
         ]
         assert len(order_errors) >= 1
 
@@ -409,8 +413,7 @@ class TestAudioLevelCheck:
         edl = _make_audio_edl(-30.0)
         result = validate_edl(edl, _mock_db())
         audio_warnings = [
-            w for w in result.warnings
-            if "audio" in w.lower() or "level" in w.lower()
+            w for w in result.warnings if "audio" in w.lower() or "level" in w.lower()
         ]
         assert len(audio_warnings) >= 1
 
@@ -452,14 +455,16 @@ class TestMalformedTimecodes:
         ValidationResult with passed=False and descriptive error, never raises."""
         from autopilot.plan.validator import validate_edl
 
-        edl = _make_edl_with_clips([
-            {
-                "clip_id": "v1",
-                "in_timecode": "not-a-timecode",
-                "out_timecode": "00:00:10.000",
-                "track": 1,
-            },
-        ])
+        edl = _make_edl_with_clips(
+            [
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "not-a-timecode",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+            ]
+        )
         # Must NOT raise ValueError
         result = validate_edl(edl, _mock_db())
         assert result.passed is False
@@ -470,14 +475,16 @@ class TestMalformedTimecodes:
         error, never raises KeyError."""
         from autopilot.plan.validator import validate_edl
 
-        edl = _make_edl_with_clips([
-            {
-                "clip_id": "v1",
-                # no in_timecode key
-                "out_timecode": "00:00:10.000",
-                "track": 1,
-            },
-        ])
+        edl = _make_edl_with_clips(
+            [
+                {
+                    "clip_id": "v1",
+                    # no in_timecode key
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+            ]
+        )
         # Must NOT raise KeyError
         result = validate_edl(edl, _mock_db())
         assert result.passed is False
@@ -488,14 +495,16 @@ class TestMalformedTimecodes:
         error, never raises KeyError."""
         from autopilot.plan.validator import validate_edl
 
-        edl = _make_edl_with_clips([
-            {
-                "clip_id": "v1",
-                "in_timecode": "00:00:00.000",
-                # no out_timecode key
-                "track": 1,
-            },
-        ])
+        edl = _make_edl_with_clips(
+            [
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    # no out_timecode key
+                    "track": 1,
+                },
+            ]
+        )
         # Must NOT raise KeyError
         result = validate_edl(edl, _mock_db())
         assert result.passed is False
@@ -505,14 +514,16 @@ class TestMalformedTimecodes:
         """Clip with non-standard format (e.g. '10s') returns error in result."""
         from autopilot.plan.validator import validate_edl
 
-        edl = _make_edl_with_clips([
-            {
-                "clip_id": "v1",
-                "in_timecode": "10s",
-                "out_timecode": "20s",
-                "track": 1,
-            },
-        ])
+        edl = _make_edl_with_clips(
+            [
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "10s",
+                    "out_timecode": "20s",
+                    "track": 1,
+                },
+            ]
+        )
         # Must NOT raise
         result = validate_edl(edl, _mock_db())
         assert result.passed is False
@@ -523,26 +534,29 @@ class TestMalformedTimecodes:
         clips but still validates the good ones."""
         from autopilot.plan.validator import validate_edl
 
-        edl = _make_edl_with_clips([
-            {
-                "clip_id": "v1",
-                "in_timecode": "00:00:00.000",
-                "out_timecode": "00:00:10.000",
-                "track": 1,
-            },
-            {
-                "clip_id": "v2",
-                "in_timecode": "garbage",
-                "out_timecode": "00:00:20.000",
-                "track": 1,
-            },
-        ])
+        edl = _make_edl_with_clips(
+            [
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "garbage",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ]
+        )
         # Must NOT raise
         result = validate_edl(edl, _mock_db())
         assert result.passed is False
         # Should have error about v2's bad timecode
         malformed_errors = [
-            e for e in result.errors
+            e
+            for e in result.errors
             if "v2" in e or "timecode" in e.lower() or "invalid" in e.lower()
         ]
         assert len(malformed_errors) >= 1
@@ -569,8 +583,7 @@ class TestMalformedCatalogData:
         # Should not raise TypeError; should have an error about non-numeric duration
         assert result.passed is False
         duration_errors = [
-            e for e in result.errors
-            if "duration" in e.lower() or "non-numeric" in e.lower()
+            e for e in result.errors if "duration" in e.lower() or "non-numeric" in e.lower()
         ]
         assert len(duration_errors) >= 1
 
@@ -586,8 +599,7 @@ class TestMalformedCatalogData:
         result = validate_edl(edl, db)
         assert result.passed is False
         duration_errors = [
-            e for e in result.errors
-            if "duration" in e.lower() or "non-numeric" in e.lower()
+            e for e in result.errors if "duration" in e.lower() or "non-numeric" in e.lower()
         ]
         assert len(duration_errors) >= 1
 

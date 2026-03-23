@@ -96,24 +96,24 @@ def _read_and_downsample_frames(
         ShotDetectionError: If the video cannot be opened.
     """
     cv2 = cv2_module
-    cap = cv2.VideoCapture(str(video_path))  # type: ignore[union-attr]
+    cap = cv2.VideoCapture(str(video_path))  # type: ignore[attr-defined]
     if not cap.isOpened():
         cap.release()
         raise ShotDetectionError(f"Failed to open video: {video_path}")
 
     try:
-        fps = float(cap.get(cv2.CAP_PROP_FPS))  # type: ignore[union-attr]
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))  # type: ignore[union-attr]
+        fps = float(cap.get(cv2.CAP_PROP_FPS))  # type: ignore[attr-defined]
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))  # type: ignore[attr-defined]
 
         frames = []
         for _ in range(total_frames):
             ret, frame = cap.read()
             if not ret:
                 continue
-            resized = cv2.resize(  # type: ignore[union-attr]
+            resized = cv2.resize(  # type: ignore[attr-defined]
                 frame,
                 (TRANSNETV2_INPUT_WIDTH, TRANSNETV2_INPUT_HEIGHT),
-                interpolation=cv2.INTER_AREA,  # type: ignore[union-attr]
+                interpolation=cv2.INTER_AREA,  # type: ignore[attr-defined]
             )
             frames.append(resized)
 

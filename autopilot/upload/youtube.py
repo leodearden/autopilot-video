@@ -85,11 +85,7 @@ def _build_upload_metadata(
         try:
             script_data = json.loads(str(script_row["script_json"]))
             scenes = script_data.get("scenes", [])
-            narrations = [
-                s.get("narration", "")
-                for s in scenes
-                if s.get("narration")
-            ]
+            narrations = [s.get("narration", "") for s in scenes if s.get("narration")]
             if narrations:
                 description += "\n\n" + " ".join(narrations)
         except (json.JSONDecodeError, TypeError):
@@ -99,9 +95,7 @@ def _build_upload_metadata(
     tags: list[str] = []
     if narrative and narrative.get("activity_cluster_ids_json"):
         try:
-            cluster_ids = json.loads(
-                str(narrative["activity_cluster_ids_json"])
-            )
+            cluster_ids = json.loads(str(narrative["activity_cluster_ids_json"]))
         except (json.JSONDecodeError, TypeError):
             cluster_ids = []
         clusters = db.get_activity_clusters()
@@ -198,7 +192,7 @@ def upload_video(
             break  # Upload succeeded; exit retry loop
         except Exception as exc:
             if attempt < max_retries - 1:
-                wait = 2 ** attempt
+                wait = 2**attempt
                 logger.warning(
                     "Upload attempt %d failed: %s. Retrying in %ds...",
                     attempt + 1,

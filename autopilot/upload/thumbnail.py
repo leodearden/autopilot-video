@@ -78,10 +78,7 @@ def _rule_of_thirds_score(
         cy = (bbox[1] + bbox[3]) / 2.0
 
         # Find min distance to any intersection point
-        min_dist = min(
-            np.sqrt((cx - ix) ** 2 + (cy - iy) ** 2)
-            for ix, iy in intersections
-        )
+        min_dist = min(np.sqrt((cx - ix) ** 2 + (cy - iy) ** 2) for ix, iy in intersections)
         score = max(0.0, 1.0 - min_dist / max_dist)
         best_score = max(best_score, score)
 
@@ -117,11 +114,7 @@ def _combined_score(
     Returns:
         Weighted combined score.
     """
-    return (
-        _WEIGHT_SHARPNESS * sharpness
-        + _WEIGHT_THIRDS * thirds
-        + _WEIGHT_CONFIDENCE * confidence
-    )
+    return _WEIGHT_SHARPNESS * sharpness + _WEIGHT_THIRDS * thirds + _WEIGHT_CONFIDENCE * confidence
 
 
 def _extract_best_frame(
@@ -208,9 +201,7 @@ def _upload_thumbnail_to_youtube(
     youtube = build("youtube", "v3", credentials=creds)
     youtube.thumbnails().set(
         videoId=youtube_video_id,
-        media_body=MediaFileUpload(
-            str(thumb_path), mimetype="image/jpeg"
-        ),
+        media_body=MediaFileUpload(str(thumb_path), mimetype="image/jpeg"),
     ).execute()
 
 
@@ -267,9 +258,7 @@ def extract_best_thumbnail(
                 str(upload_rec["youtube_video_id"]),
                 credentials_path,
             )
-            logger.info(
-                "Uploaded thumbnail for %s to YouTube", narrative_id
-            )
+            logger.info("Uploaded thumbnail for %s to YouTube", narrative_id)
         except Exception:
             logger.warning(
                 "Failed to upload thumbnail for %s to YouTube",

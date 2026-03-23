@@ -129,9 +129,7 @@ class TestLoadCredentials:
         mock_creds_cls.from_authorized_user_file.return_value = mock_creds
         mods["google.oauth2.credentials"].Credentials = mock_creds_cls
         mock_request_instance = MagicMock()
-        mods["google.auth.transport.requests"].Request.return_value = (
-            mock_request_instance
-        )
+        mods["google.auth.transport.requests"].Request.return_value = mock_request_instance
 
         with patch.dict(sys.modules, mods):
             from autopilot.upload.youtube import _load_credentials
@@ -154,9 +152,7 @@ class TestBuildUploadMetadata:
         """Title comes from narrative title in DB."""
         from autopilot.upload.youtube import _build_upload_metadata
 
-        catalog_db.insert_narrative(
-            "n1", title="My Great Video", description="desc"
-        )
+        catalog_db.insert_narrative("n1", title="My Great Video", description="desc")
         config = MagicMock()
         config.privacy_status = "unlisted"
         config.default_category = "22"
@@ -168,14 +164,10 @@ class TestBuildUploadMetadata:
         """Description includes narrative description and script content."""
         from autopilot.upload.youtube import _build_upload_metadata
 
-        catalog_db.insert_narrative(
-            "n1", title="Title", description="Narrative desc"
-        )
+        catalog_db.insert_narrative("n1", title="Title", description="Narrative desc")
         catalog_db.upsert_narrative_script(
             "n1",
-            json.dumps(
-                {"scenes": [{"narration": "Scene one narration."}]}
-            ),
+            json.dumps({"scenes": [{"narration": "Scene one narration."}]}),
         )
         config = MagicMock()
         config.privacy_status = "unlisted"
@@ -198,24 +190,30 @@ class TestBuildUploadMetadata:
         catalog_db.insert_activity_cluster("c2", label="camping")
         # Insert a media file + detections with class names
         catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
-        catalog_db.batch_insert_detections([
-            (
-                "m1",
-                0,
-                json.dumps([
-                    {"class_name": "person", "confidence": 0.9},
-                    {"class_name": "backpack", "confidence": 0.8},
-                ]),
-            ),
-            (
-                "m1",
-                1,
-                json.dumps([
-                    {"class_name": "person", "confidence": 0.85},
-                    {"class_name": "tent", "confidence": 0.7},
-                ]),
-            ),
-        ])
+        catalog_db.batch_insert_detections(
+            [
+                (
+                    "m1",
+                    0,
+                    json.dumps(
+                        [
+                            {"class_name": "person", "confidence": 0.9},
+                            {"class_name": "backpack", "confidence": 0.8},
+                        ]
+                    ),
+                ),
+                (
+                    "m1",
+                    1,
+                    json.dumps(
+                        [
+                            {"class_name": "person", "confidence": 0.85},
+                            {"class_name": "tent", "confidence": 0.7},
+                        ]
+                    ),
+                ),
+            ]
+        )
         config = MagicMock()
         config.privacy_status = "unlisted"
         config.default_category = "22"
@@ -262,9 +260,7 @@ class TestUploadVideoFlow:
         config.default_category = "22"
         return config
 
-    def test_upload_calls_youtube_api_insert(
-        self, catalog_db, tmp_path
-    ):
+    def test_upload_calls_youtube_api_insert(self, catalog_db, tmp_path):
         """Calls YouTube videos().insert() with MediaFileUpload."""
         from autopilot.upload.youtube import upload_video
 
@@ -276,8 +272,9 @@ class TestUploadVideoFlow:
         mods, mock_oauth2_creds, _ = _setup_google_mocks()
         mock_creds = MagicMock()
         mock_creds.expired = False
-        mods["google.oauth2.credentials"].Credentials \
-            .from_authorized_user_file.return_value = mock_creds
+        mods[
+            "google.oauth2.credentials"
+        ].Credentials.from_authorized_user_file.return_value = mock_creds
 
         mock_youtube = MagicMock()
         mock_insert_req = MagicMock()
@@ -285,9 +282,7 @@ class TestUploadVideoFlow:
             None,
             {"id": "abc123"},
         )
-        mock_youtube.videos.return_value.insert.return_value = (
-            mock_insert_req
-        )
+        mock_youtube.videos.return_value.insert.return_value = mock_insert_req
         mods["googleapiclient.discovery"].build.return_value = mock_youtube
 
         with patch.dict(sys.modules, mods):
@@ -308,8 +303,9 @@ class TestUploadVideoFlow:
         mods, _, _ = _setup_google_mocks()
         mock_creds = MagicMock()
         mock_creds.expired = False
-        mods["google.oauth2.credentials"].Credentials \
-            .from_authorized_user_file.return_value = mock_creds
+        mods[
+            "google.oauth2.credentials"
+        ].Credentials.from_authorized_user_file.return_value = mock_creds
 
         mock_youtube = MagicMock()
         mock_insert_req = MagicMock()
@@ -317,9 +313,7 @@ class TestUploadVideoFlow:
             None,
             {"id": "xyz789"},
         )
-        mock_youtube.videos.return_value.insert.return_value = (
-            mock_insert_req
-        )
+        mock_youtube.videos.return_value.insert.return_value = mock_insert_req
         mods["googleapiclient.discovery"].build.return_value = mock_youtube
 
         with patch.dict(sys.modules, mods):
@@ -342,8 +336,9 @@ class TestUploadVideoFlow:
         mods, _, _ = _setup_google_mocks()
         mock_creds = MagicMock()
         mock_creds.expired = False
-        mods["google.oauth2.credentials"].Credentials \
-            .from_authorized_user_file.return_value = mock_creds
+        mods[
+            "google.oauth2.credentials"
+        ].Credentials.from_authorized_user_file.return_value = mock_creds
 
         mock_youtube = MagicMock()
         mock_insert_req = MagicMock()
@@ -351,9 +346,7 @@ class TestUploadVideoFlow:
             None,
             {"id": "vid_001"},
         )
-        mock_youtube.videos.return_value.insert.return_value = (
-            mock_insert_req
-        )
+        mock_youtube.videos.return_value.insert.return_value = mock_insert_req
         mods["googleapiclient.discovery"].build.return_value = mock_youtube
 
         with patch.dict(sys.modules, mods):
@@ -373,15 +366,14 @@ class TestUploadVideoFlow:
         mods, _, _ = _setup_google_mocks()
         mock_creds = MagicMock()
         mock_creds.expired = False
-        mods["google.oauth2.credentials"].Credentials \
-            .from_authorized_user_file.return_value = mock_creds
+        mods[
+            "google.oauth2.credentials"
+        ].Credentials.from_authorized_user_file.return_value = mock_creds
 
         mock_youtube = MagicMock()
         mock_insert_req = MagicMock()
         mock_insert_req.next_chunk.side_effect = Exception("API quota exceeded")
-        mock_youtube.videos.return_value.insert.return_value = (
-            mock_insert_req
-        )
+        mock_youtube.videos.return_value.insert.return_value = mock_insert_req
         mods["googleapiclient.discovery"].build.return_value = mock_youtube
 
         with patch.dict(sys.modules, mods):
@@ -406,9 +398,7 @@ class TestUploadVideoEdgeCases:
         config.default_category = "22"
         return config
 
-    def test_narrative_not_found_raises_upload_error(
-        self, catalog_db, tmp_path
-    ):
+    def test_narrative_not_found_raises_upload_error(self, catalog_db, tmp_path):
         """Raises UploadError when narrative_id not in DB."""
         from autopilot.upload.youtube import UploadError, upload_video
 
@@ -419,18 +409,15 @@ class TestUploadVideoEdgeCases:
         mods, _, _ = _setup_google_mocks()
         mock_creds = MagicMock()
         mock_creds.expired = False
-        mods["google.oauth2.credentials"].Credentials \
-            .from_authorized_user_file.return_value = mock_creds
+        mods[
+            "google.oauth2.credentials"
+        ].Credentials.from_authorized_user_file.return_value = mock_creds
 
         with patch.dict(sys.modules, mods):
             with pytest.raises(UploadError, match="[Nn]arrative.*not found"):
-                upload_video(
-                    "nonexistent", video_file, catalog_db, config
-                )
+                upload_video("nonexistent", video_file, catalog_db, config)
 
-    def test_video_file_not_found_raises_upload_error(
-        self, catalog_db, tmp_path
-    ):
+    def test_video_file_not_found_raises_upload_error(self, catalog_db, tmp_path):
         """Raises UploadError when video_path doesn't exist."""
         from autopilot.upload.youtube import UploadError, upload_video
 
@@ -441,8 +428,9 @@ class TestUploadVideoEdgeCases:
         mods, _, _ = _setup_google_mocks()
         mock_creds = MagicMock()
         mock_creds.expired = False
-        mods["google.oauth2.credentials"].Credentials \
-            .from_authorized_user_file.return_value = mock_creds
+        mods[
+            "google.oauth2.credentials"
+        ].Credentials.from_authorized_user_file.return_value = mock_creds
 
         with patch.dict(sys.modules, mods):
             with pytest.raises(UploadError, match="[Vv]ideo.*not found"):
@@ -460,8 +448,9 @@ class TestUploadVideoEdgeCases:
         mods, _, _ = _setup_google_mocks()
         mock_creds = MagicMock()
         mock_creds.expired = False
-        mods["google.oauth2.credentials"].Credentials \
-            .from_authorized_user_file.return_value = mock_creds
+        mods[
+            "google.oauth2.credentials"
+        ].Credentials.from_authorized_user_file.return_value = mock_creds
 
         mock_youtube = MagicMock()
         mock_insert_req = MagicMock()
@@ -470,9 +459,7 @@ class TestUploadVideoEdgeCases:
             None,
             {"id": "ok123"},
         )
-        mock_youtube.videos.return_value.insert.return_value = (
-            mock_insert_req
-        )
+        mock_youtube.videos.return_value.insert.return_value = mock_insert_req
         mods["googleapiclient.discovery"].build.return_value = mock_youtube
 
         with patch.dict(sys.modules, mods):
@@ -496,8 +483,9 @@ class TestUploadVideoEdgeCases:
         mods, _, _ = _setup_google_mocks()
         mock_creds = MagicMock()
         mock_creds.expired = False
-        mods["google.oauth2.credentials"].Credentials \
-            .from_authorized_user_file.return_value = mock_creds
+        mods[
+            "google.oauth2.credentials"
+        ].Credentials.from_authorized_user_file.return_value = mock_creds
 
         mock_youtube = MagicMock()
         mock_insert_req = MagicMock()
@@ -506,9 +494,7 @@ class TestUploadVideoEdgeCases:
             Exception("transient error"),
             (None, {"id": "retry_ok"}),
         ]
-        mock_youtube.videos.return_value.insert.return_value = (
-            mock_insert_req
-        )
+        mock_youtube.videos.return_value.insert.return_value = mock_insert_req
         mods["googleapiclient.discovery"].build.return_value = mock_youtube
 
         with patch.dict(sys.modules, mods):
@@ -537,9 +523,7 @@ class TestSetupYoutubeOAuth:
         mock_flow.run_local_server.return_value = mock_creds
         google_mods[
             "google_auth_oauthlib.flow"
-        ].InstalledAppFlow.from_client_secrets_file.return_value = (
-            mock_flow
-        )
+        ].InstalledAppFlow.from_client_secrets_file.return_value = mock_flow
 
         output_path = tmp_path / "oauth.json"
         client_secrets = tmp_path / "client_secrets.json"

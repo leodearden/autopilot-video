@@ -130,9 +130,11 @@ class TestIdempotency:
 
         # Insert media and face rows
         catalog_db.insert_media("vid1", "/tmp/vid1.mp4")
-        catalog_db.batch_insert_faces([
-            ("vid1", 0, 0, '[10,20,100,200]', b'\x00' * 2048, None),
-        ])
+        catalog_db.batch_insert_faces(
+            [
+                ("vid1", 0, 0, "[10,20,100,200]", b"\x00" * 2048, None),
+            ]
+        )
 
         scheduler = MagicMock()
         config = MagicMock()
@@ -187,9 +189,7 @@ class TestErrorHandling:
         config.face_model = "buffalo_l"
 
         with pytest.raises(FaceDetectionError, match="not found"):
-            detect_faces(
-                "vid1", Path("/nonexistent.mp4"), catalog_db, scheduler, config
-            )
+            detect_faces("vid1", Path("/nonexistent.mp4"), catalog_db, scheduler, config)
 
     def test_video_not_opened_raises(self, catalog_db, tmp_path) -> None:
         """cap.isOpened() returns False raises FaceDetectionError."""
@@ -276,9 +276,7 @@ class TestErrorHandling:
 class TestDetectionLoop:
     """Tests for the core face detection sampling loop."""
 
-    def _run_detect(
-        self, catalog_db, tmp_path, fps, total_frames, faces_per_frame
-    ):
+    def _run_detect(self, catalog_db, tmp_path, fps, total_frames, faces_per_frame):
         """Helper to run detect_faces with mocked dependencies."""
         from autopilot.analyze.faces import detect_faces
 
@@ -325,9 +323,7 @@ class TestDetectionLoop:
 
     def test_stores_faces_with_embeddings(self, catalog_db, tmp_path) -> None:
         """2 faces per frame on 10 sampled frames = 20 face rows."""
-        self._run_detect(
-            catalog_db, tmp_path, fps=30.0, total_frames=300, faces_per_frame=2
-        )
+        self._run_detect(catalog_db, tmp_path, fps=30.0, total_frames=300, faces_per_frame=2)
         faces = catalog_db.get_faces_for_media("vid1")
         assert len(faces) == 20
 
@@ -342,9 +338,7 @@ class TestDetectionLoop:
 
     def test_single_face_per_frame(self, catalog_db, tmp_path) -> None:
         """1 face detected stores 1 row with face_index=0."""
-        self._run_detect(
-            catalog_db, tmp_path, fps=30.0, total_frames=30, faces_per_frame=1
-        )
+        self._run_detect(catalog_db, tmp_path, fps=30.0, total_frames=30, faces_per_frame=1)
         faces = catalog_db.get_faces_for_media("vid1")
         assert len(faces) == 1
         assert faces[0]["face_index"] == 0
@@ -514,9 +508,11 @@ class TestLogging:
         from autopilot.analyze.faces import detect_faces
 
         catalog_db.insert_media("vid1", "/tmp/vid1.mp4")
-        catalog_db.batch_insert_faces([
-            ("vid1", 0, 0, "[]", b"\x00" * 2048, None),
-        ])
+        catalog_db.batch_insert_faces(
+            [
+                ("vid1", 0, 0, "[]", b"\x00" * 2048, None),
+            ]
+        )
 
         scheduler = MagicMock()
         config = MagicMock()
@@ -559,14 +555,16 @@ class TestClusterFaces:
                 emb = rng.normal(0, 0.01, 512).astype(np.float32)
                 emb[cluster_idx] = 1.0  # Dominant feature
                 emb = emb / np.linalg.norm(emb)  # L2 normalize
-                face_rows.append((
-                    "vid1",
-                    frame_num,
-                    0,
-                    json.dumps([10.0, 20.0, 100.0, 200.0]),
-                    emb.tobytes(),
-                    None,
-                ))
+                face_rows.append(
+                    (
+                        "vid1",
+                        frame_num,
+                        0,
+                        json.dumps([10.0, 20.0, 100.0, 200.0]),
+                        emb.tobytes(),
+                        None,
+                    )
+                )
                 frame_num += 1
 
         catalog_db.batch_insert_faces(face_rows)
@@ -603,9 +601,7 @@ class TestClusterFaces:
 
         clusters = catalog_db.get_face_clusters()
         for cluster in clusters:
-            centroid = np.frombuffer(
-                cluster["representative_embedding"], dtype=np.float32
-            )
+            centroid = np.frombuffer(cluster["representative_embedding"], dtype=np.float32)
             # Should be L2-normalized (norm ~= 1.0)
             assert abs(np.linalg.norm(centroid) - 1.0) < 1e-5
             assert len(centroid) == 512
@@ -649,9 +645,11 @@ class TestClusterFaces:
         for i in range(2):
             emb = rng.normal(0, 1, 512).astype(np.float32)
             emb = emb / np.linalg.norm(emb)
-            catalog_db.batch_insert_faces([
-                ("vid1", 100 + i, 0, "[]", emb.tobytes(), None),
-            ])
+            catalog_db.batch_insert_faces(
+                [
+                    ("vid1", 100 + i, 0, "[]", emb.tobytes(), None),
+                ]
+            )
 
         cluster_faces(catalog_db, eps=0.5, min_samples=3)
 
@@ -672,9 +670,11 @@ class TestClusterFaces:
         rng = np.random.default_rng(42)
         emb = rng.random(512).astype(np.float32)
         emb = emb / np.linalg.norm(emb)
-        catalog_db.batch_insert_faces([
-            ("vid1", 0, 0, "[]", emb.tobytes(), None),
-        ])
+        catalog_db.batch_insert_faces(
+            [
+                ("vid1", 0, 0, "[]", emb.tobytes(), None),
+            ]
+        )
 
         cluster_faces(catalog_db, min_samples=3)
 
@@ -827,9 +827,7 @@ class TestClusterFacesLogging:
         with caplog.at_level(logging.INFO, logger="autopilot.analyze.faces"):
             cluster_faces(catalog_db)
 
-        assert any(
-            "no face embeddings" in rec.message.lower() for rec in caplog.records
-        )
+        assert any("no face embeddings" in rec.message.lower() for rec in caplog.records)
 
 
 # -- Label faces tests ---------------------------------------------------------

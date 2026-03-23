@@ -134,7 +134,8 @@ def _make_config(
 def _make_edl(clips: list[dict] | None = None, **kwargs: object) -> dict:
     """Create a minimal EDL dict for testing."""
     edl: dict = {
-        "clips": clips or [
+        "clips": clips
+        or [
             {
                 "clip_id": "clip_1",
                 "source_path": "/tmp/src/clip.mp4",
@@ -184,9 +185,11 @@ class TestEDLLoading:
         db.get_transcript.return_value = None
         config = _make_config()
 
-        with patch("autopilot.render.router.render_simple") as mock_rs, \
-             patch("autopilot.render.router.render_complex"), \
-             patch("subprocess.run"):
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("autopilot.render.router.render_complex"),
+            patch("subprocess.run"),
+        ):
             mock_rs.return_value = Path("/tmp/segment.mp4")
             route_and_render("narr_1", db, config, Path("/tmp/test_output"))
 
@@ -219,9 +222,11 @@ class TestWorkDirCleanup:
         work = tmp_path / "render_work"
         work.mkdir()
 
-        with patch("autopilot.render.router.render_simple") as mock_rs, \
-             patch("subprocess.run"), \
-             patch("tempfile.TemporaryDirectory") as mock_td:
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run"),
+            patch("tempfile.TemporaryDirectory") as mock_td,
+        ):
             mock_td.return_value.__enter__ = MagicMock(return_value=str(work))
             mock_td.return_value.__exit__ = MagicMock(return_value=False)
             mock_rs.return_value = Path("/tmp/seg.mp4")
@@ -245,10 +250,11 @@ class TestWorkDirCleanup:
         work = tmp_path / "render_work"
         work.mkdir()
 
-        with patch("autopilot.render.router.render_simple",
-                    side_effect=RenderError("fail")), \
-             patch("subprocess.run"), \
-             patch("tempfile.TemporaryDirectory") as mock_td:
+        with (
+            patch("autopilot.render.router.render_simple", side_effect=RenderError("fail")),
+            patch("subprocess.run"),
+            patch("tempfile.TemporaryDirectory") as mock_td,
+        ):
             mock_td.return_value.__enter__ = MagicMock(return_value=str(work))
             mock_td.return_value.__exit__ = MagicMock(return_value=False)
             with pytest.raises(RoutingError):
@@ -272,9 +278,11 @@ class TestClipDispatching:
         db.get_transcript.return_value = None
         config = _make_config()
 
-        with patch("autopilot.render.router.render_simple") as mock_rs, \
-             patch("autopilot.render.router.render_complex") as mock_rc, \
-             patch("subprocess.run"):
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("autopilot.render.router.render_complex") as mock_rc,
+            patch("subprocess.run"),
+        ):
             mock_rs.return_value = Path("/tmp/seg.mp4")
             route_and_render("n1", db, config, Path("/tmp/test_output"))
 
@@ -292,9 +300,11 @@ class TestClipDispatching:
         db.get_transcript.return_value = None
         config = _make_config()
 
-        with patch("autopilot.render.router.render_simple") as mock_rs, \
-             patch("autopilot.render.router.render_complex") as mock_rc, \
-             patch("subprocess.run"):
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("autopilot.render.router.render_complex") as mock_rc,
+            patch("subprocess.run"),
+        ):
             mock_rc.return_value = Path("/tmp/seg.mp4")
             route_and_render("n1", db, config, Path("/tmp/test_output"))
 
@@ -306,10 +316,20 @@ class TestClipDispatching:
         from autopilot.render.router import route_and_render
 
         clips = [
-            {"clip_id": "c1", "source_path": "/a.mp4", "in_timecode": "00:00:00.000",
-             "out_timecode": "00:00:05.000", "track": 1},
-            {"clip_id": "c2", "source_path": "/b.mp4", "in_timecode": "00:00:00.000",
-             "out_timecode": "00:00:05.000", "track": 1},
+            {
+                "clip_id": "c1",
+                "source_path": "/a.mp4",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:05.000",
+                "track": 1,
+            },
+            {
+                "clip_id": "c2",
+                "source_path": "/b.mp4",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:05.000",
+                "track": 1,
+            },
         ]
         edl = _make_edl(clips=clips, crop_modes={"c1": "center", "c2": "auto_subject"})
         db = MagicMock()
@@ -318,9 +338,11 @@ class TestClipDispatching:
         db.get_transcript.return_value = None
         config = _make_config()
 
-        with patch("autopilot.render.router.render_simple") as mock_rs, \
-             patch("autopilot.render.router.render_complex") as mock_rc, \
-             patch("subprocess.run"):
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("autopilot.render.router.render_complex") as mock_rc,
+            patch("subprocess.run"),
+        ):
             mock_rs.return_value = Path("/tmp/seg1.mp4")
             mock_rc.return_value = Path("/tmp/seg2.mp4")
             route_and_render("n1", db, config, Path("/tmp/test_output"))
@@ -342,8 +364,9 @@ class TestCropPathLoading:
         from autopilot.render.router import route_and_render
 
         edl = _make_edl(
-            crop_modes=[{"clip_id": "clip_1", "mode": "auto_subject",
-                         "subject_track_id": "face_0"}],
+            crop_modes=[
+                {"clip_id": "clip_1", "mode": "auto_subject", "subject_track_id": "face_0"}
+            ],
         )
         crop_data = np.full((30, 2), [100, 50], dtype=np.float64)
         db = MagicMock()
@@ -353,9 +376,11 @@ class TestCropPathLoading:
         db.get_crop_path.return_value = {"path_data": crop_data.tolist()}
         config = _make_config()
 
-        with patch("autopilot.render.router.render_simple"), \
-             patch("autopilot.render.router.render_complex") as mock_rc, \
-             patch("subprocess.run"):
+        with (
+            patch("autopilot.render.router.render_simple"),
+            patch("autopilot.render.router.render_complex") as mock_rc,
+            patch("subprocess.run"),
+        ):
             mock_rc.return_value = Path("/tmp/seg.mp4")
             route_and_render("n1", db, config, Path("/tmp/test_output"))
 
@@ -369,8 +394,9 @@ class TestCropPathLoading:
         from autopilot.render.router import RoutingError, route_and_render
 
         edl = _make_edl(
-            crop_modes=[{"clip_id": "clip_1", "mode": "auto_subject",
-                         "subject_track_id": "face_0"}],
+            crop_modes=[
+                {"clip_id": "clip_1", "mode": "auto_subject", "subject_track_id": "face_0"}
+            ],
         )
         db = MagicMock()
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
@@ -378,9 +404,11 @@ class TestCropPathLoading:
         db.get_crop_path.return_value = None
         config = _make_config()
 
-        with patch("autopilot.render.router.render_simple"), \
-             patch("autopilot.render.router.render_complex"), \
-             patch("subprocess.run"):
+        with (
+            patch("autopilot.render.router.render_simple"),
+            patch("autopilot.render.router.render_complex"),
+            patch("subprocess.run"),
+        ):
             with pytest.raises(RoutingError, match="crop"):
                 route_and_render("n1", db, config, Path("/tmp/test_output"))
 
@@ -404,8 +432,10 @@ class TestFinalConcatenation:
         db.get_transcript.return_value = None
         config = _make_config()
 
-        with patch("autopilot.render.router.render_simple") as mock_rs, \
-             patch("subprocess.run") as mock_run:
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run") as mock_run,
+        ):
             mock_rs.return_value = Path("/tmp/seg.mp4")
             route_and_render("n1", db, config, Path("/tmp/test_output"))
 
@@ -427,8 +457,7 @@ class TestFinalConcatenation:
         db.get_transcript.return_value = None
         config = _make_config()
 
-        with patch("autopilot.render.router.render_simple") as mock_rs, \
-             patch("subprocess.run"):
+        with patch("autopilot.render.router.render_simple") as mock_rs, patch("subprocess.run"):
             mock_rs.return_value = Path("/tmp/seg.mp4")
             result = route_and_render("n1", db, config, Path("/tmp/test_output"))
 
@@ -446,8 +475,10 @@ class TestFinalConcatenation:
         db.get_transcript.return_value = None
         config = _make_config()
 
-        with patch("autopilot.render.router.render_simple") as mock_rs, \
-             patch("subprocess.run") as mock_run:
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run") as mock_run,
+        ):
             mock_rs.return_value = Path("/tmp/seg.mp4")
             route_and_render("n1", db, config, Path("/tmp/test_output"))
 
@@ -467,8 +498,10 @@ class TestFinalConcatenation:
         db.get_transcript.return_value = None
         config = _make_config()
 
-        with patch("autopilot.render.router.render_simple") as mock_rs, \
-             patch("subprocess.run") as mock_run:
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run") as mock_run,
+        ):
             mock_rs.return_value = Path("/tmp/seg.mp4")
             route_and_render("n1", db, config, Path("/tmp/test_output"))
 
@@ -503,8 +536,10 @@ class TestSubtitleSupport:
         db.get_transcript.return_value = {"segments_json": json.dumps(segments)}
         config = _make_config()
 
-        with patch("autopilot.render.router.render_simple") as mock_rs, \
-             patch("subprocess.run") as mock_run:
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run") as mock_run,
+        ):
             mock_rs.return_value = Path("/tmp/seg.mp4")
             route_and_render("n1", db, config, Path("/tmp/test_output"))
 
@@ -523,8 +558,10 @@ class TestSubtitleSupport:
         db.get_transcript.return_value = None
         config = _make_config()
 
-        with patch("autopilot.render.router.render_simple") as mock_rs, \
-             patch("subprocess.run") as mock_run:
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run") as mock_run,
+        ):
             mock_rs.return_value = Path("/tmp/seg.mp4")
             route_and_render("n1", db, config, Path("/tmp/test_output"))
 
@@ -553,8 +590,10 @@ class TestSubtitlesWithAudioMixing:
         db.get_transcript.return_value = {"segments_json": json.dumps(segments)}
         config = _make_config()
 
-        with patch("autopilot.render.router.render_simple") as mock_rs, \
-             patch("subprocess.run") as mock_run:
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run") as mock_run,
+        ):
             mock_rs.return_value = Path("/tmp/seg.mp4")
             route_and_render("n1", db, config, Path("/tmp/test_output"))
 
@@ -597,8 +636,10 @@ class TestStreamCopyVsFilter:
         db.get_transcript.return_value = {"segments_json": json.dumps(segments)}
         config = _make_config()
 
-        with patch("autopilot.render.router.render_simple") as mock_rs, \
-             patch("subprocess.run") as mock_run:
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run") as mock_run,
+        ):
             mock_rs.return_value = Path("/tmp/seg.mp4")
             route_and_render("n1", db, config, Path("/tmp/test_output"))
 
@@ -623,8 +664,10 @@ class TestStreamCopyVsFilter:
         db.get_transcript.return_value = None  # no subtitles
         config = _make_config()
 
-        with patch("autopilot.render.router.render_simple") as mock_rs, \
-             patch("subprocess.run") as mock_run:
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run") as mock_run,
+        ):
             mock_rs.return_value = Path("/tmp/seg.mp4")
             route_and_render("n1", db, config, Path("/tmp/test_output"))
 
@@ -658,8 +701,7 @@ class TestTranscriptByMediaId:
         db.get_transcript.return_value = {"segments_json": json.dumps(segments)}
         config = _make_config()
 
-        with patch("autopilot.render.router.render_simple") as mock_rs, \
-             patch("subprocess.run"):
+        with patch("autopilot.render.router.render_simple") as mock_rs, patch("subprocess.run"):
             mock_rs.return_value = Path("/tmp/seg.mp4")
             route_and_render("n1", db, config, Path("/tmp/test_output"))
 
@@ -674,10 +716,20 @@ class TestTranscriptByMediaId:
         from autopilot.render.router import route_and_render
 
         clips = [
-            {"clip_id": "c1", "source_path": "/a.mp4",
-             "in_timecode": "00:00:00.000", "out_timecode": "00:00:05.000", "track": 1},
-            {"clip_id": "c2", "source_path": "/b.mp4",
-             "in_timecode": "00:00:00.000", "out_timecode": "00:00:05.000", "track": 1},
+            {
+                "clip_id": "c1",
+                "source_path": "/a.mp4",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:05.000",
+                "track": 1,
+            },
+            {
+                "clip_id": "c2",
+                "source_path": "/b.mp4",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:05.000",
+                "track": 1,
+            },
         ]
         edl = _make_edl(clips=clips)
         seg1 = [{"start": 0.0, "end": 2.0, "text": "First clip"}]
@@ -697,8 +749,10 @@ class TestTranscriptByMediaId:
         db.get_transcript.side_effect = _get_transcript
         config = _make_config()
 
-        with patch("autopilot.render.router.render_simple") as mock_rs, \
-             patch("subprocess.run") as mock_run:
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run") as mock_run,
+        ):
             mock_rs.return_value = Path("/tmp/seg.mp4")
             route_and_render("n1", db, config, Path("/tmp/test_output"))
 
@@ -751,8 +805,10 @@ class TestErrorHandling:
         db.get_transcript.return_value = None
         config = _make_config()
 
-        with patch("autopilot.render.router.render_simple") as mock_rs, \
-             patch("subprocess.run") as mock_run:
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run") as mock_run,
+        ):
             mock_rs.return_value = Path("/tmp/seg.mp4")
             route_and_render("n1", db, config, Path("/tmp/test_output"))
 
@@ -777,7 +833,8 @@ class TestErrorHandling:
             patch(
                 "subprocess.run",
                 side_effect=_subprocess.TimeoutExpired(
-                    cmd="ffmpeg", timeout=1800,
+                    cmd="ffmpeg",
+                    timeout=1800,
                 ),
             ),
             pytest.raises(RoutingError) as exc_info,
@@ -830,8 +887,7 @@ class TestErrorHandling:
         db.get_transcript.return_value = None
         config = _make_config()
 
-        with patch("autopilot.render.router.render_simple") as mock_rs, \
-             patch("subprocess.run"):
+        with patch("autopilot.render.router.render_simple") as mock_rs, patch("subprocess.run"):
             mock_rs.return_value = Path("/tmp/seg.mp4")
             result = route_and_render("n1", db, config, Path("/tmp/test_output"))
 

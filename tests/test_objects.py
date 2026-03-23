@@ -54,9 +54,7 @@ def _make_boxes(
 
     if track_id is not None:
         boxes.id = MagicMock()
-        boxes.id.cpu.return_value.numpy.return_value = np.array(
-            track_id, dtype=np.float32
-        )
+        boxes.id.cpu.return_value.numpy.return_value = np.array(track_id, dtype=np.float32)
     else:
         boxes.id = None
     return boxes
@@ -303,12 +301,20 @@ class TestInterpolateDetections:
         from autopilot.analyze.objects import _interpolate_detections
 
         det_before = [
-            {"track_id": 1, "class": "person", "bbox_xywh": [100.0, 100.0, 50.0, 50.0],
-             "confidence": 0.9}
+            {
+                "track_id": 1,
+                "class": "person",
+                "bbox_xywh": [100.0, 100.0, 50.0, 50.0],
+                "confidence": 0.9,
+            }
         ]
         det_after = [
-            {"track_id": 1, "class": "person", "bbox_xywh": [160.0, 100.0, 50.0, 50.0],
-             "confidence": 0.8}
+            {
+                "track_id": 1,
+                "class": "person",
+                "bbox_xywh": [160.0, 100.0, 50.0, 50.0],
+                "confidence": 0.8,
+            }
         ]
         result = _interpolate_detections(det_before, det_after, 0, 6, 3)
         assert len(result) == 1
@@ -322,12 +328,20 @@ class TestInterpolateDetections:
         from autopilot.analyze.objects import _interpolate_detections
 
         det_before = [
-            {"track_id": 1, "class": "person", "bbox_xywh": [100.0, 100.0, 50.0, 50.0],
-             "confidence": 0.9}
+            {
+                "track_id": 1,
+                "class": "person",
+                "bbox_xywh": [100.0, 100.0, 50.0, 50.0],
+                "confidence": 0.9,
+            }
         ]
         det_after = [
-            {"track_id": 1, "class": "person", "bbox_xywh": [200.0, 100.0, 50.0, 50.0],
-             "confidence": 0.8}
+            {
+                "track_id": 1,
+                "class": "person",
+                "bbox_xywh": [200.0, 100.0, 50.0, 50.0],
+                "confidence": 0.8,
+            }
         ]
         result = _interpolate_detections(det_before, det_after, 0, 4, 1)
         assert result[0]["bbox_xywh"] == pytest.approx([125.0, 100.0, 50.0, 50.0])
@@ -337,12 +351,20 @@ class TestInterpolateDetections:
         from autopilot.analyze.objects import _interpolate_detections
 
         det_before = [
-            {"track_id": 1, "class": "person", "bbox_xywh": [100.0, 100.0, 50.0, 50.0],
-             "confidence": 0.9}
+            {
+                "track_id": 1,
+                "class": "person",
+                "bbox_xywh": [100.0, 100.0, 50.0, 50.0],
+                "confidence": 0.9,
+            }
         ]
         det_after = [
-            {"track_id": 1, "class": "pedestrian", "bbox_xywh": [200.0, 100.0, 50.0, 50.0],
-             "confidence": 0.8}
+            {
+                "track_id": 1,
+                "class": "pedestrian",
+                "bbox_xywh": [200.0, 100.0, 50.0, 50.0],
+                "confidence": 0.8,
+            }
         ]
         result = _interpolate_detections(det_before, det_after, 0, 6, 3)
         assert result[0]["class"] == "person"
@@ -352,16 +374,32 @@ class TestInterpolateDetections:
         from autopilot.analyze.objects import _interpolate_detections
 
         det_before = [
-            {"track_id": 1, "class": "person", "bbox_xywh": [100.0, 100.0, 50.0, 50.0],
-             "confidence": 0.9},
-            {"track_id": 2, "class": "car", "bbox_xywh": [500.0, 300.0, 100.0, 80.0],
-             "confidence": 0.8},
+            {
+                "track_id": 1,
+                "class": "person",
+                "bbox_xywh": [100.0, 100.0, 50.0, 50.0],
+                "confidence": 0.9,
+            },
+            {
+                "track_id": 2,
+                "class": "car",
+                "bbox_xywh": [500.0, 300.0, 100.0, 80.0],
+                "confidence": 0.8,
+            },
         ]
         det_after = [
-            {"track_id": 1, "class": "person", "bbox_xywh": [200.0, 100.0, 50.0, 50.0],
-             "confidence": 0.9},
-            {"track_id": 2, "class": "car", "bbox_xywh": [600.0, 300.0, 100.0, 80.0],
-             "confidence": 0.8},
+            {
+                "track_id": 1,
+                "class": "person",
+                "bbox_xywh": [200.0, 100.0, 50.0, 50.0],
+                "confidence": 0.9,
+            },
+            {
+                "track_id": 2,
+                "class": "car",
+                "bbox_xywh": [600.0, 300.0, 100.0, 80.0],
+                "confidence": 0.8,
+            },
         ]
         result = _interpolate_detections(det_before, det_after, 0, 4, 2)
         # Find track 1 and track 2 results
@@ -378,8 +416,12 @@ class TestInterpolateEdgeCases:
         from autopilot.analyze.objects import _interpolate_detections
 
         det_before = [
-            {"track_id": 1, "class": "person", "bbox_xywh": [100.0, 100.0, 50.0, 50.0],
-             "confidence": 0.9}
+            {
+                "track_id": 1,
+                "class": "person",
+                "bbox_xywh": [100.0, 100.0, 50.0, 50.0],
+                "confidence": 0.9,
+            }
         ]
         det_after = []  # Track 1 disappeared
         result = _interpolate_detections(det_before, det_after, 0, 6, 3)
@@ -393,8 +435,12 @@ class TestInterpolateEdgeCases:
 
         det_before = []
         det_after = [
-            {"track_id": 2, "class": "car", "bbox_xywh": [300.0, 200.0, 80.0, 60.0],
-             "confidence": 0.7}
+            {
+                "track_id": 2,
+                "class": "car",
+                "bbox_xywh": [300.0, 200.0, 80.0, 60.0],
+                "confidence": 0.7,
+            }
         ]
         result = _interpolate_detections(det_before, det_after, 0, 6, 3)
         assert len(result) == 1
@@ -419,8 +465,12 @@ class TestInterpolateEdgeCases:
         from autopilot.analyze.objects import _interpolate_detections
 
         det_before = [
-            {"track_id": 1, "class": "person", "bbox_xywh": [100.0, 100.0, 50.0, 50.0],
-             "confidence": 0.9}
+            {
+                "track_id": 1,
+                "class": "person",
+                "bbox_xywh": [100.0, 100.0, 50.0, 50.0],
+                "confidence": 0.9,
+            }
         ]
         result = _interpolate_detections(det_before, det_before, 5, 5, 5)
         assert len(result) == 1
@@ -509,9 +559,7 @@ class TestSparseMode:
         scheduler.model.return_value.__enter__ = MagicMock(return_value=mock_model)
         scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
 
-        mock_cap = _make_mock_capture(
-            total_frames=total_frames, fps=fps, width=4096, height=4096
-        )
+        mock_cap = _make_mock_capture(total_frames=total_frames, fps=fps, width=4096, height=4096)
 
         mock_cv2 = _make_mock_cv2()
         mock_cv2.VideoCapture.return_value = mock_cap
@@ -519,7 +567,11 @@ class TestSparseMode:
         with patch.dict(sys.modules, {"cv2": mock_cv2}):
             with patch.object(Path, "exists", return_value=True):
                 detect_objects(
-                    "m1", Path("/fake/video.mp4"), catalog_db, scheduler, config,
+                    "m1",
+                    Path("/fake/video.mp4"),
+                    catalog_db,
+                    scheduler,
+                    config,
                     sparse=True,
                 )
 
@@ -598,9 +650,7 @@ class TestDenseMode:
         scheduler.model.return_value.__enter__ = MagicMock(return_value=mock_model)
         scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
 
-        mock_cap = _make_mock_capture(
-            total_frames=total_frames, fps=fps, width=1920, height=1080
-        )
+        mock_cap = _make_mock_capture(total_frames=total_frames, fps=fps, width=1920, height=1080)
 
         mock_cv2 = _make_mock_cv2()
         mock_cv2.VideoCapture.return_value = mock_cap
@@ -608,7 +658,11 @@ class TestDenseMode:
         with patch.dict(sys.modules, {"cv2": mock_cv2}):
             with patch.object(Path, "exists", return_value=True):
                 detect_objects(
-                    "m1", Path("/fake/video.mp4"), catalog_db, scheduler, config,
+                    "m1",
+                    Path("/fake/video.mp4"),
+                    catalog_db,
+                    scheduler,
+                    config,
                     sparse=False,
                 )
 
@@ -655,8 +709,9 @@ class TestDenseMode:
 class TestBatchProcessing:
     """Tests for batch frame reading and DB insertion."""
 
-    def _run_with_batch(self, catalog_db, total_frames=50, sample_every_n=1,
-                        batch_size=16, sparse=True):
+    def _run_with_batch(
+        self, catalog_db, total_frames=50, sample_every_n=1, batch_size=16, sparse=True
+    ):
         """Helper to run detect_objects with specific batch parameters."""
         from pathlib import Path
 
@@ -684,8 +739,13 @@ class TestBatchProcessing:
         with patch.dict(sys.modules, {"cv2": mock_cv2}):
             with patch.object(Path, "exists", return_value=True):
                 detect_objects(
-                    "m1", Path("/fake/video.mp4"), catalog_db, scheduler, config,
-                    batch_size=batch_size, sparse=sparse,
+                    "m1",
+                    Path("/fake/video.mp4"),
+                    catalog_db,
+                    scheduler,
+                    config,
+                    batch_size=batch_size,
+                    sparse=sparse,
                 )
 
         return mock_model
@@ -694,7 +754,10 @@ class TestBatchProcessing:
         """model.track() is called once per sampled frame (50 times for n=1 sparse 30fps)."""
         # sparse mode at 30fps on 50 frames → frames at [0, 30]
         mock_model = self._run_with_batch(
-            catalog_db, total_frames=50, sample_every_n=1, sparse=True,
+            catalog_db,
+            total_frames=50,
+            sample_every_n=1,
+            sparse=True,
         )
         # At 30fps sparse, interval = 30, so frames [0, 30] → 2 track calls
         assert mock_model.track.call_count == 2
@@ -703,7 +766,10 @@ class TestBatchProcessing:
         """DB receives correct number of detection rows."""
         # Sparse at 30fps on 90 frames → [0, 30, 60] → 3 rows
         self._run_with_batch(
-            catalog_db, total_frames=90, sample_every_n=1, sparse=True,
+            catalog_db,
+            total_frames=90,
+            sample_every_n=1,
+            sparse=True,
         )
         rows = catalog_db.get_detections_for_range("m1", 0, 90)
         assert len(rows) == 3
@@ -711,7 +777,10 @@ class TestBatchProcessing:
     def test_large_batch_size_works(self, catalog_db) -> None:
         """batch_size larger than frame count works correctly."""
         self._run_with_batch(
-            catalog_db, total_frames=5, sample_every_n=1, sparse=True,
+            catalog_db,
+            total_frames=5,
+            sample_every_n=1,
+            sparse=True,
             batch_size=100,
         )
         # 5 frames at 30fps sparse → only frame 0
@@ -755,7 +824,11 @@ class TestErrorHandling:
             with patch.object(Path, "exists", return_value=True):
                 with pytest.raises(DetectionError, match="Failed to open"):
                     detect_objects(
-                        "m1", Path("/fake/video.mp4"), catalog_db, scheduler, config,
+                        "m1",
+                        Path("/fake/video.mp4"),
+                        catalog_db,
+                        scheduler,
+                        config,
                     )
 
     def test_frame_read_failure_skipped(self, catalog_db) -> None:
@@ -791,7 +864,11 @@ class TestErrorHandling:
         with patch.dict(sys.modules, {"cv2": mock_cv2}):
             with patch.object(Path, "exists", return_value=True):
                 detect_objects(
-                    "m1", Path("/fake/video.mp4"), catalog_db, scheduler, config,
+                    "m1",
+                    Path("/fake/video.mp4"),
+                    catalog_db,
+                    scheduler,
+                    config,
                     sparse=True,
                 )
 
@@ -831,7 +908,11 @@ class TestLogging:
             with patch.dict(sys.modules, {"cv2": mock_cv2}):
                 with patch.object(Path, "exists", return_value=True):
                     detect_objects(
-                        "m1", Path("/fake/video.mp4"), catalog_db, scheduler, config,
+                        "m1",
+                        Path("/fake/video.mp4"),
+                        catalog_db,
+                        scheduler,
+                        config,
                         sparse=sparse,
                     )
 
@@ -869,8 +950,9 @@ class TestLogging:
         """Log contains frame count information."""
         self._run_with_logging(catalog_db, caplog, sparse=True)
         # Should log total_frames or frame count
-        assert any("frames" in r.message.lower() or "frame" in r.message.lower()
-                    for r in caplog.records)
+        assert any(
+            "frames" in r.message.lower() or "frame" in r.message.lower() for r in caplog.records
+        )
 
 
 class TestIntegration:
@@ -914,9 +996,7 @@ class TestIntegration:
         scheduler.model.return_value.__enter__ = MagicMock(return_value=mock_model)
         scheduler.model.return_value.__exit__ = MagicMock(return_value=False)
 
-        mock_cap = _make_mock_capture(
-            total_frames=30, fps=30.0, width=4096, height=4096
-        )
+        mock_cap = _make_mock_capture(total_frames=30, fps=30.0, width=4096, height=4096)
 
         mock_cv2 = _make_mock_cv2()
         mock_cv2.VideoCapture.return_value = mock_cap
@@ -924,7 +1004,11 @@ class TestIntegration:
         with patch.dict(sys.modules, {"cv2": mock_cv2}):
             with patch.object(Path, "exists", return_value=True):
                 detect_objects(
-                    "m1", Path("/fake/video.mp4"), catalog_db, scheduler, config,
+                    "m1",
+                    Path("/fake/video.mp4"),
+                    catalog_db,
+                    scheduler,
+                    config,
                     sparse=False,
                 )
 

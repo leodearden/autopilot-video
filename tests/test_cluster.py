@@ -32,10 +32,12 @@ class TestDBHelpers:
     def test_get_audio_events_for_media(self, catalog_db):
         """get_audio_events_for_media() returns all audio events for a media file."""
         catalog_db.insert_media("vid1", "/tmp/vid1.mp4")
-        catalog_db.batch_insert_audio_events([
-            ("vid1", 0.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
-            ("vid1", 1.0, json.dumps([{"class": "Music", "probability": 0.7}])),
-        ])
+        catalog_db.batch_insert_audio_events(
+            [
+                ("vid1", 0.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
+                ("vid1", 1.0, json.dumps([{"class": "Music", "probability": 0.7}])),
+            ]
+        )
 
         result = catalog_db.get_audio_events_for_media("vid1")
         assert len(result) == 2
@@ -51,10 +53,12 @@ class TestDBHelpers:
     def test_get_detections_for_media(self, catalog_db):
         """get_detections_for_media() returns all detections for a media file."""
         catalog_db.insert_media("vid1", "/tmp/vid1.mp4")
-        catalog_db.batch_insert_detections([
-            ("vid1", 0, json.dumps([{"class": "person", "confidence": 0.95}])),
-            ("vid1", 30, json.dumps([{"class": "car", "confidence": 0.88}])),
-        ])
+        catalog_db.batch_insert_detections(
+            [
+                ("vid1", 0, json.dumps([{"class": "person", "confidence": 0.95}])),
+                ("vid1", 30, json.dumps([{"class": "car", "confidence": 0.88}])),
+            ]
+        )
 
         result = catalog_db.get_detections_for_media("vid1")
         assert len(result) == 2
@@ -70,10 +74,14 @@ class TestDBHelpers:
     def test_clear_activity_clusters(self, catalog_db):
         """clear_activity_clusters() deletes all activity clusters."""
         catalog_db.insert_activity_cluster(
-            "c1", time_start="2025-01-01T10:00:00", clip_ids_json='["vid1"]',
+            "c1",
+            time_start="2025-01-01T10:00:00",
+            clip_ids_json='["vid1"]',
         )
         catalog_db.insert_activity_cluster(
-            "c2", time_start="2025-01-01T11:00:00", clip_ids_json='["vid2"]',
+            "c2",
+            time_start="2025-01-01T11:00:00",
+            clip_ids_json='["vid2"]',
         )
 
         assert len(catalog_db.get_activity_clusters()) == 2
@@ -279,6 +287,7 @@ class TestSemanticRefinement:
     def _make_embedding(self, values: list[float]) -> bytes:
         """Create a bytes blob from a float32 list."""
         import numpy as np
+
         return np.array(values, dtype=np.float32).tobytes()
 
     def test_no_split_when_embeddings_similar(self, catalog_db):
@@ -287,21 +296,29 @@ class TestSemanticRefinement:
 
         # Create 3 clips with nearly identical embeddings
         catalog_db.insert_media(
-            "v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00",
+            "v1",
+            "/tmp/v1.mp4",
+            created_at="2025-01-01T10:00:00",
         )
         catalog_db.insert_media(
-            "v2", "/tmp/v2.mp4", created_at="2025-01-01T10:05:00",
+            "v2",
+            "/tmp/v2.mp4",
+            created_at="2025-01-01T10:05:00",
         )
         catalog_db.insert_media(
-            "v3", "/tmp/v3.mp4", created_at="2025-01-01T10:10:00",
+            "v3",
+            "/tmp/v3.mp4",
+            created_at="2025-01-01T10:10:00",
         )
 
         emb = self._make_embedding([1.0, 0.0, 0.0, 0.0])
-        catalog_db.batch_insert_embeddings([
-            ("v1", 0, emb),
-            ("v2", 0, emb),
-            ("v3", 0, emb),
-        ])
+        catalog_db.batch_insert_embeddings(
+            [
+                ("v1", 0, emb),
+                ("v2", 0, emb),
+                ("v3", 0, emb),
+            ]
+        )
 
         clip_ids = ["v1", "v2", "v3"]
         clips_data = {
@@ -319,27 +336,37 @@ class TestSemanticRefinement:
         from autopilot.organize.cluster import _semantic_refine
 
         catalog_db.insert_media(
-            "v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00",
+            "v1",
+            "/tmp/v1.mp4",
+            created_at="2025-01-01T10:00:00",
         )
         catalog_db.insert_media(
-            "v2", "/tmp/v2.mp4", created_at="2025-01-01T10:05:00",
+            "v2",
+            "/tmp/v2.mp4",
+            created_at="2025-01-01T10:05:00",
         )
         catalog_db.insert_media(
-            "v3", "/tmp/v3.mp4", created_at="2025-01-01T10:10:00",
+            "v3",
+            "/tmp/v3.mp4",
+            created_at="2025-01-01T10:10:00",
         )
         catalog_db.insert_media(
-            "v4", "/tmp/v4.mp4", created_at="2025-01-01T10:15:00",
+            "v4",
+            "/tmp/v4.mp4",
+            created_at="2025-01-01T10:15:00",
         )
 
         # First two clips: [1, 0, 0, 0], last two: [0, 0, 0, 1] - very different
         emb_a = self._make_embedding([1.0, 0.0, 0.0, 0.0])
         emb_b = self._make_embedding([0.0, 0.0, 0.0, 1.0])
-        catalog_db.batch_insert_embeddings([
-            ("v1", 0, emb_a),
-            ("v2", 0, emb_a),
-            ("v3", 0, emb_b),
-            ("v4", 0, emb_b),
-        ])
+        catalog_db.batch_insert_embeddings(
+            [
+                ("v1", 0, emb_a),
+                ("v2", 0, emb_a),
+                ("v3", 0, emb_b),
+                ("v4", 0, emb_b),
+            ]
+        )
 
         clip_ids = ["v1", "v2", "v3", "v4"]
         clips_data = {
@@ -357,10 +384,14 @@ class TestSemanticRefinement:
         from autopilot.organize.cluster import _semantic_refine
 
         catalog_db.insert_media(
-            "v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00",
+            "v1",
+            "/tmp/v1.mp4",
+            created_at="2025-01-01T10:00:00",
         )
         catalog_db.insert_media(
-            "v2", "/tmp/v2.mp4", created_at="2025-01-01T10:05:00",
+            "v2",
+            "/tmp/v2.mp4",
+            created_at="2025-01-01T10:05:00",
         )
 
         clip_ids = ["v1", "v2"]
@@ -378,7 +409,9 @@ class TestSemanticRefinement:
         from autopilot.organize.cluster import _semantic_refine
 
         catalog_db.insert_media(
-            "v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00",
+            "v1",
+            "/tmp/v1.mp4",
+            created_at="2025-01-01T10:00:00",
         )
 
         clip_ids = ["v1"]
@@ -403,16 +436,25 @@ class TestClusterActivities:
 
         # Two close clips and one far away
         catalog_db.insert_media(
-            "v1", "/tmp/v1.mp4",
-            created_at="2025-01-01T10:00:00", gps_lat=18.788, gps_lon=98.985,
+            "v1",
+            "/tmp/v1.mp4",
+            created_at="2025-01-01T10:00:00",
+            gps_lat=18.788,
+            gps_lon=98.985,
         )
         catalog_db.insert_media(
-            "v2", "/tmp/v2.mp4",
-            created_at="2025-01-01T10:10:00", gps_lat=18.788, gps_lon=98.985,
+            "v2",
+            "/tmp/v2.mp4",
+            created_at="2025-01-01T10:10:00",
+            gps_lat=18.788,
+            gps_lon=98.985,
         )
         catalog_db.insert_media(
-            "v3", "/tmp/v3.mp4",
-            created_at="2025-01-01T14:00:00", gps_lat=19.500, gps_lon=99.500,
+            "v3",
+            "/tmp/v3.mp4",
+            created_at="2025-01-01T14:00:00",
+            gps_lat=19.500,
+            gps_lon=99.500,
         )
 
         result = cluster_activities(catalog_db)
@@ -428,12 +470,18 @@ class TestClusterActivities:
         from autopilot.organize.cluster import cluster_activities
 
         catalog_db.insert_media(
-            "v1", "/tmp/v1.mp4",
-            created_at="2025-01-01T10:00:00", gps_lat=18.788, gps_lon=98.985,
+            "v1",
+            "/tmp/v1.mp4",
+            created_at="2025-01-01T10:00:00",
+            gps_lat=18.788,
+            gps_lon=98.985,
         )
         catalog_db.insert_media(
-            "v2", "/tmp/v2.mp4",
-            created_at="2025-01-01T10:10:00", gps_lat=18.788, gps_lon=98.985,
+            "v2",
+            "/tmp/v2.mp4",
+            created_at="2025-01-01T10:10:00",
+            gps_lat=18.788,
+            gps_lon=98.985,
         )
 
         result = cluster_activities(catalog_db)
@@ -449,10 +497,14 @@ class TestClusterActivities:
         from autopilot.organize.cluster import cluster_activities
 
         catalog_db.insert_media(
-            "v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00",
+            "v1",
+            "/tmp/v1.mp4",
+            created_at="2025-01-01T10:00:00",
         )
         catalog_db.insert_media(
-            "v2", "/tmp/v2.mp4", created_at="2025-01-01T10:20:00",
+            "v2",
+            "/tmp/v2.mp4",
+            created_at="2025-01-01T10:20:00",
         )
 
         result = cluster_activities(catalog_db)
@@ -465,12 +517,18 @@ class TestClusterActivities:
         from autopilot.organize.cluster import cluster_activities
 
         catalog_db.insert_media(
-            "v1", "/tmp/v1.mp4",
-            created_at="2025-01-01T10:00:00", gps_lat=18.0, gps_lon=98.0,
+            "v1",
+            "/tmp/v1.mp4",
+            created_at="2025-01-01T10:00:00",
+            gps_lat=18.0,
+            gps_lon=98.0,
         )
         catalog_db.insert_media(
-            "v2", "/tmp/v2.mp4",
-            created_at="2025-01-01T10:10:00", gps_lat=18.002, gps_lon=98.002,
+            "v2",
+            "/tmp/v2.mp4",
+            created_at="2025-01-01T10:10:00",
+            gps_lat=18.002,
+            gps_lon=98.002,
         )
 
         result = cluster_activities(catalog_db)
@@ -483,7 +541,9 @@ class TestClusterActivities:
         from autopilot.organize.cluster import cluster_activities
 
         catalog_db.insert_media(
-            "v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00",
+            "v1",
+            "/tmp/v1.mp4",
+            created_at="2025-01-01T10:00:00",
         )
 
         result1 = cluster_activities(catalog_db)
@@ -510,7 +570,9 @@ class TestClusterActivities:
 
         # Insert media and pre-populate clusters
         catalog_db.insert_media(
-            "v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00",
+            "v1",
+            "/tmp/v1.mp4",
+            created_at="2025-01-01T10:00:00",
         )
         catalog_db.insert_activity_cluster(
             "existing-1",
@@ -542,10 +604,14 @@ class TestClusterActivities:
         from autopilot.organize.cluster import cluster_activities
 
         catalog_db.insert_media(
-            "v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00",
+            "v1",
+            "/tmp/v1.mp4",
+            created_at="2025-01-01T10:00:00",
         )
         catalog_db.insert_media(
-            "v2", "/tmp/v2.mp4", created_at="2025-01-01T10:10:00",
+            "v2",
+            "/tmp/v2.mp4",
+            created_at="2025-01-01T10:10:00",
         )
 
         result = cluster_activities(catalog_db)
@@ -576,19 +642,23 @@ class TestVectorizedDistanceMatrix:
             base_lon = 98.0 + group * 1.0 + random.uniform(-0.001, 0.001)
             # Some clips without GPS
             if i % 7 == 0:
-                clips.append({
-                    "id": f"v{i}",
-                    "created_at": base_time,
-                    "gps_lat": None,
-                    "gps_lon": None,
-                })
+                clips.append(
+                    {
+                        "id": f"v{i}",
+                        "created_at": base_time,
+                        "gps_lat": None,
+                        "gps_lon": None,
+                    }
+                )
             else:
-                clips.append({
-                    "id": f"v{i}",
-                    "created_at": base_time,
-                    "gps_lat": base_lat,
-                    "gps_lon": base_lon,
-                })
+                clips.append(
+                    {
+                        "id": f"v{i}",
+                        "created_at": base_time,
+                        "gps_lat": base_lat,
+                        "gps_lon": base_lon,
+                    }
+                )
 
         clusters = _temporal_spatial_cluster(clips)
         # Should produce at least 2 distinct clusters (groups are 3h apart)
@@ -606,12 +676,14 @@ class TestVectorizedDistanceMatrix:
         clips = []
         for i in range(200):
             group = i // 50
-            clips.append({
-                "id": f"v{i}",
-                "created_at": f"2025-01-0{group + 1}T10:{i % 30:02d}:00",
-                "gps_lat": 18.0 + group * 0.5,
-                "gps_lon": 98.0 + group * 0.5,
-            })
+            clips.append(
+                {
+                    "id": f"v{i}",
+                    "created_at": f"2025-01-0{group + 1}T10:{i % 30:02d}:00",
+                    "gps_lat": 18.0 + group * 0.5,
+                    "gps_lon": 98.0 + group * 0.5,
+                }
+            )
 
         clusters = _temporal_spatial_cluster(clips)
         assert len(clusters) >= 1

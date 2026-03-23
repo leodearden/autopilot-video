@@ -74,12 +74,15 @@ def _setup_mock_edl_anthropic(tool_calls: list[tuple[str, dict]] | None = None):
     """Create mock anthropic module and client for EDL tests."""
     if tool_calls is None:
         tool_calls = [
-            ("select_clip", {
-                "clip_id": "v1",
-                "in_timecode": "00:00:00.000",
-                "out_timecode": "00:00:10.000",
-                "track": 1,
-            }),
+            (
+                "select_clip",
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+            ),
         ]
     mock_response = _make_tool_use_response(tool_calls)
     mock_client = MagicMock()
@@ -93,7 +96,8 @@ def _seed_edl_narrative(db):
     """Seed DB with minimal data for generate_edl tests."""
     db.insert_media("v1", "/tmp/v1.mp4", duration_seconds=60.0, fps=30.0)
     db.insert_activity_cluster(
-        "c1", label="Test Activity",
+        "c1",
+        label="Test Activity",
         clip_ids_json=json.dumps(["v1"]),
     )
     db.insert_narrative(
@@ -104,23 +108,32 @@ def _seed_edl_narrative(db):
         activity_cluster_ids_json=json.dumps(["c1"]),
     )
     # Also need a script (from scripting stage)
-    db.upsert_narrative_script("n1", json.dumps({
-        "scenes": [
+    db.upsert_narrative_script(
+        "n1",
+        json.dumps(
             {
-                "scene_number": 1,
-                "description": "Opening shot",
-                "estimated_duration_seconds": 10,
-                "source_clips": [
-                    {"clip_id": "v1", "in_timecode": "00:00:00.000", "out_timecode": "00:00:10.000"}
+                "scenes": [
+                    {
+                        "scene_number": 1,
+                        "description": "Opening shot",
+                        "estimated_duration_seconds": 10,
+                        "source_clips": [
+                            {
+                                "clip_id": "v1",
+                                "in_timecode": "00:00:00.000",
+                                "out_timecode": "00:00:10.000",
+                            }
+                        ],
+                        "voiceover_text": "Welcome to the video",
+                        "titles": [],
+                        "music_mood": "ambient",
+                    },
                 ],
-                "voiceover_text": "Welcome to the video",
-                "titles": [],
-                "music_mood": "ambient",
-            },
-        ],
-        "broll_needs": [],
-        "quality_flags": [],
-    }))
+                "broll_needs": [],
+                "quality_flags": [],
+            }
+        ),
+    )
 
 
 # -- Step 15: LLM interaction basic tests ------------------------------------
@@ -219,12 +232,15 @@ class TestToolUseCollection:
         _seed_edl_narrative(catalog_db)
 
         tool_calls = [
-            ("select_clip", {
-                "clip_id": "v1",
-                "in_timecode": "00:00:00.000",
-                "out_timecode": "00:00:10.000",
-                "track": 1,
-            }),
+            (
+                "select_clip",
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+            ),
         ]
         mock_anthropic, _ = _setup_mock_edl_anthropic(tool_calls)
         with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
@@ -242,17 +258,23 @@ class TestToolUseCollection:
         _seed_edl_narrative(catalog_db)
 
         tool_calls = [
-            ("select_clip", {
-                "clip_id": "v1",
-                "in_timecode": "00:00:00.000",
-                "out_timecode": "00:00:10.000",
-                "track": 1,
-            }),
-            ("add_transition", {
-                "type": "crossfade",
-                "duration": 1.0,
-                "position": "00:00:10.000",
-            }),
+            (
+                "select_clip",
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+            ),
+            (
+                "add_transition",
+                {
+                    "type": "crossfade",
+                    "duration": 1.0,
+                    "position": "00:00:10.000",
+                },
+            ),
         ]
         mock_anthropic, _ = _setup_mock_edl_anthropic(tool_calls)
         with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
@@ -270,16 +292,22 @@ class TestToolUseCollection:
         _seed_edl_narrative(catalog_db)
 
         tool_calls = [
-            ("select_clip", {
-                "clip_id": "v1",
-                "in_timecode": "00:00:00.000",
-                "out_timecode": "00:00:10.000",
-                "track": 1,
-            }),
-            ("set_audio", {
-                "clip_id": "v1",
-                "level_db": -6.0,
-            }),
+            (
+                "select_clip",
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+            ),
+            (
+                "set_audio",
+                {
+                    "clip_id": "v1",
+                    "level_db": -6.0,
+                },
+            ),
         ]
         mock_anthropic, _ = _setup_mock_edl_anthropic(tool_calls)
         with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
@@ -297,33 +325,70 @@ class TestToolUseCollection:
         _seed_edl_narrative(catalog_db)
 
         tool_calls = [
-            ("select_clip", {
-                "clip_id": "v1", "in_timecode": "00:00:00.000",
-                "out_timecode": "00:00:10.000", "track": 1,
-            }),
-            ("add_transition", {
-                "type": "cut", "duration": 0, "position": "00:00:10.000",
-            }),
-            ("set_crop_mode", {
-                "clip_id": "v1", "mode": "center",
-            }),
-            ("add_title", {
-                "text": "Title", "style": "lower_third",
-                "position": "00:00:02.000", "duration": 3.0,
-            }),
-            ("set_audio", {
-                "clip_id": "v1", "level_db": -6.0,
-            }),
-            ("add_music", {
-                "mood": "ambient", "duration": 10.0, "start_time": "00:00:00.000",
-            }),
-            ("add_voiceover", {
-                "text": "Welcome", "start_time": "00:00:00.000", "duration": 5.0,
-            }),
-            ("request_broll", {
-                "description": "Aerial shot", "duration": 3.0,
-                "start_time": "00:00:05.000",
-            }),
+            (
+                "select_clip",
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+            ),
+            (
+                "add_transition",
+                {
+                    "type": "cut",
+                    "duration": 0,
+                    "position": "00:00:10.000",
+                },
+            ),
+            (
+                "set_crop_mode",
+                {
+                    "clip_id": "v1",
+                    "mode": "center",
+                },
+            ),
+            (
+                "add_title",
+                {
+                    "text": "Title",
+                    "style": "lower_third",
+                    "position": "00:00:02.000",
+                    "duration": 3.0,
+                },
+            ),
+            (
+                "set_audio",
+                {
+                    "clip_id": "v1",
+                    "level_db": -6.0,
+                },
+            ),
+            (
+                "add_music",
+                {
+                    "mood": "ambient",
+                    "duration": 10.0,
+                    "start_time": "00:00:00.000",
+                },
+            ),
+            (
+                "add_voiceover",
+                {
+                    "text": "Welcome",
+                    "start_time": "00:00:00.000",
+                    "duration": 5.0,
+                },
+            ),
+            (
+                "request_broll",
+                {
+                    "description": "Aerial shot",
+                    "duration": 3.0,
+                    "start_time": "00:00:05.000",
+                },
+            ),
         ]
         mock_anthropic, _ = _setup_mock_edl_anthropic(tool_calls)
         with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
@@ -427,29 +492,42 @@ class TestEdlRetryLoop:
         _seed_edl_narrative(catalog_db)
 
         # First response: overlapping clips (invalid)
-        bad_response = _make_tool_use_response([
-            ("select_clip", {
-                "clip_id": "v1",
-                "in_timecode": "00:00:00.000",
-                "out_timecode": "00:00:10.000",
-                "track": 1,
-            }),
-            ("select_clip", {
-                "clip_id": "v1",
-                "in_timecode": "00:00:05.000",
-                "out_timecode": "00:00:15.000",
-                "track": 1,
-            }),
-        ])
+        bad_response = _make_tool_use_response(
+            [
+                (
+                    "select_clip",
+                    {
+                        "clip_id": "v1",
+                        "in_timecode": "00:00:00.000",
+                        "out_timecode": "00:00:10.000",
+                        "track": 1,
+                    },
+                ),
+                (
+                    "select_clip",
+                    {
+                        "clip_id": "v1",
+                        "in_timecode": "00:00:05.000",
+                        "out_timecode": "00:00:15.000",
+                        "track": 1,
+                    },
+                ),
+            ]
+        )
         # Second response: valid (non-overlapping)
-        good_response = _make_tool_use_response([
-            ("select_clip", {
-                "clip_id": "v1",
-                "in_timecode": "00:00:00.000",
-                "out_timecode": "00:00:10.000",
-                "track": 1,
-            }),
-        ])
+        good_response = _make_tool_use_response(
+            [
+                (
+                    "select_clip",
+                    {
+                        "clip_id": "v1",
+                        "in_timecode": "00:00:00.000",
+                        "out_timecode": "00:00:10.000",
+                        "track": 1,
+                    },
+                ),
+            ]
+        )
 
         mock_client = MagicMock()
         mock_client.messages.create.side_effect = [bad_response, good_response]
@@ -471,20 +549,28 @@ class TestEdlRetryLoop:
         _seed_edl_narrative(catalog_db)
 
         # All responses: overlapping clips (invalid)
-        bad_response = _make_tool_use_response([
-            ("select_clip", {
-                "clip_id": "v1",
-                "in_timecode": "00:00:00.000",
-                "out_timecode": "00:00:10.000",
-                "track": 1,
-            }),
-            ("select_clip", {
-                "clip_id": "v1",
-                "in_timecode": "00:00:05.000",
-                "out_timecode": "00:00:15.000",
-                "track": 1,
-            }),
-        ])
+        bad_response = _make_tool_use_response(
+            [
+                (
+                    "select_clip",
+                    {
+                        "clip_id": "v1",
+                        "in_timecode": "00:00:00.000",
+                        "out_timecode": "00:00:10.000",
+                        "track": 1,
+                    },
+                ),
+                (
+                    "select_clip",
+                    {
+                        "clip_id": "v1",
+                        "in_timecode": "00:00:05.000",
+                        "out_timecode": "00:00:15.000",
+                        "track": 1,
+                    },
+                ),
+            ]
+        )
 
         mock_client = MagicMock()
         mock_client.messages.create.return_value = bad_response
@@ -507,28 +593,41 @@ class TestEdlRetryLoop:
         _seed_edl_narrative(catalog_db)
 
         # First: bad, second: good
-        bad_response = _make_tool_use_response([
-            ("select_clip", {
-                "clip_id": "v1",
-                "in_timecode": "00:00:00.000",
-                "out_timecode": "00:00:10.000",
-                "track": 1,
-            }),
-            ("select_clip", {
-                "clip_id": "v1",
-                "in_timecode": "00:00:05.000",
-                "out_timecode": "00:00:15.000",
-                "track": 1,
-            }),
-        ])
-        good_response = _make_tool_use_response([
-            ("select_clip", {
-                "clip_id": "v1",
-                "in_timecode": "00:00:00.000",
-                "out_timecode": "00:00:10.000",
-                "track": 1,
-            }),
-        ])
+        bad_response = _make_tool_use_response(
+            [
+                (
+                    "select_clip",
+                    {
+                        "clip_id": "v1",
+                        "in_timecode": "00:00:00.000",
+                        "out_timecode": "00:00:10.000",
+                        "track": 1,
+                    },
+                ),
+                (
+                    "select_clip",
+                    {
+                        "clip_id": "v1",
+                        "in_timecode": "00:00:05.000",
+                        "out_timecode": "00:00:15.000",
+                        "track": 1,
+                    },
+                ),
+            ]
+        )
+        good_response = _make_tool_use_response(
+            [
+                (
+                    "select_clip",
+                    {
+                        "clip_id": "v1",
+                        "in_timecode": "00:00:00.000",
+                        "out_timecode": "00:00:10.000",
+                        "track": 1,
+                    },
+                ),
+            ]
+        )
 
         mock_client = MagicMock()
         mock_client.messages.create.side_effect = [bad_response, good_response]
@@ -561,27 +660,35 @@ class TestEdlIntegration:
 
         # --- Seed full DB data ---
         catalog_db.insert_media(
-            "v1", "/tmp/v1.mp4", duration_seconds=60.0, fps=30.0,
+            "v1",
+            "/tmp/v1.mp4",
+            duration_seconds=60.0,
+            fps=30.0,
             created_at="2025-01-01T10:00:00",
         )
         catalog_db.insert_media(
-            "v2", "/tmp/v2.mp4", duration_seconds=90.0, fps=30.0,
+            "v2",
+            "/tmp/v2.mp4",
+            duration_seconds=90.0,
+            fps=30.0,
             created_at="2025-01-01T10:05:00",
         )
 
         # Shot boundaries
         catalog_db.upsert_boundaries(
             "v1",
-            json.dumps([
-                {"start_frame": 0, "end_frame": 900,
-                 "start_time": 0.0, "end_time": 30.0},
-            ]),
+            json.dumps(
+                [
+                    {"start_frame": 0, "end_frame": 900, "start_time": 0.0, "end_time": 30.0},
+                ]
+            ),
             "transnetv2",
         )
 
         # Activity cluster + narrative
         catalog_db.insert_activity_cluster(
-            "c1", label="Temple visit",
+            "c1",
+            label="Temple visit",
             clip_ids_json=json.dumps(["v1", "v2"]),
         )
         catalog_db.insert_narrative(
@@ -593,81 +700,116 @@ class TestEdlIntegration:
         )
 
         # Script (from prior stage)
-        catalog_db.upsert_narrative_script("n1", json.dumps({
-            "scenes": [
+        catalog_db.upsert_narrative_script(
+            "n1",
+            json.dumps(
                 {
-                    "scene_number": 1,
-                    "description": "Opening at temple",
-                    "estimated_duration_seconds": 15,
-                    "source_clips": [
-                        {"clip_id": "v1", "in_timecode": "00:00:00.000",
-                         "out_timecode": "00:00:15.000"},
+                    "scenes": [
+                        {
+                            "scene_number": 1,
+                            "description": "Opening at temple",
+                            "estimated_duration_seconds": 15,
+                            "source_clips": [
+                                {
+                                    "clip_id": "v1",
+                                    "in_timecode": "00:00:00.000",
+                                    "out_timecode": "00:00:15.000",
+                                },
+                            ],
+                            "voiceover_text": "Dawn breaks...",
+                            "titles": [{"text": "Thailand", "style": "lower_third"}],
+                            "music_mood": "ambient",
+                        },
+                        {
+                            "scene_number": 2,
+                            "description": "Monks walking",
+                            "estimated_duration_seconds": 10,
+                            "source_clips": [
+                                {
+                                    "clip_id": "v2",
+                                    "in_timecode": "00:00:00.000",
+                                    "out_timecode": "00:00:10.000",
+                                },
+                            ],
+                            "voiceover_text": None,
+                            "titles": [],
+                            "music_mood": "sacred",
+                        },
                     ],
-                    "voiceover_text": "Dawn breaks...",
-                    "titles": [{"text": "Thailand", "style": "lower_third"}],
-                    "music_mood": "ambient",
-                },
-                {
-                    "scene_number": 2,
-                    "description": "Monks walking",
-                    "estimated_duration_seconds": 10,
-                    "source_clips": [
-                        {"clip_id": "v2", "in_timecode": "00:00:00.000",
-                         "out_timecode": "00:00:10.000"},
-                    ],
-                    "voiceover_text": None,
-                    "titles": [],
-                    "music_mood": "sacred",
-                },
-            ],
-            "broll_needs": [],
-            "quality_flags": [],
-        }))
+                    "broll_needs": [],
+                    "quality_flags": [],
+                }
+            ),
+        )
 
         # --- Mock LLM to return valid tool-use response ---
         tool_calls = [
-            ("select_clip", {
-                "clip_id": "v1",
-                "in_timecode": "00:00:00.000",
-                "out_timecode": "00:00:15.000",
-                "track": 1,
-            }),
-            ("select_clip", {
-                "clip_id": "v2",
-                "in_timecode": "00:00:15.000",
-                "out_timecode": "00:00:25.000",
-                "track": 1,
-            }),
-            ("add_transition", {
-                "type": "crossfade",
-                "duration": 1.0,
-                "position": "00:00:15.000",
-            }),
-            ("set_audio", {
-                "clip_id": "v1",
-                "level_db": -6.0,
-                "fade_in": 0.5,
-            }),
-            ("set_audio", {
-                "clip_id": "v2",
-                "level_db": -12.0,
-            }),
-            ("add_voiceover", {
-                "text": "Dawn breaks over ancient walls...",
-                "start_time": "00:00:00.000",
-                "duration": 8.0,
-            }),
-            ("add_title", {
-                "text": "Thailand",
-                "style": "lower_third",
-                "position": "00:00:02.000",
-                "duration": 4.0,
-            }),
-            ("add_music", {
-                "mood": "ambient contemplative",
-                "duration": 25.0,
-                "start_time": "00:00:00.000",
-            }),
+            (
+                "select_clip",
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:15.000",
+                    "track": 1,
+                },
+            ),
+            (
+                "select_clip",
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:15.000",
+                    "out_timecode": "00:00:25.000",
+                    "track": 1,
+                },
+            ),
+            (
+                "add_transition",
+                {
+                    "type": "crossfade",
+                    "duration": 1.0,
+                    "position": "00:00:15.000",
+                },
+            ),
+            (
+                "set_audio",
+                {
+                    "clip_id": "v1",
+                    "level_db": -6.0,
+                    "fade_in": 0.5,
+                },
+            ),
+            (
+                "set_audio",
+                {
+                    "clip_id": "v2",
+                    "level_db": -12.0,
+                },
+            ),
+            (
+                "add_voiceover",
+                {
+                    "text": "Dawn breaks over ancient walls...",
+                    "start_time": "00:00:00.000",
+                    "duration": 8.0,
+                },
+            ),
+            (
+                "add_title",
+                {
+                    "text": "Thailand",
+                    "style": "lower_third",
+                    "position": "00:00:02.000",
+                    "duration": 4.0,
+                },
+            ),
+            (
+                "add_music",
+                {
+                    "mood": "ambient contemplative",
+                    "duration": 25.0,
+                    "start_time": "00:00:00.000",
+                },
+            ),
         ]
 
         config = LLMConfig()

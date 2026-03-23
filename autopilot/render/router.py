@@ -90,22 +90,16 @@ def route_and_render(
     # -- Load EDL from database -------------------------------------------------
     edit_plan = db.get_edit_plan(narrative_id)
     if edit_plan is None:
-        raise RoutingError(
-            f"No edit plan found for narrative {narrative_id!r}"
-        )
+        raise RoutingError(f"No edit plan found for narrative {narrative_id!r}")
 
     edl_json_str = edit_plan.get("edl_json")
     if not edl_json_str:
-        raise RoutingError(
-            f"Edit plan for narrative {narrative_id!r} has no edl_json"
-        )
+        raise RoutingError(f"Edit plan for narrative {narrative_id!r} has no edl_json")
 
     try:
         edl = json.loads(str(edl_json_str))
     except json.JSONDecodeError as e:
-        raise RoutingError(
-            f"Corrupt edl_json for narrative {narrative_id!r}: {e}"
-        ) from e
+        raise RoutingError(f"Corrupt edl_json for narrative {narrative_id!r}: {e}") from e
 
     clips = edl.get("clips", [])
     _audio_settings = edl.get("audio_settings", {})
@@ -153,23 +147,23 @@ def route_and_render(
                 # Slow-path clips require crop data
                 subject_track_id = cm_entry.get("subject_track_id", 0)
                 crop_record = db.get_crop_path(
-                    media_id, target_aspect, subject_track_id,
+                    media_id,
+                    target_aspect,
+                    subject_track_id,
                 )
                 if crop_record is None:
-                    raise RoutingError(
-                        f"No crop data for slow-path clip {clip_id}"
-                    )
+                    raise RoutingError(f"No crop data for slow-path clip {clip_id}")
                 path_data = crop_record.get("path_data")
                 if not path_data:
-                    raise RoutingError(
-                        f"crop_record has empty/null path_data for clip {clip_id}"
-                    )
+                    raise RoutingError(f"crop_record has empty/null path_data for clip {clip_id}")
                 crop_path = np.array(path_data, dtype=np.float64)
             elif crop_modes.get(clip_id):
                 # Fast-path clips may have optional static crop
                 subject_track_id = cm_entry.get("subject_track_id", 0)
                 crop_record = db.get_crop_path(
-                    media_id, target_aspect, subject_track_id,
+                    media_id,
+                    target_aspect,
+                    subject_track_id,
                 )
                 if crop_record is not None:
                     path_data = crop_record.get("path_data")
@@ -183,13 +177,9 @@ def route_and_render(
                     render_complex(clip, crop_path, segment_path, config)
                 segments.append(segment_path)
             except RenderError as e:
-                raise RoutingError(
-                    f"Fast-path render failed for clip {clip_id}: {e}"
-                ) from e
+                raise RoutingError(f"Fast-path render failed for clip {clip_id}: {e}") from e
             except ComplexRenderError as e:
-                raise RoutingError(
-                    f"Complex render failed for clip {clip_id}: {e}"
-                ) from e
+                raise RoutingError(f"Complex render failed for clip {clip_id}: {e}") from e
 
         if not segments:
             raise RoutingError("No clips to render")
@@ -206,8 +196,7 @@ def route_and_render(
                 f.write(f"file '{seg}'\n")
 
         # Build final ffmpeg command for concatenation + audio mixing
-        cmd: list[str] = ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                           "-i", str(concat_list)]
+        cmd: list[str] = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat_list)]
 
         # Add music and voiceover inputs
         audio_inputs: list[str] = []
@@ -236,18 +225,19 @@ def route_and_render(
                 try:
                     clip_segs = json.loads(str(transcript["segments_json"]))
                     for seg in clip_segs:
-                        all_subtitle_segs.append({
-                            "start": seg.get("start", 0.0) + cumulative_offset,
-                            "end": seg.get("end", 0.0) + cumulative_offset,
-                            "text": seg.get("text", ""),
-                        })
+                        all_subtitle_segs.append(
+                            {
+                                "start": seg.get("start", 0.0) + cumulative_offset,
+                                "end": seg.get("end", 0.0) + cumulative_offset,
+                                "text": seg.get("text", ""),
+                            }
+                        )
                 except (json.JSONDecodeError, KeyError):
-                    logger.warning(
-                        "Failed to parse transcript for clip %s", media_id
-                    )
+                    logger.warning("Failed to parse transcript for clip %s", media_id)
             in_tc = clip.get("in_timecode", "00:00:00.000")
             out_tc = clip.get("out_timecode", in_tc)
             from autopilot.plan.validator import timecode_to_seconds
+
             in_sec = timecode_to_seconds(in_tc)
             out_sec = timecode_to_seconds(out_tc)
             cumulative_offset += out_sec - in_sec
@@ -279,10 +269,7 @@ def route_and_render(
         elif has_audio_mix:
             # Audio mixing only
             all_audio = ["[0:a]"] + audio_inputs
-            mix_filter = (
-                "".join(all_audio)
-                + f"amix=inputs={len(all_audio)}:duration=longest[aout]"
-            )
+            mix_filter = "".join(all_audio) + f"amix=inputs={len(all_audio)}:duration=longest[aout]"
             cmd.extend(["-filter_complex", mix_filter])
             cmd.extend(["-map", "0:v", "-map", "[aout]"])
         elif has_video_filter:
@@ -301,9 +288,7 @@ def route_and_render(
                 f"Final concatenation timed out after {CONCAT_TIMEOUT_SECONDS}s"
             ) from e
         except (subprocess.CalledProcessError, FileNotFoundError, OSError) as e:
-            raise RoutingError(
-                f"Final concatenation failed: {e}"
-            ) from e
+            raise RoutingError(f"Final concatenation failed: {e}") from e
 
     return final_output
 

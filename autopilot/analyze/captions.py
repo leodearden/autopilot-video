@@ -129,9 +129,7 @@ def _extract_clip_frames(
         cap.release()
 
 
-_CAPTION_PROMPT = (
-    "Describe the scene, activities, and notable elements in this video clip."
-)
+_CAPTION_PROMPT = "Describe the scene, activities, and notable elements in this video clip."
 
 
 def _run_transformers_inference(
@@ -159,7 +157,7 @@ def _run_transformers_inference(
         inputs = inputs.to(model.device)
     output_ids = model.generate(**inputs, max_new_tokens=256)
     # Slice off input prompt tokens before decoding (standard HF pattern)
-    output_ids = output_ids[:, inputs["input_ids"].shape[-1]:]
+    output_ids = output_ids[:, inputs["input_ids"].shape[-1] :]
     return str(processor.batch_decode(output_ids, skip_special_tokens=True)[0])
 
 
@@ -219,16 +217,16 @@ def caption_clip(
     if start_time < 0:
         raise CaptionError(f"Invalid start_time: {start_time} (must be >= 0)")
     if start_time > end_time:
-        raise CaptionError(
-            f"Invalid time range: start_time={start_time} > end_time={end_time}"
-        )
+        raise CaptionError(f"Invalid time range: start_time={start_time} > end_time={end_time}")
 
     # Idempotency: return existing caption if available
     existing = db.get_caption(media_id, start_time, end_time)
     if existing is not None:
         logger.info(
             "Caption already exists for %s [%.1f-%.1f], skipping",
-            media_id, start_time, end_time,
+            media_id,
+            start_time,
+            end_time,
         )
         return str(existing["caption"])
 
@@ -263,7 +261,10 @@ def caption_clip(
 
     logger.info(
         "Caption complete for %s [%.1f-%.1f]: %d chars",
-        media_id, start_time, end_time, len(caption),
+        media_id,
+        start_time,
+        end_time,
+        len(caption),
     )
 
     return caption

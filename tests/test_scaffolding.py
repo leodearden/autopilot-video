@@ -84,8 +84,7 @@ def test_pyproject_toml_has_all_dependencies(project_root: pathlib.Path) -> None
     deps = data["project"].get("dependencies", [])
     # Normalize: lowercase, strip extras/version specifiers for matching
     dep_names = {
-        d.split("[")[0].split(">")[0].split("<")[0]
-        .split("=")[0].split("!")[0].strip().lower()
+        d.split("[")[0].split(">")[0].split("<")[0].split("=")[0].split("!")[0].strip().lower()
         for d in deps
     }
 
@@ -121,8 +120,7 @@ def test_pyproject_toml_has_dev_dependencies(project_root: pathlib.Path) -> None
 
     dev_deps = data["project"]["optional-dependencies"]["dev"]
     dev_names = {
-        d.split("[")[0].split(">")[0].split("<")[0]
-        .split("=")[0].split("!")[0].strip().lower()
+        d.split("[")[0].split(">")[0].split("<")[0].split("=")[0].split("!")[0].strip().lower()
         for d in dev_deps
     }
 
@@ -319,7 +317,7 @@ def test_stable_deps_not_overconstrained(project_root: pathlib.Path) -> None:
         # Remove the package name to get just the version specifier part
         name_end = spec.split(">")[0].split("<")[0]
         name_end = name_end.split("=")[0].split("!")[0].split("[")[0]
-        version_part = spec[len(name_end):]
+        version_part = spec[len(name_end) :]
         # Check there's no standalone < (not <=, not part of >=)
         assert "<" not in version_part.replace("<=", "").replace("<<", ""), (
             f"Stable dep {pkg} should NOT have upper-bound constraint, got: {spec}"

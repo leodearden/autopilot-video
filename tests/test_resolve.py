@@ -12,6 +12,7 @@ from autopilot.source import BrollRequest, MusicRequest, VoiceoverRequest
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_edl(
     music: list[dict] | None = None,
     voiceovers: list[dict] | None = None,
@@ -45,6 +46,7 @@ def _make_config(
 # Public API surface tests
 # ---------------------------------------------------------------------------
 
+
 class TestResolvePublicAPI:
     """Verify resolve_edl_assets surface."""
 
@@ -76,6 +78,7 @@ class TestResolvePublicAPI:
 # Request extraction tests
 # ---------------------------------------------------------------------------
 
+
 class TestRequestExtraction:
     """Tests that resolve extracts requests from EDL correctly."""
 
@@ -83,9 +86,11 @@ class TestRequestExtraction:
         """Music entries in EDL become MusicRequest objects."""
         from autopilot.source.resolve import resolve_edl_assets
 
-        edl = _make_edl(music=[
-            {"mood": "upbeat", "duration": 30.0, "start_time": "00:01:00.000"},
-        ])
+        edl = _make_edl(
+            music=[
+                {"mood": "upbeat", "duration": 30.0, "start_time": "00:01:00.000"},
+            ]
+        )
         config = _make_config(music_engine="fetch_list_only")
         db = MagicMock()
 
@@ -93,24 +98,24 @@ class TestRequestExtraction:
 
         # With fetch_list_only, all music stays unresolved
         assert "unresolved" in result
-        assert any(
-            isinstance(r, MusicRequest) and r.mood == "upbeat"
-            for r in result["unresolved"]
-        )
+        assert any(isinstance(r, MusicRequest) and r.mood == "upbeat" for r in result["unresolved"])
 
     def test_extracts_broll_requests(self, tmp_path):
         """Broll entries in EDL become BrollRequest objects."""
         from autopilot.source.resolve import resolve_edl_assets
 
-        edl = _make_edl(broll_requests=[
-            {"description": "mountain vista", "duration": 5.0, "start_time": "00:02:00.000"},
-        ])
+        edl = _make_edl(
+            broll_requests=[
+                {"description": "mountain vista", "duration": 5.0, "start_time": "00:02:00.000"},
+            ]
+        )
         config = _make_config()
         db = MagicMock()
 
         # No API keys set → broll stays unresolved
         with patch.dict("os.environ", {}, clear=True):
             import os
+
             os.environ.pop("PEXELS_API_KEY", None)
             os.environ.pop("PIXABAY_API_KEY", None)
             result = resolve_edl_assets(edl, config, tmp_path, db)
@@ -124,9 +129,11 @@ class TestRequestExtraction:
         """Voiceover entries in EDL become VoiceoverRequest objects."""
         from autopilot.source.resolve import resolve_edl_assets
 
-        edl = _make_edl(voiceovers=[
-            {"text": "Hello world", "start_time": "00:00:05.000", "duration": 3.0},
-        ])
+        edl = _make_edl(
+            voiceovers=[
+                {"text": "Hello world", "start_time": "00:00:05.000", "duration": 3.0},
+            ]
+        )
         config = _make_config(tts_engine="kokoro")
         db = MagicMock()
 
@@ -142,6 +149,7 @@ class TestRequestExtraction:
 # ---------------------------------------------------------------------------
 # Resolution pipeline tests
 # ---------------------------------------------------------------------------
+
 
 class TestResolutionPipeline:
     """Tests for the full resolution pipeline."""
@@ -219,6 +227,7 @@ class TestResolutionPipeline:
 # Integration with DB tests
 # ---------------------------------------------------------------------------
 
+
 class TestResolveDBIntegration:
     """Tests for DB interaction in resolve pipeline."""
 
@@ -240,9 +249,7 @@ class TestResolveDBIntegration:
 
         from autopilot.source.resolve import resolve_edl_assets
 
-        resolve_edl_assets(
-            edl, config, tmp_path, catalog_db, narrative_id="narr-1"
-        )
+        resolve_edl_assets(edl, config, tmp_path, catalog_db, narrative_id="narr-1")
 
         # Verify the edit plan was updated
         plan = catalog_db.get_edit_plan("narr-1")
@@ -278,9 +285,7 @@ class TestResolveDBIntegration:
 
         from autopilot.source.resolve import resolve_edl_assets
 
-        resolve_edl_assets(
-            edl, config, tmp_path, db, narrative_id="narr-commit"
-        )
+        resolve_edl_assets(edl, config, tmp_path, db, narrative_id="narr-commit")
 
         # Open a SECOND connection to the same DB file.
         # If resolve_edl_assets didn't use `with db:`, the write
@@ -315,9 +320,7 @@ class TestResolveDBIntegration:
 
         from autopilot.source.resolve import resolve_edl_assets
 
-        resolve_edl_assets(
-            edl, config, tmp_path, db, narrative_id="narr-status"
-        )
+        resolve_edl_assets(edl, config, tmp_path, db, narrative_id="narr-status")
 
         # Verify status via second connection
         db2 = CatalogDB(db_path)
@@ -359,10 +362,11 @@ class TestResolveDBIntegration:
         broll_paths = [tmp_path / "resolved_broll.mp4"]
         broll_paths[0].write_bytes(b"video")
 
-        with patch("autopilot.source.resolve.source_music") as mock_sm, \
-             patch("autopilot.source.resolve.generate_voiceover") as mock_gv, \
-             patch("autopilot.source.resolve.source_broll") as mock_sb:
-
+        with (
+            patch("autopilot.source.resolve.source_music") as mock_sm,
+            patch("autopilot.source.resolve.generate_voiceover") as mock_gv,
+            patch("autopilot.source.resolve.source_broll") as mock_sb,
+        ):
             # First music resolves, second doesn't
             mock_sm.side_effect = [music_path, None]
             mock_gv.return_value = vo_path

@@ -38,9 +38,7 @@ class TestMusicRequest:
         from autopilot.source import MusicRequest
 
         p = Path("/tmp/music.wav")
-        req = MusicRequest(
-            mood="upbeat", duration=30.0, start_time="00:01:00.000", resolved_path=p
-        )
+        req = MusicRequest(mood="upbeat", duration=30.0, start_time="00:01:00.000", resolved_path=p)
         assert req.resolved_path == p
 
 
@@ -102,9 +100,7 @@ class TestVoiceoverRequest:
     def test_resolved_path_defaults_none(self):
         from autopilot.source import VoiceoverRequest
 
-        req = VoiceoverRequest(
-            text="Hello world", start_time="00:00:05.000", duration=3.0
-        )
+        req = VoiceoverRequest(text="Hello world", start_time="00:00:05.000", duration=3.0)
         assert req.resolved_path is None
 
 

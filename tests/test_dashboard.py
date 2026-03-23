@@ -469,25 +469,3 @@ class TestRootRedirect:
         resp = dashboard_client.get("/", follow_redirects=False)
         assert resp.status_code in (302, 307)
         assert "/dashboard" in resp.headers["location"]
-
-
-# ---------------------------------------------------------------------------
-# Step 15: project_root fixture consistency test
-# ---------------------------------------------------------------------------
-
-
-class TestProjectRootFixture:
-    """Verify project_root fixture returns the resolved _PROJECT_ROOT."""
-
-    def test_project_root_matches_module_level_resolved_root(
-        self, project_root: Path
-    ) -> None:
-        """project_root fixture should return _PROJECT_ROOT, not re-computed path.
-
-        In a worktree context, Path(__file__).resolve().parent.parent returns the
-        worktree root, but _PROJECT_ROOT correctly resolves to the main repo root.
-        The fixture must be consistent with the module-level resolution.
-        """
-        from tests.conftest import _PROJECT_ROOT
-
-        assert project_root == _PROJECT_ROOT

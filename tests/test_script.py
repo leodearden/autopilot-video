@@ -141,49 +141,61 @@ def _seed_full_storyboard_data(db):
     """
     # Media files
     db.insert_media(
-        "v1", "/tmp/v1.mp4",
-        duration_seconds=60.0, fps=30.0,
+        "v1",
+        "/tmp/v1.mp4",
+        duration_seconds=60.0,
+        fps=30.0,
         created_at="2025-01-01T10:00:00",
     )
     db.insert_media(
-        "v2", "/tmp/v2.mp4",
-        duration_seconds=90.0, fps=30.0,
+        "v2",
+        "/tmp/v2.mp4",
+        duration_seconds=90.0,
+        fps=30.0,
         created_at="2025-01-01T10:05:00",
     )
 
     # Shot boundaries for v1: two shots [0-30] and [30-60] seconds
     db.upsert_boundaries(
         "v1",
-        json.dumps([
-            {"start_frame": 0, "end_frame": 900, "start_time": 0.0, "end_time": 30.0},
-            {"start_frame": 900, "end_frame": 1800, "start_time": 30.0, "end_time": 60.0},
-        ]),
+        json.dumps(
+            [
+                {"start_frame": 0, "end_frame": 900, "start_time": 0.0, "end_time": 30.0},
+                {"start_frame": 900, "end_frame": 1800, "start_time": 30.0, "end_time": 60.0},
+            ]
+        ),
         "transnetv2",
     )
 
     # Shot boundaries for v2: single shot [0-90]
     db.upsert_boundaries(
         "v2",
-        json.dumps([
-            {"start_frame": 0, "end_frame": 2700, "start_time": 0.0, "end_time": 90.0},
-        ]),
+        json.dumps(
+            [
+                {"start_frame": 0, "end_frame": 2700, "start_time": 0.0, "end_time": 90.0},
+            ]
+        ),
         "transnetv2",
     )
 
     # Transcripts
     db.upsert_transcript(
         "v1",
-        json.dumps([
-            {"text": "Look at the beautiful temple!", "start": 5.0, "end": 8.0},
-            {"text": "The architecture is stunning.", "start": 35.0, "end": 38.0},
-        ]),
+        json.dumps(
+            [
+                {"text": "Look at the beautiful temple!", "start": 5.0, "end": 8.0},
+                {"text": "The architecture is stunning.", "start": 35.0, "end": 38.0},
+            ]
+        ),
         "en",
     )
     db.upsert_transcript(
         "v2",
-        json.dumps([
-            {"text": "The monks are chanting.", "start": 10.0, "end": 13.0},
-        ]),
+        json.dumps(
+            [
+                {"text": "The monks are chanting.", "start": 10.0, "end": 13.0},
+            ]
+        ),
         "en",
     )
 
@@ -193,39 +205,69 @@ def _seed_full_storyboard_data(db):
     db.upsert_caption("v2", 0.0, 90.0, "Monks walking in procession", "qwen-vl")
 
     # YOLO detections
-    db.batch_insert_detections([
-        ("v1", 0, json.dumps([
-            {"class": "person", "confidence": 0.95, "track_id": 1},
-            {"class": "building", "confidence": 0.88},
-        ])),
-        ("v1", 900, json.dumps([
-            {"class": "person", "confidence": 0.92, "track_id": 1},
-        ])),
-        ("v2", 0, json.dumps([
-            {"class": "person", "confidence": 0.90, "track_id": 2},
-            {"class": "person", "confidence": 0.85, "track_id": 3},
-        ])),
-    ])
+    db.batch_insert_detections(
+        [
+            (
+                "v1",
+                0,
+                json.dumps(
+                    [
+                        {"class": "person", "confidence": 0.95, "track_id": 1},
+                        {"class": "building", "confidence": 0.88},
+                    ]
+                ),
+            ),
+            (
+                "v1",
+                900,
+                json.dumps(
+                    [
+                        {"class": "person", "confidence": 0.92, "track_id": 1},
+                    ]
+                ),
+            ),
+            (
+                "v2",
+                0,
+                json.dumps(
+                    [
+                        {"class": "person", "confidence": 0.90, "track_id": 2},
+                        {"class": "person", "confidence": 0.85, "track_id": 3},
+                    ]
+                ),
+            ),
+        ]
+    )
 
     # Faces with clusters
     emb = np.zeros(512, dtype=np.float32).tobytes()
-    db.batch_insert_faces([
-        ("v1", 0, 0, json.dumps({"x": 10, "y": 10, "w": 50, "h": 50}), emb, 1),
-        ("v2", 0, 0, json.dumps({"x": 20, "y": 20, "w": 60, "h": 60}), emb, 1),
-        ("v2", 0, 1, json.dumps({"x": 80, "y": 20, "w": 60, "h": 60}), emb, 2),
-    ])
+    db.batch_insert_faces(
+        [
+            ("v1", 0, 0, json.dumps({"x": 10, "y": 10, "w": 50, "h": 50}), emb, 1),
+            ("v2", 0, 0, json.dumps({"x": 20, "y": 20, "w": 60, "h": 60}), emb, 1),
+            ("v2", 0, 1, json.dumps({"x": 80, "y": 20, "w": 60, "h": 60}), emb, 2),
+        ]
+    )
     db.insert_face_cluster(1, label="Alice")
     db.insert_face_cluster(2, label="Bob")
 
     # Audio events
-    db.batch_insert_audio_events([
-        ("v1", 5.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
-        ("v1", 35.0, json.dumps([{"class": "Speech", "probability": 0.85}])),
-        ("v2", 10.0, json.dumps([
-            {"class": "Chanting", "probability": 0.88},
-            {"class": "Music", "probability": 0.4},
-        ])),
-    ])
+    db.batch_insert_audio_events(
+        [
+            ("v1", 5.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
+            ("v1", 35.0, json.dumps([{"class": "Speech", "probability": 0.85}])),
+            (
+                "v2",
+                10.0,
+                json.dumps(
+                    [
+                        {"class": "Chanting", "probability": 0.88},
+                        {"class": "Music", "probability": 0.4},
+                    ]
+                ),
+            ),
+        ]
+    )
 
     # Activity cluster
     db.insert_activity_cluster(
@@ -244,11 +286,13 @@ def _seed_full_storyboard_data(db):
         description="Documentary of a peaceful morning temple visit",
         proposed_duration_seconds=600.0,
         activity_cluster_ids_json=json.dumps(["c1"]),
-        arc_notes=json.dumps({
-            "beginning": "Arrival at dawn",
-            "middle": "Exploring the grounds",
-            "end": "Quiet reflection",
-        }),
+        arc_notes=json.dumps(
+            {
+                "beginning": "Arrival at dawn",
+                "middle": "Exploring the grounds",
+                "end": "Quiet reflection",
+            }
+        ),
         emotional_journey="Curiosity to wonder to peace",
     )
 
@@ -330,16 +374,17 @@ class TestBuildStoryboardResilience:
 
         catalog_db.insert_media("v1", "/tmp/v1.mp4", duration_seconds=60.0, fps=30.0)
         catalog_db.conn.execute(
-            "INSERT INTO shot_boundaries (media_id, boundaries_json, method) "
-            "VALUES (?, ?, ?)",
+            "INSERT INTO shot_boundaries (media_id, boundaries_json, method) VALUES (?, ?, ?)",
             ("v1", "NOT_VALID_JSON", "transnetv2"),
         )
         catalog_db.insert_activity_cluster(
-            "c1", label="Test",
+            "c1",
+            label="Test",
             clip_ids_json=json.dumps(["v1"]),
         )
         catalog_db.insert_narrative(
-            "n1", title="Test",
+            "n1",
+            title="Test",
             activity_cluster_ids_json=json.dumps(["c1"]),
         )
 
@@ -354,16 +399,17 @@ class TestBuildStoryboardResilience:
 
         catalog_db.insert_media("v1", "/tmp/v1.mp4", duration_seconds=60.0, fps=30.0)
         catalog_db.conn.execute(
-            "INSERT INTO transcripts (media_id, segments_json, language) "
-            "VALUES (?, ?, ?)",
+            "INSERT INTO transcripts (media_id, segments_json, language) VALUES (?, ?, ?)",
             ("v1", "CORRUPT", "en"),
         )
         catalog_db.insert_activity_cluster(
-            "c1", label="Test",
+            "c1",
+            label="Test",
             clip_ids_json=json.dumps(["v1"]),
         )
         catalog_db.insert_narrative(
-            "n1", title="Test",
+            "n1",
+            title="Test",
             activity_cluster_ids_json=json.dumps(["c1"]),
         )
 
@@ -378,16 +424,17 @@ class TestBuildStoryboardResilience:
 
         catalog_db.insert_media("v1", "/tmp/v1.mp4", duration_seconds=60.0, fps=30.0)
         catalog_db.conn.execute(
-            "INSERT INTO detections (media_id, frame_number, detections_json) "
-            "VALUES (?, ?, ?)",
+            "INSERT INTO detections (media_id, frame_number, detections_json) VALUES (?, ?, ?)",
             ("v1", 0, "BAD_JSON"),
         )
         catalog_db.insert_activity_cluster(
-            "c1", label="Test",
+            "c1",
+            label="Test",
             clip_ids_json=json.dumps(["v1"]),
         )
         catalog_db.insert_narrative(
-            "n1", title="Test",
+            "n1",
+            title="Test",
             activity_cluster_ids_json=json.dumps(["c1"]),
         )
 
@@ -402,11 +449,13 @@ class TestBuildStoryboardResilience:
         catalog_db.insert_media("v1", "/tmp/v1.mp4", duration_seconds=45.0, fps=30.0)
         # No shot boundaries inserted
         catalog_db.insert_activity_cluster(
-            "c1", label="Test",
+            "c1",
+            label="Test",
             clip_ids_json=json.dumps(["v1"]),
         )
         catalog_db.insert_narrative(
-            "n1", title="Test",
+            "n1",
+            title="Test",
             activity_cluster_ids_json=json.dumps(["c1"]),
         )
 
@@ -422,16 +471,17 @@ class TestBuildStoryboardResilience:
 
         catalog_db.insert_media("v1", "/tmp/v1.mp4", duration_seconds=60.0, fps=30.0)
         catalog_db.conn.execute(
-            "INSERT INTO audio_events (media_id, timestamp_seconds, events_json) "
-            "VALUES (?, ?, ?)",
+            "INSERT INTO audio_events (media_id, timestamp_seconds, events_json) VALUES (?, ?, ?)",
             ("v1", 5.0, "INVALID"),
         )
         catalog_db.insert_activity_cluster(
-            "c1", label="Test",
+            "c1",
+            label="Test",
             clip_ids_json=json.dumps(["v1"]),
         )
         catalog_db.insert_narrative(
-            "n1", title="Test",
+            "n1",
+            title="Test",
             activity_cluster_ids_json=json.dumps(["c1"]),
         )
 
@@ -502,7 +552,8 @@ def _seed_minimal_narrative(db):
     """Seed DB with minimal data for generate_script tests."""
     db.insert_media("v1", "/tmp/v1.mp4", duration_seconds=60.0, fps=30.0)
     db.insert_activity_cluster(
-        "c1", label="Test Activity",
+        "c1",
+        label="Test Activity",
         clip_ids_json=json.dumps(["v1"]),
     )
     db.insert_narrative(
@@ -847,17 +898,21 @@ def _seed_null_resilience_base(db):
     db.insert_media("v1", "/tmp/v1.mp4", duration_seconds=60.0, fps=30.0)
     db.upsert_boundaries(
         "v1",
-        json.dumps([
-            {"start_frame": 0, "end_frame": 1800, "start_time": 0.0, "end_time": 60.0},
-        ]),
+        json.dumps(
+            [
+                {"start_frame": 0, "end_frame": 1800, "start_time": 0.0, "end_time": 60.0},
+            ]
+        ),
         "transnetv2",
     )
     db.insert_activity_cluster(
-        "c1", label="Test",
+        "c1",
+        label="Test",
         clip_ids_json=json.dumps(["v1"]),
     )
     db.insert_narrative(
-        "n1", title="Test",
+        "n1",
+        title="Test",
         activity_cluster_ids_json=json.dumps(["c1"]),
     )
 
@@ -903,13 +958,14 @@ class TestNullFieldResilience:
         _seed_null_resilience_base(catalog_db)
 
         # Insert valid detection
-        catalog_db.batch_insert_detections([
-            ("v1", 0, json.dumps([{"class": "car", "confidence": 0.9}])),
-        ])
+        catalog_db.batch_insert_detections(
+            [
+                ("v1", 0, json.dumps([{"class": "car", "confidence": 0.9}])),
+            ]
+        )
         # Insert detection with NULL frame_number via raw SQL
         catalog_db.conn.execute(
-            "INSERT INTO detections (media_id, frame_number, detections_json) "
-            "VALUES (?, NULL, ?)",
+            "INSERT INTO detections (media_id, frame_number, detections_json) VALUES (?, NULL, ?)",
             ("v1", json.dumps([{"class": "ghost_object", "confidence": 0.5}])),
         )
 
@@ -925,9 +981,11 @@ class TestNullFieldResilience:
 
         emb = np.zeros(512, dtype=np.float32).tobytes()
         # Insert valid face
-        catalog_db.batch_insert_faces([
-            ("v1", 0, 0, json.dumps({"x": 10, "y": 10, "w": 50, "h": 50}), emb, 1),
-        ])
+        catalog_db.batch_insert_faces(
+            [
+                ("v1", 0, 0, json.dumps({"x": 10, "y": 10, "w": 50, "h": 50}), emb, 1),
+            ]
+        )
         catalog_db.insert_face_cluster(1, label="ValidPerson")
         # Insert face with NULL frame_number via raw SQL
         catalog_db.conn.execute(
@@ -949,9 +1007,11 @@ class TestNullFieldResilience:
         _seed_null_resilience_base(catalog_db)
 
         # Insert valid audio event
-        catalog_db.batch_insert_audio_events([
-            ("v1", 5.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
-        ])
+        catalog_db.batch_insert_audio_events(
+            [
+                ("v1", 5.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
+            ]
+        )
         # Insert audio event with NULL timestamp_seconds via raw SQL
         catalog_db.conn.execute(
             "INSERT INTO audio_events (media_id, timestamp_seconds, events_json) "

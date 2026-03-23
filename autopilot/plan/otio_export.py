@@ -121,9 +121,7 @@ def _insert_transitions(
         return
 
     # Count existing clips to determine fps for duration conversion
-    clips_in_track = [
-        item for item in track if isinstance(item, otio.schema.Clip)
-    ]
+    clips_in_track = [item for item in track if isinstance(item, otio.schema.Clip)]
     if not clips_in_track:
         return
 
@@ -179,18 +177,14 @@ def export_otio(edl: dict, output_path: Path, db: CatalogDB) -> Path:
         try:
             crop_by_clip[cm["clip_id"]] = cm.get("mode", "")
         except KeyError as e:
-            raise OtioExportError(
-                f"Malformed crop_modes entry: missing {e}"
-            ) from e
+            raise OtioExportError(f"Malformed crop_modes entry: missing {e}") from e
 
     audio_by_clip: dict[str, float] = {}
     for au in edl.get("audio_settings", []):
         try:
             audio_by_clip[au["clip_id"]] = au.get("level_db", 0.0)
         except KeyError as e:
-            raise OtioExportError(
-                f"Malformed audio_settings entry: missing {e}"
-            ) from e
+            raise OtioExportError(f"Malformed audio_settings entry: missing {e}") from e
 
     # Build timeline
     timeline = otio.schema.Timeline(name="autopilot_edit")
@@ -220,9 +214,7 @@ def export_otio(edl: dict, output_path: Path, db: CatalogDB) -> Path:
                 in_tc = clip_data["in_timecode"]
                 out_tc = clip_data["out_timecode"]
             except KeyError as e:
-                raise OtioExportError(
-                    f"Malformed clip in EDL: missing {e}"
-                ) from e
+                raise OtioExportError(f"Malformed clip in EDL: missing {e}") from e
 
             file_path, fps = _get_media_info(clip_id, db)
 
@@ -230,9 +222,7 @@ def export_otio(edl: dict, output_path: Path, db: CatalogDB) -> Path:
                 start_time = _tc_to_rational_time(in_tc, fps)
                 end_time = _tc_to_rational_time(out_tc, fps)
             except ValueError as e:
-                raise OtioExportError(
-                    f"Invalid timecode for clip {clip_id}: {e}"
-                ) from e
+                raise OtioExportError(f"Invalid timecode for clip {clip_id}: {e}") from e
             duration = otio.opentime.RationalTime(
                 end_time.value - start_time.value,
                 fps,
@@ -319,9 +309,7 @@ def detect_otio_changes(otio_path: Path, original_edl: dict) -> dict:
     changes: list[str] = []
 
     # Check EDL hash
-    stored_hash = (
-        timeline.metadata.get("autopilot", {}).get("edl_hash", "")
-    )
+    stored_hash = timeline.metadata.get("autopilot", {}).get("edl_hash", "")
     current_hash = _edl_hash(original_edl)
 
     if stored_hash != current_hash:
@@ -336,9 +324,7 @@ def detect_otio_changes(otio_path: Path, original_edl: dict) -> dict:
                 otio_clips.append(item)
 
     if len(otio_clips) != len(original_clips):
-        changes.append(
-            f"Clip count changed: {len(original_clips)} -> {len(otio_clips)}"
-        )
+        changes.append(f"Clip count changed: {len(original_clips)} -> {len(otio_clips)}")
 
     # Compare individual clip source ranges (match by name/clip_id)
     from autopilot.plan.validator import timecode_to_seconds
@@ -356,9 +342,7 @@ def detect_otio_changes(otio_path: Path, original_edl: dict) -> dict:
             orig_in_sec = timecode_to_seconds(orig_clip["in_timecode"])
             orig_out_sec = timecode_to_seconds(orig_clip["out_timecode"])
         except (KeyError, ValueError) as e:
-            raise OtioExportError(
-                f"Invalid or missing timecode for clip {clip_id}: {e}"
-            ) from e
+            raise OtioExportError(f"Invalid or missing timecode for clip {clip_id}: {e}") from e
         orig_dur = orig_out_sec - orig_in_sec
 
         actual_start = otio.opentime.to_seconds(otio_clip.source_range.start_time)
@@ -366,25 +350,17 @@ def detect_otio_changes(otio_path: Path, original_edl: dict) -> dict:
 
         if abs(actual_start - orig_in_sec) > 0.05:
             changes.append(
-                f"Clip {clip_id}: start changed "
-                f"{orig_in_sec:.3f}s -> {actual_start:.3f}s"
+                f"Clip {clip_id}: start changed {orig_in_sec:.3f}s -> {actual_start:.3f}s"
             )
         if abs(actual_dur - orig_dur) > 0.05:
-            changes.append(
-                f"Clip {clip_id}: duration changed "
-                f"{orig_dur:.3f}s -> {actual_dur:.3f}s"
-            )
+            changes.append(f"Clip {clip_id}: duration changed {orig_dur:.3f}s -> {actual_dur:.3f}s")
 
     original_tracks = set()
     for c in original_clips:
         original_tracks.add(c.get("track", 1))
-    otio_track_count = len(
-        [t for t in timeline.tracks if t.kind == otio.schema.TrackKind.Video]
-    )
+    otio_track_count = len([t for t in timeline.tracks if t.kind == otio.schema.TrackKind.Video])
     if otio_track_count != len(original_tracks):
-        changes.append(
-            f"Track count changed: {len(original_tracks)} -> {otio_track_count}"
-        )
+        changes.append(f"Track count changed: {len(original_tracks)} -> {otio_track_count}")
 
     return {
         "modified": len(changes) > 0,

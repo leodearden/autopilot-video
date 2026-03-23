@@ -43,7 +43,8 @@ def _common_options(f: Any) -> Any:
     f = click.option("--verbose", is_flag=True, help="Enable debug logging.")(f)
     f = click.option("--dry-run", is_flag=True, help="Show what would run without executing.")(f)
     f = click.option(
-        "--force", is_flag=True,
+        "--force",
+        is_flag=True,
         help="Bypass checkpoint/resume: reprocess all items.",
     )(f)
     return f
@@ -300,6 +301,7 @@ def run(
     force: bool,
 ) -> None:
     """Run the full pipeline (all stages)."""
+
     def _shutdown_handler(signum: int, frame: Any) -> None:
         logger.info("Shutdown requested, finishing current work...")
         request_shutdown()

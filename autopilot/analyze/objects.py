@@ -125,8 +125,7 @@ def _interpolate_detections(
         if b is not None and a is not None:
             # Lerp bbox and average confidence
             bbox = [
-                b["bbox_xywh"][j] + t * (a["bbox_xywh"][j] - b["bbox_xywh"][j])
-                for j in range(4)
+                b["bbox_xywh"][j] + t * (a["bbox_xywh"][j] - b["bbox_xywh"][j]) for j in range(4)
             ]
             conf = b["confidence"] + t * (a["confidence"] - b["confidence"])
             cls_name = b["class"]
@@ -142,12 +141,14 @@ def _interpolate_detections(
             conf = a["confidence"]
             cls_name = a["class"]
 
-        result.append({
-            "track_id": tid,
-            "class": cls_name,
-            "bbox_xywh": bbox,
-            "confidence": conf,
-        })
+        result.append(
+            {
+                "track_id": tid,
+                "class": cls_name,
+                "bbox_xywh": bbox,
+                "confidence": conf,
+            }
+        )
     return result
 
 
@@ -196,7 +197,10 @@ def detect_objects(
 
         logger.info(
             "Starting %s object detection for %s (%d frames, %.1f fps)",
-            mode, media_id, total_frames, fps,
+            mode,
+            media_id,
+            total_frames,
+            fps,
         )
 
         frame_indices = _compute_frame_indices(
@@ -218,7 +222,7 @@ def detect_objects(
             rows: list[tuple[str, int, str]] = []
 
             for batch_start in range(0, len(frame_indices), batch_size):
-                batch_frames_idx = frame_indices[batch_start:batch_start + batch_size]
+                batch_frames_idx = frame_indices[batch_start : batch_start + batch_size]
 
                 for frame_idx in batch_frames_idx:
                     cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
@@ -226,13 +230,17 @@ def detect_objects(
                     if not ret:
                         logger.warning(
                             "Failed to read frame %d for %s, skipping",
-                            frame_idx, media_id,
+                            frame_idx,
+                            media_id,
                         )
                         continue
 
                     # Run tracking per-frame (ByteTrack needs sequential state)
                     results = yolo_model.track(
-                        frame, persist=True, imgsz=640, verbose=False,
+                        frame,
+                        persist=True,
+                        imgsz=640,
+                        verbose=False,
                     )
 
                     # Extract detections from results
@@ -241,12 +249,14 @@ def detect_objects(
                     xywh = boxes_obj.xywh.cpu().numpy()
                     confs = boxes_obj.conf.cpu().numpy()
                     cls_ids = boxes_obj.cls.cpu().numpy()
-                    track_ids = (
-                        boxes_obj.id.cpu().numpy() if boxes_obj.id is not None else None
-                    )
+                    track_ids = boxes_obj.id.cpu().numpy() if boxes_obj.id is not None else None
 
                     dets = _format_detections(
-                        xywh, confs, cls_ids, track_ids, yolo_model.names,
+                        xywh,
+                        confs,
+                        cls_ids,
+                        track_ids,
+                        yolo_model.names,
                     )
                     sampled_detections[frame_idx] = dets
                     rows.append((media_id, frame_idx, json.dumps(dets)))
@@ -279,7 +289,9 @@ def detect_objects(
                         dets = _interpolate_detections(
                             sampled_detections[before_idx],
                             sampled_detections[after_idx],
-                            before_idx, after_idx, frame_idx,
+                            before_idx,
+                            after_idx,
+                            frame_idx,
                         )
                     elif before_idx is not None:
                         # Trailing frames: hold last detection
@@ -297,7 +309,9 @@ def detect_objects(
 
         logger.info(
             "Completed %s detection for %s: %d sampled frames",
-            mode, media_id, len(sampled_detections),
+            mode,
+            media_id,
+            len(sampled_detections),
         )
     finally:
         cap.release()

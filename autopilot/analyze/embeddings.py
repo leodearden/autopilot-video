@@ -104,7 +104,10 @@ def compute_embeddings(
 
         logger.info(
             "Starting embedding extraction for %s (%d frames, %.1f fps, sample_fps=%.2f)",
-            media_id, total_frames, fps, sample_fps,
+            media_id,
+            total_frames,
+            fps,
+            sample_fps,
         )
 
         frame_indices = _compute_sample_indices(total_frames, fps, sample_fps)
@@ -120,7 +123,7 @@ def compute_embeddings(
             rows: list[tuple[str, int, bytes]] = []
 
             for batch_start in range(0, len(frame_indices), batch_size):
-                batch_indices = frame_indices[batch_start:batch_start + batch_size]
+                batch_indices = frame_indices[batch_start : batch_start + batch_size]
                 batch_frames = []
                 batch_frame_nums = []
 
@@ -130,7 +133,8 @@ def compute_embeddings(
                     if not ret:
                         logger.warning(
                             "Failed to read frame %d for %s, skipping",
-                            frame_idx, media_id,
+                            frame_idx,
+                            media_id,
                         )
                         continue
                     # Convert BGR to RGB for the model
@@ -177,7 +181,8 @@ def compute_embeddings(
 
         logger.info(
             "Completed embedding extraction for %s: %d frames embedded",
-            media_id, len(frame_indices),
+            media_id,
+            len(frame_indices),
         )
     finally:
         cap.release()
@@ -222,7 +227,8 @@ def build_search_index(
 
     logger.info(
         "Building FAISS index: %d vectors, %d dimensions",
-        n_vectors, dim,
+        n_vectors,
+        dim,
     )
 
     if n_vectors < 256:
@@ -248,7 +254,9 @@ def build_search_index(
 
     logger.info(
         "FAISS index written to %s (%d vectors), sidecar at %s",
-        output_path, n_vectors, sidecar_path,
+        output_path,
+        n_vectors,
+        sidecar_path,
     )
 
 
@@ -303,11 +311,13 @@ def search_by_text(
         if idx < 0:
             continue  # FAISS returns -1 for unfilled slots
         media_id, frame_number = id_mapping[idx]
-        results.append({
-            "media_id": media_id,
-            "frame_number": frame_number,
-            "score": float(score),
-        })
+        results.append(
+            {
+                "media_id": media_id,
+                "frame_number": frame_number,
+                "score": float(score),
+            }
+        )
     return results
 
 
@@ -364,9 +374,11 @@ def search_by_image(
         if idx < 0:
             continue
         media_id, frame_number = id_mapping[idx]
-        results.append({
-            "media_id": media_id,
-            "frame_number": frame_number,
-            "score": float(score),
-        })
+        results.append(
+            {
+                "media_id": media_id,
+                "frame_number": frame_number,
+                "score": float(score),
+            }
+        )
     return results

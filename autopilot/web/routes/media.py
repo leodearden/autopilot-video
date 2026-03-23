@@ -30,7 +30,6 @@ def _format_duration(seconds: float | None) -> str:
     return f"{m}:{s:02d}"
 
 
-
 @router.get("/api/media")
 def api_media(
     request: Request,
@@ -191,7 +190,9 @@ def media_tab(request: Request, media_id: str, tab_name: str):
             except (json.JSONDecodeError, TypeError):
                 pass
         html = templates.get_template("partials/tab_metadata.html").render(
-            media=media, extra_metadata=extra_metadata, format_duration=_format_duration,
+            media=media,
+            extra_metadata=extra_metadata,
+            format_duration=_format_duration,
         )
     elif tab_name == "transcript":
         transcript = detail["transcript"]
@@ -202,7 +203,9 @@ def media_tab(request: Request, media_id: str, tab_name: str):
             except (json.JSONDecodeError, TypeError):
                 pass
         html = templates.get_template("partials/tab_transcript.html").render(
-            transcript=transcript, segments=segments, format_timestamp=_format_timestamp,
+            transcript=transcript,
+            segments=segments,
+            format_timestamp=_format_timestamp,
         )
     elif tab_name == "detections":
         det_rows = detail["detections"]
@@ -240,13 +243,16 @@ def media_tab(request: Request, media_id: str, tab_name: str):
         clusters = []
         for cid, count in sorted(cluster_groups.items(), key=lambda x: x[1], reverse=True):
             cluster_info = face_clusters.get(cid, {}) if cid is not None else {}
-            clusters.append({
-                "cluster_id": cid,
-                "label": cluster_info.get("label"),
-                "count": count,
-            })
+            clusters.append(
+                {
+                    "cluster_id": cid,
+                    "label": cluster_info.get("label"),
+                    "count": count,
+                }
+            )
         html = templates.get_template("partials/tab_faces.html").render(
-            clusters=clusters, total_faces=len(faces),
+            clusters=clusters,
+            total_faces=len(faces),
         )
     elif tab_name == "audio_events":
         audio_rows = detail["audio_events"]
@@ -264,7 +270,8 @@ def media_tab(request: Request, media_id: str, tab_name: str):
             ]
             events.append({"timestamp": row["timestamp_seconds"], "classes": event_classes})
         html = templates.get_template("partials/tab_audio_events.html").render(
-            events=events, format_timestamp=_format_timestamp,
+            events=events,
+            format_timestamp=_format_timestamp,
         )
     elif tab_name == "embeddings":
         embedding_count = detail["embedding_count"]

@@ -76,9 +76,7 @@ def _check_overlaps(clips: list[dict], errors: list[str]) -> None:
         in_s = _safe_timecode(clip, "in_timecode")
         if in_s is None:
             clip_id = clip.get("clip_id", "unknown")
-            errors.append(
-                f"Clip {clip_id}: invalid or missing in_timecode in overlap check"
-            )
+            errors.append(f"Clip {clip_id}: invalid or missing in_timecode in overlap check")
             continue
         by_track[track].append(clip)
 
@@ -94,9 +92,7 @@ def _check_overlaps(clips: list[dict], errors: list[str]) -> None:
                 next_in = timecode_to_seconds(sorted_clips[i + 1]["in_timecode"])
             except (KeyError, ValueError, TypeError):
                 clip_id = sorted_clips[i].get("clip_id", "unknown")
-                errors.append(
-                    f"Clip {clip_id}: invalid or missing timecode in overlap check"
-                )
+                errors.append(f"Clip {clip_id}: invalid or missing timecode in overlap check")
                 continue
             if current_out > next_in:
                 errors.append(
@@ -107,7 +103,9 @@ def _check_overlaps(clips: list[dict], errors: list[str]) -> None:
 
 
 def _check_duration(
-    clips: list[dict], edl: dict, errors: list[str],
+    clips: list[dict],
+    edl: dict,
+    errors: list[str],
 ) -> None:
     """Check that total duration of track-1 clips is within ±10% of target."""
     target = edl.get("target_duration_seconds")
@@ -122,9 +120,7 @@ def _check_duration(
             out_s = _safe_timecode(clip, "out_timecode")
             if in_s is None or out_s is None:
                 clip_id = clip.get("clip_id", "unknown")
-                errors.append(
-                    f"Clip {clip_id}: invalid or missing timecode in duration check"
-                )
+                errors.append(f"Clip {clip_id}: invalid or missing timecode in duration check")
                 continue
             total += out_s - in_s
 
@@ -138,7 +134,9 @@ def _check_duration(
 
 
 def _check_clip_ids(
-    clips: list[dict], db: CatalogDB, errors: list[str],
+    clips: list[dict],
+    db: CatalogDB,
+    errors: list[str],
 ) -> None:
     """Check that all referenced clip_ids exist in the catalog."""
     seen: set[str] = set()
@@ -153,7 +151,9 @@ def _check_clip_ids(
 
 
 def _check_timecode_bounds(
-    clips: list[dict], db: CatalogDB, errors: list[str],
+    clips: list[dict],
+    db: CatalogDB,
+    errors: list[str],
 ) -> None:
     """Check that in/out timecodes are within clip duration and in < out."""
     for clip in clips:
@@ -162,9 +162,7 @@ def _check_timecode_bounds(
         out_s = _safe_timecode(clip, "out_timecode")
 
         if in_s is None or out_s is None:
-            errors.append(
-                f"Clip {clip_id}: invalid or missing timecode"
-            )
+            errors.append(f"Clip {clip_id}: invalid or missing timecode")
             continue
 
         # Check in < out
@@ -183,9 +181,7 @@ def _check_timecode_bounds(
         try:
             duration = float(raw_duration)  # type: ignore[arg-type]
         except (ValueError, TypeError):
-            errors.append(
-                f"Clip {clip_id}: non-numeric duration_seconds in catalog"
-            )
+            errors.append(f"Clip {clip_id}: non-numeric duration_seconds in catalog")
             continue
         if out_s > duration:
             errors.append(
@@ -217,14 +213,11 @@ def _check_audio_levels(
         try:
             numeric_level = float(level)
         except (TypeError, ValueError):
-            errors.append(
-                f"Audio level for clip {clip_id}: non-numeric level_db value '{level}'"
-            )
+            errors.append(f"Audio level for clip {clip_id}: non-numeric level_db value '{level}'")
             continue
         if numeric_level > 0:
             errors.append(
-                f"Audio level for clip {clip_id}: {numeric_level} dB "
-                f"exceeds 0 dB (clipping risk)"
+                f"Audio level for clip {clip_id}: {numeric_level} dB exceeds 0 dB (clipping risk)"
             )
         elif numeric_level < -24:
             warnings.append(

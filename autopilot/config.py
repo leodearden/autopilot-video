@@ -143,21 +143,14 @@ def _validate_choice(field_name: str, value: str) -> None:
     """Validate that value is in the allowed set for field_name."""
     allowed = _ALLOWED_VALUES.get(field_name)
     if allowed is not None and value not in allowed:
-        raise ConfigError(
-            f"Invalid value for {field_name}: {value!r} "
-            f"(allowed: {sorted(allowed)})"
-        )
+        raise ConfigError(f"Invalid value for {field_name}: {value!r} (allowed: {sorted(allowed)})")
 
 
-def _validate_range(
-    field_name: str, value: int, min_val: int, max_val: int | None = None
-) -> None:
+def _validate_range(field_name: str, value: int, min_val: int, max_val: int | None = None) -> None:
     """Validate that value is within [min_val, max_val] inclusive."""
     if value < min_val or (max_val is not None and value > max_val):
         bound = f"[{min_val}, {max_val}]" if max_val is not None else f">= {min_val}"
-        raise ConfigError(
-            f"Invalid value for {field_name}: {value} (must be {bound})"
-        )
+        raise ConfigError(f"Invalid value for {field_name}: {value} (must be {bound})")
 
 
 def _build_creator(data: dict[str, Any]) -> CreatorConfig:
@@ -177,9 +170,7 @@ def _coerce_int(field_name: str, value: Any) -> int:
     try:
         return int(value)
     except (ValueError, TypeError) as e:
-        raise ConfigError(
-            f"Invalid value for {field_name}: expected integer, got {value!r}"
-        ) from e
+        raise ConfigError(f"Invalid value for {field_name}: expected integer, got {value!r}") from e
 
 
 def _coerce_float(field_name: str, value: Any) -> float:
@@ -187,9 +178,7 @@ def _coerce_float(field_name: str, value: Any) -> float:
     try:
         return float(value)
     except (ValueError, TypeError) as e:
-        raise ConfigError(
-            f"Invalid value for {field_name}: expected number, got {value!r}"
-        ) from e
+        raise ConfigError(f"Invalid value for {field_name}: expected number, got {value!r}") from e
 
 
 def _build_camera(data: dict[str, Any]) -> CameraConfig:
@@ -323,7 +312,7 @@ def load_config(path: str | Path) -> AutopilotConfig:
         raw = {}
 
     if not isinstance(raw, dict):
-        raise ConfigError(f'Config file must contain a YAML mapping, got {type(raw).__name__}')
+        raise ConfigError(f"Config file must contain a YAML mapping, got {type(raw).__name__}")
 
     # Validate required fields
     missing = [f for f in ("input_dir", "output_dir") if f not in raw]
@@ -337,8 +326,7 @@ def load_config(path: str | Path) -> AutopilotConfig:
         _sec_val = raw.get(_sec_name)
         if _sec_val is not None and not isinstance(_sec_val, dict):
             raise ConfigError(
-                f'Expected a mapping for section "{_sec_name}", '
-                f"got {type(_sec_val).__name__}"
+                f'Expected a mapping for section "{_sec_name}", got {type(_sec_val).__name__}'
             )
 
     creator = _build_creator(raw.get("creator") or {})

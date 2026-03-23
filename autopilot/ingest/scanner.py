@@ -79,9 +79,7 @@ def _run_ffprobe(file_path: Path) -> dict:
             check=True,
         )
     except FileNotFoundError:
-        raise RuntimeError(
-            "ffprobe not found — install ffmpeg to use the ingest pipeline"
-        )
+        raise RuntimeError("ffprobe not found — install ffmpeg to use the ingest pipeline")
     except subprocess.CalledProcessError:
         logger.warning("ffprobe failed for %s", file_path)
         return {}
@@ -161,9 +159,7 @@ def _run_exiftool(file_path: Path) -> dict:
             check=True,
         )
     except FileNotFoundError:
-        raise RuntimeError(
-            "exiftool not found — install exiftool to use the ingest pipeline"
-        )
+        raise RuntimeError("exiftool not found — install exiftool to use the ingest pipeline")
     except subprocess.CalledProcessError:
         logger.warning("exiftool failed for %s", file_path)
         return {}
@@ -246,23 +242,17 @@ def scan_directory(
         ``None`` (default) lets :class:`ProcessPoolExecutor` use the CPU count.
     """
     files = sorted(
-        p
-        for p in input_dir.rglob("*")
-        if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
+        p for p in input_dir.rglob("*") if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
     )
     if not files:
         return []
 
     results: list[MediaFile] = []
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures: dict[Future[MediaFile], Path] = {
-            executor.submit(_probe_file, f): f for f in files
-        }
+        futures: dict[Future[MediaFile], Path] = {executor.submit(_probe_file, f): f for f in files}
         for fut in as_completed(futures):
             try:
                 results.append(fut.result())
             except Exception:
-                logger.warning(
-                    "Probe failed for %s, skipping", futures[fut]
-                )
+                logger.warning("Probe failed for %s, skipping", futures[fut])
     return results

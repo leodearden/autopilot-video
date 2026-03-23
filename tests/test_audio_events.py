@@ -311,13 +311,18 @@ class TestIdempotency:
 
         catalog_db.insert_media("vid1", "/tmp/vid1.wav")
         with catalog_db:
-            catalog_db.batch_insert_audio_events([
-                ("vid1", 0.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
-            ])
+            catalog_db.batch_insert_audio_events(
+                [
+                    ("vid1", 0.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
+                ]
+            )
 
         scheduler = MagicMock()
         classify_audio_events(
-            "vid1", Path("/tmp/vid1.wav"), catalog_db, scheduler,
+            "vid1",
+            Path("/tmp/vid1.wav"),
+            catalog_db,
+            scheduler,
         )
 
         # Scheduler should NOT be called for model loading
@@ -327,18 +332,24 @@ class TestIdempotency:
         """Proceed with classification when no events exist."""
         from autopilot.analyze.audio_events import classify_audio_events
 
-        mock_panns, mock_config, mock_librosa, scheduler = (
-            _make_full_pipeline_mocks(catalog_db, "vid1", 3.0)
+        mock_panns, mock_config, mock_librosa, scheduler = _make_full_pipeline_mocks(
+            catalog_db, "vid1", 3.0
         )
 
-        with patch.dict(sys.modules, {
-            "panns_inference": mock_panns,
-            "panns_inference.config": mock_config,
-            "librosa": mock_librosa,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "panns_inference": mock_panns,
+                "panns_inference.config": mock_config,
+                "librosa": mock_librosa,
+            },
+        ):
             with patch.object(Path, "exists", return_value=True):
                 classify_audio_events(
-                    "vid1", Path("/tmp/vid1.wav"), catalog_db, scheduler,
+                    "vid1",
+                    Path("/tmp/vid1.wav"),
+                    catalog_db,
+                    scheduler,
                 )
 
         # Scheduler SHOULD be called for model loading
@@ -396,18 +407,24 @@ class TestStatusUpdate:
         """Media status updated to 'analyzing' during classification."""
         from autopilot.analyze.audio_events import classify_audio_events
 
-        mock_panns, mock_config, mock_librosa, scheduler = (
-            _make_full_pipeline_mocks(catalog_db, "vid1", 3.0)
+        mock_panns, mock_config, mock_librosa, scheduler = _make_full_pipeline_mocks(
+            catalog_db, "vid1", 3.0
         )
 
-        with patch.dict(sys.modules, {
-            "panns_inference": mock_panns,
-            "panns_inference.config": mock_config,
-            "librosa": mock_librosa,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "panns_inference": mock_panns,
+                "panns_inference.config": mock_config,
+                "librosa": mock_librosa,
+            },
+        ):
             with patch.object(Path, "exists", return_value=True):
                 classify_audio_events(
-                    "vid1", Path("/tmp/vid1.wav"), catalog_db, scheduler,
+                    "vid1",
+                    Path("/tmp/vid1.wav"),
+                    catalog_db,
+                    scheduler,
                 )
 
         media = catalog_db.get_media("vid1")
@@ -419,22 +436,31 @@ class TestClassification:
     """Tests for core classification pipeline."""
 
     def _run_classification(
-        self, catalog_db, duration_seconds, *, top_k=5, labels=None,
+        self,
+        catalog_db,
+        duration_seconds,
+        *,
+        top_k=5,
+        labels=None,
     ):
         """Helper to run classify_audio_events with full mocks."""
         from autopilot.analyze.audio_events import classify_audio_events
 
-        mock_panns, mock_config, mock_librosa, scheduler = (
-            _make_full_pipeline_mocks(
-                catalog_db, "vid1", duration_seconds, labels=labels,
-            )
+        mock_panns, mock_config, mock_librosa, scheduler = _make_full_pipeline_mocks(
+            catalog_db,
+            "vid1",
+            duration_seconds,
+            labels=labels,
         )
 
-        with patch.dict(sys.modules, {
-            "panns_inference": mock_panns,
-            "panns_inference.config": mock_config,
-            "librosa": mock_librosa,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "panns_inference": mock_panns,
+                "panns_inference.config": mock_config,
+                "librosa": mock_librosa,
+            },
+        ):
             with patch.object(Path, "exists", return_value=True):
                 classify_audio_events(
                     "vid1",
@@ -451,7 +477,9 @@ class TestClassification:
         _, _, mock_librosa, _ = self._run_classification(catalog_db, 3.0)
 
         mock_librosa.load.assert_called_once_with(
-            str(Path("/tmp/vid1.wav")), sr=32000, mono=True,
+            str(Path("/tmp/vid1.wav")),
+            sr=32000,
+            mono=True,
         )
 
     def test_loads_model_via_scheduler(self, catalog_db):
@@ -494,15 +522,18 @@ class TestDBStorage:
         """Run classification and return stored events."""
         from autopilot.analyze.audio_events import classify_audio_events
 
-        mock_panns, mock_config, mock_librosa, scheduler = (
-            _make_full_pipeline_mocks(catalog_db, "vid1", duration_seconds)
+        mock_panns, mock_config, mock_librosa, scheduler = _make_full_pipeline_mocks(
+            catalog_db, "vid1", duration_seconds
         )
 
-        with patch.dict(sys.modules, {
-            "panns_inference": mock_panns,
-            "panns_inference.config": mock_config,
-            "librosa": mock_librosa,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "panns_inference": mock_panns,
+                "panns_inference.config": mock_config,
+                "librosa": mock_librosa,
+            },
+        ):
             with patch.object(Path, "exists", return_value=True):
                 classify_audio_events(
                     "vid1",
@@ -624,8 +655,8 @@ class TestErrorHandling:
             classify_audio_events,
         )
 
-        mock_panns, mock_config, mock_librosa, scheduler = (
-            _make_full_pipeline_mocks(catalog_db, "vid1", 3.0)
+        mock_panns, mock_config, mock_librosa, scheduler = _make_full_pipeline_mocks(
+            catalog_db, "vid1", 3.0
         )
         # Make inference fail on the 2nd call
         mock_model = mock_panns.AudioTagging.return_value
@@ -634,11 +665,14 @@ class TestErrorHandling:
             RuntimeError("CUDA OOM"),
         ]
 
-        with patch.dict(sys.modules, {
-            "panns_inference": mock_panns,
-            "panns_inference.config": mock_config,
-            "librosa": mock_librosa,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "panns_inference": mock_panns,
+                "panns_inference.config": mock_config,
+                "librosa": mock_librosa,
+            },
+        ):
             with patch.object(Path, "exists", return_value=True):
                 with pytest.raises(AudioEventError):
                     classify_audio_events(
@@ -660,15 +694,18 @@ class TestLogging:
         """INFO log containing media_id and 'Starting'."""
         from autopilot.analyze.audio_events import classify_audio_events
 
-        mock_panns, mock_config, mock_librosa, scheduler = (
-            _make_full_pipeline_mocks(catalog_db, "vid1", 3.0)
+        mock_panns, mock_config, mock_librosa, scheduler = _make_full_pipeline_mocks(
+            catalog_db, "vid1", 3.0
         )
 
-        with patch.dict(sys.modules, {
-            "panns_inference": mock_panns,
-            "panns_inference.config": mock_config,
-            "librosa": mock_librosa,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "panns_inference": mock_panns,
+                "panns_inference.config": mock_config,
+                "librosa": mock_librosa,
+            },
+        ):
             with patch.object(Path, "exists", return_value=True):
                 with caplog.at_level(logging.INFO):
                     classify_audio_events(
@@ -678,24 +715,25 @@ class TestLogging:
                         scheduler,
                     )
 
-        info_messages = [
-            r.message for r in caplog.records if r.levelno == logging.INFO
-        ]
+        info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
         assert any("vid1" in m and "Starting" in m for m in info_messages)
 
     def test_completion_log(self, catalog_db, caplog):
         """INFO log containing media_id and seconds count."""
         from autopilot.analyze.audio_events import classify_audio_events
 
-        mock_panns, mock_config, mock_librosa, scheduler = (
-            _make_full_pipeline_mocks(catalog_db, "vid1", 3.0)
+        mock_panns, mock_config, mock_librosa, scheduler = _make_full_pipeline_mocks(
+            catalog_db, "vid1", 3.0
         )
 
-        with patch.dict(sys.modules, {
-            "panns_inference": mock_panns,
-            "panns_inference.config": mock_config,
-            "librosa": mock_librosa,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "panns_inference": mock_panns,
+                "panns_inference.config": mock_config,
+                "librosa": mock_librosa,
+            },
+        ):
             with patch.object(Path, "exists", return_value=True):
                 with caplog.at_level(logging.INFO):
                     classify_audio_events(
@@ -705,9 +743,7 @@ class TestLogging:
                         scheduler,
                     )
 
-        info_messages = [
-            r.message for r in caplog.records if r.levelno == logging.INFO
-        ]
+        info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
         assert any("3 seconds" in m for m in info_messages)
 
     def test_skip_log(self, catalog_db, caplog):
@@ -716,9 +752,11 @@ class TestLogging:
 
         catalog_db.insert_media("vid1", "/tmp/vid1.wav")
         with catalog_db:
-            catalog_db.batch_insert_audio_events([
-                ("vid1", 0.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
-            ])
+            catalog_db.batch_insert_audio_events(
+                [
+                    ("vid1", 0.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
+                ]
+            )
 
         with caplog.at_level(logging.INFO):
             classify_audio_events(
@@ -728,9 +766,7 @@ class TestLogging:
                 MagicMock(),
             )
 
-        info_messages = [
-            r.message for r in caplog.records if r.levelno == logging.INFO
-        ]
+        info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
         assert any("skipping" in m.lower() for m in info_messages)
 
 
@@ -738,20 +774,27 @@ class TestIntegration:
     """End-to-end integration tests."""
 
     def _run_pipeline(
-        self, catalog_db, duration_seconds, *, top_k=5,
+        self,
+        catalog_db,
+        duration_seconds,
+        *,
+        top_k=5,
     ):
         """Run full pipeline and return stored events."""
         from autopilot.analyze.audio_events import classify_audio_events
 
-        mock_panns, mock_config, mock_librosa, scheduler = (
-            _make_full_pipeline_mocks(catalog_db, "vid1", duration_seconds)
+        mock_panns, mock_config, mock_librosa, scheduler = _make_full_pipeline_mocks(
+            catalog_db, "vid1", duration_seconds
         )
 
-        with patch.dict(sys.modules, {
-            "panns_inference": mock_panns,
-            "panns_inference.config": mock_config,
-            "librosa": mock_librosa,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "panns_inference": mock_panns,
+                "panns_inference.config": mock_config,
+                "librosa": mock_librosa,
+            },
+        ):
             with patch.object(Path, "exists", return_value=True):
                 classify_audio_events(
                     "vid1",
@@ -787,15 +830,18 @@ class TestIntegration:
         """Call twice, scheduler.model called only once."""
         from autopilot.analyze.audio_events import classify_audio_events
 
-        mock_panns, mock_config, mock_librosa, scheduler = (
-            _make_full_pipeline_mocks(catalog_db, "vid1", 3.0)
+        mock_panns, mock_config, mock_librosa, scheduler = _make_full_pipeline_mocks(
+            catalog_db, "vid1", 3.0
         )
 
-        with patch.dict(sys.modules, {
-            "panns_inference": mock_panns,
-            "panns_inference.config": mock_config,
-            "librosa": mock_librosa,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "panns_inference": mock_panns,
+                "panns_inference.config": mock_config,
+                "librosa": mock_librosa,
+            },
+        ):
             with patch.object(Path, "exists", return_value=True):
                 classify_audio_events(
                     "vid1",

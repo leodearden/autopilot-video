@@ -84,33 +84,25 @@ class TestPipelineSchema:
 
     def test_pipeline_jobs_stage_status_index(self, catalog_db):
         """Index exists on pipeline_jobs(stage, status)."""
-        cur = catalog_db.conn.execute(
-            "PRAGMA index_info(idx_pipeline_jobs_stage_status)"
-        )
+        cur = catalog_db.conn.execute("PRAGMA index_info(idx_pipeline_jobs_stage_status)")
         cols = [row[2] for row in cur.fetchall()]
         assert cols == ["stage", "status"]
 
     def test_pipeline_jobs_run_id_index(self, catalog_db):
         """Index exists on pipeline_jobs(run_id)."""
-        cur = catalog_db.conn.execute(
-            "PRAGMA index_info(idx_pipeline_jobs_run_id)"
-        )
+        cur = catalog_db.conn.execute("PRAGMA index_info(idx_pipeline_jobs_run_id)")
         cols = [row[2] for row in cur.fetchall()]
         assert cols == ["run_id"]
 
     def test_pipeline_events_event_type_index(self, catalog_db):
         """Index exists on pipeline_events(event_type)."""
-        cur = catalog_db.conn.execute(
-            "PRAGMA index_info(idx_pipeline_events_event_type)"
-        )
+        cur = catalog_db.conn.execute("PRAGMA index_info(idx_pipeline_events_event_type)")
         cols = [row[2] for row in cur.fetchall()]
         assert cols == ["event_type"]
 
     def test_pipeline_events_created_at_index(self, catalog_db):
         """Index exists on pipeline_events(created_at)."""
-        cur = catalog_db.conn.execute(
-            "PRAGMA index_info(idx_pipeline_events_created_at)"
-        )
+        cur = catalog_db.conn.execute("PRAGMA index_info(idx_pipeline_events_created_at)")
         cols = [row[2] for row in cur.fetchall()]
         assert cols == ["created_at"]
 
@@ -124,9 +116,7 @@ class TestGatesCRUD:
     def test_init_default_gates_populates_stages(self, catalog_db):
         """init_default_gates() inserts rows for all known pipeline stages."""
         catalog_db.init_default_gates()
-        cur = catalog_db.conn.execute(
-            "SELECT stage FROM pipeline_gates ORDER BY stage"
-        )
+        cur = catalog_db.conn.execute("SELECT stage FROM pipeline_gates ORDER BY stage")
         stages = [row[0] for row in cur.fetchall()]
         assert stages == sorted(KNOWN_STAGES)
 
@@ -170,9 +160,7 @@ class TestGatesCRUD:
     def test_update_gate_modifies_fields(self, catalog_db):
         """update_gate() changes specified fields."""
         catalog_db.init_default_gates()
-        catalog_db.update_gate(
-            "analyze", mode="manual", status="approved", notes="LGTM"
-        )
+        catalog_db.update_gate("analyze", mode="manual", status="approved", notes="LGTM")
         gate = catalog_db.get_gate("analyze")
         assert gate is not None
         assert gate["mode"] == "manual"
@@ -244,9 +232,7 @@ class TestJobsCRUD:
     def test_update_job_modifies_fields(self, catalog_db):
         """update_job() changes specified fields."""
         catalog_db.insert_job("j4", "ingest", "media_import")
-        catalog_db.update_job(
-            "j4", status="done", finished_at="2026-01-01T00:05:00"
-        )
+        catalog_db.update_job("j4", status="done", finished_at="2026-01-01T00:05:00")
         job = catalog_db.get_job("j4")
         assert job is not None
         assert job["status"] == "done"
@@ -294,9 +280,7 @@ class TestJobsCRUD:
     def test_list_jobs_combined_filters(self, catalog_db):
         """list_jobs() with multiple filters uses AND logic."""
         catalog_db.insert_job("j15", "ingest", "x", status="done", run_id="r1")
-        catalog_db.insert_job(
-            "j16", "ingest", "x", status="pending", run_id="r1"
-        )
+        catalog_db.insert_job("j16", "ingest", "x", status="pending", run_id="r1")
         catalog_db.insert_job("j17", "analyze", "y", status="done", run_id="r1")
         jobs = catalog_db.list_jobs(stage="ingest", status="done", run_id="r1")
         assert len(jobs) == 1
@@ -318,9 +302,7 @@ class TestJobsCRUD:
     def test_count_jobs_by_status_with_run_id_filter(self, catalog_db):
         """count_jobs_by_status() with run_id filters correctly."""
         catalog_db.insert_job("j21", "ingest", "x", status="done", run_id="r1")
-        catalog_db.insert_job(
-            "j22", "ingest", "x", status="pending", run_id="r1"
-        )
+        catalog_db.insert_job("j22", "ingest", "x", status="pending", run_id="r1")
         catalog_db.insert_job("j23", "ingest", "x", status="done", run_id="r2")
         counts = catalog_db.count_jobs_by_status("ingest", run_id="r1")
         assert counts == {"done": 1, "pending": 1}
@@ -487,9 +469,7 @@ class TestRunsCRUD:
 
     def test_get_current_run_returns_none_when_no_running(self, catalog_db):
         """get_current_run() returns None when all runs are completed."""
-        catalog_db.insert_run(
-            "r9", started_at="2026-01-01T00:00:00", status="completed"
-        )
+        catalog_db.insert_run("r9", started_at="2026-01-01T00:00:00", status="completed")
         assert catalog_db.get_current_run() is None
 
     def test_list_runs_ordered_by_started_at_desc(self, catalog_db):
@@ -512,21 +492,15 @@ class TestPipelineCrossTable:
         """Jobs with run_id can be counted by status for that run."""
         catalog_db.insert_run("r1", started_at="2026-01-01T00:00:00")
         catalog_db.insert_job("j1", "ingest", "import", status="done", run_id="r1")
-        catalog_db.insert_job(
-            "j2", "ingest", "import", status="pending", run_id="r1"
-        )
-        catalog_db.insert_job(
-            "j3", "ingest", "import", status="done", run_id="r2"
-        )
+        catalog_db.insert_job("j2", "ingest", "import", status="pending", run_id="r1")
+        catalog_db.insert_job("j3", "ingest", "import", status="done", run_id="r2")
         counts = catalog_db.count_jobs_by_status("ingest", run_id="r1")
         assert counts == {"done": 1, "pending": 1}
 
     def test_events_reference_job_id(self, catalog_db):
         """Events can store and retrieve a job_id reference."""
         catalog_db.insert_job("j10", "analyze", "transcribe")
-        eid = catalog_db.insert_event(
-            "job_started", stage="analyze", job_id="j10"
-        )
+        eid = catalog_db.insert_event("job_started", stage="analyze", job_id="j10")
         events = catalog_db.get_events_since(eid - 1)
         assert len(events) == 1
         assert events[0]["job_id"] == "j10"

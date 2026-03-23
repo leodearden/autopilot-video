@@ -47,9 +47,7 @@ def generate_voiceover(text: str, output_path: Path, config: ModelConfig) -> Pat
     elif engine == "elevenlabs":
         return _generate_elevenlabs(text, output_path)
     else:
-        raise VoiceoverError(
-            f"Unknown TTS engine: {engine!r}. Supported: kokoro, elevenlabs"
-        )
+        raise VoiceoverError(f"Unknown TTS engine: {engine!r}. Supported: kokoro, elevenlabs")
 
 
 def _generate_kokoro(text: str, output_path: Path) -> Path:
@@ -71,9 +69,7 @@ def _generate_kokoro(text: str, output_path: Path) -> Path:
         import kokoro
         import soundfile as sf
     except ImportError as e:
-        raise VoiceoverError(
-            f"Kokoro TTS dependencies not installed: {e}"
-        ) from e
+        raise VoiceoverError(f"Kokoro TTS dependencies not installed: {e}") from e
 
     try:
         logger.info("Generating voiceover with Kokoro TTS (%d chars)", len(text))
@@ -90,6 +86,7 @@ def _generate_kokoro(text: str, output_path: Path) -> Path:
 
         # Concatenate all chunks
         import numpy as np
+
         combined = np.concatenate(audio_chunks)
 
         # Write to file at 24kHz sample rate (Kokoro default)
@@ -120,16 +117,12 @@ def _generate_elevenlabs(text: str, output_path: Path) -> Path:
     """
     api_key = os.environ.get("ELEVENLABS_API_KEY")
     if not api_key:
-        raise VoiceoverError(
-            "ELEVENLABS_API_KEY environment variable not set"
-        )
+        raise VoiceoverError("ELEVENLABS_API_KEY environment variable not set")
 
     try:
         import requests as _requests
     except ImportError as e:
-        raise VoiceoverError(
-            f"requests library not installed: {e}"
-        ) from e
+        raise VoiceoverError(f"requests library not installed: {e}") from e
 
     try:
         logger.info("Generating voiceover with ElevenLabs API (%d chars)", len(text))

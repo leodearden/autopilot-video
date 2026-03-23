@@ -22,8 +22,8 @@ class TestComputeHash:
 
     def test_hash_large_file(self, tmp_path: Path) -> None:
         """compute_hash of a file > 64MB should hash only the first 64MB."""
-        chunk_64mb = b"\xAB" * (64 * 1024 * 1024)  # exactly 64MB
-        extra = b"\xCD" * (1024 * 1024)  # 1MB extra
+        chunk_64mb = b"\xab" * (64 * 1024 * 1024)  # exactly 64MB
+        extra = b"\xcd" * (1024 * 1024)  # 1MB extra
         f = tmp_path / "large.mp4"
         f.write_bytes(chunk_64mb + extra)
 

@@ -47,9 +47,7 @@ def _get_musicgen_model(name: str) -> Any:
     return _musicgen_cache[name]
 
 
-def source_music(
-    request: MusicRequest, config: ModelConfig, output_dir: Path
-) -> Path | None:
+def source_music(request: MusicRequest, config: ModelConfig, output_dir: Path) -> Path | None:
     """Source a music track matching the request.
 
     Dispatches based on config.music_engine:
@@ -84,8 +82,7 @@ def source_music(
             return _search_freesound(request, output_dir)
 
     raise MusicError(
-        f"Unknown music engine: {config.music_engine!r}. "
-        f"Supported: musicgen, fetch_list_only"
+        f"Unknown music engine: {config.music_engine!r}. Supported: musicgen, fetch_list_only"
     )
 
 
@@ -194,7 +191,7 @@ def _search_freesound(request: MusicRequest, output_dir: Path) -> Path | None:
         dl_response = _requests.get(preview_url, timeout=(10, 60))
         dl_response.raise_for_status()
 
-        safe_name = re.sub(r'[^\w\-. ]', '_', top.get('name', 'track'))[:50]
+        safe_name = re.sub(r"[^\w\-. ]", "_", top.get("name", "track"))[:50]
         filename = f"freesound_{top['id']}_{safe_name}"
         output_path = output_dir / filename
         output_path.write_bytes(dl_response.content)

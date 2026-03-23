@@ -95,9 +95,7 @@ def detect_faces(
                         continue
                     bbox_json = json.dumps(face.bbox.tolist())
                     emb_bytes = face.normed_embedding.astype(np.float32).tobytes()
-                    rows.append(
-                        (media_id, frame_idx, i, bbox_json, emb_bytes, None)
-                    )
+                    rows.append((media_id, frame_idx, i, bbox_json, emb_bytes, None))
 
             if rows:
                 with db:
@@ -137,15 +135,12 @@ def cluster_faces(
     logger.info("Clustering %d face embeddings", len(face_rows))
 
     # Unpack embeddings into matrix
-    embeddings = np.stack([
-        np.frombuffer(cast(bytes, row["embedding"]), dtype=np.float32)
-        for row in face_rows
-    ])
+    embeddings = np.stack(
+        [np.frombuffer(cast(bytes, row["embedding"]), dtype=np.float32) for row in face_rows]
+    )
 
     # Run DBSCAN with cosine distance
-    clustering = DBSCAN(eps=eps, min_samples=min_samples, metric="cosine").fit(
-        embeddings
-    )
+    clustering = DBSCAN(eps=eps, min_samples=min_samples, metric="cosine").fit(embeddings)
     labels = clustering.labels_
 
     # Group faces by cluster label (pure in-memory computation)
@@ -181,12 +176,14 @@ def cluster_faces(
         # Prepare cluster_id updates for member faces
         for mi in member_indices:
             row = face_rows[mi]
-            cluster_id_updates.append((
-                cluster_label,
-                cast(str, row["media_id"]),
-                cast(int, row["frame_number"]),
-                cast(int, row["face_index"]),
-            ))
+            cluster_id_updates.append(
+                (
+                    cluster_label,
+                    cast(str, row["media_id"]),
+                    cast(int, row["frame_number"]),
+                    cast(int, row["face_index"]),
+                )
+            )
 
     # Perform all DB mutations atomically in a single transaction.
     # If any step fails, CatalogDB.__exit__ rolls back the entire block,

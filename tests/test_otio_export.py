@@ -152,12 +152,16 @@ class TestBasicClipConversion:
         """Single clip EDL exports to a .otio file that exists."""
         from autopilot.plan.otio_export import export_otio
 
-        edl = _minimal_edl(clips=[{
-            "clip_id": "v1",
-            "in_timecode": "00:00:05.000",
-            "out_timecode": "00:00:15.000",
-            "track": 1,
-        }])
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:05.000",
+                    "out_timecode": "00:00:15.000",
+                    "track": 1,
+                }
+            ]
+        )
         output = tmp_path / "test.otio"
         db = _mock_db_for_clips()
 
@@ -169,12 +173,16 @@ class TestBasicClipConversion:
         """Single clip .otio can be read back by OTIO."""
         from autopilot.plan.otio_export import export_otio
 
-        edl = _minimal_edl(clips=[{
-            "clip_id": "v1",
-            "in_timecode": "00:00:05.000",
-            "out_timecode": "00:00:15.000",
-            "track": 1,
-        }])
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:05.000",
+                    "out_timecode": "00:00:15.000",
+                    "track": 1,
+                }
+            ]
+        )
         output = tmp_path / "test.otio"
         db = _mock_db_for_clips()
         export_otio(edl, output, db)
@@ -187,20 +195,22 @@ class TestBasicClipConversion:
         """Timeline has 1 video track with 1 clip."""
         from autopilot.plan.otio_export import export_otio
 
-        edl = _minimal_edl(clips=[{
-            "clip_id": "v1",
-            "in_timecode": "00:00:05.000",
-            "out_timecode": "00:00:15.000",
-            "track": 1,
-        }])
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:05.000",
+                    "out_timecode": "00:00:15.000",
+                    "track": 1,
+                }
+            ]
+        )
         output = tmp_path / "test.otio"
         db = _mock_db_for_clips()
         export_otio(edl, output, db)
 
         tl = otio.adapters.read_from_file(str(output))
-        video_tracks = [
-            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
-        ]
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
         assert len(video_tracks) == 1
         clips = [c for c in video_tracks[0] if isinstance(c, otio.schema.Clip)]
         assert len(clips) == 1
@@ -209,20 +219,22 @@ class TestBasicClipConversion:
         """Clip source_range covers in_timecode to out_timecode (10s duration)."""
         from autopilot.plan.otio_export import export_otio
 
-        edl = _minimal_edl(clips=[{
-            "clip_id": "v1",
-            "in_timecode": "00:00:05.000",
-            "out_timecode": "00:00:15.000",
-            "track": 1,
-        }])
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:05.000",
+                    "out_timecode": "00:00:15.000",
+                    "track": 1,
+                }
+            ]
+        )
         output = tmp_path / "test.otio"
         db = _mock_db_for_clips()
         export_otio(edl, output, db)
 
         tl = otio.adapters.read_from_file(str(output))
-        video_tracks = [
-            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
-        ]
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
         clips = [c for c in video_tracks[0] if isinstance(c, otio.schema.Clip)]
         clip = clips[0]
 
@@ -238,20 +250,22 @@ class TestBasicClipConversion:
         """Clip media_reference is ExternalReference with correct target_url."""
         from autopilot.plan.otio_export import export_otio
 
-        edl = _minimal_edl(clips=[{
-            "clip_id": "v1",
-            "in_timecode": "00:00:05.000",
-            "out_timecode": "00:00:15.000",
-            "track": 1,
-        }])
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:05.000",
+                    "out_timecode": "00:00:15.000",
+                    "track": 1,
+                }
+            ]
+        )
         output = tmp_path / "test.otio"
         db = _mock_db_for_clips()
         export_otio(edl, output, db)
 
         tl = otio.adapters.read_from_file(str(output))
-        video_tracks = [
-            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
-        ]
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
         clips = [c for c in video_tracks[0] if isinstance(c, otio.schema.Clip)]
         clip = clips[0]
 
@@ -269,56 +283,56 @@ class TestMultiTrackSupport:
         """EDL with clips on track 1 and 2 creates 2 video tracks."""
         from autopilot.plan.otio_export import export_otio
 
-        edl = _minimal_edl(clips=[
-            {
-                "clip_id": "v1",
-                "in_timecode": "00:00:00.000",
-                "out_timecode": "00:00:10.000",
-                "track": 1,
-            },
-            {
-                "clip_id": "v2",
-                "in_timecode": "00:00:00.000",
-                "out_timecode": "00:00:05.000",
-                "track": 2,
-            },
-        ])
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:05.000",
+                    "track": 2,
+                },
+            ]
+        )
         output = tmp_path / "test.otio"
         db = _mock_db_for_clips()
         export_otio(edl, output, db)
 
         tl = otio.adapters.read_from_file(str(output))
-        video_tracks = [
-            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
-        ]
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
         assert len(video_tracks) == 2
 
     def test_clips_on_correct_tracks(self, tmp_path):
         """Each track contains only its clips."""
         from autopilot.plan.otio_export import export_otio
 
-        edl = _minimal_edl(clips=[
-            {
-                "clip_id": "v1",
-                "in_timecode": "00:00:00.000",
-                "out_timecode": "00:00:10.000",
-                "track": 1,
-            },
-            {
-                "clip_id": "v2",
-                "in_timecode": "00:00:00.000",
-                "out_timecode": "00:00:05.000",
-                "track": 2,
-            },
-        ])
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:05.000",
+                    "track": 2,
+                },
+            ]
+        )
         output = tmp_path / "test.otio"
         db = _mock_db_for_clips()
         export_otio(edl, output, db)
 
         tl = otio.adapters.read_from_file(str(output))
-        video_tracks = [
-            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
-        ]
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
 
         # Track 1 (V1) has v1
         t1_clips = [c for c in video_tracks[0] if isinstance(c, otio.schema.Clip)]
@@ -334,28 +348,28 @@ class TestMultiTrackSupport:
         """Clips on the same track are ordered by in_timecode."""
         from autopilot.plan.otio_export import export_otio
 
-        edl = _minimal_edl(clips=[
-            {
-                "clip_id": "v2",
-                "in_timecode": "00:00:20.000",
-                "out_timecode": "00:00:30.000",
-                "track": 1,
-            },
-            {
-                "clip_id": "v1",
-                "in_timecode": "00:00:05.000",
-                "out_timecode": "00:00:15.000",
-                "track": 1,
-            },
-        ])
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:20.000",
+                    "out_timecode": "00:00:30.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:05.000",
+                    "out_timecode": "00:00:15.000",
+                    "track": 1,
+                },
+            ]
+        )
         output = tmp_path / "test.otio"
         db = _mock_db_for_clips()
         export_otio(edl, output, db)
 
         tl = otio.adapters.read_from_file(str(output))
-        video_tracks = [
-            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
-        ]
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
         t1_clips = [c for c in video_tracks[0] if isinstance(c, otio.schema.Clip)]
         assert len(t1_clips) == 2
         # v1 comes first (in_timecode 00:00:05) then v2 (00:00:20)
@@ -401,13 +415,8 @@ class TestTransitionMapping:
         export_otio(edl, output, db)
 
         tl = otio.adapters.read_from_file(str(output))
-        video_tracks = [
-            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
-        ]
-        transitions = [
-            item for item in video_tracks[0]
-            if isinstance(item, otio.schema.Transition)
-        ]
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+        transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
         assert len(transitions) == 1
         assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
 
@@ -449,9 +458,7 @@ class TestTransitionMapping:
         export_otio(edl, output, db)
 
         tl = otio.adapters.read_from_file(str(output))
-        video_tracks = [
-            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
-        ]
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
 
         # Verify transition is positioned between clips
         track_items = list(video_tracks[0])
@@ -459,9 +466,8 @@ class TestTransitionMapping:
 
         # Transition has in_offset + out_offset = total duration
         trans = track_items[1]
-        total_dur_sec = (
-            otio.opentime.to_seconds(trans.in_offset)
-            + otio.opentime.to_seconds(trans.out_offset)
+        total_dur_sec = otio.opentime.to_seconds(trans.in_offset) + otio.opentime.to_seconds(
+            trans.out_offset
         )
         assert abs(total_dur_sec - 1.0) < 0.01
 
@@ -497,13 +503,8 @@ class TestTransitionMapping:
         export_otio(edl, output, db)
 
         tl = otio.adapters.read_from_file(str(output))
-        video_tracks = [
-            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
-        ]
-        transitions = [
-            item for item in video_tracks[0]
-            if isinstance(item, otio.schema.Transition)
-        ]
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+        transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
         assert len(transitions) == 0
 
 
@@ -552,22 +553,18 @@ class TestMultiTrackTransitionIsolation:
         export_otio(edl, output, db)
 
         tl = otio.adapters.read_from_file(str(output))
-        video_tracks = [
-            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
-        ]
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
         assert len(video_tracks) == 2
 
         # Track 1 (V1) should have exactly 1 transition between its 2 clips
         t1_transitions = [
-            item for item in video_tracks[0]
-            if isinstance(item, otio.schema.Transition)
+            item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)
         ]
         assert len(t1_transitions) == 1
 
         # Track 2 (V2) should have 0 transitions
         t2_transitions = [
-            item for item in video_tracks[1]
-            if isinstance(item, otio.schema.Transition)
+            item for item in video_tracks[1] if isinstance(item, otio.schema.Transition)
         ]
         assert len(t2_transitions) == 0
 
@@ -622,9 +619,7 @@ class TestMetadataPreservation:
         export_otio(edl, output, db)
 
         tl = otio.adapters.read_from_file(str(output))
-        video_tracks = [
-            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
-        ]
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
         clips = [c for c in video_tracks[0] if isinstance(c, otio.schema.Clip)]
         clip = clips[0]
 
@@ -641,9 +636,7 @@ class TestMetadataPreservation:
         export_otio(edl, output, db)
 
         tl = otio.adapters.read_from_file(str(output))
-        video_tracks = [
-            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
-        ]
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
         clips = [c for c in video_tracks[0] if isinstance(c, otio.schema.Clip)]
         clip = clips[0]
 
@@ -729,12 +722,16 @@ class TestDetectOtioChanges:
         """Unmodified .otio file returns modified=False."""
         from autopilot.plan.otio_export import detect_otio_changes, export_otio
 
-        edl = _minimal_edl(clips=[{
-            "clip_id": "v1",
-            "in_timecode": "00:00:00.000",
-            "out_timecode": "00:00:10.000",
-            "track": 1,
-        }])
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                }
+            ]
+        )
         output = tmp_path / "test.otio"
         db = _mock_db_for_clips()
         export_otio(edl, output, db)
@@ -747,21 +744,23 @@ class TestDetectOtioChanges:
         """Modifying clip source_range in .otio is detected."""
         from autopilot.plan.otio_export import detect_otio_changes, export_otio
 
-        edl = _minimal_edl(clips=[{
-            "clip_id": "v1",
-            "in_timecode": "00:00:00.000",
-            "out_timecode": "00:00:10.000",
-            "track": 1,
-        }])
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                }
+            ]
+        )
         output = tmp_path / "test.otio"
         db = _mock_db_for_clips()
         export_otio(edl, output, db)
 
         # Manually alter the .otio file (change clip source_range)
         tl = otio.adapters.read_from_file(str(output))
-        video_tracks = [
-            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
-        ]
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
         clips = [c for c in video_tracks[0] if isinstance(c, otio.schema.Clip)]
         # Change the clip's source range duration
         clips[0].source_range = otio.opentime.TimeRange(
@@ -778,12 +777,16 @@ class TestDetectOtioChanges:
         """export_otio stores edl_hash in timeline metadata."""
         from autopilot.plan.otio_export import export_otio
 
-        edl = _minimal_edl(clips=[{
-            "clip_id": "v1",
-            "in_timecode": "00:00:00.000",
-            "out_timecode": "00:00:10.000",
-            "track": 1,
-        }])
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                }
+            ]
+        )
         output = tmp_path / "test.otio"
         db = _mock_db_for_clips()
         export_otio(edl, output, db)
@@ -813,12 +816,16 @@ class TestErrorHandling:
         """Clip not in catalog uses clip_id as fallback target_url."""
         from autopilot.plan.otio_export import export_otio
 
-        edl = _minimal_edl(clips=[{
-            "clip_id": "unknown_clip",
-            "in_timecode": "00:00:00.000",
-            "out_timecode": "00:00:05.000",
-            "track": 1,
-        }])
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "unknown_clip",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:05.000",
+                    "track": 1,
+                }
+            ]
+        )
         output = tmp_path / "test.otio"
         db = MagicMock()
         db.get_media.return_value = None  # not found
@@ -826,9 +833,7 @@ class TestErrorHandling:
         export_otio(edl, output, db)
 
         tl = otio.adapters.read_from_file(str(output))
-        video_tracks = [
-            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
-        ]
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
         clips = [c for c in video_tracks[0] if isinstance(c, otio.schema.Clip)]
         assert clips[0].media_reference.target_url == "unknown_clip"
 
@@ -843,12 +848,16 @@ class TestErrorHandling:
         """export_otio raises OtioExportError for unwritable directory."""
         from autopilot.plan.otio_export import OtioExportError, export_otio
 
-        edl = _minimal_edl(clips=[{
-            "clip_id": "v1",
-            "in_timecode": "00:00:00.000",
-            "out_timecode": "00:00:10.000",
-            "track": 1,
-        }])
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                }
+            ]
+        )
         # Use a path that should not be writable
         output = Path("/nonexistent_dir/test.otio")
         db = _mock_db_for_clips()
@@ -860,12 +869,16 @@ class TestErrorHandling:
         """db.get_media raising an exception is wrapped as OtioExportError."""
         from autopilot.plan.otio_export import OtioExportError, export_otio
 
-        edl = _minimal_edl(clips=[{
-            "clip_id": "v1",
-            "in_timecode": "00:00:00.000",
-            "out_timecode": "00:00:10.000",
-            "track": 1,
-        }])
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                }
+            ]
+        )
         output = tmp_path / "test.otio"
         db = MagicMock()
         db.get_media.side_effect = RuntimeError("DB locked")
@@ -884,12 +897,16 @@ class TestKeyErrorWrapping:
         """crop_modes entry missing 'clip_id' raises OtioExportError, not KeyError."""
         from autopilot.plan.otio_export import OtioExportError, export_otio
 
-        edl = _minimal_edl(clips=[{
-            "clip_id": "v1",
-            "in_timecode": "00:00:00.000",
-            "out_timecode": "00:00:10.000",
-            "track": 1,
-        }])
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                }
+            ]
+        )
         edl["crop_modes"] = [{"mode": "16:9"}]  # missing clip_id
         output = tmp_path / "test.otio"
         db = _mock_db_for_clips()
@@ -901,11 +918,15 @@ class TestKeyErrorWrapping:
         """clip dict missing 'clip_id' raises OtioExportError, not KeyError."""
         from autopilot.plan.otio_export import OtioExportError, export_otio
 
-        edl = _minimal_edl(clips=[{
-            "in_timecode": "00:00:00.000",
-            "out_timecode": "00:00:10.000",
-            "track": 1,
-        }])
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                }
+            ]
+        )
         output = tmp_path / "test.otio"
         db = _mock_db_for_clips()
 
@@ -916,11 +937,15 @@ class TestKeyErrorWrapping:
         """clip dict missing 'in_timecode' raises OtioExportError, not KeyError."""
         from autopilot.plan.otio_export import OtioExportError, export_otio
 
-        edl = _minimal_edl(clips=[{
-            "clip_id": "v1",
-            "out_timecode": "00:00:10.000",
-            "track": 1,
-        }])
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                }
+            ]
+        )
         output = tmp_path / "test.otio"
         db = _mock_db_for_clips()
 
@@ -1011,15 +1036,11 @@ class TestIntegration:
         assert tl.name == "autopilot_edit"
 
         # Check video tracks
-        video_tracks = [
-            t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video
-        ]
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
         assert len(video_tracks) == 1  # both clips on track 1
 
         # Check clips (2 clips)
-        all_clips = [
-            c for c in video_tracks[0] if isinstance(c, otio.schema.Clip)
-        ]
+        all_clips = [c for c in video_tracks[0] if isinstance(c, otio.schema.Clip)]
         assert len(all_clips) == 2
 
         # v2 should come first (sorted by in_timecode: 00:00:00 < 00:00:05)
@@ -1029,10 +1050,7 @@ class TestIntegration:
         assert all_clips[1].media_reference.target_url == "/media/interview.mp4"
 
         # Check transitions
-        transitions = [
-            item for item in video_tracks[0]
-            if isinstance(item, otio.schema.Transition)
-        ]
+        transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
         assert len(transitions) == 1
         assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
 

@@ -34,9 +34,7 @@ class TestNarrativePlannerCreatorPlaceholders:
     def test_all_creator_placeholders_present(self, prompts_dir: Path):
         content = (prompts_dir / "narrative_planner.md").read_text()
         for placeholder in self.PLACEHOLDERS:
-            assert placeholder in content, (
-                f"Missing creator profile placeholder: {placeholder}"
-            )
+            assert placeholder in content, f"Missing creator profile placeholder: {placeholder}"
 
 
 class TestNarrativePlannerInputSection:
@@ -83,12 +81,8 @@ class TestNarrativePlannerOutputFormat:
 
     def test_output_mentions_reasoning(self, prompts_dir: Path):
         content = self._read(prompts_dir)
-        assert "reasoning" in content, (
-            "Output format must reference 'reasoning' field"
-        )
+        assert "reasoning" in content, "Output format must reference 'reasoning' field"
 
     def test_output_mentions_json(self, prompts_dir: Path):
         content = self._read(prompts_dir)
-        assert "json" in content, (
-            "Output format must mention JSON for structured output"
-        )
+        assert "json" in content, "Output format must mention JSON for structured output"

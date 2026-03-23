@@ -27,9 +27,7 @@ class TestScriptWriterInputSection:
 
     def test_references_narrative(self, prompts_dir: Path):
         content = self._read(prompts_dir)
-        assert "narrative" in content, (
-            "Prompt must reference 'narrative' in input section"
-        )
+        assert "narrative" in content, "Prompt must reference 'narrative' in input section"
 
     def test_references_storyboard(self, prompts_dir: Path):
         content = self._read(prompts_dir)
@@ -52,9 +50,7 @@ class TestScriptWriterOutputFormat:
 
     def test_output_mentions_voiceover(self, prompts_dir: Path):
         content = self._read(prompts_dir)
-        assert "voiceover" in content, (
-            "Output format must reference 'voiceover'"
-        )
+        assert "voiceover" in content, "Output format must reference 'voiceover'"
 
     def test_output_mentions_titles(self, prompts_dir: Path):
         content = self._read(prompts_dir)
@@ -70,21 +66,16 @@ class TestScriptWriterOutputFormat:
 
     def test_output_mentions_broll(self, prompts_dir: Path):
         content = self._read(prompts_dir)
-        assert (
-            "broll" in content
-            or "b-roll" in content
-            or "b_roll" in content
-        ), "Output format must reference B-roll (broll/b-roll/b_roll)"
+        assert "broll" in content or "b-roll" in content or "b_roll" in content, (
+            "Output format must reference B-roll (broll/b-roll/b_roll)"
+        )
 
     def test_output_mentions_quality_flag(self, prompts_dir: Path):
         content = self._read(prompts_dir)
         assert "quality_flag" in content or "quality flag" in content, (
-            "Prompt must reference 'quality_flag'/'quality flag' for flagging "
-            "source footage issues"
+            "Prompt must reference 'quality_flag'/'quality flag' for flagging source footage issues"
         )
 
     def test_output_mentions_json(self, prompts_dir: Path):
         content = self._read(prompts_dir)
-        assert "json" in content, (
-            "Output format must mention JSON for structured output"
-        )
+        assert "json" in content, "Output format must mention JSON for structured output"

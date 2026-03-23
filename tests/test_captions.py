@@ -292,8 +292,13 @@ class TestCaptionClip:
             patch.object(Path, "exists", return_value=True),
         ):
             result = caption_clip(
-                "m1", Path("/test/video.mp4"), 0.0, 30.0,
-                db=catalog_db, scheduler=scheduler, config=config,
+                "m1",
+                Path("/test/video.mp4"),
+                0.0,
+                30.0,
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
             )
 
         assert isinstance(result, str)
@@ -320,8 +325,13 @@ class TestCaptionClip:
             patch.object(Path, "exists", return_value=True),
         ):
             caption_clip(
-                "m1", Path("/test/video.mp4"), 0.0, 30.0,
-                db=catalog_db, scheduler=scheduler, config=config,
+                "m1",
+                Path("/test/video.mp4"),
+                0.0,
+                30.0,
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
             )
 
         stored = catalog_db.get_caption("m1", 0.0, 30.0)
@@ -349,8 +359,13 @@ class TestCaptionClip:
             patch.object(Path, "exists", return_value=True),
         ):
             caption_clip(
-                "m1", Path("/test/video.mp4"), 0.0, 30.0,
-                db=catalog_db, scheduler=scheduler, config=config,
+                "m1",
+                Path("/test/video.mp4"),
+                0.0,
+                30.0,
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
             )
 
         scheduler.model.assert_called_once_with("Qwen/Qwen2.5-VL-7B-Instruct")
@@ -378,8 +393,13 @@ class TestCaptionClip:
             patch.object(Path, "exists", return_value=True),
         ):
             caption_clip(
-                "m1", Path("/test/video.mp4"), 5.0, 25.0,
-                db=catalog_db, scheduler=scheduler, config=config,
+                "m1",
+                Path("/test/video.mp4"),
+                5.0,
+                25.0,
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
             )
 
         mock_extract.assert_called_once()
@@ -409,8 +429,13 @@ class TestIdempotency:
         config = _make_mock_config()
 
         result = caption_clip(
-            "m1", Path("/test/video.mp4"), 0.0, 30.0,
-            db=catalog_db, scheduler=scheduler, config=config,
+            "m1",
+            Path("/test/video.mp4"),
+            0.0,
+            30.0,
+            db=catalog_db,
+            scheduler=scheduler,
+            config=config,
         )
 
         assert result == "Existing caption"
@@ -437,8 +462,13 @@ class TestIdempotency:
             patch.object(Path, "exists", return_value=True),
         ):
             caption_clip(
-                "m1", Path("/test/video.mp4"), 0.0, 30.0,
-                db=catalog_db, scheduler=scheduler, config=config,
+                "m1",
+                Path("/test/video.mp4"),
+                0.0,
+                30.0,
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
             )
 
         scheduler.model.assert_called_once()
@@ -464,8 +494,13 @@ class TestErrorHandling:
 
         with pytest.raises(CaptionError, match="not found"):
             caption_clip(
-                "m1", Path("/nonexistent/video.mp4"), 0.0, 30.0,
-                db=catalog_db, scheduler=scheduler, config=config,
+                "m1",
+                Path("/nonexistent/video.mp4"),
+                0.0,
+                30.0,
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
             )
 
     def test_no_frames_extracted_raises(self, catalog_db):
@@ -484,8 +519,13 @@ class TestErrorHandling:
         ):
             with pytest.raises(CaptionError, match="No frames"):
                 caption_clip(
-                    "m1", Path("/test/video.mp4"), 0.0, 30.0,
-                    db=catalog_db, scheduler=scheduler, config=config,
+                    "m1",
+                    Path("/test/video.mp4"),
+                    0.0,
+                    30.0,
+                    db=catalog_db,
+                    scheduler=scheduler,
+                    config=config,
                 )
 
     def test_invalid_time_range_raises(self, catalog_db):
@@ -500,8 +540,13 @@ class TestErrorHandling:
 
         with pytest.raises(CaptionError, match="Invalid time range"):
             caption_clip(
-                "m1", Path("/test/video.mp4"), 30.0, 10.0,
-                db=catalog_db, scheduler=scheduler, config=config,
+                "m1",
+                Path("/test/video.mp4"),
+                30.0,
+                10.0,
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
             )
 
     def test_start_time_negative_raises(self, catalog_db):
@@ -516,8 +561,13 @@ class TestErrorHandling:
 
         with pytest.raises(CaptionError):
             caption_clip(
-                "m1", Path("/test/video.mp4"), -5.0, 10.0,
-                db=catalog_db, scheduler=scheduler, config=config,
+                "m1",
+                Path("/test/video.mp4"),
+                -5.0,
+                10.0,
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
             )
 
 
@@ -536,8 +586,10 @@ class TestBatchCaption:
         # Insert 3 media files
         for i in range(3):
             catalog_db.insert_media(
-                id=f"m{i}", file_path=f"/test/video{i}.mp4",
-                fps=30.0, duration_seconds=60.0,
+                id=f"m{i}",
+                file_path=f"/test/video{i}.mp4",
+                fps=30.0,
+                duration_seconds=60.0,
             )
 
         model, processor = _make_mock_model_and_processor()
@@ -553,7 +605,9 @@ class TestBatchCaption:
             mock_extract.return_value = [PILImage.new("RGB", (100, 100))]
             batch_caption(
                 ["m0", "m1", "m2"],
-                db=catalog_db, scheduler=scheduler, config=config,
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
                 sample_rate=1.0,
             )
 
@@ -588,7 +642,9 @@ class TestBatchCaption:
             mock_extract.return_value = [PILImage.new("RGB", (100, 100))]
             batch_caption(
                 ["m0", "m1"],
-                db=catalog_db, scheduler=scheduler, config=config,
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
                 sample_rate=1.0,
             )
 
@@ -605,9 +661,7 @@ class TestBatchCaption:
         config = _make_mock_config()
 
         # Should not raise
-        batch_caption(
-            [], db=catalog_db, scheduler=scheduler, config=config, sample_rate=1.0
-        )
+        batch_caption([], db=catalog_db, scheduler=scheduler, config=config, sample_rate=1.0)
 
     def test_samples_subset(self, catalog_db):
         """With sample_rate=0.5, approximately half of clips are captioned."""
@@ -618,8 +672,10 @@ class TestBatchCaption:
         # Insert 10 media files
         for i in range(10):
             catalog_db.insert_media(
-                id=f"m{i}", file_path=f"/test/video{i}.mp4",
-                fps=30.0, duration_seconds=60.0,
+                id=f"m{i}",
+                file_path=f"/test/video{i}.mp4",
+                fps=30.0,
+                duration_seconds=60.0,
             )
 
         model, processor = _make_mock_model_and_processor()
@@ -637,14 +693,14 @@ class TestBatchCaption:
             mock_extract.return_value = [PILImage.new("RGB", (100, 100))]
             batch_caption(
                 [f"m{i}" for i in range(10)],
-                db=catalog_db, scheduler=scheduler, config=config,
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
                 sample_rate=0.5,
             )
 
         # Count captioned media
-        captioned_count = sum(
-            1 for i in range(10) if catalog_db.get_captions_for_media(f"m{i}")
-        )
+        captioned_count = sum(1 for i in range(10) if catalog_db.get_captions_for_media(f"m{i}"))
         # With sample_rate=0.5, expect roughly 5 (allow tolerance)
         assert 2 <= captioned_count <= 8
 
@@ -724,8 +780,13 @@ class TestLogging:
             patch.object(Path, "exists", return_value=True),
         ):
             caption_clip(
-                "m1", Path("/test/video.mp4"), 0.0, 30.0,
-                db=catalog_db, scheduler=scheduler, config=config,
+                "m1",
+                Path("/test/video.mp4"),
+                0.0,
+                30.0,
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
             )
 
         assert any("m1" in msg for msg in caplog.messages)
@@ -752,8 +813,13 @@ class TestLogging:
             patch.object(Path, "exists", return_value=True),
         ):
             caption_clip(
-                "m1", Path("/test/video.mp4"), 0.0, 30.0,
-                db=catalog_db, scheduler=scheduler, config=config,
+                "m1",
+                Path("/test/video.mp4"),
+                0.0,
+                30.0,
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
             )
 
         # Should log completion
@@ -776,8 +842,13 @@ class TestLogging:
 
         with caplog.at_level(logging.INFO, logger="autopilot.analyze.captions"):
             caption_clip(
-                "m1", Path("/test/video.mp4"), 0.0, 30.0,
-                db=catalog_db, scheduler=scheduler, config=config,
+                "m1",
+                Path("/test/video.mp4"),
+                0.0,
+                30.0,
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
             )
 
         assert any("already exists" in msg for msg in caplog.messages)
@@ -786,9 +857,7 @@ class TestLogging:
         """batch_caption logs progress count."""
         from autopilot.analyze.captions import batch_caption
 
-        catalog_db.insert_media(
-            id="m0", file_path="/test/v0.mp4", fps=30.0, duration_seconds=60.0
-        )
+        catalog_db.insert_media(id="m0", file_path="/test/v0.mp4", fps=30.0, duration_seconds=60.0)
 
         model, processor = _make_mock_model_and_processor()
         scheduler = _make_mock_scheduler(model_obj={"model": model, "processor": processor})
@@ -803,7 +872,10 @@ class TestLogging:
 
             mock_extract.return_value = [PILImage.new("RGB", (100, 100))]
             batch_caption(
-                ["m0"], db=catalog_db, scheduler=scheduler, config=config,
+                ["m0"],
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
                 sample_rate=1.0,
             )
 
@@ -855,8 +927,10 @@ class TestIntegration:
 
         # Insert media with all fields needed
         catalog_db.insert_media(
-            id="vid1", file_path="/test/vacation.mp4",
-            fps=24.0, duration_seconds=120.0,
+            id="vid1",
+            file_path="/test/vacation.mp4",
+            fps=24.0,
+            duration_seconds=120.0,
         )
 
         # Mock model to return a specific caption
@@ -875,8 +949,13 @@ class TestIntegration:
             patch.object(Path, "exists", return_value=True),
         ):
             result = caption_clip(
-                "vid1", Path("/test/vacation.mp4"), 10.0, 40.0,
-                db=catalog_db, scheduler=scheduler, config=config,
+                "vid1",
+                Path("/test/vacation.mp4"),
+                10.0,
+                40.0,
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
             )
 
         # Verify return value
@@ -894,8 +973,13 @@ class TestIntegration:
         # Verify idempotency on second call (should skip model)
         scheduler2 = _make_mock_scheduler()
         result2 = caption_clip(
-            "vid1", Path("/test/vacation.mp4"), 10.0, 40.0,
-            db=catalog_db, scheduler=scheduler2, config=config,
+            "vid1",
+            Path("/test/vacation.mp4"),
+            10.0,
+            40.0,
+            db=catalog_db,
+            scheduler=scheduler2,
+            config=config,
         )
         assert result2 == expected_caption
         scheduler2.model.assert_not_called()
@@ -951,8 +1035,13 @@ class TestTransformersInference:
             patch.object(Path, "exists", return_value=True),
         ):
             caption_clip(
-                "m1", Path("/test/video.mp4"), 0.0, 30.0,
-                db=catalog_db, scheduler=scheduler, config=config,
+                "m1",
+                Path("/test/video.mp4"),
+                0.0,
+                30.0,
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
             )
 
         # Verify batch_decode received only the generated tokens, not full sequence
@@ -1008,8 +1097,13 @@ class TestTransformersInference:
             patch.object(Path, "exists", return_value=True),
         ):
             result = caption_clip(
-                "m1", Path("/test/video.mp4"), 0.0, 30.0,
-                db=catalog_db, scheduler=scheduler, config=config,
+                "m1",
+                Path("/test/video.mp4"),
+                0.0,
+                30.0,
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
             )
 
         # Without slicing, result would be "SYSTEM PROMPT Describe the scene caption text"
@@ -1057,8 +1151,13 @@ class TestBackendDispatch:
             patch.object(Path, "exists", return_value=True),
         ):
             result = caption_clip(
-                "m1", Path("/test/video.mp4"), 0.0, 30.0,
-                db=catalog_db, scheduler=scheduler, config=config,
+                "m1",
+                Path("/test/video.mp4"),
+                0.0,
+                30.0,
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
             )
 
         # vLLM's LLM.generate should be called
@@ -1095,8 +1194,13 @@ class TestBackendDispatch:
             patch.object(Path, "exists", return_value=True),
         ):
             result = caption_clip(
-                "m1", Path("/test/video.mp4"), 0.0, 30.0,
-                db=catalog_db, scheduler=scheduler, config=config,
+                "m1",
+                Path("/test/video.mp4"),
+                0.0,
+                30.0,
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
             )
 
         # Transformers path: processor is called, then model.generate
@@ -1134,8 +1238,13 @@ class TestBackendDispatch:
         ):
             # Should NOT raise TypeError from calling None as a function
             result = caption_clip(
-                "m1", Path("/test/video.mp4"), 0.0, 30.0,
-                db=catalog_db, scheduler=scheduler, config=config,
+                "m1",
+                Path("/test/video.mp4"),
+                0.0,
+                30.0,
+                db=catalog_db,
+                scheduler=scheduler,
+                config=config,
             )
 
         assert isinstance(result, str)
@@ -1176,11 +1285,14 @@ class TestExceptionHandling:
         mock_transformers.AutoProcessor.from_pretrained.return_value = mock_processor
         mock_transformers.AutoModelForVision2Seq.from_pretrained.return_value = mock_model
 
-        with patch.dict(sys.modules, {
-            "vllm": None,  # Triggers ImportError on import
-            "torch": mock_torch,
-            "transformers": mock_transformers,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "vllm": None,  # Triggers ImportError on import
+                "torch": mock_torch,
+                "transformers": mock_transformers,
+            },
+        ):
             result = spec.load_fn()
 
         # Should fall back to transformers successfully
@@ -1233,11 +1345,14 @@ class TestExceptionHandling:
 
         with (
             caplog.at_level(logging.WARNING, logger="autopilot.analyze.captions"),
-            patch.dict(sys.modules, {
-                "vllm": None,
-                "torch": mock_torch,
-                "transformers": mock_transformers,
-            }),
+            patch.dict(
+                sys.modules,
+                {
+                    "vllm": None,
+                    "torch": mock_torch,
+                    "transformers": mock_transformers,
+                },
+            ),
         ):
             spec.load_fn()
 
@@ -1268,9 +1383,7 @@ class TestCommitRegression:
 
         # Insert media via context manager (committed)
         with db:
-            db.insert_media(
-                id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
-            )
+            db.insert_media(id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0)
 
         model, processor = _make_mock_model_and_processor()
         input_ids = np.zeros((1, 5), dtype=np.int64)
@@ -1291,8 +1404,13 @@ class TestCommitRegression:
             patch.object(Path, "exists", return_value=True),
         ):
             caption_clip(
-                "m1", Path("/test/video.mp4"), 0.0, 60.0,
-                db=db, scheduler=scheduler, config=config,
+                "m1",
+                Path("/test/video.mp4"),
+                0.0,
+                60.0,
+                db=db,
+                scheduler=scheduler,
+                config=config,
             )
 
         # Open a SECOND independent connection to verify commit to disk
@@ -1321,9 +1439,7 @@ class TestCommitRegression:
         db = CatalogDB(str(db_path))
 
         with db:
-            db.insert_media(
-                id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0
-            )
+            db.insert_media(id="m1", file_path="/test/video.mp4", fps=30.0, duration_seconds=60.0)
 
         # Model that raises during generation
         model = MagicMock()
@@ -1344,8 +1460,13 @@ class TestCommitRegression:
         ):
             with pytest.raises((RuntimeError, CaptionError)):
                 caption_clip(
-                    "m1", Path("/test/video.mp4"), 0.0, 60.0,
-                    db=db, scheduler=scheduler, config=config,
+                    "m1",
+                    Path("/test/video.mp4"),
+                    0.0,
+                    60.0,
+                    db=db,
+                    scheduler=scheduler,
+                    config=config,
                 )
 
         # Verify no partial caption exists
@@ -1365,12 +1486,8 @@ class TestCommitRegression:
         db = CatalogDB(str(db_path))
 
         with db:
-            db.insert_media(
-                id="m0", file_path="/test/v0.mp4", fps=30.0, duration_seconds=60.0
-            )
-            db.insert_media(
-                id="m1", file_path="/test/v1.mp4", fps=30.0, duration_seconds=60.0
-            )
+            db.insert_media(id="m0", file_path="/test/v0.mp4", fps=30.0, duration_seconds=60.0)
+            db.insert_media(id="m1", file_path="/test/v1.mp4", fps=30.0, duration_seconds=60.0)
 
         model, processor = _make_mock_model_and_processor()
         input_ids = np.zeros((1, 5), dtype=np.int64)
@@ -1393,7 +1510,9 @@ class TestCommitRegression:
             mock_extract.return_value = [PILImage.new("RGB", (100, 100))]
             batch_caption(
                 ["m0", "m1"],
-                db=db, scheduler=scheduler, config=config,
+                db=db,
+                scheduler=scheduler,
+                config=config,
                 sample_rate=1.0,
             )
 

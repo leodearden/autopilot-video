@@ -96,13 +96,9 @@ class TestScoringFunctions:
 
         frame_shape = (1080, 1920, 3)
         # Detection bbox centered at a thirds intersection point (~640, 360)
-        thirds_dets = [
-            {"bbox": [590, 310, 690, 410], "confidence": 0.9}
-        ]
+        thirds_dets = [{"bbox": [590, 310, 690, 410], "confidence": 0.9}]
         # Detection bbox centered at dead center (960, 540)
-        center_dets = [
-            {"bbox": [910, 490, 1010, 590], "confidence": 0.9}
-        ]
+        center_dets = [{"bbox": [910, 490, 1010, 590], "confidence": 0.9}]
 
         thirds_score = _rule_of_thirds_score(frame_shape, thirds_dets)
         center_score = _rule_of_thirds_score(frame_shape, center_dets)
@@ -131,15 +127,11 @@ class TestScoringFunctions:
         """Combined score uses weights summing to 1.0."""
         from autopilot.upload.thumbnail import _combined_score
 
-        score = _combined_score(
-            sharpness=1.0, thirds=1.0, confidence=1.0
-        )
+        score = _combined_score(sharpness=1.0, thirds=1.0, confidence=1.0)
         assert score == pytest.approx(1.0)
 
         # Weights: 0.3 sharpness, 0.3 thirds, 0.4 confidence
-        score2 = _combined_score(
-            sharpness=0.5, thirds=0.5, confidence=0.5
-        )
+        score2 = _combined_score(sharpness=0.5, thirds=0.5, confidence=0.5)
         assert score2 == pytest.approx(0.5)
 
 
@@ -340,13 +332,12 @@ class TestThumbnailUpload:
 
         mock_creds = MagicMock()
         mock_creds.expired = False
-        google_mods["google.oauth2.credentials"].Credentials \
-            .from_authorized_user_file.return_value = mock_creds
+        google_mods[
+            "google.oauth2.credentials"
+        ].Credentials.from_authorized_user_file.return_value = mock_creds
 
         mock_youtube = MagicMock()
-        google_mods["googleapiclient.discovery"].build.return_value = (
-            mock_youtube
-        )
+        google_mods["googleapiclient.discovery"].build.return_value = mock_youtube
 
         # Create a fake credentials file
         creds_file = tmp_path / "creds.json"
@@ -358,20 +349,14 @@ class TestThumbnailUpload:
                 "autopilot.upload.thumbnail._get_credentials_path",
                 return_value=creds_file,
             ):
-                result = extract_best_thumbnail(
-                    "n1", video_path, catalog_db
-                )
+                result = extract_best_thumbnail("n1", video_path, catalog_db)
 
         mock_youtube.thumbnails.return_value.set.assert_called_once()
-        call_kwargs = (
-            mock_youtube.thumbnails.return_value.set.call_args
-        )
+        call_kwargs = mock_youtube.thumbnails.return_value.set.call_args
         assert call_kwargs[1]["videoId"] == "abc123"
         assert result is not None
 
-    def test_thumbnail_upload_error_logged_not_raised(
-        self, catalog_db, tmp_path
-    ):
+    def test_thumbnail_upload_error_logged_not_raised(self, catalog_db, tmp_path):
         """API error is logged as warning, does not raise."""
         from autopilot.upload.thumbnail import extract_best_thumbnail
 
@@ -387,15 +372,15 @@ class TestThumbnailUpload:
 
         mock_creds = MagicMock()
         mock_creds.expired = False
-        google_mods["google.oauth2.credentials"].Credentials \
-            .from_authorized_user_file.return_value = mock_creds
+        google_mods[
+            "google.oauth2.credentials"
+        ].Credentials.from_authorized_user_file.return_value = mock_creds
 
         mock_youtube = MagicMock()
-        mock_youtube.thumbnails.return_value.set.return_value \
-            .execute.side_effect = Exception("Thumbnail API error")
-        google_mods["googleapiclient.discovery"].build.return_value = (
-            mock_youtube
+        mock_youtube.thumbnails.return_value.set.return_value.execute.side_effect = Exception(
+            "Thumbnail API error"
         )
+        google_mods["googleapiclient.discovery"].build.return_value = mock_youtube
 
         creds_file = tmp_path / "creds.json"
         creds_file.write_text("{}")
@@ -407,15 +392,11 @@ class TestThumbnailUpload:
                 return_value=creds_file,
             ):
                 # Should not raise - thumbnail upload errors are non-fatal
-                result = extract_best_thumbnail(
-                    "n1", video_path, catalog_db
-                )
+                result = extract_best_thumbnail("n1", video_path, catalog_db)
 
         assert result is not None
 
-    def test_no_youtube_upload_skips_thumbnail_upload(
-        self, catalog_db, tmp_path
-    ):
+    def test_no_youtube_upload_skips_thumbnail_upload(self, catalog_db, tmp_path):
         """No upload record in DB -> still returns thumbnail path."""
         from autopilot.upload.thumbnail import extract_best_thumbnail
 

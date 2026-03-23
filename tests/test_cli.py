@@ -51,9 +51,7 @@ class TestSubcommands:
         runner = CliRunner()
         for cmd_name in EXPECTED_SUBCOMMANDS:
             result = runner.invoke(main, [cmd_name, "--help"])
-            assert result.exit_code == 0, (
-                f"{cmd_name} --help failed: {result.output}"
-            )
+            assert result.exit_code == 0, f"{cmd_name} --help failed: {result.output}"
 
     def test_subcommands_have_common_options(self) -> None:
         """Each subcommand has --input-dir, --output-dir, --verbose, --dry-run."""
@@ -61,17 +59,13 @@ class TestSubcommands:
             cmd = main.commands[cmd_name]
             param_names = [p.name for p in cmd.params]
             for opt in COMMON_OPTIONS:
-                assert opt in param_names, (
-                    f"{cmd_name} missing option: {opt}"
-                )
+                assert opt in param_names, f"{cmd_name} missing option: {opt}"
 
 
 def _write_minimal_config(tmp_path: Path) -> Path:
     """Write a minimal config YAML and return its path."""
     config_file = tmp_path / "config.yaml"
-    config_file.write_text(
-        f"input_dir: {tmp_path / 'input'}\noutput_dir: {tmp_path / 'output'}\n"
-    )
+    config_file.write_text(f"input_dir: {tmp_path / 'input'}\noutput_dir: {tmp_path / 'output'}\n")
     (tmp_path / "input").mkdir(exist_ok=True)
     (tmp_path / "output").mkdir(exist_ok=True)
     return config_file
@@ -141,9 +135,11 @@ class TestCLIConfigIntegration:
                 result = runner.invoke(
                     main,
                     [
-                        "--config", str(config_file),
+                        "--config",
+                        str(config_file),
                         "ingest",
-                        "--input-dir", str(override_dir),
+                        "--input-dir",
+                        str(override_dir),
                     ],
                 )
                 assert result.exit_code == 0
@@ -229,9 +225,7 @@ class TestRunSubcommand:
 class TestStageSubcommands:
     """Tests for individual stage subcommands delegation."""
 
-    def _invoke_with_mock_orch(
-        self, tmp_path: Path, subcommand: str
-    ) -> MagicMock:
+    def _invoke_with_mock_orch(self, tmp_path: Path, subcommand: str) -> MagicMock:
         """Invoke a subcommand with mocked orchestrator, return the mock."""
         config_file = _write_minimal_config(tmp_path)
         runner = CliRunner()
@@ -245,9 +239,7 @@ class TestStageSubcommands:
                     main,
                     ["--config", str(config_file), subcommand],
                 )
-                assert result.exit_code == 0, (
-                    f"{subcommand} failed: {result.output}"
-                )
+                assert result.exit_code == 0, f"{subcommand} failed: {result.output}"
                 return mock_orch
 
     def test_ingest_delegates_to_stage(self, tmp_path: Path) -> None:
@@ -322,9 +314,7 @@ class TestCLIErrors:
                 mock_orch = MagicMock()
                 mock_orch_cls.return_value = mock_orch
                 # Make stage func raise
-                mock_orch._stage_map.__getitem__().func.side_effect = RuntimeError(
-                    "stage exploded"
-                )
+                mock_orch._stage_map.__getitem__().func.side_effect = RuntimeError("stage exploded")
                 result = runner.invoke(
                     main,
                     ["--config", str(config_file), "ingest"],
@@ -364,9 +354,7 @@ def _write_config_with_missing_output_dir(tmp_path: Path, output_dir: Path) -> P
     config_file = tmp_path / "config.yaml"
     input_dir = tmp_path / "input"
     input_dir.mkdir(exist_ok=True)
-    config_file.write_text(
-        f"input_dir: {input_dir}\noutput_dir: {output_dir}\n"
-    )
+    config_file.write_text(f"input_dir: {input_dir}\noutput_dir: {output_dir}\n")
     return config_file
 
 
@@ -384,9 +372,7 @@ class TestOutputDirCreation:
                 main,
                 ["--config", str(config_file), "ingest"],
             )
-        assert result.exit_code == 0, (
-            f"Expected exit 0 but got {result.exit_code}: {result.output}"
-        )
+        assert result.exit_code == 0, f"Expected exit 0 but got {result.exit_code}: {result.output}"
         assert output_dir.is_dir(), "output_dir should have been created"
 
     def test_setup_context_creates_catalog_db_in_new_dir(self, tmp_path: Path) -> None:
@@ -400,9 +386,7 @@ class TestOutputDirCreation:
                 main,
                 ["--config", str(config_file), "ingest"],
             )
-        assert result.exit_code == 0, (
-            f"Expected exit 0 but got {result.exit_code}: {result.output}"
-        )
+        assert result.exit_code == 0, f"Expected exit 0 but got {result.exit_code}: {result.output}"
         assert (output_dir / "catalog.db").exists(), (
             "catalog.db should exist in the new output directory"
         )
@@ -422,9 +406,7 @@ class TestOutputDirCreation:
                 main,
                 ["--config", str(config_file), "ingest"],
             )
-        assert result.exit_code == 0, (
-            f"Expected exit 0 but got {result.exit_code}: {result.output}"
-        )
+        assert result.exit_code == 0, f"Expected exit 0 but got {result.exit_code}: {result.output}"
         assert marker.exists(), "Existing marker file should not be removed"
         assert marker.read_text() == "keep me"
 
@@ -464,9 +446,7 @@ class TestCLIRealStageWiring:
             # Verify the INGEST stage func was called
             mock_orch._stage_map.__getitem__.assert_called_with("INGEST")
 
-    def test_cli_individual_subcommands_call_correct_stages(
-        self, tmp_path: Path
-    ) -> None:
+    def test_cli_individual_subcommands_call_correct_stages(self, tmp_path: Path) -> None:
         """Each subcommand exercises the right stage functions."""
         config_file = _write_minimal_config(tmp_path)
         runner = CliRunner()
@@ -488,9 +468,7 @@ class TestCLIRealStageWiring:
                     main,
                     ["--config", str(config_file), cmd_name],
                 )
-                assert result.exit_code == 0, (
-                    f"{cmd_name} failed: {result.output}"
-                )
+                assert result.exit_code == 0, f"{cmd_name} failed: {result.output}"
                 # Verify correct stages were accessed
                 calls = mock_orch._stage_map.__getitem__.call_args_list
                 accessed = [c[0][0] for c in calls]
@@ -507,9 +485,7 @@ class TestForceFlag:
         for cmd_name in EXPECTED_SUBCOMMANDS:
             cmd = main.commands[cmd_name]
             param_names = [p.name for p in cmd.params]
-            assert "force" in param_names, (
-                f"{cmd_name} missing --force option"
-            )
+            assert "force" in param_names, f"{cmd_name} missing --force option"
 
     def test_run_command_has_force_option(self) -> None:
         """'run' subcommand accepts --force flag."""
@@ -567,9 +543,7 @@ class TestForceFlag:
                         main,
                         ["--config", str(config_file), cmd_name, "--force"],
                     )
-                    assert result.exit_code == 0, (
-                        f"{cmd_name} --force failed: {result.output}"
-                    )
+                    assert result.exit_code == 0, f"{cmd_name} --force failed: {result.output}"
                     # Every call to stage_func should have force=True
                     for call in stage_func.call_args_list:
                         assert call[1].get("force") is True, (

@@ -15,6 +15,21 @@ logger = logging.getLogger(__name__)
 
 _PRUNE_INTERVAL = 60  # prune every ~60 poll cycles (~1 minute)
 
+VALID_EVENT_TYPES: tuple[str, ...] = (
+    "stage_started",
+    "stage_completed",
+    "stage_error",
+    "job_started",
+    "job_completed",
+    "job_error",
+    "job_progress",
+    "gate_waiting",
+    "gate_approved",
+    "gate_skipped",
+    "run_completed",
+    "run_failed",
+)
+
 router = APIRouter()
 
 
@@ -67,7 +82,7 @@ async def _event_generator(request: Request):
             events = db.get_events_since(last_event_id)
             for ev in events:
                 yield _format_event(ev)
-                last_event_id = ev["event_id"]
+                last_event_id = int(ev["event_id"])  # type: ignore[call-overload]
 
             poll_count += 1
             if poll_count % _PRUNE_INTERVAL == 0:

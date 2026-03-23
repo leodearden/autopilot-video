@@ -14,6 +14,7 @@ import pytest
 # Mock helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_mock_cv2():
     """Create a MagicMock cv2 module with correct CAP_PROP constants."""
     mock_cv2 = MagicMock()
@@ -167,11 +168,13 @@ class TestDBHelpers:
         blob2 = _make_embedding_blob()
         blob3 = _make_embedding_blob()
 
-        catalog_db.batch_insert_embeddings([
-            ("m1", 0, blob1),
-            ("m1", 60, blob2),
-            ("m2", 0, blob3),
-        ])
+        catalog_db.batch_insert_embeddings(
+            [
+                ("m1", 0, blob1),
+                ("m1", 60, blob2),
+                ("m2", 0, blob3),
+            ]
+        )
 
         result = catalog_db.get_all_clip_embeddings()
         assert len(result) == 3
@@ -378,7 +381,11 @@ class TestIdempotency:
         with patch.dict(sys.modules, mocks):
             with patch.object(Path, "exists", return_value=True):
                 compute_embeddings(
-                    "m2", Path("/fake/video.mp4"), catalog_db, scheduler, config=ModelConfig(),
+                    "m2",
+                    Path("/fake/video.mp4"),
+                    catalog_db,
+                    scheduler,
+                    config=ModelConfig(),
                 )
 
         scheduler.model.assert_called_once()
@@ -397,7 +404,11 @@ class TestErrorHandling:
 
         with pytest.raises(EmbeddingError, match="not found"):
             compute_embeddings(
-                "m1", Path("/nonexistent/video.mp4"), catalog_db, scheduler, config,
+                "m1",
+                Path("/nonexistent/video.mp4"),
+                catalog_db,
+                scheduler,
+                config,
             )
 
     def test_video_not_opened_raises(self, catalog_db) -> None:
@@ -418,7 +429,11 @@ class TestErrorHandling:
             with patch.object(Path, "exists", return_value=True):
                 with pytest.raises(EmbeddingError, match="Failed to open"):
                     compute_embeddings(
-                        "m1", Path("/fake/video.mp4"), catalog_db, scheduler, config,
+                        "m1",
+                        Path("/fake/video.mp4"),
+                        catalog_db,
+                        scheduler,
+                        config,
                     )
 
     def test_frame_read_failure_skipped(self, catalog_db) -> None:
@@ -453,8 +468,12 @@ class TestErrorHandling:
         with patch.dict(sys.modules, mocks):
             with patch.object(Path, "exists", return_value=True):
                 compute_embeddings(
-                    "m1", Path("/fake/video.mp4"), catalog_db, scheduler,
-                    config=ModelConfig(), sample_fps=0.5,
+                    "m1",
+                    Path("/fake/video.mp4"),
+                    catalog_db,
+                    scheduler,
+                    config=ModelConfig(),
+                    sample_fps=0.5,
                 )
 
         # Frame 0 should have an embedding in the DB
@@ -490,8 +509,12 @@ class TestEmbeddingComputation:
         with patch.dict(sys.modules, mocks):
             with patch.object(Path, "exists", return_value=True):
                 compute_embeddings(
-                    "m1", Path("/fake/video.mp4"), catalog_db, scheduler,
-                    config=ModelConfig(), sample_fps=sample_fps,
+                    "m1",
+                    Path("/fake/video.mp4"),
+                    catalog_db,
+                    scheduler,
+                    config=ModelConfig(),
+                    sample_fps=sample_fps,
                 )
 
         return mock_model, mock_processor
@@ -530,7 +553,10 @@ class TestEmbeddingComputation:
     def test_model_get_image_features_called(self, catalog_db) -> None:
         """model.get_image_features is called during compute."""
         mock_model, _ = self._run_compute(
-            catalog_db, total_frames=120, fps=30.0, sample_fps=0.5,
+            catalog_db,
+            total_frames=120,
+            fps=30.0,
+            sample_fps=0.5,
         )
         assert mock_model.get_image_features.call_count > 0
 
@@ -559,8 +585,12 @@ class TestEmbeddingComputation:
         with patch.dict(sys.modules, mocks):
             with patch.object(Path, "exists", return_value=True):
                 compute_embeddings(
-                    "m1", Path("/fake/video.mp4"), catalog_db, scheduler,
-                    config=config, sample_fps=0.5,
+                    "m1",
+                    Path("/fake/video.mp4"),
+                    catalog_db,
+                    scheduler,
+                    config=config,
+                    sample_fps=0.5,
                 )
 
         scheduler.model.assert_called_once_with(config.clip_model)
@@ -596,8 +626,12 @@ class TestLogging:
             with patch.dict(sys.modules, mocks):
                 with patch.object(Path, "exists", return_value=True):
                     compute_embeddings(
-                        "m1", Path("/fake/video.mp4"), catalog_db, scheduler,
-                        config=ModelConfig(), sample_fps=0.5,
+                        "m1",
+                        Path("/fake/video.mp4"),
+                        catalog_db,
+                        scheduler,
+                        config=ModelConfig(),
+                        sample_fps=0.5,
                     )
 
         assert any("m1" in r.message for r in caplog.records)
@@ -629,8 +663,12 @@ class TestLogging:
             with patch.dict(sys.modules, mocks):
                 with patch.object(Path, "exists", return_value=True):
                     compute_embeddings(
-                        "m1", Path("/fake/video.mp4"), catalog_db, scheduler,
-                        config=ModelConfig(), sample_fps=0.5,
+                        "m1",
+                        Path("/fake/video.mp4"),
+                        catalog_db,
+                        scheduler,
+                        config=ModelConfig(),
+                        sample_fps=0.5,
                     )
 
         assert any("Completed" in r.message or "embedded" in r.message for r in caplog.records)
@@ -792,7 +830,10 @@ class TestSearchByText:
 
         with patch.dict(sys.modules, {"faiss": mock_faiss, "torch": mock_torch}):
             results = search_by_text(
-                "a cat", index_path, (mock_model, mock_processor), top_k=3,
+                "a cat",
+                index_path,
+                (mock_model, mock_processor),
+                top_k=3,
             )
 
         assert isinstance(results, list)
@@ -824,7 +865,10 @@ class TestSearchByText:
 
         with patch.dict(sys.modules, {"faiss": mock_faiss, "torch": mock_torch}):
             search_by_text(
-                "a dog", index_path, (mock_model, mock_processor), top_k=5,
+                "a dog",
+                index_path,
+                (mock_model, mock_processor),
+                top_k=5,
             )
 
         # search was called with min(5, 10) = 5
@@ -854,7 +898,10 @@ class TestSearchByText:
 
         with patch.dict(sys.modules, {"faiss": mock_faiss, "torch": mock_torch}):
             search_by_text(
-                "a sunset", index_path, (mock_model, mock_processor), top_k=1,
+                "a sunset",
+                index_path,
+                (mock_model, mock_processor),
+                top_k=1,
             )
 
         mock_model.get_text_features.assert_called_once()
@@ -881,7 +928,10 @@ class TestSearchByText:
 
         with patch.dict(sys.modules, {"faiss": mock_faiss, "torch": mock_torch}):
             results = search_by_text(
-                "test", index_path, (mock_model, mock_processor), top_k=3,
+                "test",
+                index_path,
+                (mock_model, mock_processor),
+                top_k=3,
             )
 
         assert len(results) == 1
@@ -925,15 +975,21 @@ class TestSearchByImage:
         mock_pil.Image = mock_pil_image
         mock_pil_image.fromarray = MagicMock(return_value=MagicMock())
 
-        with patch.dict(sys.modules, {
-            "faiss": mock_faiss,
-            "torch": mock_torch,
-            "PIL": mock_pil,
-            "PIL.Image": mock_pil_image,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "faiss": mock_faiss,
+                "torch": mock_torch,
+                "PIL": mock_pil,
+                "PIL.Image": mock_pil_image,
+            },
+        ):
             image = np.zeros((224, 224, 3), dtype=np.uint8)
             results = search_by_image(
-                image, index_path, (mock_model, mock_processor), top_k=2,
+                image,
+                index_path,
+                (mock_model, mock_processor),
+                top_k=2,
             )
 
         assert isinstance(results, list)
@@ -967,15 +1023,21 @@ class TestSearchByImage:
         mock_pil.Image = mock_pil_image
         mock_pil_image.fromarray = MagicMock(return_value=MagicMock())
 
-        with patch.dict(sys.modules, {
-            "faiss": mock_faiss,
-            "torch": mock_torch,
-            "PIL": mock_pil,
-            "PIL.Image": mock_pil_image,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "faiss": mock_faiss,
+                "torch": mock_torch,
+                "PIL": mock_pil,
+                "PIL.Image": mock_pil_image,
+            },
+        ):
             image = np.zeros((224, 224, 3), dtype=np.uint8)
             search_by_image(
-                image, index_path, (mock_model, mock_processor), top_k=3,
+                image,
+                index_path,
+                (mock_model, mock_processor),
+                top_k=3,
             )
 
         call_args = mock_index.search.call_args
@@ -1005,15 +1067,21 @@ class TestSearchByImage:
         mock_pil.Image = mock_pil_image
         mock_pil_image.fromarray = MagicMock(return_value=MagicMock())
 
-        with patch.dict(sys.modules, {
-            "faiss": mock_faiss,
-            "torch": mock_torch,
-            "PIL": mock_pil,
-            "PIL.Image": mock_pil_image,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "faiss": mock_faiss,
+                "torch": mock_torch,
+                "PIL": mock_pil,
+                "PIL.Image": mock_pil_image,
+            },
+        ):
             image = np.zeros((224, 224, 3), dtype=np.uint8)
             search_by_image(
-                image, index_path, (mock_model, mock_processor), top_k=1,
+                image,
+                index_path,
+                (mock_model, mock_processor),
+                top_k=1,
             )
 
         mock_model.get_image_features.assert_called_once()
@@ -1052,8 +1120,12 @@ class TestIntegration:
         with patch.dict(sys.modules, mocks):
             with patch.object(Path, "exists", return_value=True):
                 compute_embeddings(
-                    "m1", Path("/fake/video.mp4"), catalog_db, scheduler,
-                    config=ModelConfig(), sample_fps=0.5,
+                    "m1",
+                    Path("/fake/video.mp4"),
+                    catalog_db,
+                    scheduler,
+                    config=ModelConfig(),
+                    sample_fps=0.5,
                 )
 
         rows = catalog_db.get_embeddings_for_media("m1")
@@ -1099,7 +1171,10 @@ class TestIntegration:
 
         with patch.dict(sys.modules, {"faiss": mock_faiss, "torch": mock_torch}):
             results = search_by_text(
-                "a landscape", index_path, (mock_model, mock_processor), top_k=3,
+                "a landscape",
+                index_path,
+                (mock_model, mock_processor),
+                top_k=3,
             )
 
         assert len(results) == 3

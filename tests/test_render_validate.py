@@ -550,9 +550,7 @@ class TestBlackFrameCheck:
         """Non-numeric values like 'N/A' in blackdetect output should not crash."""
         from autopilot.render.validate import Issue, _check_black_frames
 
-        stderr = (
-            "[blackdetect @ 0x5555] black_start:N/A black_end:2.5 black_duration:N/A\n"
-        )
+        stderr = "[blackdetect @ 0x5555] black_start:N/A black_end:2.5 black_duration:N/A\n"
         mock = MagicMock()
         mock.stderr = stderr
         mock.returncode = 0
@@ -589,9 +587,7 @@ class TestBlackFrameCheck:
         assert len(issues) == 2
         # The valid detection should have measured_value with numeric values
         valid_issues = [
-            i for i in issues
-            if i.measured_value is not None
-            and isinstance(i.measured_value, dict)
+            i for i in issues if i.measured_value is not None and isinstance(i.measured_value, dict)
         ]
         assert len(valid_issues) == 1
         assert valid_issues[0].measured_value["start"] == pytest.approx(10.0)
@@ -725,9 +721,7 @@ class TestSilenceCheck:
         assert len(issues) == 2
         # The valid detection should have measured_value with numeric values
         valid_issues = [
-            i for i in issues
-            if i.measured_value is not None
-            and isinstance(i.measured_value, dict)
+            i for i in issues if i.measured_value is not None and isinstance(i.measured_value, dict)
         ]
         assert len(valid_issues) == 1
         assert valid_issues[0].measured_value["start"] == pytest.approx(20.0)

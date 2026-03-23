@@ -14,8 +14,15 @@ import pytest
 from autopilot.orchestrator import PipelineOrchestrator, StageDefinition, StageStatus
 
 EXPECTED_STAGES = [
-    "INGEST", "ANALYZE", "CLASSIFY", "NARRATE", "SCRIPT",
-    "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD",
+    "INGEST",
+    "ANALYZE",
+    "CLASSIFY",
+    "NARRATE",
+    "SCRIPT",
+    "EDL",
+    "SOURCE_ASSETS",
+    "RENDER",
+    "UPLOAD",
 ]
 
 EXPECTED_DEPS = {
@@ -83,9 +90,7 @@ class TestPipelineOrchestrator:
         """Each stage has the correct dependency list."""
         orch = PipelineOrchestrator()
         for stage in orch.stages:
-            assert stage.dependencies == EXPECTED_DEPS[stage.name], (
-                f"{stage.name} deps mismatch"
-            )
+            assert stage.dependencies == EXPECTED_DEPS[stage.name], f"{stage.name} deps mismatch"
 
     def test_stages_have_callable_functions(self) -> None:
         """Every stage has a callable func attribute."""
@@ -97,9 +102,7 @@ class TestPipelineOrchestrator:
         """Every stage has estimated_seconds >= 0."""
         orch = PipelineOrchestrator()
         for stage in orch.stages:
-            assert stage.estimated_seconds >= 0, (
-                f"{stage.name} has negative estimated_seconds"
-            )
+            assert stage.estimated_seconds >= 0, f"{stage.name} has negative estimated_seconds"
 
 
 class TestTopologicalSort:
@@ -147,9 +150,7 @@ class TestStageFunctions:
         for stage in orch.stages:
             # For functools.partial, check the wrapped function
             func = getattr(stage.func, "func", stage.func)
-            assert func is not _stage_stub, (
-                f"{stage.name} still uses _stage_stub"
-            )
+            assert func is not _stage_stub, f"{stage.name} still uses _stage_stub"
 
     def test_stage_functions_accept_config_and_db_kwargs(self) -> None:
         """Each stage function's signature accepts config and db kwargs."""
@@ -160,12 +161,8 @@ class TestStageFunctions:
             func = getattr(stage.func, "func", stage.func)
             sig = inspect.signature(func)
             param_names = set(sig.parameters.keys())
-            assert "config" in param_names, (
-                f"{stage.name} func missing 'config' parameter"
-            )
-            assert "db" in param_names, (
-                f"{stage.name} func missing 'db' parameter"
-            )
+            assert "config" in param_names, f"{stage.name} func missing 'config' parameter"
+            assert "db" in param_names, f"{stage.name} func missing 'db' parameter"
 
 
 class TestRun:
@@ -238,12 +235,8 @@ class TestProgressReporting:
 
         log_text = caplog.text
         for stage in orch.stages:
-            assert f"[RUNNING] {stage.name}" in log_text, (
-                f"Missing RUNNING log for {stage.name}"
-            )
-            assert f"[DONE] {stage.name}" in log_text, (
-                f"Missing DONE log for {stage.name}"
-            )
+            assert f"[RUNNING] {stage.name}" in log_text, f"Missing RUNNING log for {stage.name}"
+            assert f"[DONE] {stage.name}" in log_text, f"Missing DONE log for {stage.name}"
 
     def test_run_prints_elapsed_time(self, caplog: pytest.LogCaptureFixture) -> None:
         """run() logs elapsed time for each completed stage."""
@@ -281,9 +274,7 @@ class TestErrorHandling:
         for stage in orch.stages:
             stage.func = MagicMock()
         # Make ANALYZE raise
-        orch._stage_map["ANALYZE"].func = MagicMock(
-            side_effect=RuntimeError("analyze failed")
-        )
+        orch._stage_map["ANALYZE"].func = MagicMock(side_effect=RuntimeError("analyze failed"))
 
         results = orch.run(config=MagicMock(), db=MagicMock())
 
@@ -294,9 +285,7 @@ class TestErrorHandling:
         orch = PipelineOrchestrator()
         for stage in orch.stages:
             stage.func = MagicMock()
-        orch._stage_map["ANALYZE"].func = MagicMock(
-            side_effect=RuntimeError("analyze failed")
-        )
+        orch._stage_map["ANALYZE"].func = MagicMock(side_effect=RuntimeError("analyze failed"))
 
         results = orch.run(config=MagicMock(), db=MagicMock())
 
@@ -304,18 +293,14 @@ class TestErrorHandling:
         assert results["ANALYZE"].status == StageStatus.ERROR
         # All stages that depend (transitively) on ANALYZE should be SKIPPED
         for name in ["CLASSIFY", "NARRATE", "SCRIPT", "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD"]:
-            assert results[name].status == StageStatus.SKIPPED, (
-                f"{name} should be SKIPPED"
-            )
+            assert results[name].status == StageStatus.SKIPPED, f"{name} should be SKIPPED"
 
     def test_run_reports_error_message(self) -> None:
         """Error message is captured in the stage result."""
         orch = PipelineOrchestrator()
         for stage in orch.stages:
             stage.func = MagicMock()
-        orch._stage_map["INGEST"].func = MagicMock(
-            side_effect=RuntimeError("ingest boom")
-        )
+        orch._stage_map["INGEST"].func = MagicMock(side_effect=RuntimeError("ingest boom"))
 
         results = orch.run(config=MagicMock(), db=MagicMock())
 
@@ -339,9 +324,7 @@ class TestDryRun:
         for name, mock_fn in mocks.items():
             mock_fn.assert_not_called()
 
-    def test_dry_run_prints_execution_plan(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_dry_run_prints_execution_plan(self, caplog: pytest.LogCaptureFixture) -> None:
         """dry_run=True logs DRY-RUN prefix for each stage."""
         orch = PipelineOrchestrator()
         for stage in orch.stages:
@@ -352,13 +335,9 @@ class TestDryRun:
 
         log_text = caplog.text
         for stage in orch.stages:
-            assert f"[DRY-RUN] {stage.name}" in log_text, (
-                f"Missing DRY-RUN log for {stage.name}"
-            )
+            assert f"[DRY-RUN] {stage.name}" in log_text, f"Missing DRY-RUN log for {stage.name}"
 
-    def test_dry_run_shows_estimated_time(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_dry_run_shows_estimated_time(self, caplog: pytest.LogCaptureFixture) -> None:
         """dry_run=True includes estimated_seconds in output."""
         orch = PipelineOrchestrator()
         for stage in orch.stages:
@@ -389,16 +368,16 @@ class TestBudgetTracking:
         # budget_seconds should remain accessible after run
         assert orch.budget_seconds == 3600
 
-    def test_run_warns_when_over_budget(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_run_warns_when_over_budget(self, caplog: pytest.LogCaptureFixture) -> None:
         """A warning is logged when cumulative time exceeds budget_seconds."""
         import time as _time
 
         orch = PipelineOrchestrator(budget_seconds=0.001)
         for stage in orch.stages:
+
             def slow_stage(_t=_time, **kw: object) -> None:
                 _t.sleep(0.002)
+
             stage.func = slow_stage
 
         with caplog.at_level(logging.WARNING, logger="autopilot.orchestrator"):
@@ -498,8 +477,15 @@ class TestAnalyzeStage:
     @patch("autopilot.orchestrator.scenes")
     @patch("autopilot.orchestrator.asr")
     def test_analyze_creates_gpu_scheduler(
-        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
-        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
     ):
         """_run_analyze creates a GPUScheduler with config.processing settings."""
         from autopilot.orchestrator import _run_analyze
@@ -519,8 +505,15 @@ class TestAnalyzeStage:
     @patch("autopilot.orchestrator.scenes")
     @patch("autopilot.orchestrator.asr")
     def test_analyze_runs_all_analysis_per_media(
-        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
-        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
     ):
         """_run_analyze calls all 6 analysis functions for each media in DB."""
         from autopilot.orchestrator import _run_analyze
@@ -554,8 +547,15 @@ class TestAnalyzeStage:
     @patch("autopilot.orchestrator.scenes")
     @patch("autopilot.orchestrator.asr")
     def test_analyze_calls_cluster_faces_after_analysis(
-        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
-        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
     ):
         """_run_analyze calls cluster_faces once after all per-media analysis."""
         from autopilot.orchestrator import _run_analyze
@@ -578,8 +578,15 @@ class TestAnalyzeStage:
     @patch("autopilot.orchestrator.scenes")
     @patch("autopilot.orchestrator.asr")
     def test_analyze_skips_duplicate_media(
-        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
-        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
     ):
         """_run_analyze skips media with status='duplicate'."""
         from autopilot.orchestrator import _run_analyze
@@ -611,8 +618,15 @@ class TestAnalyzeStage:
     @patch("autopilot.orchestrator.scenes")
     @patch("autopilot.orchestrator.asr")
     def test_analyze_calls_force_unload_all_on_success(
-        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
-        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
     ):
         """_run_analyze calls scheduler.force_unload_all() after analysis completes."""
         from autopilot.orchestrator import _run_analyze
@@ -636,8 +650,15 @@ class TestAnalyzeStage:
     @patch("autopilot.orchestrator.scenes")
     @patch("autopilot.orchestrator.asr")
     def test_analyze_calls_force_unload_all_on_error(
-        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
-        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
     ):
         """scheduler.force_unload_all() is called even when analysis raises."""
         from autopilot.orchestrator import _run_analyze
@@ -664,8 +685,15 @@ class TestAnalyzeStage:
     @patch("autopilot.orchestrator.scenes")
     @patch("autopilot.orchestrator.asr")
     def test_analyze_continues_on_per_media_error(
-        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
-        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
     ):
         """If analysis fails for one media, remaining media are still processed."""
         from autopilot.orchestrator import _run_analyze
@@ -686,7 +714,9 @@ class TestAnalyzeStage:
         mock_gpu_cls.return_value = mock_scheduler
         # First media's ASR fails
         mock_asr.transcribe_media.side_effect = [
-            RuntimeError("ASR failed"), None, None,
+            RuntimeError("ASR failed"),
+            None,
+            None,
         ]
 
         _run_analyze(config=minimal_config, db=db)
@@ -702,8 +732,16 @@ class TestAnalyzeStage:
     @patch("autopilot.orchestrator.scenes")
     @patch("autopilot.orchestrator.asr")
     def test_analyze_logs_per_media_error(
-        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
-        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config, caplog,
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
+        caplog,
     ):
         """Error for a failed media is logged."""
         from autopilot.orchestrator import _run_analyze
@@ -735,8 +773,16 @@ class TestAnalyzeStage:
     @patch("autopilot.orchestrator.scenes")
     @patch("autopilot.orchestrator.asr")
     def test_analyze_counts_failures(
-        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
-        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config, caplog,
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
+        caplog,
     ):
         """Log reports correct success/failure counts."""
         from autopilot.orchestrator import _run_analyze
@@ -756,7 +802,9 @@ class TestAnalyzeStage:
         mock_scheduler = MagicMock()
         mock_gpu_cls.return_value = mock_scheduler
         mock_asr.transcribe_media.side_effect = [
-            RuntimeError("fail"), None, None,
+            RuntimeError("fail"),
+            None,
+            None,
         ]
 
         with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
@@ -770,9 +818,7 @@ class TestClassifyStage:
 
     @patch("autopilot.orchestrator.classify")
     @patch("autopilot.orchestrator.cluster")
-    def test_classify_calls_cluster_activities(
-        self, mock_cluster, mock_classify, minimal_config
-    ):
+    def test_classify_calls_cluster_activities(self, mock_cluster, mock_classify, minimal_config):
         """_run_classify calls cluster.cluster_activities with db."""
         from autopilot.orchestrator import _run_classify
 
@@ -784,9 +830,7 @@ class TestClassifyStage:
 
     @patch("autopilot.orchestrator.classify")
     @patch("autopilot.orchestrator.cluster")
-    def test_classify_calls_label_activities(
-        self, mock_cluster, mock_classify, minimal_config
-    ):
+    def test_classify_calls_label_activities(self, mock_cluster, mock_classify, minimal_config):
         """_run_classify calls classify.label_activities with db and config.llm."""
         from autopilot.orchestrator import _run_classify
 
@@ -826,9 +870,7 @@ class TestNarrateStage:
 
         _run_narrate(config=minimal_config, db=db)
 
-        mock_narratives.propose_narratives.assert_called_once_with(
-            "storyboard", db, minimal_config
-        )
+        mock_narratives.propose_narratives.assert_called_once_with("storyboard", db, minimal_config)
 
     @patch("autopilot.orchestrator.narratives")
     def test_narrate_calls_human_review_callback(self, mock_narratives, minimal_config):
@@ -889,15 +931,14 @@ class TestScriptStage:
     """Tests for the real _run_script stage function."""
 
     @patch("autopilot.orchestrator.script")
-    def test_script_generates_per_approved_narrative(
-        self, mock_script, minimal_config
-    ):
+    def test_script_generates_per_approved_narrative(self, mock_script, minimal_config):
         """_run_script calls generate_script once per approved narrative."""
         from autopilot.orchestrator import _run_script
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
         ]
         db.get_narrative_script.return_value = None
         mock_script.generate_script.return_value = {"scenes": []}
@@ -907,20 +948,20 @@ class TestScriptStage:
         assert mock_script.generate_script.call_count == 2
 
     @patch("autopilot.orchestrator.script")
-    def test_script_continues_on_per_narrative_error(
-        self, mock_script, minimal_config
-    ):
+    def test_script_continues_on_per_narrative_error(self, mock_script, minimal_config):
         """First narrative raises ScriptError, second still gets generated."""
         from autopilot.orchestrator import _run_script
         from autopilot.plan.script import ScriptError
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
         ]
         db.get_narrative_script.return_value = None
         mock_script.generate_script.side_effect = [
-            ScriptError("failed"), {"scenes": []},
+            ScriptError("failed"),
+            {"scenes": []},
         ]
 
         _run_script(config=minimal_config, db=db)
@@ -928,16 +969,15 @@ class TestScriptStage:
         assert mock_script.generate_script.call_count == 2
 
     @patch("autopilot.orchestrator.script")
-    def test_script_raises_if_all_narratives_fail(
-        self, mock_script, minimal_config
-    ):
+    def test_script_raises_if_all_narratives_fail(self, mock_script, minimal_config):
         """If every narrative fails, stage itself raises RuntimeError."""
         from autopilot.orchestrator import _run_script
         from autopilot.plan.script import ScriptError
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
         ]
         db.get_narrative_script.return_value = None
         mock_script.generate_script.side_effect = ScriptError("fail")
@@ -997,21 +1037,21 @@ class TestEdlStage:
     @patch("autopilot.orchestrator.otio_export")
     @patch("autopilot.orchestrator.validator")
     @patch("autopilot.orchestrator.edl_mod")
-    def test_edl_continues_on_failure(
-        self, mock_edl, mock_validator, mock_otio, minimal_config
-    ):
+    def test_edl_continues_on_failure(self, mock_edl, mock_validator, mock_otio, minimal_config):
         """One narrative fails EDL, others still processed."""
         from autopilot.orchestrator import _run_edl
         from autopilot.plan.edl import EdlError
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
         ]
         db.get_narrative_script.return_value = {"scenes": []}
         db.get_edit_plan.return_value = None
         mock_edl.generate_edl.side_effect = [
-            EdlError("fail"), {"timeline": []},
+            EdlError("fail"),
+            {"timeline": []},
         ]
         mock_validator.validate_edl.return_value = MagicMock(passed=True)
         mock_otio.export_otio.return_value = Path("/out/timeline.otio")
@@ -1032,7 +1072,8 @@ class TestEdlStage:
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
         ]
         db.get_narrative_script.return_value = {"scenes": []}
         db.get_edit_plan.return_value = None
@@ -1046,9 +1087,7 @@ class TestSourceStage:
     """Tests for the real _run_source_assets stage function."""
 
     @patch("autopilot.orchestrator.resolve")
-    def test_source_resolves_assets_per_narrative(
-        self, mock_resolve, minimal_config
-    ):
+    def test_source_resolves_assets_per_narrative(self, mock_resolve, minimal_config):
         """_run_source_assets calls resolve_edl_assets for each narrative with an edit plan."""
         from autopilot.orchestrator import _run_source_assets
 
@@ -1067,15 +1106,14 @@ class TestSourceStage:
         assert call_kwargs[1]["narrative_id"] == "n1"
 
     @patch("autopilot.orchestrator.resolve")
-    def test_source_raises_if_all_narratives_fail(
-        self, mock_resolve, minimal_config
-    ):
+    def test_source_raises_if_all_narratives_fail(self, mock_resolve, minimal_config):
         """If every narrative fails source resolution, stage raises RuntimeError."""
         from autopilot.orchestrator import _run_source_assets
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
         ]
         db.get_edit_plan.return_value = {
             "narrative_id": "n1",
@@ -1101,12 +1139,11 @@ class TestRenderStage:
         db = MagicMock()
         db.list_narratives.return_value = [{"narrative_id": "n1"}]
         db.get_edit_plan.return_value = {
-            "narrative_id": "n1", "edl_json": '{"timeline": []}',
+            "narrative_id": "n1",
+            "edl_json": '{"timeline": []}',
         }
         mock_router.route_and_render.return_value = Path("/out/video.mp4")
-        mock_validate.validate_render.return_value = MagicMock(
-            passed=True, issues=[]
-        )
+        mock_validate.validate_render.return_value = MagicMock(passed=True, issues=[])
 
         _run_render(config=minimal_config, db=db)
 
@@ -1124,15 +1161,14 @@ class TestRenderStage:
         db = MagicMock()
         db.list_narratives.return_value = [{"narrative_id": "n1"}]
         db.get_edit_plan.return_value = {
-            "narrative_id": "n1", "edl_json": '{"timeline": []}',
+            "narrative_id": "n1",
+            "edl_json": '{"timeline": []}',
         }
         mock_router.route_and_render.return_value = Path("/out/video.mp4")
         issue = MagicMock()
         issue.severity = "warning"
         issue.message = "Low bitrate"
-        mock_validate.validate_render.return_value = MagicMock(
-            passed=True, issues=[issue]
-        )
+        mock_validate.validate_render.return_value = MagicMock(passed=True, issues=[issue])
 
         with caplog.at_level(logging.WARNING, logger="autopilot.orchestrator"):
             _run_render(config=minimal_config, db=db)
@@ -1141,26 +1177,25 @@ class TestRenderStage:
 
     @patch("autopilot.orchestrator.render_validate")
     @patch("autopilot.orchestrator.router")
-    def test_render_continues_on_failure(
-        self, mock_router, mock_validate, minimal_config
-    ):
+    def test_render_continues_on_failure(self, mock_router, mock_validate, minimal_config):
         """One narrative's render fails, others still processed."""
         from autopilot.orchestrator import _run_render
         from autopilot.render.router import RoutingError
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
         ]
         db.get_edit_plan.return_value = {
-            "narrative_id": "n1", "edl_json": '{"timeline": []}',
+            "narrative_id": "n1",
+            "edl_json": '{"timeline": []}',
         }
         mock_router.route_and_render.side_effect = [
-            RoutingError("fail"), Path("/out/video.mp4"),
+            RoutingError("fail"),
+            Path("/out/video.mp4"),
         ]
-        mock_validate.validate_render.return_value = MagicMock(
-            passed=True, issues=[]
-        )
+        mock_validate.validate_render.return_value = MagicMock(passed=True, issues=[])
 
         _run_render(config=minimal_config, db=db)
 
@@ -1168,21 +1203,18 @@ class TestRenderStage:
 
     @patch("autopilot.orchestrator.render_validate")
     @patch("autopilot.orchestrator.router")
-    def test_render_persists_render_path_to_db(
-        self, mock_router, mock_validate, minimal_config
-    ):
+    def test_render_persists_render_path_to_db(self, mock_router, mock_validate, minimal_config):
         """_run_render persists render output path to DB via upsert_edit_plan."""
         from autopilot.orchestrator import _run_render
 
         db = MagicMock()
         db.list_narratives.return_value = [{"narrative_id": "n1"}]
         db.get_edit_plan.return_value = {
-            "narrative_id": "n1", "edl_json": '{"timeline": []}',
+            "narrative_id": "n1",
+            "edl_json": '{"timeline": []}',
         }
         mock_router.route_and_render.return_value = Path("/out/renders/n1/output.mp4")
-        mock_validate.validate_render.return_value = MagicMock(
-            passed=True, issues=[]
-        )
+        mock_validate.validate_render.return_value = MagicMock(passed=True, issues=[])
 
         _run_render(config=minimal_config, db=db)
 
@@ -1192,18 +1224,18 @@ class TestRenderStage:
 
     @patch("autopilot.orchestrator.render_validate")
     @patch("autopilot.orchestrator.router")
-    def test_render_raises_if_all_narratives_fail(
-        self, mock_router, mock_validate, minimal_config
-    ):
+    def test_render_raises_if_all_narratives_fail(self, mock_router, mock_validate, minimal_config):
         """If every narrative fails render, stage raises RuntimeError."""
         from autopilot.orchestrator import _run_render
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
         ]
         db.get_edit_plan.return_value = {
-            "narrative_id": "n1", "edl_json": '{"timeline": []}',
+            "narrative_id": "n1",
+            "edl_json": '{"timeline": []}',
         }
         mock_router.route_and_render.side_effect = RuntimeError("fail")
 
@@ -1226,7 +1258,7 @@ class TestUploadStage:
         db.list_narratives.return_value = [{"narrative_id": "n1"}]
         db.get_edit_plan.return_value = {
             "narrative_id": "n1",
-            "edl_json": '{}',
+            "edl_json": "{}",
             "render_path": "/out/renders/n1/output.mp4",
         }
         db.get_upload.return_value = None
@@ -1241,25 +1273,25 @@ class TestUploadStage:
 
     @patch("autopilot.orchestrator.thumbnail")
     @patch("autopilot.orchestrator.youtube")
-    def test_upload_continues_on_failure(
-        self, mock_youtube, mock_thumbnail, minimal_config
-    ):
+    def test_upload_continues_on_failure(self, mock_youtube, mock_thumbnail, minimal_config):
         """One narrative fails upload, others still uploaded."""
         from autopilot.orchestrator import _run_upload
         from autopilot.upload.youtube import UploadError
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
         ]
         db.get_edit_plan.return_value = {
-            "edl_json": '{}',
+            "edl_json": "{}",
             "render_path": "/out/renders/output.mp4",
         }
         db.get_upload.return_value = None
 
         mock_youtube.upload_video.side_effect = [
-            UploadError("fail"), "https://youtu.be/def",
+            UploadError("fail"),
+            "https://youtu.be/def",
         ]
         mock_thumbnail.extract_best_thumbnail.return_value = Path("/thumb.jpg")
 
@@ -1269,9 +1301,7 @@ class TestUploadStage:
 
     @patch("autopilot.orchestrator.thumbnail")
     @patch("autopilot.orchestrator.youtube")
-    def test_upload_reads_render_path_from_db(
-        self, mock_youtube, mock_thumbnail, minimal_config
-    ):
+    def test_upload_reads_render_path_from_db(self, mock_youtube, mock_thumbnail, minimal_config):
         """_run_upload reads render_path from DB instead of filesystem convention."""
         from autopilot.orchestrator import _run_upload
 
@@ -1279,7 +1309,7 @@ class TestUploadStage:
         db.list_narratives.return_value = [{"narrative_id": "n1"}]
         db.get_edit_plan.return_value = {
             "narrative_id": "n1",
-            "edl_json": '{}',
+            "edl_json": "{}",
             "render_path": "/db/stored/path.mp4",
         }
         db.get_upload.return_value = None
@@ -1304,7 +1334,7 @@ class TestUploadStage:
         db.list_narratives.return_value = [{"narrative_id": "n1"}]
         db.get_edit_plan.return_value = {
             "narrative_id": "n1",
-            "edl_json": '{}',
+            "edl_json": "{}",
         }
         db.get_upload.return_value = None
 
@@ -1325,10 +1355,11 @@ class TestUploadStage:
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
         ]
         db.get_edit_plan.return_value = {
-            "edl_json": '{}',
+            "edl_json": "{}",
             "render_path": "/out/renders/output.mp4",
         }
         db.get_upload.return_value = None
@@ -1348,9 +1379,7 @@ class TestRealStageRegistration:
         for stage in orch.stages:
             func = getattr(stage.func, "func", stage.func)
             name = getattr(func, "__name__", "")
-            assert "stub" not in name.lower(), (
-                f"{stage.name} still uses a stub function"
-            )
+            assert "stub" not in name.lower(), f"{stage.name} still uses a stub function"
 
     def test_orchestrator_accepts_human_review_fn_parameter(self):
         """PipelineOrchestrator(human_review_fn=callback) stores it."""
@@ -1367,9 +1396,7 @@ class TestRealStageRegistration:
 class TestEnhancedProgress:
     """Tests for enhanced progress reporting in run()."""
 
-    def test_run_logs_cumulative_elapsed_per_stage(
-        self, caplog: pytest.LogCaptureFixture
-    ):
+    def test_run_logs_cumulative_elapsed_per_stage(self, caplog: pytest.LogCaptureFixture):
         """After each stage, log shows cumulative time and remaining budget."""
         orch = PipelineOrchestrator(budget_seconds=3600)
         for stage in orch.stages:
@@ -1378,18 +1405,14 @@ class TestEnhancedProgress:
         with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
             orch.run(config=MagicMock(), db=MagicMock())
 
-        progress_lines = [
-            r.message for r in caplog.records if "[PROGRESS]" in r.message
-        ]
+        progress_lines = [r.message for r in caplog.records if "[PROGRESS]" in r.message]
         # Should have one progress line per stage
         assert len(progress_lines) == 9
         # Each should contain budget info
         for line in progress_lines:
             assert "budget" in line.lower() or "%" in line
 
-    def test_run_logs_summary_table_at_end(
-        self, caplog: pytest.LogCaptureFixture
-    ):
+    def test_run_logs_summary_table_at_end(self, caplog: pytest.LogCaptureFixture):
         """Final log message includes all stage names with their elapsed times."""
         orch = PipelineOrchestrator()
         for stage in orch.stages:
@@ -1400,8 +1423,17 @@ class TestEnhancedProgress:
 
         # Look for summary that mentions all stage names
         all_text = " ".join(r.message for r in caplog.records)
-        for stage_name in ["INGEST", "ANALYZE", "CLASSIFY", "NARRATE",
-                           "SCRIPT", "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD"]:
+        for stage_name in [
+            "INGEST",
+            "ANALYZE",
+            "CLASSIFY",
+            "NARRATE",
+            "SCRIPT",
+            "EDL",
+            "SOURCE_ASSETS",
+            "RENDER",
+            "UPLOAD",
+        ]:
             assert stage_name in all_text
 
 
@@ -1492,6 +1524,7 @@ class TestShutdownBetweenStages:
                 call_order.append(name)
                 if name == "INGEST":
                     request_shutdown()
+
             return func
 
         for stage in orch.stages:
@@ -1504,15 +1537,21 @@ class TestShutdownBetweenStages:
         assert results["INGEST"].status == StageStatus.DONE
 
         # All remaining stages should be SKIPPED
-        for name in ["ANALYZE", "CLASSIFY", "NARRATE", "SCRIPT",
-                      "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD"]:
+        for name in [
+            "ANALYZE",
+            "CLASSIFY",
+            "NARRATE",
+            "SCRIPT",
+            "EDL",
+            "SOURCE_ASSETS",
+            "RENDER",
+            "UPLOAD",
+        ]:
             assert results[name].status == StageStatus.SKIPPED, (
                 f"{name} should be SKIPPED after shutdown"
             )
 
-    def test_run_logs_shutdown_skip(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_run_logs_shutdown_skip(self, caplog: pytest.LogCaptureFixture) -> None:
         """run() logs a message when skipping stages due to shutdown."""
         from autopilot.orchestrator import request_shutdown
 
@@ -1529,8 +1568,7 @@ class TestShutdownBetweenStages:
             orch.run(config=MagicMock(), db=MagicMock())
 
         assert any(
-            "shutdown" in r.message.lower() and "skip" in r.message.lower()
-            for r in caplog.records
+            "shutdown" in r.message.lower() and "skip" in r.message.lower() for r in caplog.records
         )
 
 
@@ -1546,6 +1584,8 @@ class TestIngestShutdown:
         from autopilot.orchestrator import _reset_shutdown
 
         _reset_shutdown()
+
+
 # -- Checkpoint/resume tests for _run_ingest ---------------------------------
 
 
@@ -1566,7 +1606,11 @@ class TestIngestResume:
     @patch("autopilot.orchestrator.normalizer")
     @patch("autopilot.orchestrator.scanner")
     def test_ingest_breaks_on_shutdown(
-        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+        self,
+        mock_scanner,
+        mock_normalizer,
+        mock_dedup,
+        minimal_config,
     ) -> None:
         """_run_ingest breaks early when shutdown is requested mid-iteration."""
         from autopilot.orchestrator import _run_ingest, request_shutdown
@@ -1603,7 +1647,11 @@ class TestIngestResume:
     @patch("autopilot.orchestrator.normalizer")
     @patch("autopilot.orchestrator.scanner")
     def test_ingest_skips_already_ingested_media(
-        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+        self,
+        mock_scanner,
+        mock_normalizer,
+        mock_dedup,
+        minimal_config,
     ):
         """_run_ingest skips insert+normalize for media already in the DB."""
         from autopilot.orchestrator import _run_ingest
@@ -1630,7 +1678,11 @@ class TestIngestResume:
     @patch("autopilot.orchestrator.normalizer")
     @patch("autopilot.orchestrator.scanner")
     def test_ingest_still_deduplicates_on_shutdown(
-        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+        self,
+        mock_scanner,
+        mock_normalizer,
+        mock_dedup,
+        minimal_config,
     ) -> None:
         """dedup.mark_duplicates is still called even when shutdown breaks the loop."""
         from autopilot.orchestrator import _run_ingest, request_shutdown
@@ -1669,8 +1721,15 @@ class TestAnalyzeShutdown:
     @patch("autopilot.orchestrator.scenes")
     @patch("autopilot.orchestrator.asr")
     def test_analyze_breaks_on_shutdown(
-        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
-        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
     ) -> None:
         """_run_analyze breaks after first media when shutdown is requested."""
         from autopilot.orchestrator import _run_analyze, request_shutdown
@@ -1712,8 +1771,15 @@ class TestAnalyzeShutdown:
     @patch("autopilot.orchestrator.scenes")
     @patch("autopilot.orchestrator.asr")
     def test_analyze_unloads_gpu_on_shutdown(
-        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
-        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
     ) -> None:
         """scheduler.force_unload_all() is still called on shutdown."""
         from autopilot.orchestrator import _run_analyze, request_shutdown
@@ -1777,7 +1843,11 @@ class TestRemainingStagesShutdown:
     @patch("autopilot.orchestrator.validator")
     @patch("autopilot.orchestrator.edl_mod")
     def test_edl_breaks_on_shutdown(
-        self, mock_edl_mod, mock_validator, mock_otio, minimal_config,
+        self,
+        mock_edl_mod,
+        mock_validator,
+        mock_otio,
+        minimal_config,
     ) -> None:
         """_run_edl breaks after first narrative when shutdown requested."""
         from autopilot.orchestrator import _run_edl, request_shutdown
@@ -1811,7 +1881,9 @@ class TestRemainingStagesShutdown:
 
     @patch("autopilot.orchestrator.resolve")
     def test_source_assets_breaks_on_shutdown(
-        self, mock_resolve, minimal_config,
+        self,
+        mock_resolve,
+        minimal_config,
     ) -> None:
         """_run_source_assets breaks after first narrative when shutdown requested."""
         from autopilot.orchestrator import _run_source_assets, request_shutdown
@@ -1840,7 +1912,10 @@ class TestRemainingStagesShutdown:
     @patch("autopilot.orchestrator.render_validate")
     @patch("autopilot.orchestrator.router")
     def test_render_breaks_on_shutdown(
-        self, mock_router, mock_render_validate, minimal_config,
+        self,
+        mock_router,
+        mock_render_validate,
+        minimal_config,
     ) -> None:
         """_run_render breaks after first narrative when shutdown requested."""
         from autopilot.orchestrator import _run_render, request_shutdown
@@ -1872,7 +1947,10 @@ class TestRemainingStagesShutdown:
     @patch("autopilot.orchestrator.thumbnail")
     @patch("autopilot.orchestrator.youtube")
     def test_upload_breaks_on_shutdown(
-        self, mock_youtube, mock_thumbnail, minimal_config,
+        self,
+        mock_youtube,
+        mock_thumbnail,
+        minimal_config,
     ) -> None:
         """_run_upload breaks after first narrative when shutdown requested."""
         from autopilot.orchestrator import _run_upload, request_shutdown
@@ -1941,16 +2019,19 @@ class TestShutdownSkipDetails:
         # All remaining stages should be SKIPPED (no error_message — the
         # between-stages shutdown check fills them as plain SKIPPED)
         for name in [
-            "ANALYZE", "CLASSIFY", "NARRATE", "SCRIPT",
-            "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD",
+            "ANALYZE",
+            "CLASSIFY",
+            "NARRATE",
+            "SCRIPT",
+            "EDL",
+            "SOURCE_ASSETS",
+            "RENDER",
+            "UPLOAD",
         ]:
             result = results[name]
-            assert result.status == StageStatus.SKIPPED, (
-                f"{name} should be SKIPPED"
-            )
+            assert result.status == StageStatus.SKIPPED, f"{name} should be SKIPPED"
             assert result.error_message is None, (
-                f"{name} should have error_message=None, "
-                f"got {result.error_message!r}"
+                f"{name} should have error_message=None, got {result.error_message!r}"
             )
 
     def test_shutdown_skipped_distinct_from_dependency_skipped(self) -> None:
@@ -1964,6 +2045,7 @@ class TestShutdownSkipDetails:
                 call_order.append(name)
                 if name == "ANALYZE":
                     raise RuntimeError("analysis failed")
+
             return func
 
         # Replace all stage funcs; ANALYZE will fail, then we request shutdown
@@ -1997,9 +2079,7 @@ class TestShutdownSkipDetails:
             orch.run(config=MagicMock(), db=MagicMock())
 
         # Find the summary log message
-        summary_records = [
-            r for r in caplog.records if "Pipeline complete" in r.message
-        ]
+        summary_records = [r for r in caplog.records if "Pipeline complete" in r.message]
         assert len(summary_records) == 1, "Expected exactly one pipeline summary log"
         summary = summary_records[0].message
 
@@ -2009,9 +2089,7 @@ class TestShutdownSkipDetails:
         assert "ANALYZE: skipped" in summary
         assert "UPLOAD: skipped" in summary
 
-    def test_shutdown_log_for_skipped_stages(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_shutdown_log_for_skipped_stages(self, caplog: pytest.LogCaptureFixture) -> None:
         """Shutdown emits a single log about skipping remaining stages."""
         from autopilot.orchestrator import request_shutdown
 
@@ -2029,32 +2107,35 @@ class TestShutdownSkipDetails:
 
         # The run() method emits a single shutdown-skip log message
         shutdown_logs = [
-            r for r in caplog.records
-            if "skipping remaining stages" in r.message.lower()
+            r for r in caplog.records if "skipping remaining stages" in r.message.lower()
         ]
-        assert len(shutdown_logs) == 1, (
-            f"Expected 1 shutdown-skip log, got {len(shutdown_logs)}"
-        )
+        assert len(shutdown_logs) == 1, f"Expected 1 shutdown-skip log, got {len(shutdown_logs)}"
 
         # The summary log should list all skipped stages
-        summary_records = [
-            r for r in caplog.records if "Pipeline complete" in r.message
-        ]
+        summary_records = [r for r in caplog.records if "Pipeline complete" in r.message]
         assert len(summary_records) == 1
         summary = summary_records[0].message
         for name in [
-            "ANALYZE", "CLASSIFY", "NARRATE", "SCRIPT",
-            "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD",
+            "ANALYZE",
+            "CLASSIFY",
+            "NARRATE",
+            "SCRIPT",
+            "EDL",
+            "SOURCE_ASSETS",
+            "RENDER",
+            "UPLOAD",
         ]:
-            assert f"{name}: skipped" in summary, (
-                f"Missing skipped entry for {name} in summary"
-            )
+            assert f"{name}: skipped" in summary, f"Missing skipped entry for {name} in summary"
 
     @patch("autopilot.orchestrator.dedup")
     @patch("autopilot.orchestrator.normalizer")
     @patch("autopilot.orchestrator.scanner")
     def test_ingest_logs_resume_counts(
-        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+        self,
+        mock_scanner,
+        mock_normalizer,
+        mock_dedup,
+        minimal_config,
         caplog,
     ):
         """_run_ingest logs 'Resuming INGEST: N/M files already ingested'."""
@@ -2074,14 +2155,17 @@ class TestShutdownSkipDetails:
         with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
             _run_ingest(config=minimal_config, db=db)
 
-        assert any("Resuming INGEST" in r.message and "1/2" in r.message
-                    for r in caplog.records)
+        assert any("Resuming INGEST" in r.message and "1/2" in r.message for r in caplog.records)
 
     @patch("autopilot.orchestrator.dedup")
     @patch("autopilot.orchestrator.normalizer")
     @patch("autopilot.orchestrator.scanner")
     def test_ingest_force_reprocesses_all(
-        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+        self,
+        mock_scanner,
+        mock_normalizer,
+        mock_dedup,
+        minimal_config,
     ):
         """_run_ingest with force=True reprocesses even existing media."""
         from autopilot.orchestrator import _run_ingest
@@ -2124,8 +2208,7 @@ class TestAnalyzeResume:
         """Create a MagicMock db with specified media and has_* defaults."""
         db = MagicMock()
         db.list_all_media.return_value = [
-            {"id": mid, "file_path": f"/fake/{mid}.mp4", "status": "ingested"}
-            for mid in media_ids
+            {"id": mid, "file_path": f"/fake/{mid}.mp4", "status": "ingested"} for mid in media_ids
         ]
         # Default: nothing completed
         db.has_transcript.return_value = False
@@ -2147,8 +2230,15 @@ class TestAnalyzeResume:
     @patch("autopilot.orchestrator.scenes")
     @patch("autopilot.orchestrator.asr")
     def test_analyze_skips_transcribed_media(
-        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
-        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
     ):
         """_run_analyze skips asr.transcribe_media when has_transcript is True."""
         from autopilot.orchestrator import _run_analyze
@@ -2171,8 +2261,15 @@ class TestAnalyzeResume:
     @patch("autopilot.orchestrator.scenes")
     @patch("autopilot.orchestrator.asr")
     def test_analyze_skips_detected_media(
-        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
-        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
     ):
         """_run_analyze skips objects.detect_objects when has_detections is True."""
         from autopilot.orchestrator import _run_analyze
@@ -2193,8 +2290,15 @@ class TestAnalyzeResume:
     @patch("autopilot.orchestrator.scenes")
     @patch("autopilot.orchestrator.asr")
     def test_analyze_skips_boundaries_faces_embeddings_audio(
-        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
-        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
     ):
         """_run_analyze skips each pass independently when has_* returns True."""
         from autopilot.orchestrator import _run_analyze
@@ -2224,8 +2328,15 @@ class TestAnalyzeResume:
     @patch("autopilot.orchestrator.scenes")
     @patch("autopilot.orchestrator.asr")
     def test_analyze_logs_resume_counts(
-        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
-        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
         caplog,
     ):
         """_run_analyze logs per-pass resume counts."""
@@ -2239,8 +2350,7 @@ class TestAnalyzeResume:
         with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
             _run_analyze(config=minimal_config, db=db)
 
-        assert any("transcri" in r.message.lower() and "2/3" in r.message
-                    for r in caplog.records)
+        assert any("transcri" in r.message.lower() and "2/3" in r.message for r in caplog.records)
 
     @patch("autopilot.orchestrator.GPUScheduler")
     @patch("autopilot.orchestrator.faces")
@@ -2250,8 +2360,15 @@ class TestAnalyzeResume:
     @patch("autopilot.orchestrator.scenes")
     @patch("autopilot.orchestrator.asr")
     def test_analyze_force_reprocesses_all(
-        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
-        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
     ):
         """_run_analyze with force=True ignores has_* checks."""
         from autopilot.orchestrator import _run_analyze
@@ -2286,7 +2403,10 @@ class TestClassifyResume:
     @patch("autopilot.orchestrator.classify")
     @patch("autopilot.orchestrator.cluster")
     def test_classify_skips_when_clusters_exist(
-        self, mock_cluster, mock_classify, minimal_config,
+        self,
+        mock_cluster,
+        mock_classify,
+        minimal_config,
     ):
         """_run_classify skips when activity clusters already exist and have labels."""
         from autopilot.orchestrator import _run_classify
@@ -2305,7 +2425,10 @@ class TestClassifyResume:
     @patch("autopilot.orchestrator.classify")
     @patch("autopilot.orchestrator.cluster")
     def test_classify_force_clears_and_reprocesses(
-        self, mock_cluster, mock_classify, minimal_config,
+        self,
+        mock_cluster,
+        mock_classify,
+        minimal_config,
     ):
         """_run_classify with force=True re-runs even when clusters exist."""
         from autopilot.orchestrator import _run_classify
@@ -2329,14 +2452,17 @@ class TestScriptResume:
 
     @patch("autopilot.orchestrator.script")
     def test_script_skips_narrative_with_existing_script(
-        self, mock_script, minimal_config,
+        self,
+        mock_script,
+        minimal_config,
     ):
         """_run_script skips generate_script when narrative already has a script."""
         from autopilot.orchestrator import _run_script
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
         ]
         # n1 already has a script, n2 does not
         db.get_narrative_script.side_effect = lambda nid: (
@@ -2352,14 +2478,19 @@ class TestScriptResume:
 
     @patch("autopilot.orchestrator.script")
     def test_script_logs_resume_counts(
-        self, mock_script, minimal_config, caplog,
+        self,
+        mock_script,
+        minimal_config,
+        caplog,
     ):
         """_run_script logs 'Resuming SCRIPT: N/M narratives already scripted'."""
         from autopilot.orchestrator import _run_script
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"}, {"narrative_id": "n3"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
+            {"narrative_id": "n3"},
         ]
         # n1 and n2 already have scripts
         db.get_narrative_script.side_effect = lambda nid: (
@@ -2370,19 +2501,21 @@ class TestScriptResume:
         with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
             _run_script(config=minimal_config, db=db)
 
-        assert any("Resuming SCRIPT" in r.message and "2/3" in r.message
-                    for r in caplog.records)
+        assert any("Resuming SCRIPT" in r.message and "2/3" in r.message for r in caplog.records)
 
     @patch("autopilot.orchestrator.script")
     def test_script_force_regenerates_all(
-        self, mock_script, minimal_config,
+        self,
+        mock_script,
+        minimal_config,
     ):
         """_run_script with force=True regenerates even narratives with existing scripts."""
         from autopilot.orchestrator import _run_script
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
         ]
         # Both already have scripts
         db.get_narrative_script.return_value = {"narrative_id": "n1", "script_json": "{}"}
@@ -2404,20 +2537,24 @@ class TestEdlResume:
     @patch("autopilot.orchestrator.validator")
     @patch("autopilot.orchestrator.edl_mod")
     def test_edl_skips_narrative_with_existing_edit_plan(
-        self, mock_edl, mock_validator, mock_otio, minimal_config,
+        self,
+        mock_edl,
+        mock_validator,
+        mock_otio,
+        minimal_config,
     ):
         """_run_edl skips EDL generation when narrative already has an edit plan with edl_json."""
         from autopilot.orchestrator import _run_edl
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
         ]
         db.get_narrative_script.return_value = {"scenes": []}
         # n1 already has an edit plan with edl_json, n2 does not
         db.get_edit_plan.side_effect = lambda nid: (
-            {"narrative_id": "n1", "edl_json": '{"timeline": []}'} if nid == "n1"
-            else None
+            {"narrative_id": "n1", "edl_json": '{"timeline": []}'} if nid == "n1" else None
         )
         mock_edl.generate_edl.return_value = {"timeline": []}
         mock_validator.validate_edl.return_value = MagicMock(passed=True)
@@ -2431,20 +2568,26 @@ class TestEdlResume:
     @patch("autopilot.orchestrator.validator")
     @patch("autopilot.orchestrator.edl_mod")
     def test_edl_logs_resume_counts(
-        self, mock_edl, mock_validator, mock_otio, minimal_config, caplog,
+        self,
+        mock_edl,
+        mock_validator,
+        mock_otio,
+        minimal_config,
+        caplog,
     ):
         """_run_edl logs 'Resuming EDL: N/M narratives already have edit plans'."""
         from autopilot.orchestrator import _run_edl
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"}, {"narrative_id": "n3"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
+            {"narrative_id": "n3"},
         ]
         db.get_narrative_script.return_value = {"scenes": []}
         # n1 and n2 already have edit plans
         db.get_edit_plan.side_effect = lambda nid: (
-            {"narrative_id": nid, "edl_json": '{"timeline": []}'} if nid in ("n1", "n2")
-            else None
+            {"narrative_id": nid, "edl_json": '{"timeline": []}'} if nid in ("n1", "n2") else None
         )
         mock_edl.generate_edl.return_value = {"timeline": []}
         mock_validator.validate_edl.return_value = MagicMock(passed=True)
@@ -2452,21 +2595,25 @@ class TestEdlResume:
         with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
             _run_edl(config=minimal_config, db=db)
 
-        assert any("Resuming EDL" in r.message and "2/3" in r.message
-                    for r in caplog.records)
+        assert any("Resuming EDL" in r.message and "2/3" in r.message for r in caplog.records)
 
     @patch("autopilot.orchestrator.otio_export")
     @patch("autopilot.orchestrator.validator")
     @patch("autopilot.orchestrator.edl_mod")
     def test_edl_force_regenerates_all(
-        self, mock_edl, mock_validator, mock_otio, minimal_config,
+        self,
+        mock_edl,
+        mock_validator,
+        mock_otio,
+        minimal_config,
     ):
         """_run_edl with force=True regenerates even narratives with existing edit plans."""
         from autopilot.orchestrator import _run_edl
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
         ]
         db.get_narrative_script.return_value = {"scenes": []}
         # Both already have edit plans
@@ -2488,14 +2635,18 @@ class TestSourceResume:
 
     @patch("autopilot.orchestrator.resolve")
     def test_source_skips_narrative_with_resolved_assets(
-        self, mock_resolve, minimal_config, tmp_path,
+        self,
+        mock_resolve,
+        minimal_config,
+        tmp_path,
     ):
         """_run_source_assets skips when asset_dir exists and is non-empty."""
         from autopilot.orchestrator import _run_source_assets
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
         ]
         db.get_edit_plan.return_value = {
             "narrative_id": "n1",
@@ -2516,14 +2667,19 @@ class TestSourceResume:
 
     @patch("autopilot.orchestrator.resolve")
     def test_source_logs_resume_counts(
-        self, mock_resolve, minimal_config, caplog,
+        self,
+        mock_resolve,
+        minimal_config,
+        caplog,
     ):
         """_run_source_assets logs 'Resuming SOURCE_ASSETS: N/M ...'."""
         from autopilot.orchestrator import _run_source_assets
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"}, {"narrative_id": "n3"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
+            {"narrative_id": "n3"},
         ]
         db.get_edit_plan.return_value = {
             "narrative_id": "n1",
@@ -2541,19 +2697,23 @@ class TestSourceResume:
         with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
             _run_source_assets(config=minimal_config, db=db)
 
-        assert any("Resuming SOURCE_ASSETS" in r.message and "2/3" in r.message
-                    for r in caplog.records)
+        assert any(
+            "Resuming SOURCE_ASSETS" in r.message and "2/3" in r.message for r in caplog.records
+        )
 
     @patch("autopilot.orchestrator.resolve")
     def test_source_force_re_resolves_all(
-        self, mock_resolve, minimal_config,
+        self,
+        mock_resolve,
+        minimal_config,
     ):
         """_run_source_assets with force=True re-resolves even with existing assets."""
         from autopilot.orchestrator import _run_source_assets
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
         ]
         db.get_edit_plan.return_value = {
             "narrative_id": "n1",
@@ -2583,14 +2743,18 @@ class TestRenderResume:
     @patch("autopilot.orchestrator.render_validate")
     @patch("autopilot.orchestrator.router")
     def test_render_skips_narrative_with_existing_render_path(
-        self, mock_router, mock_validate, minimal_config,
+        self,
+        mock_router,
+        mock_validate,
+        minimal_config,
     ):
         """_run_render skips when edit_plan has render_path and file exists on disk."""
         from autopilot.orchestrator import _run_render
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
         ]
 
         # Create render file on disk for n1
@@ -2610,6 +2774,7 @@ class TestRenderResume:
                 "narrative_id": "n2",
                 "edl_json": '{"timeline": []}',
             }
+
         db.get_edit_plan.side_effect = get_edit_plan
 
         mock_router.route_and_render.return_value = Path("/out/video.mp4")
@@ -2623,14 +2788,20 @@ class TestRenderResume:
     @patch("autopilot.orchestrator.render_validate")
     @patch("autopilot.orchestrator.router")
     def test_render_logs_resume_counts(
-        self, mock_router, mock_validate, minimal_config, caplog,
+        self,
+        mock_router,
+        mock_validate,
+        minimal_config,
+        caplog,
     ):
         """_run_render logs 'Resuming RENDER: N/M ...'."""
         from autopilot.orchestrator import _run_render
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"}, {"narrative_id": "n3"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
+            {"narrative_id": "n3"},
         ]
 
         # Create render files for n1 and n2
@@ -2650,6 +2821,7 @@ class TestRenderResume:
                 "narrative_id": nid,
                 "edl_json": '{"timeline": []}',
             }
+
         db.get_edit_plan.side_effect = get_edit_plan
 
         mock_router.route_and_render.return_value = Path("/out/video.mp4")
@@ -2658,20 +2830,23 @@ class TestRenderResume:
         with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
             _run_render(config=minimal_config, db=db)
 
-        assert any("Resuming RENDER" in r.message and "2/3" in r.message
-                    for r in caplog.records)
+        assert any("Resuming RENDER" in r.message and "2/3" in r.message for r in caplog.records)
 
     @patch("autopilot.orchestrator.render_validate")
     @patch("autopilot.orchestrator.router")
     def test_render_force_re_renders_all(
-        self, mock_router, mock_validate, minimal_config,
+        self,
+        mock_router,
+        mock_validate,
+        minimal_config,
     ):
         """_run_render with force=True re-renders even with existing render output."""
         from autopilot.orchestrator import _run_render
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
         ]
 
         # Create render files for both
@@ -2704,17 +2879,21 @@ class TestUploadResume:
     @patch("autopilot.orchestrator.thumbnail")
     @patch("autopilot.orchestrator.youtube")
     def test_upload_skips_narrative_with_existing_upload(
-        self, mock_youtube, mock_thumbnail, minimal_config,
+        self,
+        mock_youtube,
+        mock_thumbnail,
+        minimal_config,
     ):
         """_run_upload skips when db.get_upload returns non-None for a narrative."""
         from autopilot.orchestrator import _run_upload
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
         ]
         db.get_edit_plan.return_value = {
-            "edl_json": '{}',
+            "edl_json": "{}",
             "render_path": "/out/renders/output.mp4",
         }
         # n1 already uploaded, n2 not
@@ -2733,17 +2912,23 @@ class TestUploadResume:
     @patch("autopilot.orchestrator.thumbnail")
     @patch("autopilot.orchestrator.youtube")
     def test_upload_logs_resume_counts(
-        self, mock_youtube, mock_thumbnail, minimal_config, caplog,
+        self,
+        mock_youtube,
+        mock_thumbnail,
+        minimal_config,
+        caplog,
     ):
         """_run_upload logs 'Resuming UPLOAD: N/M ...'."""
         from autopilot.orchestrator import _run_upload
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"}, {"narrative_id": "n3"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
+            {"narrative_id": "n3"},
         ]
         db.get_edit_plan.return_value = {
-            "edl_json": '{}',
+            "edl_json": "{}",
             "render_path": "/out/renders/output.mp4",
         }
         # n1 and n2 already uploaded
@@ -2757,23 +2942,26 @@ class TestUploadResume:
         with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
             _run_upload(config=minimal_config, db=db)
 
-        assert any("Resuming UPLOAD" in r.message and "2/3" in r.message
-                    for r in caplog.records)
+        assert any("Resuming UPLOAD" in r.message and "2/3" in r.message for r in caplog.records)
 
     @patch("autopilot.orchestrator.thumbnail")
     @patch("autopilot.orchestrator.youtube")
     def test_upload_force_re_uploads_all(
-        self, mock_youtube, mock_thumbnail, minimal_config,
+        self,
+        mock_youtube,
+        mock_thumbnail,
+        minimal_config,
     ):
         """_run_upload with force=True re-uploads even with existing uploads."""
         from autopilot.orchestrator import _run_upload
 
         db = MagicMock()
         db.list_narratives.return_value = [
-            {"narrative_id": "n1"}, {"narrative_id": "n2"},
+            {"narrative_id": "n1"},
+            {"narrative_id": "n2"},
         ]
         db.get_edit_plan.return_value = {
-            "edl_json": '{}',
+            "edl_json": "{}",
             "render_path": "/out/renders/output.mp4",
         }
         # Both already uploaded
@@ -2937,7 +3125,8 @@ class TestEmitEvent:
         assert call_kwargs["payload_json"] is None
 
     def test_emit_event_logs_at_debug_level(
-        self, caplog: pytest.LogCaptureFixture,
+        self,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """_emit_event emits a debug-level log."""
         orch = PipelineOrchestrator()
@@ -2948,8 +3137,7 @@ class TestEmitEvent:
             orch._emit_event("test_event", stage="INGEST")
 
         debug_records = [
-            r for r in caplog.records
-            if r.levelno == logging.DEBUG and "test_event" in r.message
+            r for r in caplog.records if r.levelno == logging.DEBUG and "test_event" in r.message
         ]
         assert len(debug_records) >= 1
 
@@ -2967,10 +3155,7 @@ class TestStageTransitionEvents:
         orch.run(config=MagicMock(), db=mock_db)
 
         insert_event_calls = mock_db.insert_event.call_args_list
-        started_calls = [
-            c for c in insert_event_calls
-            if c[1].get("event_type") == "stage_started"
-        ]
+        started_calls = [c for c in insert_event_calls if c[1].get("event_type") == "stage_started"]
         started_stages = [c[1]["stage"] for c in started_calls]
         assert started_stages == EXPECTED_STAGES
 
@@ -2985,8 +3170,7 @@ class TestStageTransitionEvents:
 
         insert_event_calls = mock_db.insert_event.call_args_list
         completed_calls = [
-            c for c in insert_event_calls
-            if c[1].get("event_type") == "stage_completed"
+            c for c in insert_event_calls if c[1].get("event_type") == "stage_completed"
         ]
         assert len(completed_calls) == 9
         for c in completed_calls:
@@ -3007,10 +3191,7 @@ class TestStageTransitionEvents:
         orch.run(config=MagicMock(), db=mock_db)
 
         insert_event_calls = mock_db.insert_event.call_args_list
-        error_calls = [
-            c for c in insert_event_calls
-            if c[1].get("event_type") == "stage_error"
-        ]
+        error_calls = [c for c in insert_event_calls if c[1].get("event_type") == "stage_error"]
         assert len(error_calls) >= 1
         payload = json.loads(error_calls[0][1]["payload_json"])
         assert "error" in payload
@@ -3028,10 +3209,7 @@ class TestStageTransitionEvents:
 
         update_run_calls = mock_db.update_run.call_args_list
         # Extract calls that set current_stage
-        current_stage_calls = [
-            c for c in update_run_calls
-            if "current_stage" in c[1]
-        ]
+        current_stage_calls = [c for c in update_run_calls if "current_stage" in c[1]]
         stages_set = [c[1]["current_stage"] for c in current_stage_calls]
         assert stages_set == EXPECTED_STAGES
 
@@ -3051,7 +3229,8 @@ class TestRunFinalization:
         update_calls = mock_db.update_run.call_args_list
         # The last update_run call should finalize the run
         final_calls = [
-            c for c in update_calls
+            c
+            for c in update_calls
             if "status" in c[1] and c[1]["status"] in ("completed", "failed")
         ]
         assert len(final_calls) >= 1
@@ -3078,7 +3257,8 @@ class TestRunFinalization:
 
         update_calls = mock_db.update_run.call_args_list
         final_calls = [
-            c for c in update_calls
+            c
+            for c in update_calls
             if "status" in c[1] and c[1]["status"] in ("completed", "failed")
         ]
         assert len(final_calls) >= 1
@@ -3095,8 +3275,7 @@ class TestRunFinalization:
 
         insert_event_calls = mock_db.insert_event.call_args_list
         completed_calls = [
-            c for c in insert_event_calls
-            if c[1].get("event_type") == "run_completed"
+            c for c in insert_event_calls if c[1].get("event_type") == "run_completed"
         ]
         assert len(completed_calls) == 1
         payload = json.loads(completed_calls[0][1]["payload_json"])
@@ -3116,10 +3295,7 @@ class TestRunFinalization:
         orch.run(config=MagicMock(), db=mock_db)
 
         insert_event_calls = mock_db.insert_event.call_args_list
-        failed_calls = [
-            c for c in insert_event_calls
-            if c[1].get("event_type") == "run_failed"
-        ]
+        failed_calls = [c for c in insert_event_calls if c[1].get("event_type") == "run_failed"]
         assert len(failed_calls) == 1
         payload = json.loads(failed_calls[0][1]["payload_json"])
         assert "duration" in payload
@@ -3138,10 +3314,7 @@ class TestBudgetRemainingTracking:
         orch.run(config=MagicMock(), db=mock_db)
 
         update_calls = mock_db.update_run.call_args_list
-        budget_calls = [
-            c for c in update_calls
-            if "budget_remaining_seconds" in c[1]
-        ]
+        budget_calls = [c for c in update_calls if "budget_remaining_seconds" in c[1]]
         # Should have one budget update per stage (9 stages)
         assert len(budget_calls) == 9
         # Each budget_remaining value should be a float
@@ -3161,10 +3334,7 @@ class TestBudgetRemainingTracking:
         orch.run(config=MagicMock(), db=mock_db)
 
         update_calls = mock_db.update_run.call_args_list
-        budget_calls = [
-            c for c in update_calls
-            if "budget_remaining_seconds" in c[1]
-        ]
+        budget_calls = [c for c in update_calls if "budget_remaining_seconds" in c[1]]
         # No per-stage budget updates should occur
         assert len(budget_calls) == 0
 
@@ -3206,14 +3376,12 @@ class TestRunTrackingIntegration:
         # Verify each stage has both started and completed events
         for stage_name in EXPECTED_STAGES:
             stage_started = [
-                e for e in events
-                if e["event_type"] == "stage_started"
-                and e["stage"] == stage_name
+                e for e in events if e["event_type"] == "stage_started" and e["stage"] == stage_name
             ]
             stage_completed = [
-                e for e in events
-                if e["event_type"] == "stage_completed"
-                and e["stage"] == stage_name
+                e
+                for e in events
+                if e["event_type"] == "stage_completed" and e["stage"] == stage_name
             ]
             assert len(stage_started) == 1, f"Missing stage_started for {stage_name}"
             assert len(stage_completed) == 1, f"Missing stage_completed for {stage_name}"
@@ -3245,7 +3413,8 @@ class TestEmitEventResilience:
         orch._emit_event("test_event", stage="X")
 
     def test_emit_event_logs_warning_on_db_error(
-        self, caplog: pytest.LogCaptureFixture,
+        self,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """When insert_event raises, _emit_event logs a WARNING with event_type and error."""
         orch = PipelineOrchestrator()
@@ -3257,7 +3426,8 @@ class TestEmitEventResilience:
             orch._emit_event("test_event", stage="Y")
 
         warning_records = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if r.levelno == logging.WARNING
             and "test_event" in r.message
             and "connection lost" in r.message
@@ -3329,7 +3499,8 @@ class TestInsertRunResilience:
         mock_db.insert_event.assert_not_called()
 
     def test_insert_run_failure_logs_warning(
-        self, caplog: pytest.LogCaptureFixture,
+        self,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """When insert_run raises, a WARNING log mentioning 'run tracking' is emitted."""
         orch = PipelineOrchestrator()
@@ -3343,9 +3514,9 @@ class TestInsertRunResilience:
             orch.run(config=MagicMock(), db=mock_db)
 
         warning_records = [
-            r for r in caplog.records
-            if r.levelno == logging.WARNING
-            and "run tracking" in r.message.lower()
+            r
+            for r in caplog.records
+            if r.levelno == logging.WARNING and "run tracking" in r.message.lower()
         ]
         assert len(warning_records) >= 1
 
@@ -3414,7 +3585,8 @@ class TestTrackingCallResilience:
             assert result.status == StageStatus.DONE
 
     def test_update_run_failure_logs_warning(
-        self, caplog: pytest.LogCaptureFixture,
+        self,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """WARNING log emitted for each failed db.update_run call."""
         orch = PipelineOrchestrator()
@@ -3428,9 +3600,9 @@ class TestTrackingCallResilience:
             orch.run(config=MagicMock(), db=mock_db)
 
         warning_records = [
-            r for r in caplog.records
-            if r.levelno == logging.WARNING
-            and "tracking" in r.message.lower()
+            r
+            for r in caplog.records
+            if r.levelno == logging.WARNING and "tracking" in r.message.lower()
         ]
         assert len(warning_records) >= 1
 
@@ -3455,9 +3627,13 @@ class TestStartJob:
 
         mock_db = MagicMock()
         job_id, _ = _start_job(
-            mock_db, "INGEST", "ingest_file",
-            target_id="media_123", target_label="video.mp4",
-            worker="cpu", run_id="abc123",
+            mock_db,
+            "INGEST",
+            "ingest_file",
+            target_id="media_123",
+            target_label="video.mp4",
+            worker="cpu",
+            run_id="abc123",
         )
         mock_db.insert_job.assert_called_once()
         call_kwargs = mock_db.insert_job.call_args
@@ -3511,8 +3687,11 @@ class TestFinishJob:
         mock_db = MagicMock()
         start_mono = time.monotonic()
         _finish_job(
-            mock_db, "job_xyz", start_mono,
-            status="error", error_message="disk full",
+            mock_db,
+            "job_xyz",
+            start_mono,
+            status="error",
+            error_message="disk full",
         )
         call_kwargs = mock_db.update_job.call_args[1]
         assert call_kwargs["status"] == "error"
@@ -3609,7 +3788,8 @@ class TestJobHelperResilience:
         assert isinstance(start_mono, float)
 
     def test_start_job_logs_warning_when_db_raises(
-        self, caplog: pytest.LogCaptureFixture,
+        self,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """_start_job logs WARNING when db.insert_job fails."""
         from autopilot.orchestrator import _start_job
@@ -3632,7 +3812,8 @@ class TestJobHelperResilience:
         _finish_job(mock_db, "job_abc", time.monotonic())
 
     def test_finish_job_logs_warning_when_db_raises(
-        self, caplog: pytest.LogCaptureFixture,
+        self,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """_finish_job logs WARNING when db.update_job fails."""
         import time
@@ -3652,10 +3833,15 @@ class TestJobHelperResilience:
         mock_db = MagicMock()
         mock_emit = MagicMock()
         job_id, _ = _start_job(
-            mock_db, "INGEST", "ingest_file", emit_fn=mock_emit,
+            mock_db,
+            "INGEST",
+            "ingest_file",
+            emit_fn=mock_emit,
         )
         mock_emit.assert_called_once_with(
-            "job_started", stage="INGEST", job_id=job_id,
+            "job_started",
+            stage="INGEST",
+            job_id=job_id,
         )
 
     def test_finish_job_calls_emit_fn_on_done(self) -> None:
@@ -3667,11 +3853,16 @@ class TestJobHelperResilience:
         mock_db = MagicMock()
         mock_emit = MagicMock()
         _finish_job(
-            mock_db, "job_abc", time.monotonic(),
-            emit_fn=mock_emit, stage="INGEST",
+            mock_db,
+            "job_abc",
+            time.monotonic(),
+            emit_fn=mock_emit,
+            stage="INGEST",
         )
         mock_emit.assert_called_once_with(
-            "job_completed", stage="INGEST", job_id="job_abc",
+            "job_completed",
+            stage="INGEST",
+            job_id="job_abc",
         )
 
     def test_finish_job_calls_emit_fn_on_error(self) -> None:
@@ -3683,12 +3874,18 @@ class TestJobHelperResilience:
         mock_db = MagicMock()
         mock_emit = MagicMock()
         _finish_job(
-            mock_db, "job_abc", time.monotonic(),
-            status="error", error_message="oops",
-            emit_fn=mock_emit, stage="ANALYZE",
+            mock_db,
+            "job_abc",
+            time.monotonic(),
+            status="error",
+            error_message="oops",
+            emit_fn=mock_emit,
+            stage="ANALYZE",
         )
         mock_emit.assert_called_once_with(
-            "job_error", stage="ANALYZE", job_id="job_abc",
+            "job_error",
+            stage="ANALYZE",
+            job_id="job_abc",
         )
 
 
@@ -3699,7 +3896,11 @@ class TestIngestJobTracking:
     @patch("autopilot.orchestrator.normalizer")
     @patch("autopilot.orchestrator.scanner")
     def test_ingest_creates_ingest_file_job_per_file(
-        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+        self,
+        mock_scanner,
+        mock_normalizer,
+        mock_dedup,
+        minimal_config,
     ):
         """When run_id is provided, creates one 'ingest_file' job per file."""
         from autopilot.orchestrator import _run_ingest
@@ -3715,15 +3916,14 @@ class TestIngestJobTracking:
         db.get_media.return_value = None
 
         _run_ingest(
-            config=minimal_config, db=db,
-            run_id="run_abc", emit_fn=MagicMock(),
+            config=minimal_config,
+            db=db,
+            run_id="run_abc",
+            emit_fn=MagicMock(),
         )
 
         # Should have insert_job calls for ingest_file (2 files) + dedup (1)
-        ingest_file_calls = [
-            c for c in db.insert_job.call_args_list
-            if c[0][2] == "ingest_file"
-        ]
+        ingest_file_calls = [c for c in db.insert_job.call_args_list if c[0][2] == "ingest_file"]
         assert len(ingest_file_calls) == 2
         # Check stage is INGEST
         for call in ingest_file_calls:
@@ -3734,7 +3934,11 @@ class TestIngestJobTracking:
     @patch("autopilot.orchestrator.normalizer")
     @patch("autopilot.orchestrator.scanner")
     def test_ingest_creates_dedup_job(
-        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+        self,
+        mock_scanner,
+        mock_normalizer,
+        mock_dedup,
+        minimal_config,
     ):
         """When run_id is provided, creates one 'dedup' job."""
         from autopilot.orchestrator import _run_ingest
@@ -3743,14 +3947,13 @@ class TestIngestJobTracking:
         db = MagicMock()
 
         _run_ingest(
-            config=minimal_config, db=db,
-            run_id="run_abc", emit_fn=MagicMock(),
+            config=minimal_config,
+            db=db,
+            run_id="run_abc",
+            emit_fn=MagicMock(),
         )
 
-        dedup_calls = [
-            c for c in db.insert_job.call_args_list
-            if c[0][2] == "dedup"
-        ]
+        dedup_calls = [c for c in db.insert_job.call_args_list if c[0][2] == "dedup"]
         assert len(dedup_calls) == 1
         assert dedup_calls[0][0][1] == "INGEST"
 
@@ -3758,7 +3961,11 @@ class TestIngestJobTracking:
     @patch("autopilot.orchestrator.normalizer")
     @patch("autopilot.orchestrator.scanner")
     def test_ingest_no_jobs_when_no_run_id(
-        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config,
+        self,
+        mock_scanner,
+        mock_normalizer,
+        mock_dedup,
+        minimal_config,
     ):
         """When run_id=None (default), no insert_job calls made."""
         from autopilot.orchestrator import _run_ingest
@@ -3785,8 +3992,15 @@ class TestAnalyzeJobTracking:
     @patch("autopilot.orchestrator.scenes")
     @patch("autopilot.orchestrator.asr")
     def test_analyze_creates_job_per_media_per_analysis(
-        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
-        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
     ):
         """Creates one job per (media x analysis_type) + face_clustering."""
         from autopilot.orchestrator import _run_analyze
@@ -3803,8 +4017,10 @@ class TestAnalyzeJobTracking:
         mock_gpu_cls.return_value = MagicMock()
 
         _run_analyze(
-            config=minimal_config, db=db,
-            run_id="run_xyz", emit_fn=MagicMock(),
+            config=minimal_config,
+            db=db,
+            run_id="run_xyz",
+            emit_fn=MagicMock(),
         )
 
         # 6 analysis types for 1 media + 1 face_clustering = 7 jobs
@@ -3828,8 +4044,15 @@ class TestAnalyzeJobTracking:
     @patch("autopilot.orchestrator.scenes")
     @patch("autopilot.orchestrator.asr")
     def test_analyze_gpu_worker_for_analysis_jobs(
-        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
-        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
     ):
         """Analysis jobs have worker='gpu', face_clustering has worker='cpu'."""
         from autopilot.orchestrator import _run_analyze
@@ -3846,8 +4069,10 @@ class TestAnalyzeJobTracking:
         mock_gpu_cls.return_value = MagicMock()
 
         _run_analyze(
-            config=minimal_config, db=db,
-            run_id="run_xyz", emit_fn=MagicMock(),
+            config=minimal_config,
+            db=db,
+            run_id="run_xyz",
+            emit_fn=MagicMock(),
         )
 
         for call in db.insert_job.call_args_list:
@@ -3865,8 +4090,15 @@ class TestAnalyzeJobTracking:
     @patch("autopilot.orchestrator.scenes")
     @patch("autopilot.orchestrator.asr")
     def test_analyze_no_jobs_when_no_run_id(
-        self, mock_asr, mock_scenes, mock_objects, mock_embeddings,
-        mock_audio_events, mock_faces, mock_gpu_cls, minimal_config,
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
     ):
         """When run_id=None (default), no insert_job calls made."""
         from autopilot.orchestrator import _run_analyze
@@ -3894,7 +4126,10 @@ class TestClassifyJobTracking:
     @patch("autopilot.orchestrator.classify")
     @patch("autopilot.orchestrator.cluster")
     def test_classify_creates_two_jobs(
-        self, mock_cluster, mock_classify, minimal_config,
+        self,
+        mock_cluster,
+        mock_classify,
+        minimal_config,
     ):
         """Creates 'cluster_activities' and 'label_activities' jobs."""
         from autopilot.orchestrator import _run_classify
@@ -3903,8 +4138,10 @@ class TestClassifyJobTracking:
         db.get_activity_clusters.return_value = []
 
         _run_classify(
-            config=minimal_config, db=db,
-            run_id="run_c", emit_fn=MagicMock(),
+            config=minimal_config,
+            db=db,
+            run_id="run_c",
+            emit_fn=MagicMock(),
         )
 
         assert db.insert_job.call_count == 2
@@ -3918,7 +4155,10 @@ class TestClassifyJobTracking:
     @patch("autopilot.orchestrator.classify")
     @patch("autopilot.orchestrator.cluster")
     def test_classify_no_jobs_when_no_run_id(
-        self, mock_cluster, mock_classify, minimal_config,
+        self,
+        mock_cluster,
+        mock_classify,
+        minimal_config,
     ):
         """When run_id=None, no insert_job calls."""
         from autopilot.orchestrator import _run_classify
@@ -3936,7 +4176,9 @@ class TestNarrateJobTracking:
 
     @patch("autopilot.orchestrator.narratives")
     def test_narrate_creates_two_jobs(
-        self, mock_narratives, minimal_config,
+        self,
+        mock_narratives,
+        minimal_config,
     ):
         """Creates 'build_storyboard' and 'propose_narratives' jobs."""
         from autopilot.orchestrator import _run_narrate
@@ -3947,8 +4189,10 @@ class TestNarrateJobTracking:
         db = MagicMock()
 
         _run_narrate(
-            config=minimal_config, db=db,
-            run_id="run_n", emit_fn=MagicMock(),
+            config=minimal_config,
+            db=db,
+            run_id="run_n",
+            emit_fn=MagicMock(),
         )
 
         assert db.insert_job.call_count == 2
@@ -3961,7 +4205,9 @@ class TestNarrateJobTracking:
 
     @patch("autopilot.orchestrator.narratives")
     def test_narrate_no_jobs_when_no_run_id(
-        self, mock_narratives, minimal_config,
+        self,
+        mock_narratives,
+        minimal_config,
     ):
         """When run_id=None, no insert_job calls."""
         from autopilot.orchestrator import _run_narrate
@@ -3981,7 +4227,9 @@ class TestScriptJobTracking:
 
     @patch("autopilot.orchestrator.script")
     def test_script_creates_job_per_narrative(
-        self, mock_script, minimal_config,
+        self,
+        mock_script,
+        minimal_config,
     ):
         """Creates one 'generate_script' job per narrative."""
         from autopilot.orchestrator import _run_script
@@ -3994,8 +4242,10 @@ class TestScriptJobTracking:
         db.get_narrative_script.return_value = None
 
         _run_script(
-            config=minimal_config, db=db,
-            run_id="run_s", emit_fn=MagicMock(),
+            config=minimal_config,
+            db=db,
+            run_id="run_s",
+            emit_fn=MagicMock(),
         )
 
         assert db.insert_job.call_count == 2
@@ -4010,7 +4260,9 @@ class TestScriptJobTracking:
 
     @patch("autopilot.orchestrator.script")
     def test_script_no_jobs_when_no_run_id(
-        self, mock_script, minimal_config,
+        self,
+        mock_script,
+        minimal_config,
     ):
         """When run_id=None, no insert_job calls."""
         from autopilot.orchestrator import _run_script
@@ -4031,7 +4283,11 @@ class TestEdlJobTracking:
     @patch("autopilot.orchestrator.validator")
     @patch("autopilot.orchestrator.edl_mod")
     def test_edl_creates_three_jobs_per_narrative(
-        self, mock_edl, mock_validator, mock_otio, minimal_config,
+        self,
+        mock_edl,
+        mock_validator,
+        mock_otio,
+        minimal_config,
     ):
         """Creates 'generate_edl', 'validate_edl', 'otio_export' per narrative."""
         from autopilot.orchestrator import _run_edl
@@ -4044,8 +4300,10 @@ class TestEdlJobTracking:
         mock_validator.validate_edl.return_value = MagicMock(passed=True)
 
         _run_edl(
-            config=minimal_config, db=db,
-            run_id="run_e", emit_fn=MagicMock(),
+            config=minimal_config,
+            db=db,
+            run_id="run_e",
+            emit_fn=MagicMock(),
         )
 
         assert db.insert_job.call_count == 3
@@ -4061,7 +4319,11 @@ class TestEdlJobTracking:
     @patch("autopilot.orchestrator.validator")
     @patch("autopilot.orchestrator.edl_mod")
     def test_edl_no_jobs_when_no_run_id(
-        self, mock_edl, mock_validator, mock_otio, minimal_config,
+        self,
+        mock_edl,
+        mock_validator,
+        mock_otio,
+        minimal_config,
     ):
         """When run_id=None, no insert_job calls."""
         from autopilot.orchestrator import _run_edl
@@ -4083,7 +4345,9 @@ class TestSourceAssetsJobTracking:
 
     @patch("autopilot.orchestrator.resolve")
     def test_source_creates_job_per_narrative(
-        self, mock_resolve, minimal_config,
+        self,
+        mock_resolve,
+        minimal_config,
     ):
         """Creates one 'resolve_assets' job per narrative."""
         from autopilot.orchestrator import _run_source_assets
@@ -4093,8 +4357,10 @@ class TestSourceAssetsJobTracking:
         db.get_edit_plan.return_value = {"edl_json": '{"cuts": []}'}
 
         _run_source_assets(
-            config=minimal_config, db=db,
-            run_id="run_sa", emit_fn=MagicMock(),
+            config=minimal_config,
+            db=db,
+            run_id="run_sa",
+            emit_fn=MagicMock(),
         )
 
         job_calls = [c for c in db.insert_job.call_args_list if c[0][2] == "resolve_assets"]
@@ -4105,7 +4371,9 @@ class TestSourceAssetsJobTracking:
 
     @patch("autopilot.orchestrator.resolve")
     def test_source_no_jobs_when_no_run_id(
-        self, mock_resolve, minimal_config,
+        self,
+        mock_resolve,
+        minimal_config,
     ):
         """When run_id=None, no insert_job calls."""
         from autopilot.orchestrator import _run_source_assets
@@ -4125,7 +4393,10 @@ class TestRenderJobTracking:
     @patch("autopilot.orchestrator.render_validate")
     @patch("autopilot.orchestrator.router")
     def test_render_creates_two_jobs_per_narrative(
-        self, mock_router, mock_rv, minimal_config,
+        self,
+        mock_router,
+        mock_rv,
+        minimal_config,
     ):
         """Creates 'render' (gpu) and 'validate_render' (cpu) per narrative."""
         from autopilot.orchestrator import _run_render
@@ -4137,8 +4408,10 @@ class TestRenderJobTracking:
         mock_rv.validate_render.return_value = MagicMock(issues=[])
 
         _run_render(
-            config=minimal_config, db=db,
-            run_id="run_r", emit_fn=MagicMock(),
+            config=minimal_config,
+            db=db,
+            run_id="run_r",
+            emit_fn=MagicMock(),
         )
 
         assert db.insert_job.call_count == 2
@@ -4157,7 +4430,10 @@ class TestRenderJobTracking:
     @patch("autopilot.orchestrator.render_validate")
     @patch("autopilot.orchestrator.router")
     def test_render_no_jobs_when_no_run_id(
-        self, mock_router, mock_rv, minimal_config,
+        self,
+        mock_router,
+        mock_rv,
+        minimal_config,
     ):
         """When run_id=None, no insert_job calls."""
         from autopilot.orchestrator import _run_render
@@ -4179,7 +4455,10 @@ class TestUploadJobTracking:
     @patch("autopilot.orchestrator.thumbnail")
     @patch("autopilot.orchestrator.youtube")
     def test_upload_creates_two_jobs_per_narrative(
-        self, mock_yt, mock_thumb, minimal_config,
+        self,
+        mock_yt,
+        mock_thumb,
+        minimal_config,
     ):
         """Creates 'upload_video' and 'extract_thumbnail' per narrative."""
         from autopilot.orchestrator import _run_upload
@@ -4190,8 +4469,10 @@ class TestUploadJobTracking:
         db.get_edit_plan.return_value = {"render_path": "/out/n1.mp4"}
 
         _run_upload(
-            config=minimal_config, db=db,
-            run_id="run_u", emit_fn=MagicMock(),
+            config=minimal_config,
+            db=db,
+            run_id="run_u",
+            emit_fn=MagicMock(),
         )
 
         assert db.insert_job.call_count == 2
@@ -4206,7 +4487,10 @@ class TestUploadJobTracking:
     @patch("autopilot.orchestrator.thumbnail")
     @patch("autopilot.orchestrator.youtube")
     def test_upload_no_jobs_when_no_run_id(
-        self, mock_yt, mock_thumb, minimal_config,
+        self,
+        mock_yt,
+        mock_thumb,
+        minimal_config,
     ):
         """When run_id=None, no insert_job calls."""
         from autopilot.orchestrator import _run_upload
@@ -4288,12 +4572,17 @@ class TestJobTrackingIntegration:
 
         # Replace all stages with no-ops except INGEST which creates 2 jobs
         def fake_ingest(*, config, db, force, run_id=None, emit_fn=None):
-            with _track_job(db, "INGEST", "ingest_file",
-                            target_id="media_001", worker="cpu",
-                            run_id=run_id, emit_fn=emit_fn):
+            with _track_job(
+                db,
+                "INGEST",
+                "ingest_file",
+                target_id="media_001",
+                worker="cpu",
+                run_id=run_id,
+                emit_fn=emit_fn,
+            ):
                 pass  # simulate work
-            with _track_job(db, "INGEST", "dedup",
-                            worker="cpu", run_id=run_id, emit_fn=emit_fn):
+            with _track_job(db, "INGEST", "dedup", worker="cpu", run_id=run_id, emit_fn=emit_fn):
                 pass
 
         for stage in orch.stages:
@@ -4328,9 +4617,9 @@ class TestJobTrackingIntegration:
         orch = PipelineOrchestrator()
 
         def fake_analyze(*, config, db, force, run_id=None, emit_fn=None):
-            with _track_job(db, "ANALYZE", "asr",
-                            target_id="m1", worker="gpu",
-                            run_id=run_id, emit_fn=emit_fn):
+            with _track_job(
+                db, "ANALYZE", "asr", target_id="m1", worker="gpu", run_id=run_id, emit_fn=emit_fn
+            ):
                 pass
 
         for stage in orch.stages:
@@ -4349,8 +4638,7 @@ class TestJobTrackingIntegration:
 
         # Find the job_started event for ANALYZE
         job_started_events = [
-            e for e in events
-            if e["event_type"] == "job_started" and e["stage"] == "ANALYZE"
+            e for e in events if e["event_type"] == "job_started" and e["stage"] == "ANALYZE"
         ]
         assert len(job_started_events) >= 1
 
@@ -4361,9 +4649,15 @@ class TestJobTrackingIntegration:
         orch = PipelineOrchestrator()
 
         def fake_script(*, config, db, force, run_id=None, emit_fn=None):
-            with _track_job(db, "SCRIPT", "generate_script",
-                            target_id="n1", worker="cpu",
-                            run_id=run_id, emit_fn=emit_fn):
+            with _track_job(
+                db,
+                "SCRIPT",
+                "generate_script",
+                target_id="n1",
+                worker="cpu",
+                run_id=run_id,
+                emit_fn=emit_fn,
+            ):
                 raise ValueError("script generation failed")
 
         for stage in orch.stages:
@@ -4382,8 +4676,7 @@ class TestJobTrackingIntegration:
         # job_error event should also be emitted
         events = catalog_db.get_events_since(0)
         job_error_events = [
-            e for e in events
-            if e["event_type"] == "job_error" and e["stage"] == "SCRIPT"
+            e for e in events if e["event_type"] == "job_error" and e["stage"] == "SCRIPT"
         ]
         assert len(job_error_events) >= 1
 
@@ -4593,8 +4886,10 @@ class TestCheckGateTimeout:
         # Mock time.monotonic to simulate timeout: first call returns 0, second returns large value
         mono_values = iter([0.0, 100.0, 200.0])
 
-        with patch("autopilot.orchestrator.time.sleep"), \
-             patch("autopilot.orchestrator.time.monotonic", side_effect=mono_values):
+        with (
+            patch("autopilot.orchestrator.time.sleep"),
+            patch("autopilot.orchestrator.time.monotonic", side_effect=mono_values),
+        ):
             result = orch._check_gate("INGEST")
 
         assert result == "approved"
@@ -4618,10 +4913,12 @@ class TestCheckGateShutdown:
 
     def setup_method(self) -> None:
         from autopilot.orchestrator import _reset_shutdown
+
         _reset_shutdown()
 
     def teardown_method(self) -> None:
         from autopilot.orchestrator import _reset_shutdown
+
         _reset_shutdown()
 
     def test_gate_pause_returns_skipped_on_shutdown(self, catalog_db) -> None:
@@ -4687,10 +4984,12 @@ class TestGateInitInRun:
         # Spy on init_default_gates
         original = catalog_db.init_default_gates
         call_count = 0
+
         def spy():
             nonlocal call_count
             call_count += 1
             return original()
+
         catalog_db.init_default_gates = spy
 
         orch.run(config=MagicMock(), db=catalog_db)
@@ -4700,9 +4999,17 @@ class TestGateInitInRun:
         """run() resets all gate statuses to 'idle' at start."""
         mock_db = MagicMock()
         mock_db.get_all_gates.return_value = [
-            {"stage": s} for s in (
-                "ingest", "analyze", "classify", "narrate", "script",
-                "edl", "source", "render", "upload",
+            {"stage": s}
+            for s in (
+                "ingest",
+                "analyze",
+                "classify",
+                "narrate",
+                "script",
+                "edl",
+                "source",
+                "render",
+                "upload",
             )
         ]
         mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
@@ -4715,9 +5022,10 @@ class TestGateInitInRun:
 
         # Verify update_gate was called with status='idle' for each stage
         idle_calls = [
-            c for c in mock_db.update_gate.call_args_list
-            if c.kwargs.get("status") == "idle" or
-               (len(c.args) >= 1 and any(kw == "idle" for kw in c.kwargs.values()))
+            c
+            for c in mock_db.update_gate.call_args_list
+            if c.kwargs.get("status") == "idle"
+            or (len(c.args) >= 1 and any(kw == "idle" for kw in c.kwargs.values()))
         ]
         assert len(idle_calls) == 9
 
@@ -4754,17 +5062,32 @@ class TestGateIntegrationInRun:
 
         mock_db = MagicMock()
         mock_db.get_all_gates.return_value = [
-            {"stage": s} for s in (
-                "ingest", "analyze", "classify", "narrate", "script",
-                "edl", "source", "render", "upload",
+            {"stage": s}
+            for s in (
+                "ingest",
+                "analyze",
+                "classify",
+                "narrate",
+                "script",
+                "edl",
+                "source",
+                "render",
+                "upload",
             )
         ]
         mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
         orch.run(config=MagicMock(), db=mock_db)
 
         assert gate_calls == [
-            "INGEST", "ANALYZE", "CLASSIFY", "NARRATE", "SCRIPT",
-            "EDL", "SOURCE_ASSETS", "RENDER", "UPLOAD",
+            "INGEST",
+            "ANALYZE",
+            "CLASSIFY",
+            "NARRATE",
+            "SCRIPT",
+            "EDL",
+            "SOURCE_ASSETS",
+            "RENDER",
+            "UPLOAD",
         ]
 
     def test_gate_skipped_stage_not_executed(self) -> None:
@@ -4784,9 +5107,17 @@ class TestGateIntegrationInRun:
 
         mock_db = MagicMock()
         mock_db.get_all_gates.return_value = [
-            {"stage": s} for s in (
-                "ingest", "analyze", "classify", "narrate", "script",
-                "edl", "source", "render", "upload",
+            {"stage": s}
+            for s in (
+                "ingest",
+                "analyze",
+                "classify",
+                "narrate",
+                "script",
+                "edl",
+                "source",
+                "render",
+                "upload",
             )
         ]
         mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
@@ -4814,9 +5145,17 @@ class TestGateIntegrationInRun:
 
         mock_db = MagicMock()
         mock_db.get_all_gates.return_value = [
-            {"stage": s} for s in (
-                "ingest", "analyze", "classify", "narrate", "script",
-                "edl", "source", "render", "upload",
+            {"stage": s}
+            for s in (
+                "ingest",
+                "analyze",
+                "classify",
+                "narrate",
+                "script",
+                "edl",
+                "source",
+                "render",
+                "upload",
             )
         ]
         mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
@@ -4851,9 +5190,17 @@ class TestGateBackwardsCompat:
 
         mock_db = MagicMock()
         mock_db.get_all_gates.return_value = [
-            {"stage": s} for s in (
-                "ingest", "analyze", "classify", "narrate", "script",
-                "edl", "source", "render", "upload",
+            {"stage": s}
+            for s in (
+                "ingest",
+                "analyze",
+                "classify",
+                "narrate",
+                "script",
+                "edl",
+                "source",
+                "render",
+                "upload",
             )
         ]
         mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
@@ -4904,21 +5251,30 @@ class TestDryRunSkipsGateCheck:
         def spy_check(stage_name):
             gate_calls.append(stage_name)
             raise AssertionError(
-                f"_check_gate should NOT be called in dry_run, "
-                f"but was called for {stage_name}"
+                f"_check_gate should NOT be called in dry_run, but was called for {stage_name}"
             )
 
         orch._check_gate = spy_check
 
         mock_db = MagicMock()
         mock_db.get_all_gates.return_value = [
-            {"stage": s} for s in (
-                "ingest", "analyze", "classify", "narrate",
-                "script", "edl", "source", "render", "upload",
+            {"stage": s}
+            for s in (
+                "ingest",
+                "analyze",
+                "classify",
+                "narrate",
+                "script",
+                "edl",
+                "source",
+                "render",
+                "upload",
             )
         ]
         mock_db.get_gate.return_value = {
-            "mode": "auto", "status": "idle", "timeout_hours": None,
+            "mode": "auto",
+            "status": "idle",
+            "timeout_hours": None,
         }
 
         # This should complete without calling _check_gate
@@ -4927,13 +5283,9 @@ class TestDryRunSkipsGateCheck:
         # All stages should be SKIPPED (dry_run behavior)
         assert len(results) == 9
         for name, result in results.items():
-            assert result.status == StageStatus.SKIPPED, (
-                f"{name} should be SKIPPED in dry_run"
-            )
+            assert result.status == StageStatus.SKIPPED, f"{name} should be SKIPPED in dry_run"
         # _check_gate should never have been called
-        assert gate_calls == [], (
-            f"_check_gate was called for stages: {gate_calls}"
-        )
+        assert gate_calls == [], f"_check_gate was called for stages: {gate_calls}"
 
 
 class TestGateResetUsesPublicAPI:
@@ -4945,13 +5297,23 @@ class TestGateResetUsesPublicAPI:
         """run() uses db.get_all_gates() to enumerate gates for reset."""
         mock_db = MagicMock()
         mock_db.get_all_gates.return_value = [
-            {"stage": s} for s in (
-                "ingest", "analyze", "classify", "narrate",
-                "script", "edl", "source", "render", "upload",
+            {"stage": s}
+            for s in (
+                "ingest",
+                "analyze",
+                "classify",
+                "narrate",
+                "script",
+                "edl",
+                "source",
+                "render",
+                "upload",
             )
         ]
         mock_db.get_gate.return_value = {
-            "mode": "auto", "status": "idle", "timeout_hours": None,
+            "mode": "auto",
+            "status": "idle",
+            "timeout_hours": None,
         }
 
         orch = PipelineOrchestrator()
@@ -4967,13 +5329,23 @@ class TestGateResetUsesPublicAPI:
         """run() must NOT access db._PIPELINE_STAGES (private attribute)."""
         mock_db = MagicMock()
         mock_db.get_all_gates.return_value = [
-            {"stage": s} for s in (
-                "ingest", "analyze", "classify", "narrate",
-                "script", "edl", "source", "render", "upload",
+            {"stage": s}
+            for s in (
+                "ingest",
+                "analyze",
+                "classify",
+                "narrate",
+                "script",
+                "edl",
+                "source",
+                "render",
+                "upload",
             )
         ]
         mock_db.get_gate.return_value = {
-            "mode": "auto", "status": "idle", "timeout_hours": None,
+            "mode": "auto",
+            "status": "idle",
+            "timeout_hours": None,
         }
 
         # Remove _PIPELINE_STAGES to ensure it's not accessed
@@ -4994,8 +5366,7 @@ class TestGateResetUsesPublicAPI:
             orch.run(config=MagicMock(), db=mock_db)
 
         assert "_PIPELINE_STAGES" not in access_log, (
-            "run() accessed db._PIPELINE_STAGES — "
-            "should use db.get_all_gates() instead"
+            "run() accessed db._PIPELINE_STAGES — should use db.get_all_gates() instead"
         )
 
     def test_update_gate_called_for_each_gate_from_get_all_gates(self) -> None:
@@ -5003,14 +5374,21 @@ class TestGateResetUsesPublicAPI:
         by get_all_gates()."""
         mock_db = MagicMock()
         gate_stages = [
-            "ingest", "analyze", "classify", "narrate",
-            "script", "edl", "source", "render", "upload",
+            "ingest",
+            "analyze",
+            "classify",
+            "narrate",
+            "script",
+            "edl",
+            "source",
+            "render",
+            "upload",
         ]
-        mock_db.get_all_gates.return_value = [
-            {"stage": s} for s in gate_stages
-        ]
+        mock_db.get_all_gates.return_value = [{"stage": s} for s in gate_stages]
         mock_db.get_gate.return_value = {
-            "mode": "auto", "status": "idle", "timeout_hours": None,
+            "mode": "auto",
+            "status": "idle",
+            "timeout_hours": None,
         }
 
         orch = PipelineOrchestrator()
@@ -5021,9 +5399,9 @@ class TestGateResetUsesPublicAPI:
 
         # Verify update_gate(stage, status='idle') called for each
         idle_calls = [
-            c for c in mock_db.update_gate.call_args_list
-            if len(c.args) >= 1
-            and c.kwargs.get("status") == "idle"
+            c
+            for c in mock_db.update_gate.call_args_list
+            if len(c.args) >= 1 and c.kwargs.get("status") == "idle"
         ]
         idle_stages = [c.args[0] for c in idle_calls]
         assert sorted(idle_stages) == sorted(gate_stages)

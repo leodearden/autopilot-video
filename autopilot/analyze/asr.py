@@ -44,19 +44,23 @@ def _normalize_segments(segments: list[dict]) -> list[dict]:
     for seg in segments:
         words = []
         for w in seg.get("words", []):
-            words.append({
-                "word": str(w.get("word", "")),
-                "start": float(w["start"]) if w.get("start") is not None else None,
-                "end": float(w["end"]) if w.get("end") is not None else None,
-                "score": float(w.get("score", 0.0)),
-            })
-        result.append({
-            "start": float(seg.get("start", 0.0)),
-            "end": float(seg.get("end", 0.0)),
-            "text": str(seg.get("text", "")),
-            "speaker": seg.get("speaker"),
-            "words": words,
-        })
+            words.append(
+                {
+                    "word": str(w.get("word", "")),
+                    "start": float(w["start"]) if w.get("start") is not None else None,
+                    "end": float(w["end"]) if w.get("end") is not None else None,
+                    "score": float(w.get("score", 0.0)),
+                }
+            )
+        result.append(
+            {
+                "start": float(seg.get("start", 0.0)),
+                "end": float(seg.get("end", 0.0)),
+                "text": str(seg.get("text", "")),
+                "speaker": seg.get("speaker"),
+                "words": words,
+            }
+        )
     return result
 
 
@@ -127,8 +131,7 @@ def transcribe_media(
             del align_model, metadata
         except Exception:
             logger.warning(
-                "Forced alignment failed for %s, continuing without"
-                " word timestamps",
+                "Forced alignment failed for %s, continuing without word timestamps",
                 media_id,
                 exc_info=True,
             )
@@ -141,20 +144,16 @@ def transcribe_media(
                     use_auth_token=token, device=device_str
                 )
                 diarize_segments = diarize_pipeline(audio)
-                result = whisperx.assign_word_speakers(
-                    diarize_segments, result
-                )
+                result = whisperx.assign_word_speakers(diarize_segments, result)
             except Exception:
                 logger.warning(
-                    "Diarization failed for %s, continuing without"
-                    " speaker labels",
+                    "Diarization failed for %s, continuing without speaker labels",
                     media_id,
                     exc_info=True,
                 )
         else:
             logger.info(
-                "No HuggingFace token provided, skipping diarization"
-                " for %s",
+                "No HuggingFace token provided, skipping diarization for %s",
                 media_id,
             )
 
@@ -173,6 +172,4 @@ def transcribe_media(
     except TranscriptionError:
         raise
     except Exception as exc:
-        raise TranscriptionError(
-            f"Transcription failed for {media_id}: {exc}"
-        ) from exc
+        raise TranscriptionError(f"Transcription failed for {media_id}: {exc}") from exc

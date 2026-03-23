@@ -59,18 +59,13 @@ def build_narrative_storyboard(narrative_id: str, db: CatalogDB) -> str:
         try:
             cluster_ids = json.loads(str(cluster_ids_raw))
         except json.JSONDecodeError as e:
-            raise ScriptError(
-                f"Corrupt activity_cluster_ids_json in narrative: {e}"
-            ) from e
+            raise ScriptError(f"Corrupt activity_cluster_ids_json in narrative: {e}") from e
 
     title = str(narrative.get("title") or "Untitled")
 
     if not cluster_ids:
         logger.info("Narrative %s has no activity clusters", narrative_id)
-        return (
-            f"# L-Storyboard: {title}\n\n"
-            "No activity clusters assigned to this narrative."
-        )
+        return f"# L-Storyboard: {title}\n\nNo activity clusters assigned to this narrative."
 
     # Build cluster lookup from all clusters
     all_clusters = db.get_activity_clusters()
@@ -82,7 +77,7 @@ def build_narrative_storyboard(narrative_id: str, db: CatalogDB) -> str:
     for fc in all_face_clusters:
         try:
             cid = fc["cluster_id"]
-            fc_label_map[int(cid)] = str(fc.get("label") or f"Face #{cid}")  # type: ignore[arg-type]
+            fc_label_map[int(cid)] = str(fc.get("label") or f"Face #{cid}")  # type: ignore[call-overload]
         except (ValueError, TypeError):
             pass
 
@@ -128,9 +123,9 @@ def _build_cluster_section(
     for clip_id in clip_ids:
         media = db.get_media(clip_id)
         has_dur = media and media.get("duration_seconds")
-        clip_duration = float(media["duration_seconds"]) if has_dur else 0.0  # type: ignore[arg-type]
+        clip_duration = float(media["duration_seconds"]) if has_dur else 0.0  # type: ignore[index,arg-type]
         has_fps = media and media.get("fps")
-        clip_fps = float(media["fps"]) if has_fps else 30.0  # type: ignore[arg-type]
+        clip_fps = float(media["fps"]) if has_fps else 30.0  # type: ignore[index,arg-type]
 
         shots = _get_shots_for_clip(clip_id, clip_duration, db)
 
@@ -150,14 +145,12 @@ def _build_cluster_section(
 
             lines.append(f"### Shot {shot_counter} (Clip: {clip_id})")
             lines.append(f"- Duration: {shot_duration:.1f}s")
-            lines.append(
-                f"- Source: {clip_id} "
-                f"[{shot_start:.1f}s – {shot_end:.1f}s]"
-            )
+            lines.append(f"- Source: {clip_id} [{shot_start:.1f}s – {shot_end:.1f}s]")
 
             # Transcript segments in this shot's time range
             shot_texts = [
-                seg["text"] for seg in transcript_segments
+                seg["text"]
+                for seg in transcript_segments
                 if seg["start"] < shot_end and seg["end"] > shot_start
             ]
             if shot_texts:
@@ -165,9 +158,12 @@ def _build_cluster_section(
 
             # Visual descriptions (captions) overlapping this shot
             shot_captions = [
-                str(c["caption"]) for c in captions
-                if c["start_time"] is not None and c["end_time"] is not None
-                and float(c["start_time"]) < shot_end and float(c["end_time"]) > shot_start  # type: ignore[arg-type]
+                str(c["caption"])
+                for c in captions
+                if c["start_time"] is not None
+                and c["end_time"] is not None
+                and float(c["start_time"]) < shot_end  # type: ignore[arg-type]
+                and float(c["end_time"]) > shot_start  # type: ignore[arg-type]
             ]
             if shot_captions:
                 lines.append(f"- Visual: {'; '.join(shot_captions)}")
@@ -176,21 +172,28 @@ def _build_cluster_section(
             start_frame = int(shot_start * clip_fps)
             end_frame = int(shot_end * clip_fps)
             shot_dets = _get_detections_in_range(
-                all_detections, start_frame, end_frame,
+                all_detections,
+                start_frame,
+                end_frame,
             )
             if shot_dets:
                 lines.append(f"- Objects: {', '.join(shot_dets)}")
 
             # Faces in frame range
             shot_people = _get_faces_in_range(
-                all_faces, start_frame, end_frame, fc_label_map,
+                all_faces,
+                start_frame,
+                end_frame,
+                fc_label_map,
             )
             if shot_people:
                 lines.append(f"- People: {', '.join(shot_people)}")
 
             # Audio events in time range
             shot_audio = _get_audio_in_range(
-                all_audio_events, shot_start, shot_end,
+                all_audio_events,
+                shot_start,
+                shot_end,
             )
             if shot_audio:
                 lines.append(f"- Audio: {', '.join(shot_audio)}")
@@ -252,7 +255,8 @@ def _parse_transcript_segments(
     try:
         segments = json.loads(str(transcript["segments_json"]))
         return [
-            s for s in segments
+            s
+            for s in segments
             if isinstance(s, dict) and "text" in s and "start" in s and "end" in s
         ]
     except json.JSONDecodeError:
@@ -270,7 +274,7 @@ def _get_detections_in_range(
     seen: set[str] = set()
     for det_row in all_detections:
         try:
-            frame = int(det_row["frame_number"])  # type: ignore[arg-type]
+            frame = int(det_row["frame_number"])  # type: ignore[call-overload]
         except (TypeError, ValueError):
             logger.warning(
                 "Skipping detection with invalid frame_number: %s",
@@ -303,7 +307,7 @@ def _get_faces_in_range(
     seen: set[str] = set()
     for face in all_faces:
         try:
-            frame = int(face["frame_number"])  # type: ignore[arg-type]
+            frame = int(face["frame_number"])  # type: ignore[call-overload]
         except (TypeError, ValueError):
             logger.warning("Skipping face with invalid frame_number: %s", face.get("frame_number"))
             continue
@@ -312,7 +316,7 @@ def _get_faces_in_range(
         cid = face.get("cluster_id")
         if cid is not None:
             try:
-                label = fc_label_map.get(int(cid), f"Face #{cid}")  # type: ignore[arg-type]
+                label = fc_label_map.get(int(cid), f"Face #{cid}")  # type: ignore[call-overload]
             except (ValueError, TypeError):
                 label = f"Face #{cid}"
             if label not in seen:
@@ -446,7 +450,7 @@ def _call_llm(user_message: str, system_prompt: str, config: LLMConfig) -> str:
     if not response.content:
         raise ScriptError("Empty response from LLM")
 
-    return response.content[0].text
+    return response.content[0].text  # type: ignore[union-attr]
 
 
 def _parse_script_response(text: str) -> dict:

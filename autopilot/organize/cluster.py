@@ -68,10 +68,7 @@ def _haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
 
-    a = (
-        math.sin(dlat / 2) ** 2
-        + math.cos(lat1_r) * math.cos(lat2_r) * math.sin(dlon / 2) ** 2
-    )
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat1_r) * math.cos(lat2_r) * math.sin(dlon / 2) ** 2
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return _EARTH_RADIUS_M * c
 
@@ -203,10 +200,7 @@ def _semantic_refine(
         if not rows:
             clip_embeddings.append((cid, None))
             continue
-        embs = [
-            np.frombuffer(cast(bytes, row["embedding"]), dtype=np.float32)
-            for row in rows
-        ]
+        embs = [np.frombuffer(cast(bytes, row["embedding"]), dtype=np.float32) for row in rows]
         mean_emb = np.mean(embs, axis=0)
         clip_embeddings.append((cid, mean_emb))
 

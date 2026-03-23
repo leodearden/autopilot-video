@@ -21,9 +21,7 @@ _SUGGESTED_SOURCES = {
 }
 
 
-def generate_fetch_list(
-    unresolved: Sequence[AssetRequest], output_path: Path
-) -> None:
+def generate_fetch_list(unresolved: Sequence[AssetRequest], output_path: Path) -> None:
     """Write a human-readable markdown table listing unresolved asset requests.
 
     Args:
@@ -47,9 +45,7 @@ def generate_fetch_list(
             lines.append(row)
 
     output_path.write_text("\n".join(lines) + "\n")
-    logger.info(
-        "Fetch list written to %s (%d unresolved items)", output_path, len(unresolved)
-    )
+    logger.info("Fetch list written to %s (%d unresolved items)", output_path, len(unresolved))
 
 
 def _format_row(req: AssetRequest) -> str | None:
@@ -86,6 +82,5 @@ def _format_row(req: AssetRequest) -> str | None:
     sources = _SUGGESTED_SOURCES.get(req_type, "N/A")
 
     return (
-        f"| {req_type} | {description} | {start_time}"
-        f" | {duration:.1f}s | {sources} | {priority} |"
+        f"| {req_type} | {description} | {start_time} | {duration:.1f}s | {sources} | {priority} |"
     )

@@ -19,9 +19,7 @@ def app(tmp_path: Path) -> FastAPI:
     # Add a test-only route that renders base.html for template testing
     @app.get("/test-base-template")
     def _test_base_template(request: Request):
-        return app.state.templates.TemplateResponse(
-            request, "base.html", {"page_title": "Test"}
-        )
+        return app.state.templates.TemplateResponse(request, "base.html", {"page_title": "Test"})
 
     return app
 

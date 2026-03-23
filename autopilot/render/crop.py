@@ -29,9 +29,7 @@ class CropError(Exception):
     """Raised for all auto-crop computation failures."""
 
 
-def _compute_crop_dimensions(
-    source_w: int, source_h: int, target_aspect: str
-) -> tuple[int, int]:
+def _compute_crop_dimensions(source_w: int, source_h: int, target_aspect: str) -> tuple[int, int]:
     """Compute crop window dimensions from source resolution and target aspect.
 
     Maximizes the crop window to use as much of the source as possible while
@@ -57,9 +55,7 @@ def _compute_crop_dimensions(
         if aspect_w <= 0 or aspect_h <= 0:
             raise ValueError("aspect components must be positive")
     except (ValueError, TypeError) as e:
-        raise CropError(
-            f"Invalid target aspect ratio: {target_aspect!r}"
-        ) from e
+        raise CropError(f"Invalid target aspect ratio: {target_aspect!r}") from e
 
     # Try fitting width first (maximize width to source_w)
     crop_w = source_w
@@ -73,9 +69,7 @@ def _compute_crop_dimensions(
     return (crop_w, crop_h)
 
 
-def _select_subject_track(
-    all_detections: list[list[dict]], edl_entry: dict
-) -> int:
+def _select_subject_track(all_detections: list[list[dict]], edl_entry: dict) -> int:
     """Select the subject track to follow for auto-crop.
 
     If edl_entry specifies an integer subject_track_id, return it directly.
@@ -452,8 +446,7 @@ def compute_crop_path(
                 parsed = json.loads(cast(str, row["detections_json"]))
             except (json.JSONDecodeError, TypeError) as e:
                 raise CropError(
-                    f"Malformed detections_json for media={media_id!r} "
-                    f"frame={fn}: {e}"
+                    f"Malformed detections_json for media={media_id!r} frame={fn}: {e}"
                 ) from e
             if not isinstance(parsed, list):
                 raise CropError(
@@ -462,9 +455,7 @@ def compute_crop_path(
                 )
             det_by_frame[fn] = parsed
 
-        all_detections = [
-            det_by_frame.get(frame_start + i, []) for i in range(num_frames)
-        ]
+        all_detections = [det_by_frame.get(frame_start + i, []) for i in range(num_frames)]
 
         # Select subject track
         track_id = _select_subject_track(all_detections, edl_entry)
@@ -474,8 +465,12 @@ def compute_crop_path(
 
         # Handle detection gaps
         filled_path = _handle_detection_gaps(
-            raw_path, fps, source_w, source_h,
-            hold_seconds=2.0, drift_seconds=1.0,
+            raw_path,
+            fps,
+            source_w,
+            source_h,
+            hold_seconds=2.0,
+            drift_seconds=1.0,
         )
 
         # Smooth
@@ -490,8 +485,11 @@ def compute_crop_path(
         # Store in DB
         path_data = result.astype(np.float64).tobytes()
         db.upsert_crop_path(
-            media_id, target_aspect, track_id,
-            smoothing_tau=tau, path_data=path_data,
+            media_id,
+            target_aspect,
+            track_id,
+            smoothing_tau=tau,
+            path_data=path_data,
         )
 
         return result

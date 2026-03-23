@@ -82,9 +82,7 @@ def _assemble_cluster_summary(
                     detection_counter[str(det["class"])] += 1
     top_detections = detection_counter.most_common(10)
     summary["detections"] = (
-        ", ".join(f"{cls} ({count})" for cls, count in top_detections)
-        if top_detections
-        else ""
+        ", ".join(f"{cls} ({count})" for cls, count in top_detections) if top_detections else ""
     )
 
     # Gather audio events ranked by probability
@@ -102,9 +100,7 @@ def _assemble_cluster_summary(
                     audio_counter[str(ev["class"])] += 1
     top_audio = audio_counter.most_common(10)
     summary["audio_events"] = (
-        ", ".join(f"{cls} ({count})" for cls, count in top_audio)
-        if top_audio
-        else ""
+        ", ".join(f"{cls} ({count})" for cls, count in top_audio) if top_audio else ""
     )
 
     # GPS
@@ -164,7 +160,7 @@ def _call_llm(
     # Extract text from response
     if not response.content:
         raise ClassifyError("Empty response from LLM")
-    text = response.content[0].text
+    text = response.content[0].text  # type: ignore[union-attr]
 
     # Parse JSON from response
     try:
@@ -181,9 +177,7 @@ def _call_llm(
 
     # Validate required fields
     if "label" not in result or "description" not in result:
-        raise ClassifyError(
-            f"LLM response missing required fields: {list(result.keys())}"
-        )
+        raise ClassifyError(f"LLM response missing required fields: {list(result.keys())}")
 
     return result
 

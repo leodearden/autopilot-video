@@ -41,9 +41,7 @@ class TestEditPlannerToolDefinitions:
 
     def test_exactly_8_tool_definitions(self, prompts_dir: Path):
         tools = self._get_tools(prompts_dir)
-        assert len(tools) == 8, (
-            f"Expected exactly 8 tool definitions, found {len(tools)}"
-        )
+        assert len(tools) == 8, f"Expected exactly 8 tool definitions, found {len(tools)}"
 
     def test_each_tool_has_required_keys(self, prompts_dir: Path):
         tools = self._get_tools(prompts_dir)
@@ -95,17 +93,13 @@ class TestEditPlannerToolParameters:
         tool = self._get_tool(prompts_dir, "select_clip")
         props = tool["input_schema"]["properties"]
         for required in ["clip_id", "in_timecode", "out_timecode", "track"]:
-            assert required in props, (
-                f"select_clip missing required property '{required}'"
-            )
+            assert required in props, f"select_clip missing required property '{required}'"
 
     def test_set_crop_mode_has_required_properties(self, prompts_dir: Path):
         tool = self._get_tool(prompts_dir, "set_crop_mode")
         props = tool["input_schema"]["properties"]
         for required in ["clip_id", "mode"]:
-            assert required in props, (
-                f"set_crop_mode missing required property '{required}'"
-            )
+            assert required in props, f"set_crop_mode missing required property '{required}'"
 
     def test_add_title_has_text_property(self, prompts_dir: Path):
         tool = self._get_tool(prompts_dir, "add_title")
@@ -116,9 +110,7 @@ class TestEditPlannerToolParameters:
         tool = self._get_tool(prompts_dir, "set_audio")
         props = tool["input_schema"]["properties"]
         for required in ["clip_id", "level_db"]:
-            assert required in props, (
-                f"set_audio missing required property '{required}'"
-            )
+            assert required in props, f"set_audio missing required property '{required}'"
 
 
 class TestEditPlannerInstructions:
@@ -135,9 +127,7 @@ class TestEditPlannerInstructions:
 
     def test_references_duration_validation(self, prompts_dir: Path):
         content = self._read(prompts_dir)
-        assert "duration" in content, (
-            "Prompt must reference duration for timeline validation"
-        )
+        assert "duration" in content, "Prompt must reference duration for timeline validation"
 
     def test_references_audio_level_validation(self, prompts_dir: Path):
         content = self._read(prompts_dir)

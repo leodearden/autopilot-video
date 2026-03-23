@@ -137,7 +137,9 @@ def _run_ffprobe_json(path: Path) -> dict:
 
 
 def _check_duration(
-    probe_data: dict, edl: dict, issues: list[Issue],
+    probe_data: dict,
+    edl: dict,
+    issues: list[Issue],
 ) -> None:
     """Check rendered duration against EDL target within ±1s tolerance."""
     target = edl.get("target_duration_seconds")
@@ -154,8 +156,7 @@ def _check_duration(
                 severity="error",
                 check="duration",
                 message=(
-                    f"Duration {actual:.1f}s differs from target "
-                    f"{target:.1f}s by more than 1s"
+                    f"Duration {actual:.1f}s differs from target {target:.1f}s by more than 1s"
                 ),
                 measured_value=actual,
             )
@@ -163,7 +164,9 @@ def _check_duration(
 
 
 def _check_resolution_codec(
-    probe_data: dict, config: OutputConfig, issues: list[Issue],
+    probe_data: dict,
+    config: OutputConfig,
+    issues: list[Issue],
 ) -> None:
     """Check rendered resolution and codec against config."""
     actual_res = probe_data.get("resolution")
@@ -186,10 +189,7 @@ def _check_resolution_codec(
             Issue(
                 severity="error",
                 check="codec",
-                message=(
-                    f"Codec {actual_codec!r} does not match "
-                    f"expected {config.codec!r}"
-                ),
+                message=(f"Codec {actual_codec!r} does not match expected {config.codec!r}"),
                 measured_value=actual_codec,
             )
         )
@@ -201,7 +201,9 @@ _FILE_SIZE_MAX_MB_PER_MIN = 15
 
 
 def _check_file_size(
-    probe_data: dict, config: OutputConfig, issues: list[Issue],
+    probe_data: dict,
+    config: OutputConfig,
+    issues: list[Issue],
 ) -> None:
     """Check file size is within expected range for 1080p h264.
 
@@ -247,7 +249,9 @@ def _check_file_size(
 
 
 def _check_loudness(
-    rendered_path: Path, config: OutputConfig, issues: list[Issue],
+    rendered_path: Path,
+    config: OutputConfig,
+    issues: list[Issue],
 ) -> float | None:
     """Check integrated loudness via ffmpeg loudnorm analysis pass.
 
@@ -363,9 +367,7 @@ def _check_black_frames(rendered_path: Path, issues: list[Issue]) -> None:
                 Issue(
                     severity="warning",
                     check="black_frames",
-                    message=(
-                        f"Could not parse blackdetect values: {match.group()}"
-                    ),
+                    message=(f"Could not parse blackdetect values: {match.group()}"),
                 )
             )
             continue
@@ -373,10 +375,7 @@ def _check_black_frames(rendered_path: Path, issues: list[Issue]) -> None:
             Issue(
                 severity="warning",
                 check="black_frames",
-                message=(
-                    f"Black frame detected: {start_s}s–{end_s}s "
-                    f"(duration: {dur_s}s)"
-                ),
+                message=(f"Black frame detected: {start_s}s–{end_s}s (duration: {dur_s}s)"),
                 measured_value={
                     "start": start_f,
                     "end": end_f,
@@ -387,7 +386,9 @@ def _check_black_frames(rendered_path: Path, issues: list[Issue]) -> None:
 
 
 def _check_silence(
-    rendered_path: Path, edl: dict, issues: list[Issue],
+    rendered_path: Path,
+    edl: dict,
+    issues: list[Issue],
 ) -> None:
     """Detect silence gaps >2s via ffmpeg silencedetect filter.
 
@@ -435,17 +436,14 @@ def _check_silence(
                 Issue(
                     severity="warning",
                     check="silence",
-                    message=(
-                        f"Could not parse silencedetect values: {match.group()}"
-                    ),
+                    message=(f"Could not parse silencedetect values: {match.group()}"),
                 )
             )
             continue
 
         # Skip if covered by an intentional silence range
         is_intentional = any(
-            s.get("start", 0) <= start and s.get("end", 0) >= end
-            for s in intentional
+            s.get("start", 0) <= start and s.get("end", 0) >= end for s in intentional
         )
         if is_intentional:
             continue
@@ -454,10 +452,7 @@ def _check_silence(
             Issue(
                 severity="warning",
                 check="silence",
-                message=(
-                    f"Silence detected: {start:.1f}s–{end:.1f}s "
-                    f"(duration: {duration:.1f}s)"
-                ),
+                message=(f"Silence detected: {start:.1f}s–{end:.1f}s (duration: {duration:.1f}s)"),
                 measured_value={
                     "start": start,
                     "end": end,
@@ -496,9 +491,7 @@ def validate_render(
     if "video_codec" in probe_data:
         measurements["codec"] = probe_data["video_codec"]
     if "file_size_bytes" in probe_data:
-        measurements["file_size_mb"] = round(
-            probe_data["file_size_bytes"] / (1024 * 1024), 2
-        )
+        measurements["file_size_mb"] = round(probe_data["file_size_bytes"] / (1024 * 1024), 2)
 
     # Run individual checks
     _check_duration(probe_data, edl, issues)

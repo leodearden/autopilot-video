@@ -92,9 +92,7 @@ class GPUScheduler:
     @property
     def vram_used(self) -> int:
         """Total VRAM bytes consumed by loaded models."""
-        return sum(
-            self._registry[n].vram_bytes for n in self._loaded
-        )
+        return sum(self._registry[n].vram_bytes for n in self._loaded)
 
     @property
     def vram_free(self) -> int:
@@ -156,14 +154,10 @@ class GPUScheduler:
                 try:
                     model_obj = spec.load_fn()
                 except Exception as exc:
-                    raise SchedulerError(
-                        f"Failed to load model '{name}': {exc}"
-                    ) from exc
+                    raise SchedulerError(f"Failed to load model '{name}': {exc}") from exc
                 self._loaded[name] = model_obj
                 self._lru.append(name)
-                logger.info(
-                    "Loaded model '%s' (%d bytes VRAM)", name, spec.vram_bytes
-                )
+                logger.info("Loaded model '%s' (%d bytes VRAM)", name, spec.vram_bytes)
                 if spec.warmup_fn is not None:
                     logger.debug("Warming up model '%s'", name)
                     try:
@@ -179,9 +173,7 @@ class GPUScheduler:
                                 "Error unloading '%s' after warmup failure",
                                 name,
                             )
-                        raise SchedulerError(
-                            f"Warmup failed for model '{name}': {exc}"
-                        ) from exc
+                        raise SchedulerError(f"Warmup failed for model '{name}': {exc}") from exc
             # Increment reference count while still holding the lock
             self._in_use[name] = self._in_use.get(name, 0) + 1
         try:
@@ -204,8 +196,7 @@ class GPUScheduler:
             for name in list(self._loaded):
                 if self._in_use.get(name, 0) > 0:
                     logger.warning(
-                        "Skipping in-use model '%s' during force_unload_all "
-                        "(ref_count=%d)",
+                        "Skipping in-use model '%s' during force_unload_all (ref_count=%d)",
                         name,
                         self._in_use[name],
                     )
@@ -217,9 +208,7 @@ class GPUScheduler:
                 try:
                     spec.unload_fn(obj)
                 except Exception:
-                    logger.exception(
-                        "Error unloading '%s' during force_unload_all", name
-                    )
+                    logger.exception("Error unloading '%s' during force_unload_all", name)
                 unloaded += 1
             if skipped == 0:
                 self._lru.clear()

@@ -109,25 +109,31 @@ def _seed_cluster_with_full_data(catalog_db):
     """Seed DB with a cluster that has media, transcripts, detections, audio, faces."""
     # Media with duration
     catalog_db.insert_media(
-        "v1", "/tmp/v1.mp4",
+        "v1",
+        "/tmp/v1.mp4",
         created_at="2025-01-01T10:00:00",
         duration_seconds=120.0,
-        gps_lat=18.788, gps_lon=98.985,
+        gps_lat=18.788,
+        gps_lon=98.985,
     )
     catalog_db.insert_media(
-        "v2", "/tmp/v2.mp4",
+        "v2",
+        "/tmp/v2.mp4",
         created_at="2025-01-01T10:05:00",
         duration_seconds=180.0,
-        gps_lat=18.789, gps_lon=98.986,
+        gps_lat=18.789,
+        gps_lon=98.986,
     )
 
     # Transcripts
     catalog_db.upsert_transcript(
         "v1",
-        json.dumps([
-            {"text": "Look at the beautiful temple!", "start": 0.0, "end": 2.0},
-            {"text": "This is incredible.", "start": 2.0, "end": 4.0},
-        ]),
+        json.dumps(
+            [
+                {"text": "Look at the beautiful temple!", "start": 0.0, "end": 2.0},
+                {"text": "This is incredible.", "start": 2.0, "end": 4.0},
+            ]
+        ),
         "en",
     )
     catalog_db.upsert_transcript(
@@ -137,38 +143,74 @@ def _seed_cluster_with_full_data(catalog_db):
     )
 
     # YOLO detections
-    catalog_db.batch_insert_detections([
-        ("v1", 0, json.dumps([
-            {"class": "person", "confidence": 0.95},
-            {"class": "building", "confidence": 0.88},
-        ])),
-        ("v1", 30, json.dumps([
-            {"class": "person", "confidence": 0.92},
-            {"class": "person", "confidence": 0.85},
-        ])),
-        ("v2", 0, json.dumps([
-            {"class": "person", "confidence": 0.40},  # low confidence
-            {"class": "building", "confidence": 0.30},
-        ])),
-    ])
+    catalog_db.batch_insert_detections(
+        [
+            (
+                "v1",
+                0,
+                json.dumps(
+                    [
+                        {"class": "person", "confidence": 0.95},
+                        {"class": "building", "confidence": 0.88},
+                    ]
+                ),
+            ),
+            (
+                "v1",
+                30,
+                json.dumps(
+                    [
+                        {"class": "person", "confidence": 0.92},
+                        {"class": "person", "confidence": 0.85},
+                    ]
+                ),
+            ),
+            (
+                "v2",
+                0,
+                json.dumps(
+                    [
+                        {"class": "person", "confidence": 0.40},  # low confidence
+                        {"class": "building", "confidence": 0.30},
+                    ]
+                ),
+            ),
+        ]
+    )
 
     # Audio events
-    catalog_db.batch_insert_audio_events([
-        ("v1", 0.0, json.dumps([
-            {"class": "Speech", "probability": 0.9},
-            {"class": "Music", "probability": 0.3},
-        ])),
-        ("v2", 0.0, json.dumps([
-            {"class": "Chanting", "probability": 0.85},
-        ])),
-    ])
+    catalog_db.batch_insert_audio_events(
+        [
+            (
+                "v1",
+                0.0,
+                json.dumps(
+                    [
+                        {"class": "Speech", "probability": 0.9},
+                        {"class": "Music", "probability": 0.3},
+                    ]
+                ),
+            ),
+            (
+                "v2",
+                0.0,
+                json.dumps(
+                    [
+                        {"class": "Chanting", "probability": 0.85},
+                    ]
+                ),
+            ),
+        ]
+    )
 
     # Faces with clusters
     emb = np.zeros(512, dtype=np.float32).tobytes()
-    catalog_db.batch_insert_faces([
-        ("v1", 0, 0, json.dumps({"x": 10, "y": 10, "w": 50, "h": 50}), emb, 1),
-        ("v2", 0, 0, json.dumps({"x": 20, "y": 20, "w": 60, "h": 60}), emb, 1),
-    ])
+    catalog_db.batch_insert_faces(
+        [
+            ("v1", 0, 0, json.dumps({"x": 10, "y": 10, "w": 50, "h": 50}), emb, 1),
+            ("v2", 0, 0, json.dumps({"x": 20, "y": 20, "w": 60, "h": 60}), emb, 1),
+        ]
+    )
     catalog_db.insert_face_cluster(1, label="Person A")
 
     # Activity cluster
@@ -318,11 +360,15 @@ class TestBuildMasterStoryboard:
         from autopilot.organize.narratives import build_master_storyboard
 
         catalog_db.insert_media(
-            "v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00",
+            "v1",
+            "/tmp/v1.mp4",
+            created_at="2025-01-01T10:00:00",
             duration_seconds=120.0,
         )
         catalog_db.insert_media(
-            "v2", "/tmp/v2.mp4", created_at="2025-01-01T14:00:00",
+            "v2",
+            "/tmp/v2.mp4",
+            created_at="2025-01-01T14:00:00",
             duration_seconds=60.0,
         )
         catalog_db.upsert_transcript(
@@ -445,19 +491,23 @@ class TestLoadAndFillPrompt:
 def _make_narrative_llm_response(narratives_json=None):
     """Create a mock Anthropic API response for narrative proposals."""
     if narratives_json is None:
-        narratives_json = json.dumps([{
-            "title": "Three Days in Northern Thailand",
-            "activity_cluster_ids": ["c1", "c2"],
-            "proposed_duration_seconds": 600,
-            "arc": {
-                "beginning": "Arrival at the temple",
-                "middle": "Exploring the grounds",
-                "end": "Sunset reflections",
-            },
-            "emotional_journey": "Curiosity to wonder to peace",
-            "target_audience": "Travel enthusiasts",
-            "reasoning": "These clusters form a natural arc.",
-        }])
+        narratives_json = json.dumps(
+            [
+                {
+                    "title": "Three Days in Northern Thailand",
+                    "activity_cluster_ids": ["c1", "c2"],
+                    "proposed_duration_seconds": 600,
+                    "arc": {
+                        "beginning": "Arrival at the temple",
+                        "middle": "Exploring the grounds",
+                        "end": "Sunset reflections",
+                    },
+                    "emotional_journey": "Curiosity to wonder to peace",
+                    "target_audience": "Travel enthusiasts",
+                    "reasoning": "These clusters form a natural arc.",
+                }
+            ]
+        )
     mock_response = MagicMock()
     mock_content = MagicMock()
     mock_content.text = narratives_json
@@ -474,7 +524,8 @@ class TestCallLLM:
         from autopilot.organize.narratives import _call_llm
 
         config = AutopilotConfig(
-            input_dir=Path("."), output_dir=Path("."),
+            input_dir=Path("."),
+            output_dir=Path("."),
         )
         storyboard = "# Master Storyboard\n\nCluster c1: Temple visit"
 
@@ -495,7 +546,8 @@ class TestCallLLM:
         from autopilot.organize.narratives import _call_llm
 
         config = AutopilotConfig(
-            input_dir=Path("."), output_dir=Path("."),
+            input_dir=Path("."),
+            output_dir=Path("."),
         )
         storyboard = "# My unique storyboard content"
 
@@ -519,7 +571,8 @@ class TestCallLLM:
         from autopilot.organize.narratives import _call_llm
 
         config = AutopilotConfig(
-            input_dir=Path("."), output_dir=Path("."),
+            input_dir=Path("."),
+            output_dir=Path("."),
         )
 
         mock_client = MagicMock()
@@ -539,7 +592,8 @@ class TestCallLLM:
         from autopilot.organize.narratives import NarrativeError, _call_llm
 
         config = AutopilotConfig(
-            input_dir=Path("."), output_dir=Path("."),
+            input_dir=Path("."),
+            output_dir=Path("."),
         )
 
         mock_client = MagicMock()
@@ -557,7 +611,8 @@ class TestCallLLM:
         from autopilot.organize.narratives import NarrativeError, _call_llm
 
         config = AutopilotConfig(
-            input_dir=Path("."), output_dir=Path("."),
+            input_dir=Path("."),
+            output_dir=Path("."),
         )
 
         mock_response = MagicMock()
@@ -580,15 +635,19 @@ class TestParseNarratives:
         """Parses JSON array into Narrative objects."""
         from autopilot.organize.narratives import Narrative, _parse_narratives
 
-        text = json.dumps([{
-            "title": "Temple Day",
-            "activity_cluster_ids": ["c1"],
-            "proposed_duration_seconds": 480,
-            "arc": {"beginning": "Arrival", "middle": "Exploring", "end": "Sunset"},
-            "emotional_journey": "Wonder to peace",
-            "target_audience": "Travelers",
-            "reasoning": "Strong visual arc.",
-        }])
+        text = json.dumps(
+            [
+                {
+                    "title": "Temple Day",
+                    "activity_cluster_ids": ["c1"],
+                    "proposed_duration_seconds": 480,
+                    "arc": {"beginning": "Arrival", "middle": "Exploring", "end": "Sunset"},
+                    "emotional_journey": "Wonder to peace",
+                    "target_audience": "Travelers",
+                    "reasoning": "Strong visual arc.",
+                }
+            ]
+        )
 
         narratives = _parse_narratives(text)
         assert len(narratives) == 1
@@ -620,20 +679,28 @@ class TestParseNarratives:
         """Each parsed narrative gets a unique narrative_id."""
         from autopilot.organize.narratives import _parse_narratives
 
-        text = json.dumps([
-            {
-                "title": "A", "activity_cluster_ids": ["c1"],
-                "proposed_duration_seconds": 300, "arc": {},
-                "emotional_journey": "", "target_audience": "",
-                "reasoning": "",
-            },
-            {
-                "title": "B", "activity_cluster_ids": ["c2"],
-                "proposed_duration_seconds": 600, "arc": {},
-                "emotional_journey": "", "target_audience": "",
-                "reasoning": "",
-            },
-        ])
+        text = json.dumps(
+            [
+                {
+                    "title": "A",
+                    "activity_cluster_ids": ["c1"],
+                    "proposed_duration_seconds": 300,
+                    "arc": {},
+                    "emotional_journey": "",
+                    "target_audience": "",
+                    "reasoning": "",
+                },
+                {
+                    "title": "B",
+                    "activity_cluster_ids": ["c2"],
+                    "proposed_duration_seconds": 600,
+                    "arc": {},
+                    "emotional_journey": "",
+                    "target_audience": "",
+                    "reasoning": "",
+                },
+            ]
+        )
 
         narratives = _parse_narratives(text)
         assert len(narratives) == 2
@@ -806,7 +873,8 @@ class TestFormatForReview:
         from autopilot.organize.narratives import Narrative, format_for_review
 
         n1 = Narrative(
-            narrative_id="n1", title="Narrative A",
+            narrative_id="n1",
+            title="Narrative A",
             proposed_duration_seconds=300,
             activity_cluster_ids=["c1"],
             arc={"beginning": "A", "middle": "B", "end": "C"},
@@ -814,7 +882,8 @@ class TestFormatForReview:
             reasoning="Good.",
         )
         n2 = Narrative(
-            narrative_id="n2", title="Narrative B",
+            narrative_id="n2",
+            title="Narrative B",
             proposed_duration_seconds=600,
             activity_cluster_ids=["c2", "c3"],
             arc={"beginning": "D", "middle": "E", "end": "F"},
@@ -855,22 +924,28 @@ class TestIntegration:
 
         # --- Seed DB ---
         catalog_db.insert_media(
-            "v1", "/tmp/v1.mp4",
+            "v1",
+            "/tmp/v1.mp4",
             created_at="2025-01-01T10:00:00",
             duration_seconds=120.0,
-            gps_lat=18.788, gps_lon=98.985,
+            gps_lat=18.788,
+            gps_lon=98.985,
         )
         catalog_db.insert_media(
-            "v2", "/tmp/v2.mp4",
+            "v2",
+            "/tmp/v2.mp4",
             created_at="2025-01-01T10:15:00",
             duration_seconds=180.0,
-            gps_lat=18.789, gps_lon=98.986,
+            gps_lat=18.789,
+            gps_lon=98.986,
         )
         catalog_db.insert_media(
-            "v3", "/tmp/v3.mp4",
+            "v3",
+            "/tmp/v3.mp4",
             created_at="2025-01-01T14:00:00",
             duration_seconds=240.0,
-            gps_lat=19.500, gps_lon=99.500,
+            gps_lat=19.500,
+            gps_lon=99.500,
         )
 
         # Transcripts
@@ -886,23 +961,29 @@ class TestIntegration:
         )
 
         # Detections
-        catalog_db.batch_insert_detections([
-            ("v1", 0, json.dumps([{"class": "person", "confidence": 0.9}])),
-            ("v2", 0, json.dumps([{"class": "building", "confidence": 0.85}])),
-            ("v3", 0, json.dumps([{"class": "food", "confidence": 0.88}])),
-        ])
+        catalog_db.batch_insert_detections(
+            [
+                ("v1", 0, json.dumps([{"class": "person", "confidence": 0.9}])),
+                ("v2", 0, json.dumps([{"class": "building", "confidence": 0.85}])),
+                ("v3", 0, json.dumps([{"class": "food", "confidence": 0.88}])),
+            ]
+        )
 
         # Audio events
-        catalog_db.batch_insert_audio_events([
-            ("v1", 0.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
-            ("v3", 0.0, json.dumps([{"class": "Crowd", "probability": 0.8}])),
-        ])
+        catalog_db.batch_insert_audio_events(
+            [
+                ("v1", 0.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
+                ("v3", 0.0, json.dumps([{"class": "Crowd", "probability": 0.8}])),
+            ]
+        )
 
         # Faces
         emb = np.zeros(512, dtype=np.float32).tobytes()
-        catalog_db.batch_insert_faces([
-            ("v1", 0, 0, json.dumps({"x": 10, "y": 10, "w": 50, "h": 50}), emb, 1),
-        ])
+        catalog_db.batch_insert_faces(
+            [
+                ("v1", 0, 0, json.dumps({"x": 10, "y": 10, "w": 50, "h": 50}), emb, 1),
+            ]
+        )
         catalog_db.insert_face_cluster(1, label="Alice")
 
         # Activity clusters
@@ -933,7 +1014,8 @@ class TestIntegration:
 
         # --- Phase 2: Propose narratives (mocked LLM) ---
         config = AutopilotConfig(
-            input_dir=Path("."), output_dir=Path("."),
+            input_dir=Path("."),
+            output_dir=Path("."),
             creator=CreatorConfig(
                 name="Test Creator",
                 channel_style="Travel vlog",
@@ -944,19 +1026,21 @@ class TestIntegration:
             ),
         )
 
-        mock_narratives = [{
-            "title": "A Day in Northern Thailand",
-            "activity_cluster_ids": ["c1", "c2"],
-            "proposed_duration_seconds": 600,
-            "arc": {
-                "beginning": "Morning at the temple",
-                "middle": "Afternoon market exploration",
-                "end": "Evening reflections",
-            },
-            "emotional_journey": "Curiosity to wonder to contentment",
-            "target_audience": "Travel enthusiasts",
-            "reasoning": "Natural day-long arc combining both activities.",
-        }]
+        mock_narratives = [
+            {
+                "title": "A Day in Northern Thailand",
+                "activity_cluster_ids": ["c1", "c2"],
+                "proposed_duration_seconds": 600,
+                "arc": {
+                    "beginning": "Morning at the temple",
+                    "middle": "Afternoon market exploration",
+                    "end": "Evening reflections",
+                },
+                "emotional_journey": "Curiosity to wonder to contentment",
+                "target_audience": "Travel enthusiasts",
+                "reasoning": "Natural day-long arc combining both activities.",
+            }
+        ]
 
         mock_anthropic, mock_client = _setup_mock_narrative_anthropic(mock_narratives)
         with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
@@ -996,12 +1080,14 @@ class TestCorruptClusterResilience:
         """Seed DB with 3 activity clusters; the 2nd has corrupt clip_ids_json."""
         # Media for clusters 1 and 3
         catalog_db.insert_media(
-            "v1", "/tmp/v1.mp4",
+            "v1",
+            "/tmp/v1.mp4",
             created_at="2025-01-01T10:00:00",
             duration_seconds=60.0,
         )
         catalog_db.insert_media(
-            "v3", "/tmp/v3.mp4",
+            "v3",
+            "/tmp/v3.mp4",
             created_at="2025-01-01T14:00:00",
             duration_seconds=90.0,
         )
@@ -1122,7 +1208,9 @@ class TestProposeNarrativesTransactional:
             with (
                 patch.dict(sys.modules, {"anthropic": mock_anthropic}),
                 patch.object(
-                    catalog_db, "insert_narrative", side_effect=failing_insert,
+                    catalog_db,
+                    "insert_narrative",
+                    side_effect=failing_insert,
                 ),
             ):
                 with pytest.raises(NarrativeError):
@@ -1142,14 +1230,16 @@ class TestProposeNarrativesTransactional:
 
         config = AutopilotConfig(input_dir=Path("."), output_dir=Path("."))
 
-        one_narrative = [{
-            "title": "Narrative A",
-            "activity_cluster_ids": ["c1"],
-            "proposed_duration_seconds": 300,
-            "arc": {},
-            "emotional_journey": "",
-            "reasoning": "",
-        }]
+        one_narrative = [
+            {
+                "title": "Narrative A",
+                "activity_cluster_ids": ["c1"],
+                "proposed_duration_seconds": 300,
+                "arc": {},
+                "emotional_journey": "",
+                "reasoning": "",
+            }
+        ]
 
         mock_anthropic, _ = _setup_mock_narrative_anthropic(one_narrative)
 

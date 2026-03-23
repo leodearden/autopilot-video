@@ -80,17 +80,21 @@ def detail_seeded_db(detail_db: CatalogDB) -> CatalogDB:
     det_frame2 = [
         {"class": "person", "confidence": 0.90, "bbox": [20, 30, 110, 210]},
     ]
-    db.batch_insert_detections([
-        ("test1", 0, json.dumps(det_frame0)),
-        ("test1", 30, json.dumps(det_frame1)),
-        ("test1", 60, json.dumps(det_frame2)),
-    ])
+    db.batch_insert_detections(
+        [
+            ("test1", 0, json.dumps(det_frame0)),
+            ("test1", 30, json.dumps(det_frame1)),
+            ("test1", 60, json.dumps(det_frame2)),
+        ]
+    )
 
     # 2 faces on separate frames, assigned to cluster_id=1 (with real BLOB embeddings)
-    db.batch_insert_faces([
-        ("test1", 0, 0, json.dumps({"x": 10, "y": 20, "w": 50, "h": 50}), b"\x00" * 8, 1),
-        ("test1", 30, 0, json.dumps({"x": 15, "y": 25, "w": 55, "h": 55}), b"\x00" * 8, 1),
-    ])
+    db.batch_insert_faces(
+        [
+            ("test1", 0, 0, json.dumps({"x": 10, "y": 20, "w": 50, "h": 50}), b"\x00" * 8, 1),
+            ("test1", 30, 0, json.dumps({"x": 15, "y": 25, "w": 55, "h": 55}), b"\x00" * 8, 1),
+        ]
+    )
 
     # Face cluster with label 'Alice' (with real BLOB representative_embedding)
     db.insert_face_cluster(1, label="Alice", representative_embedding=b"\x00" * 8)
@@ -103,17 +107,21 @@ def detail_seeded_db(detail_db: CatalogDB) -> CatalogDB:
     audio_events_1 = [
         {"class": "Ocean waves", "confidence": 0.88},
     ]
-    db.batch_insert_audio_events([
-        ("test1", 5.0, json.dumps(audio_events_0)),
-        ("test1", 60.0, json.dumps(audio_events_1)),
-    ])
+    db.batch_insert_audio_events(
+        [
+            ("test1", 5.0, json.dumps(audio_events_0)),
+            ("test1", 60.0, json.dumps(audio_events_1)),
+        ]
+    )
 
     # 3 clip embeddings
-    db.batch_insert_embeddings([
-        ("test1", 0, b"\x00" * 16),
-        ("test1", 30, b"\x01" * 16),
-        ("test1", 60, b"\x02" * 16),
-    ])
+    db.batch_insert_embeddings(
+        [
+            ("test1", 0, b"\x00" * 16),
+            ("test1", 30, b"\x01" * 16),
+            ("test1", 60, b"\x02" * 16),
+        ]
+    )
 
     # test2: media with no analysis data
     db.insert_media(
@@ -238,8 +246,12 @@ class TestApiMediaDetail:
         assert resp.status_code == 200
         data = resp.json()
         for key in (
-            "media", "transcript", "detections", "faces",
-            "audio_events", "embedding_count",
+            "media",
+            "transcript",
+            "detections",
+            "faces",
+            "audio_events",
+            "embedding_count",
         ):
             assert key in data, f"Missing key: {key}"
 
@@ -599,10 +611,12 @@ def robustness_db(robustness_db_path: str) -> CatalogDB:
         fps=30.0,
     )
     valid_dets = [{"class": "person", "confidence": 0.9}]
-    db.batch_insert_detections([
-        ("mal_detect", 0, "not-json"),
-        ("mal_detect", 30, json.dumps(valid_dets)),
-    ])
+    db.batch_insert_detections(
+        [
+            ("mal_detect", 0, "not-json"),
+            ("mal_detect", 30, json.dumps(valid_dets)),
+        ]
+    )
 
     return db
 

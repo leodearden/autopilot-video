@@ -25,9 +25,7 @@ class BrollError(Exception):
     """Raised for any B-roll sourcing error."""
 
 
-def source_broll(
-    request: BrollRequest, output_dir: Path
-) -> list[Path] | None:
+def source_broll(request: BrollRequest, output_dir: Path) -> list[Path] | None:
     """Source B-roll footage matching the request description.
 
     Tries Pexels first, falls back to Pixabay. Downloads top-3 results
@@ -53,15 +51,11 @@ def source_broll(
     if results:
         return results
 
-    logger.warning(
-        "No B-roll found for description=%r from any source", request.description
-    )
+    logger.warning("No B-roll found for description=%r from any source", request.description)
     return None
 
 
-def _search_pexels(
-    request: BrollRequest, output_dir: Path
-) -> list[Path] | None:
+def _search_pexels(request: BrollRequest, output_dir: Path) -> list[Path] | None:
     """Search Pexels for B-roll video footage.
 
     Args:
@@ -115,9 +109,7 @@ def _search_pexels(
             if not best or not best.get("link"):
                 continue
 
-            dl_response = _requests.get(
-                best["link"], stream=True, timeout=(10, 300)
-            )
+            dl_response = _requests.get(best["link"], stream=True, timeout=(10, 300))
             dl_response.raise_for_status()
 
             filename = f"pexels_{video['id']}.mp4"
@@ -136,9 +128,7 @@ def _search_pexels(
         return None
 
 
-def _search_pixabay(
-    request: BrollRequest, output_dir: Path
-) -> list[Path] | None:
+def _search_pixabay(request: BrollRequest, output_dir: Path) -> list[Path] | None:
     """Search Pixabay for B-roll video footage (fallback).
 
     Args:

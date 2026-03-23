@@ -51,11 +51,9 @@ class TestActivityLabelInputSignals:
 
     def test_references_time_range(self, prompts_dir: Path):
         content = self._read(prompts_dir)
-        assert (
-            "time range" in content
-            or "time_range" in content
-            or "temporal" in content
-        ), "Prompt must reference time range/temporal input signal"
+        assert "time range" in content or "time_range" in content or "temporal" in content, (
+            "Prompt must reference time range/temporal input signal"
+        )
 
 
 class TestActivityLabelOutputFormat:
@@ -70,9 +68,7 @@ class TestActivityLabelOutputFormat:
 
     def test_output_mentions_description_field(self, prompts_dir: Path):
         content = self._read(prompts_dir)
-        assert "description" in content, (
-            "Output format must reference 'description' field"
-        )
+        assert "description" in content, "Output format must reference 'description' field"
 
     def test_output_mentions_split_field(self, prompts_dir: Path):
         content = self._read(prompts_dir)
@@ -82,6 +78,4 @@ class TestActivityLabelOutputFormat:
 
     def test_output_mentions_json(self, prompts_dir: Path):
         content = self._read(prompts_dir)
-        assert "json" in content, (
-            "Output format must mention JSON for structured output"
-        )
+        assert "json" in content, "Output format must mention JSON for structured output"

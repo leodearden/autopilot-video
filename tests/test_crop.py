@@ -95,10 +95,13 @@ class TestSelectSubjectTrack:
         """EDL with explicit integer subject_track_id returns that ID."""
         from autopilot.render.crop import _select_subject_track
 
-        det1 = {"track_id": 1, "bbox_xywh": [100, 100, 50, 50],
-                "class": "person", "confidence": 0.9}
-        det2 = {"track_id": 2, "bbox_xywh": [200, 200, 80, 80],
-                "class": "car", "confidence": 0.8}
+        det1 = {
+            "track_id": 1,
+            "bbox_xywh": [100, 100, 50, 50],
+            "class": "person",
+            "confidence": 0.9,
+        }
+        det2 = {"track_id": 2, "bbox_xywh": [200, 200, 80, 80], "class": "car", "confidence": 0.8}
         detections = [[det1], [det2]]
         edl_entry = {"subject_track_id": 5}
         assert _select_subject_track(detections, edl_entry) == 5
@@ -128,8 +131,7 @@ class TestSelectSubjectTrack:
         """subject_track_id=None triggers auto-selection."""
         from autopilot.render.crop import _select_subject_track
 
-        det = {"track_id": 7, "bbox_xywh": [100, 100, 60, 60],
-               "class": "person", "confidence": 0.9}
+        det = {"track_id": 7, "bbox_xywh": [100, 100, 60, 60], "class": "person", "confidence": 0.9}
         detections = [[det]]
         edl_entry = {"subject_track_id": None}
         assert _select_subject_track(detections, edl_entry) == 7
@@ -238,7 +240,10 @@ class TestBuildRawPath:
             [{"track_id": 1, "bbox_xywh": [2200.0, 2048.0, 200.0, 400.0], **d}],
         ]
         result = _build_raw_path(
-            detections, track_id=1, crop_w=4096, crop_h=2304,
+            detections,
+            track_id=1,
+            crop_w=4096,
+            crop_h=2304,
         )
         assert result.shape == (3, 2)
         assert not np.any(np.isnan(result))
@@ -255,7 +260,10 @@ class TestBuildRawPath:
             [{"track_id": 1, "bbox_xywh": [2200.0, 2048.0, 200.0, 400.0], **p}],
         ]
         result = _build_raw_path(
-            detections, track_id=1, crop_w=4096, crop_h=2304,
+            detections,
+            track_id=1,
+            crop_w=4096,
+            crop_h=2304,
         )
         assert result.shape == (3, 2)
         # Frame 1 (middle) should be NaN
@@ -269,8 +277,12 @@ class TestBuildRawPath:
         from autopilot.render.crop import _build_raw_path
 
         n_frames = 10
-        det = {"track_id": 1, "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0],
-               "class": "person", "confidence": 0.9}
+        det = {
+            "track_id": 1,
+            "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0],
+            "class": "person",
+            "confidence": 0.9,
+        }
         detections = [[det] for _ in range(n_frames)]
         result = _build_raw_path(detections, track_id=1, crop_w=4096, crop_h=2304)
         assert result.shape == (n_frames, 2)
@@ -279,8 +291,12 @@ class TestBuildRawPath:
         """Detection with matching track_id but no 'bbox_xywh' key -> NaN gap."""
         from autopilot.render.crop import _build_raw_path
 
-        good = {"track_id": 1, "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0],
-                "class": "person", "confidence": 0.9}
+        good = {
+            "track_id": 1,
+            "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0],
+            "class": "person",
+            "confidence": 0.9,
+        }
         bad_no_key = {"track_id": 1, "class": "person", "confidence": 0.9}
         detections = [[good], [bad_no_key], [good]]
         result = _build_raw_path(detections, track_id=1, crop_w=4096, crop_h=2304)
@@ -295,10 +311,13 @@ class TestBuildRawPath:
         """Detection with bbox_xywh=None -> NaN gap."""
         from autopilot.render.crop import _build_raw_path
 
-        good = {"track_id": 1, "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0],
-                "class": "person", "confidence": 0.9}
-        bad_none = {"track_id": 1, "bbox_xywh": None,
-                    "class": "person", "confidence": 0.9}
+        good = {
+            "track_id": 1,
+            "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0],
+            "class": "person",
+            "confidence": 0.9,
+        }
+        bad_none = {"track_id": 1, "bbox_xywh": None, "class": "person", "confidence": 0.9}
         detections = [[good], [bad_none], [good]]
         result = _build_raw_path(detections, track_id=1, crop_w=4096, crop_h=2304)
         assert result.shape == (3, 2)
@@ -309,8 +328,12 @@ class TestBuildRawPath:
         """Normal detection with valid bbox_xywh still works as before."""
         from autopilot.render.crop import _build_raw_path
 
-        det = {"track_id": 1, "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0],
-               "class": "person", "confidence": 0.9}
+        det = {
+            "track_id": 1,
+            "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0],
+            "class": "person",
+            "confidence": 0.9,
+        }
         detections = [[det], [det]]
         result = _build_raw_path(detections, track_id=1, crop_w=4096, crop_h=2304)
         assert not np.any(np.isnan(result))
@@ -385,8 +408,12 @@ class TestHandleDetectionGaps:
         path[30:60, :] = np.nan  # 1-second gap
 
         filled = _handle_detection_gaps(
-            path, fps=30.0, source_w=4096, source_h=4096,
-            hold_seconds=2.0, drift_seconds=1.0,
+            path,
+            fps=30.0,
+            source_w=4096,
+            source_h=4096,
+            hold_seconds=2.0,
+            drift_seconds=1.0,
         )
         # Gap should hold at 1000, 1000
         np.testing.assert_allclose(filled[45], [1000.0, 1000.0], atol=1.0)
@@ -400,8 +427,12 @@ class TestHandleDetectionGaps:
         path[30:120, :] = np.nan  # 3-second gap
 
         filled = _handle_detection_gaps(
-            path, fps=30.0, source_w=4096, source_h=4096,
-            hold_seconds=1.0, drift_seconds=1.0,
+            path,
+            fps=30.0,
+            source_w=4096,
+            source_h=4096,
+            hold_seconds=1.0,
+            drift_seconds=1.0,
         )
         # During hold phase (first 30 NaN frames = 1s), should stay at 1000
         np.testing.assert_allclose(filled[45], [1000.0, 1000.0], atol=1.0)
@@ -418,8 +449,12 @@ class TestHandleDetectionGaps:
         path[30:270, :] = np.nan  # 8-second gap
 
         filled = _handle_detection_gaps(
-            path, fps=30.0, source_w=4096, source_h=4096,
-            hold_seconds=1.0, drift_seconds=1.0,
+            path,
+            fps=30.0,
+            source_w=4096,
+            source_h=4096,
+            hold_seconds=1.0,
+            drift_seconds=1.0,
         )
         # Well past drift phase, should be at center
         np.testing.assert_allclose(filled[200], [2048.0, 2048.0], atol=5.0)
@@ -430,8 +465,12 @@ class TestHandleDetectionGaps:
 
         path = np.full((30, 2), [2048.0, 1152.0])
         filled = _handle_detection_gaps(
-            path, fps=30.0, source_w=4096, source_h=4096,
-            hold_seconds=2.0, drift_seconds=1.0,
+            path,
+            fps=30.0,
+            source_w=4096,
+            source_h=4096,
+            hold_seconds=2.0,
+            drift_seconds=1.0,
         )
         np.testing.assert_allclose(filled, path)
 
@@ -488,8 +527,12 @@ class TestCenterMode:
 
         # Seed a 4096x4096, 30fps, 1s media
         catalog_db.insert_media(
-            "vid1", "/fake.mp4",
-            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+            "vid1",
+            "/fake.mp4",
+            resolution_w=4096,
+            resolution_h=4096,
+            fps=30.0,
+            duration_seconds=1.0,
         )
         config = CameraConfig(source_resolution=(4096, 4096))
         edl_entry = {
@@ -508,8 +551,12 @@ class TestCenterMode:
         from autopilot.render.crop import compute_crop_path
 
         catalog_db.insert_media(
-            "vid2", "/fake.mp4",
-            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+            "vid2",
+            "/fake.mp4",
+            resolution_w=4096,
+            resolution_h=4096,
+            fps=30.0,
+            duration_seconds=1.0,
         )
         config = CameraConfig(source_resolution=(4096, 4096))
         edl_entry = {
@@ -532,8 +579,12 @@ class TestManualOffsetMode:
         from autopilot.render.crop import compute_crop_path
 
         catalog_db.insert_media(
-            "vid3", "/fake.mp4",
-            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+            "vid3",
+            "/fake.mp4",
+            resolution_w=4096,
+            resolution_h=4096,
+            fps=30.0,
+            duration_seconds=1.0,
         )
         config = CameraConfig(source_resolution=(4096, 4096))
         edl_entry = {
@@ -554,8 +605,12 @@ class TestManualOffsetMode:
         from autopilot.render.crop import compute_crop_path
 
         catalog_db.insert_media(
-            "vid4", "/fake.mp4",
-            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+            "vid4",
+            "/fake.mp4",
+            resolution_w=4096,
+            resolution_h=4096,
+            fps=30.0,
+            duration_seconds=1.0,
         )
         config = CameraConfig(source_resolution=(4096, 4096))
         edl_entry = {
@@ -575,8 +630,12 @@ class TestManualOffsetMode:
         from autopilot.render.crop import compute_crop_path
 
         catalog_db.insert_media(
-            "vid5", "/fake.mp4",
-            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+            "vid5",
+            "/fake.mp4",
+            resolution_w=4096,
+            resolution_h=4096,
+            fps=30.0,
+            duration_seconds=1.0,
         )
         config = CameraConfig(source_resolution=(4096, 4096))
         edl_center = {
@@ -605,8 +664,12 @@ class TestStabilizeOnlyMode:
         from autopilot.render.crop import compute_crop_path
 
         catalog_db.insert_media(
-            "vid6", "/fake.mp4",
-            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+            "vid6",
+            "/fake.mp4",
+            resolution_w=4096,
+            resolution_h=4096,
+            fps=30.0,
+            duration_seconds=1.0,
         )
         config = CameraConfig(source_resolution=(4096, 4096))
         edl_entry = {
@@ -628,8 +691,12 @@ class TestStabilizeOnlyMode:
         from autopilot.render.crop import compute_crop_path
 
         catalog_db.insert_media(
-            "vid7", "/fake.mp4",
-            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+            "vid7",
+            "/fake.mp4",
+            resolution_w=4096,
+            resolution_h=4096,
+            fps=30.0,
+            duration_seconds=1.0,
         )
         config = CameraConfig(source_resolution=(4096, 4096))
         edl_entry = {
@@ -647,16 +714,26 @@ def _seed_tracking_media(catalog_db, media_id: str = "track1") -> None:
     import json
 
     catalog_db.insert_media(
-        media_id, "/fake.mp4",
-        resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=10.0,
+        media_id,
+        "/fake.mp4",
+        resolution_w=4096,
+        resolution_h=4096,
+        fps=30.0,
+        duration_seconds=10.0,
     )
     # Person track_id=1 moves from left (1000,2048) to right (3000,2048) over 300 frames
     rows = []
     for f in range(300):
         cx = 1000.0 + (3000.0 - 1000.0) * f / 299.0
         cy = 2048.0
-        det = [{"track_id": 1, "class": "person",
-                "bbox_xywh": [cx, cy, 200.0, 400.0], "confidence": 0.95}]
+        det = [
+            {
+                "track_id": 1,
+                "class": "person",
+                "bbox_xywh": [cx, cy, 200.0, 400.0],
+                "confidence": 0.95,
+            }
+        ]
         rows.append((media_id, f, json.dumps(det)))
     catalog_db.batch_insert_detections(rows)
 
@@ -806,8 +883,12 @@ class TestErrorHandling:
         from autopilot.render.crop import CropError, compute_crop_path
 
         catalog_db.insert_media(
-            "empty1", "/fake.mp4",
-            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+            "empty1",
+            "/fake.mp4",
+            resolution_w=4096,
+            resolution_h=4096,
+            fps=30.0,
+            duration_seconds=1.0,
         )
         config = CameraConfig(source_resolution=(4096, 4096))
         edl_entry = {
@@ -824,8 +905,12 @@ class TestErrorHandling:
         from autopilot.render.crop import CropError, compute_crop_path
 
         catalog_db.insert_media(
-            "err1", "/fake.mp4",
-            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+            "err1",
+            "/fake.mp4",
+            resolution_w=4096,
+            resolution_h=4096,
+            fps=30.0,
+            duration_seconds=1.0,
         )
         config = CameraConfig(source_resolution=(4096, 4096))
         edl_entry = {
@@ -897,13 +982,16 @@ class TestMalformedDetectionsJson:
         from autopilot.render.crop import CropError, compute_crop_path
 
         catalog_db.insert_media(
-            "null_det", "/fake.mp4",
-            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+            "null_det",
+            "/fake.mp4",
+            resolution_w=4096,
+            resolution_h=4096,
+            fps=30.0,
+            duration_seconds=1.0,
         )
         # Insert a row with NULL detections_json via raw SQL
         catalog_db.conn.execute(
-            "INSERT INTO detections (media_id, frame_number, detections_json) "
-            "VALUES (?, ?, ?)",
+            "INSERT INTO detections (media_id, frame_number, detections_json) VALUES (?, ?, ?)",
             ("null_det", 0, None),
         )
         config = CameraConfig(source_resolution=(4096, 4096))
@@ -921,12 +1009,15 @@ class TestMalformedDetectionsJson:
         from autopilot.render.crop import CropError, compute_crop_path
 
         catalog_db.insert_media(
-            "bad_json", "/fake.mp4",
-            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+            "bad_json",
+            "/fake.mp4",
+            resolution_w=4096,
+            resolution_h=4096,
+            fps=30.0,
+            duration_seconds=1.0,
         )
         catalog_db.conn.execute(
-            "INSERT INTO detections (media_id, frame_number, detections_json) "
-            "VALUES (?, ?, ?)",
+            "INSERT INTO detections (media_id, frame_number, detections_json) VALUES (?, ?, ?)",
             ("bad_json", 0, "{bad"),
         )
         config = CameraConfig(source_resolution=(4096, 4096))
@@ -946,15 +1037,24 @@ class TestMalformedDetectionsJson:
         from autopilot.render.crop import compute_crop_path
 
         catalog_db.insert_media(
-            "good_json", "/fake.mp4",
-            resolution_w=4096, resolution_h=4096, fps=30.0, duration_seconds=1.0,
+            "good_json",
+            "/fake.mp4",
+            resolution_w=4096,
+            resolution_h=4096,
+            fps=30.0,
+            duration_seconds=1.0,
         )
-        det = [{"track_id": 1, "class": "person",
-                "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0], "confidence": 0.9}]
+        det = [
+            {
+                "track_id": 1,
+                "class": "person",
+                "bbox_xywh": [2048.0, 2048.0, 200.0, 400.0],
+                "confidence": 0.9,
+            }
+        ]
         for f in range(30):
             catalog_db.conn.execute(
-                "INSERT INTO detections (media_id, frame_number, detections_json) "
-                "VALUES (?, ?, ?)",
+                "INSERT INTO detections (media_id, frame_number, detections_json) VALUES (?, ?, ?)",
                 ("good_json", f, json.dumps(det)),
             )
         config = CameraConfig(source_resolution=(4096, 4096))

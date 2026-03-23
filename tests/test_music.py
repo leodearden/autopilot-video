@@ -13,6 +13,7 @@ from autopilot.source import MusicRequest
 # Mock helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_mock_audiocraft() -> tuple[MagicMock, MagicMock, MagicMock, MagicMock]:
     """Create mock audiocraft and torchaudio modules.
 
@@ -59,6 +60,7 @@ def _make_music_request(
 # Public API surface tests
 # ---------------------------------------------------------------------------
 
+
 class TestMusicPublicAPI:
     """Verify MusicError, source_music surface."""
 
@@ -98,6 +100,7 @@ class TestMusicPublicAPI:
 # MusicGen engine tests
 # ---------------------------------------------------------------------------
 
+
 class TestMusicGenEngine:
     """Tests for the MusicGen (audiocraft) engine path."""
 
@@ -107,12 +110,15 @@ class TestMusicGenEngine:
         request = _make_music_request()
         config = _make_model_config("musicgen")
 
-        with patch.dict(sys.modules, {
-            "audiocraft": mock_ac,
-            "audiocraft.models": mock_ac_models,
-            "torchaudio": mock_ta,
-            "torch": mock_torch,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "audiocraft": mock_ac,
+                "audiocraft.models": mock_ac_models,
+                "torchaudio": mock_ta,
+                "torch": mock_torch,
+            },
+        ):
             if "autopilot.source.music" in sys.modules:
                 del sys.modules["autopilot.source.music"]
             from autopilot.source.music import source_music
@@ -128,12 +134,15 @@ class TestMusicGenEngine:
         request = _make_music_request(mood="gentle piano")
         config = _make_model_config("musicgen")
 
-        with patch.dict(sys.modules, {
-            "audiocraft": mock_ac,
-            "audiocraft.models": mock_ac_models,
-            "torchaudio": mock_ta,
-            "torch": mock_torch,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "audiocraft": mock_ac,
+                "audiocraft.models": mock_ac_models,
+                "torchaudio": mock_ta,
+                "torch": mock_torch,
+            },
+        ):
             if "autopilot.source.music" in sys.modules:
                 del sys.modules["autopilot.source.music"]
             from autopilot.source.music import source_music
@@ -153,12 +162,15 @@ class TestMusicGenEngine:
         request2 = _make_music_request(mood="gentle piano")
         config = _make_model_config("musicgen")
 
-        with patch.dict(sys.modules, {
-            "audiocraft": mock_ac,
-            "audiocraft.models": mock_ac_models,
-            "torchaudio": mock_ta,
-            "torch": mock_torch,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "audiocraft": mock_ac,
+                "audiocraft.models": mock_ac_models,
+                "torchaudio": mock_ta,
+                "torch": mock_torch,
+            },
+        ):
             if "autopilot.source.music" in sys.modules:
                 del sys.modules["autopilot.source.music"]
             from autopilot.source.music import _musicgen_cache, source_music
@@ -179,12 +191,15 @@ class TestMusicGenEngine:
         """_musicgen_cache can be cleared for test isolation."""
         mock_ac, mock_ac_models, mock_ta, mock_torch = _make_mock_audiocraft()
 
-        with patch.dict(sys.modules, {
-            "audiocraft": mock_ac,
-            "audiocraft.models": mock_ac_models,
-            "torchaudio": mock_ta,
-            "torch": mock_torch,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "audiocraft": mock_ac,
+                "audiocraft.models": mock_ac_models,
+                "torchaudio": mock_ta,
+                "torch": mock_torch,
+            },
+        ):
             if "autopilot.source.music" in sys.modules:
                 del sys.modules["autopilot.source.music"]
             from autopilot.source.music import _musicgen_cache
@@ -200,12 +215,15 @@ class TestMusicGenEngine:
         request = _make_music_request()
         config = _make_model_config("musicgen")
 
-        with patch.dict(sys.modules, {
-            "audiocraft": mock_ac,
-            "audiocraft.models": mock_ac_models,
-            "torchaudio": mock_ta,
-            "torch": mock_torch,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "audiocraft": mock_ac,
+                "audiocraft.models": mock_ac_models,
+                "torchaudio": mock_ta,
+                "torch": mock_torch,
+            },
+        ):
             if "autopilot.source.music" in sys.modules:
                 del sys.modules["autopilot.source.music"]
             from autopilot.source.music import source_music
@@ -222,6 +240,7 @@ class TestMusicGenEngine:
 # ---------------------------------------------------------------------------
 # Freesound search tests
 # ---------------------------------------------------------------------------
+
 
 class TestFreesoundSearch:
     """Tests for the Freesound API search fallback."""
@@ -306,10 +325,9 @@ class TestFreesoundSearch:
         call_args = mock_requests.get.call_args
         assert "my-fs-key" in str(call_args)
 
-
-# ---------------------------------------------------------------------------
-# fetch_list_only config tests
-# ---------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
+    # fetch_list_only config tests
+    # ---------------------------------------------------------------------------
 
     def test_freesound_search_has_timeout(self, tmp_path):
         """Freesound search API call includes a timeout parameter."""
@@ -406,10 +424,8 @@ class TestFreesoundSearch:
         assert result is not None
         filename = result.name
         # Must not contain path separators or dangerous characters
-        for char in ['/', '\\', '<', '>', ':', '\x00']:
-            assert char not in filename, (
-                f"Filename {filename!r} contains unsafe character {char!r}"
-            )
+        for char in ["/", "\\", "<", ">", ":", "\x00"]:
+            assert char not in filename, f"Filename {filename!r} contains unsafe character {char!r}"
         # File must be directly in output_dir, not a subdirectory
         assert result.parent == tmp_path
 

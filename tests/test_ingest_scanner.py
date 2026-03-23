@@ -446,8 +446,7 @@ class TestScanDirectoryParallel:
             (tmp_path / f"clip{i}.mp4").write_bytes(b"\x00")
 
         futures = [
-            _make_future(result=MediaFile(file_path=tmp_path / f"clip{i}.mp4"))
-            for i in range(5)
+            _make_future(result=MediaFile(file_path=tmp_path / f"clip{i}.mp4")) for i in range(5)
         ]
 
         mock_executor = MagicMock()

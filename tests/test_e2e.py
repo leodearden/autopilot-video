@@ -131,7 +131,8 @@ class TestEndToEnd:
 
         # ---- SOURCE mocks ----
         mock_resolve.resolve_edl_assets.return_value = {
-            "edl": {}, "unresolved": [],
+            "edl": {},
+            "unresolved": [],
         }
 
         # ---- RENDER mocks ----
@@ -171,9 +172,7 @@ class TestEndToEnd:
         )
 
         # SCRIPT stage expects a script exists for EDL generation
-        catalog_db.upsert_narrative_script(
-            "narr-1", json.dumps({"scenes": [{"id": "s1"}]})
-        )
+        catalog_db.upsert_narrative_script("narr-1", json.dumps({"scenes": [{"id": "s1"}]}))
 
         # EDL stage writes edit plan which SOURCE and RENDER read
         catalog_db.upsert_edit_plan(
@@ -190,8 +189,7 @@ class TestEndToEnd:
         # ---- Verify all stages completed ----
         for stage_name, result in results.items():
             assert result.status == StageStatus.DONE, (
-                f"{stage_name} status was {result.status}, "
-                f"error: {result.error_message}"
+                f"{stage_name} status was {result.status}, error: {result.error_message}"
             )
 
         # ---- Verify key module calls ----

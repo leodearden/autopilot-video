@@ -344,25 +344,18 @@ class CatalogDB:
         embedding_count = self.count_embeddings_for_media(media_id)
 
         # Strip binary embedding BLOBs from face rows
-        faces = [
-            {k: v for k, v in f.items() if k != "embedding"}
-            for f in faces
-        ]
+        faces = [{k: v for k, v in f.items() if k != "embedding"} for f in faces]
 
         # Build face_clusters lookup for faces that have cluster assignments
         cluster_ids: set[int] = {
-            cast(int, f["cluster_id"])
-            for f in faces
-            if f.get("cluster_id") is not None
+            cast(int, f["cluster_id"]) for f in faces if f.get("cluster_id") is not None
         }
         face_clusters = {}
         for cid in cluster_ids:
             cluster = self.get_face_cluster_by_id(cid)
             if cluster is not None:
                 face_clusters[cid] = {
-                    k: v
-                    for k, v in cluster.items()
-                    if k != "representative_embedding"
+                    k: v for k, v in cluster.items() if k != "representative_embedding"
                 }
 
         return {
@@ -499,9 +492,7 @@ class CatalogDB:
             rows,
         )
 
-    def get_faces_for_frame(
-        self, media_id: str, frame_number: int
-    ) -> list[dict[str, object]]:
+    def get_faces_for_frame(self, media_id: str, frame_number: int) -> list[dict[str, object]]:
         """Get all faces for a specific media_id and frame_number."""
         cur = self.conn.execute(
             "SELECT * FROM faces WHERE media_id = ? AND frame_number = ?",
@@ -533,9 +524,7 @@ class CatalogDB:
         """Set cluster_id to NULL for all faces."""
         self.conn.execute("UPDATE faces SET cluster_id = NULL")
 
-    def batch_update_face_cluster_ids(
-        self, updates: list[tuple[int, str, int, int]]
-    ) -> None:
+    def batch_update_face_cluster_ids(self, updates: list[tuple[int, str, int, int]]) -> None:
         """Batch update cluster_id for faces: (cluster_id, media_id, frame_number, face_index)."""
         if not updates:
             return
@@ -779,11 +768,11 @@ class CatalogDB:
         if existing is not None:
             # Merge: keep existing values for fields not explicitly provided
             edl_json = (
-                edl_json if edl_json is not None
-                else cast("str | None", existing.get("edl_json"))
+                edl_json if edl_json is not None else cast("str | None", existing.get("edl_json"))
             )
             otio_path = (
-                otio_path if otio_path is not None
+                otio_path
+                if otio_path is not None
                 else cast("str | None", existing.get("otio_path"))
             )
             validation_json = (
@@ -934,8 +923,7 @@ class CatalogDB:
     ) -> dict[str, object] | None:
         """Get a caption by composite key, or None if not found."""
         cur = self.conn.execute(
-            "SELECT * FROM captions "
-            "WHERE media_id = ? AND start_time = ? AND end_time = ?",
+            "SELECT * FROM captions WHERE media_id = ? AND start_time = ? AND end_time = ?",
             (media_id, start_time, end_time),
         )
         row = cur.fetchone()
@@ -1252,15 +1240,10 @@ class CatalogDB:
         cur = self.conn.execute(sql, params)
         return [dict(row) for row in cur.fetchall()]
 
-    def count_jobs_by_status(
-        self, stage: str, *, run_id: str | None = None
-    ) -> dict[str, int]:
+    def count_jobs_by_status(self, stage: str, *, run_id: str | None = None) -> dict[str, int]:
         """Return ``{status: count}`` for jobs in *stage*."""
         params: list[object] = [stage]
-        sql = (
-            "SELECT status, count(*) FROM pipeline_jobs "
-            "WHERE stage = ?"
-        )
+        sql = "SELECT status, count(*) FROM pipeline_jobs WHERE stage = ?"
         if run_id is not None:
             sql += " AND run_id = ?"
             params.append(run_id)
@@ -1353,18 +1336,14 @@ class CatalogDB:
     def get_current_run(self) -> dict[str, object] | None:
         """Return the most recently started running run, or ``None``."""
         cur = self.conn.execute(
-            "SELECT * FROM pipeline_runs "
-            "WHERE status = 'running' "
-            "ORDER BY started_at DESC LIMIT 1"
+            "SELECT * FROM pipeline_runs WHERE status = 'running' ORDER BY started_at DESC LIMIT 1"
         )
         row = cur.fetchone()
         return dict(row) if row else None
 
     def list_runs(self) -> list[dict[str, object]]:
         """Return all runs ordered by started_at descending."""
-        cur = self.conn.execute(
-            "SELECT * FROM pipeline_runs ORDER BY started_at DESC"
-        )
+        cur = self.conn.execute("SELECT * FROM pipeline_runs ORDER BY started_at DESC")
         return [dict(row) for row in cur.fetchall()]
 
     def close(self) -> None:

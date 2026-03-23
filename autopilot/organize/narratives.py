@@ -140,14 +140,14 @@ def _build_cluster_summary(
             cid_val = face.get("cluster_id")
             if cid_val is not None:
                 try:
-                    face_cluster_ids.add(int(cid_val))  # type: ignore[arg-type]
+                    face_cluster_ids.add(int(cid_val))  # type: ignore[call-overload]
                 except (ValueError, TypeError):
                     pass
 
     people_labels: list[str] = []
     if face_cluster_ids:
         all_face_clusters = db.get_face_clusters()
-        fc_map = {int(fc["cluster_id"]): fc.get("label") for fc in all_face_clusters}  # type: ignore[arg-type]
+        fc_map = {int(fc["cluster_id"]): fc.get("label") for fc in all_face_clusters}  # type: ignore[call-overload]
         for fcid in sorted(face_cluster_ids):
             label = fc_map.get(fcid)
             if label:
@@ -173,9 +173,7 @@ def _build_cluster_summary(
     tone_parts: list[str] = []
     top_audio = audio_counter.most_common(5)
     if top_audio:
-        tone_parts.append(
-            "Audio: " + ", ".join(f"{cls} ({count})" for cls, count in top_audio)
-        )
+        tone_parts.append("Audio: " + ", ".join(f"{cls} ({count})" for cls, count in top_audio))
     if transcript_texts:
         tone_parts.append(f"Speech detected ({len(transcript_texts)} segments)")
     summary["emotional_tone"] = "; ".join(tone_parts) if tone_parts else ""
@@ -237,8 +235,7 @@ def _load_and_fill_prompt(config: AutopilotConfig) -> str:
 
     creator = config.creator
     return (
-        template
-        .replace("{creator_name}", creator.name)
+        template.replace("{creator_name}", creator.name)
         .replace("{channel_style}", creator.channel_style)
         .replace("{target_audience}", creator.target_audience)
         .replace("{default_video_duration}", creator.default_video_duration_minutes)
@@ -286,7 +283,7 @@ def _call_llm(
     if not response.content:
         raise NarrativeError("Empty response from LLM")
 
-    return response.content[0].text
+    return response.content[0].text  # type: ignore[union-attr]
 
 
 _REQUIRED_NARRATIVE_FIELDS = {"title", "activity_cluster_ids", "proposed_duration_seconds"}
@@ -325,23 +322,23 @@ def _parse_narratives(text: str) -> list[Narrative]:
             raise NarrativeError(f"Expected JSON object in array, got {type(entry).__name__}")
         missing = _REQUIRED_NARRATIVE_FIELDS - set(entry.keys())
         if missing:
-            raise NarrativeError(
-                f"Narrative entry missing required fields: {sorted(missing)}"
-            )
+            raise NarrativeError(f"Narrative entry missing required fields: {sorted(missing)}")
         arc = entry.get("arc", {})
         if not isinstance(arc, dict):
             arc = {}
-        narratives.append(Narrative(
-            narrative_id=str(uuid.uuid4()),
-            title=str(entry["title"]),
-            description=str(entry.get("reasoning", "")),
-            proposed_duration_seconds=float(entry["proposed_duration_seconds"]),
-            activity_cluster_ids=list(entry["activity_cluster_ids"]),
-            arc=arc,
-            emotional_journey=str(entry.get("emotional_journey", "")),
-            reasoning=str(entry.get("reasoning", "")),
-            status="proposed",
-        ))
+        narratives.append(
+            Narrative(
+                narrative_id=str(uuid.uuid4()),
+                title=str(entry["title"]),
+                description=str(entry.get("reasoning", "")),
+                proposed_duration_seconds=float(entry["proposed_duration_seconds"]),
+                activity_cluster_ids=list(entry["activity_cluster_ids"]),
+                arc=arc,
+                emotional_journey=str(entry.get("emotional_journey", "")),
+                reasoning=str(entry.get("reasoning", "")),
+                status="proposed",
+            )
+        )
 
     return narratives
 
@@ -372,7 +369,9 @@ def build_master_storyboard(db: CatalogDB) -> str:
             summary = _build_cluster_summary(cluster, db)
         except Exception as exc:
             logger.warning(
-                "Skipping cluster %s due to error: %s", cluster_id, exc,
+                "Skipping cluster %s due to error: %s",
+                cluster_id,
+                exc,
             )
             continue
 
@@ -390,9 +389,7 @@ def build_master_storyboard(db: CatalogDB) -> str:
         if summary["emotional_tone"]:
             section_lines.append(f"- **Emotional tone**: {summary['emotional_tone']}")
         if summary["visual_quality_notes"]:
-            section_lines.append(
-                f"- **Visual quality**: {summary['visual_quality_notes']}"
-            )
+            section_lines.append(f"- **Visual quality**: {summary['visual_quality_notes']}")
 
         sections.append("\n".join(section_lines))
 

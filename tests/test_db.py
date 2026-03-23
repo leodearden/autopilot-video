@@ -708,9 +708,7 @@ class TestIntegration:
         db = CatalogDB(":memory:")
         try:
             with db:
-                db.conn.execute(
-                    "INSERT INTO media_files (id, file_path) VALUES ('m1', '/a.mp4')"
-                )
+                db.conn.execute("INSERT INTO media_files (id, file_path) VALUES ('m1', '/a.mp4')")
             # After __exit__ commits, data should be visible
             cur = db.conn.execute("SELECT * FROM media_files WHERE id = 'm1'")
             row = cur.fetchone()
@@ -924,9 +922,9 @@ class TestFacesCRUD:
         _insert_test_media(catalog_db)
         emb = self._make_face_embedding()
         rows = [
-            ("m1", 0, 0, '[10, 20, 100, 200]', emb, None),
-            ("m1", 0, 1, '[50, 60, 80, 90]', emb, None),
-            ("m1", 30, 0, '[15, 25, 100, 200]', emb, None),
+            ("m1", 0, 0, "[10, 20, 100, 200]", emb, None),
+            ("m1", 0, 1, "[50, 60, 80, 90]", emb, None),
+            ("m1", 30, 0, "[15, 25, 100, 200]", emb, None),
         ]
         catalog_db.batch_insert_faces(rows)
         cur = catalog_db.conn.execute("SELECT count(*) FROM faces WHERE media_id = 'm1'")
@@ -940,11 +938,13 @@ class TestFacesCRUD:
         """Retrieve faces for a specific media_id + frame_number."""
         _insert_test_media(catalog_db)
         emb = self._make_face_embedding()
-        catalog_db.batch_insert_faces([
-            ("m1", 0, 0, '[10, 20, 100, 200]', emb, None),
-            ("m1", 0, 1, '[50, 60, 80, 90]', emb, None),
-            ("m1", 30, 0, '[15, 25, 100, 200]', emb, None),
-        ])
+        catalog_db.batch_insert_faces(
+            [
+                ("m1", 0, 0, "[10, 20, 100, 200]", emb, None),
+                ("m1", 0, 1, "[50, 60, 80, 90]", emb, None),
+                ("m1", 30, 0, "[15, 25, 100, 200]", emb, None),
+            ]
+        )
         results = catalog_db.get_faces_for_frame("m1", 0)
         assert len(results) == 2
         assert all(r["frame_number"] == 0 for r in results)
@@ -958,11 +958,13 @@ class TestFacesCRUD:
         """Retrieve all faces for a media_id."""
         _insert_test_media(catalog_db)
         emb = self._make_face_embedding()
-        catalog_db.batch_insert_faces([
-            ("m1", 0, 0, '[10, 20, 100, 200]', emb, None),
-            ("m1", 30, 0, '[15, 25, 100, 200]', emb, None),
-            ("m1", 60, 0, '[20, 30, 100, 200]', emb, None),
-        ])
+        catalog_db.batch_insert_faces(
+            [
+                ("m1", 0, 0, "[10, 20, 100, 200]", emb, None),
+                ("m1", 30, 0, "[15, 25, 100, 200]", emb, None),
+                ("m1", 60, 0, "[20, 30, 100, 200]", emb, None),
+            ]
+        )
         results = catalog_db.get_faces_for_media("m1")
         assert len(results) == 3
 
@@ -970,11 +972,13 @@ class TestFacesCRUD:
         """get_all_face_embeddings returns only rows with non-null embedding."""
         _insert_test_media(catalog_db)
         emb = self._make_face_embedding()
-        catalog_db.batch_insert_faces([
-            ("m1", 0, 0, '[10, 20, 100, 200]', emb, None),
-            ("m1", 0, 1, '[50, 60, 80, 90]', None, None),  # null embedding
-            ("m1", 30, 0, '[15, 25, 100, 200]', emb, None),
-        ])
+        catalog_db.batch_insert_faces(
+            [
+                ("m1", 0, 0, "[10, 20, 100, 200]", emb, None),
+                ("m1", 0, 1, "[50, 60, 80, 90]", None, None),  # null embedding
+                ("m1", 30, 0, "[15, 25, 100, 200]", emb, None),
+            ]
+        )
         results = catalog_db.get_all_face_embeddings()
         assert len(results) == 2
         assert all(r["embedding"] is not None for r in results)
@@ -986,9 +990,11 @@ class TestFacesCRUD:
         _insert_test_media(catalog_db)
         original = np.random.default_rng(99).random(512).astype(np.float32)
         emb_bytes = original.tobytes()
-        catalog_db.batch_insert_faces([
-            ("m1", 0, 0, '[10, 20, 100, 200]', emb_bytes, None),
-        ])
+        catalog_db.batch_insert_faces(
+            [
+                ("m1", 0, 0, "[10, 20, 100, 200]", emb_bytes, None),
+            ]
+        )
         results = catalog_db.get_all_face_embeddings()
         assert len(results) == 1
         recovered = np.frombuffer(results[0]["embedding"], dtype=np.float32)
@@ -1006,10 +1012,12 @@ class TestFacesCRUD:
         """reset_face_cluster_ids sets all faces.cluster_id to NULL."""
         _insert_test_media(catalog_db)
         emb = self._make_face_embedding()
-        catalog_db.batch_insert_faces([
-            ("m1", 0, 0, '[10, 20, 100, 200]', emb, 1),
-            ("m1", 0, 1, '[50, 60, 80, 90]', emb, 2),
-        ])
+        catalog_db.batch_insert_faces(
+            [
+                ("m1", 0, 0, "[10, 20, 100, 200]", emb, 1),
+                ("m1", 0, 1, "[50, 60, 80, 90]", emb, 2),
+            ]
+        )
         # Verify cluster_ids are set
         faces = catalog_db.get_faces_for_media("m1")
         assert all(f["cluster_id"] is not None for f in faces)
@@ -1022,11 +1030,13 @@ class TestFacesCRUD:
         """batch_update_face_cluster_ids updates cluster_id for specified faces."""
         _insert_test_media(catalog_db)
         emb = self._make_face_embedding()
-        catalog_db.batch_insert_faces([
-            ("m1", 0, 0, '[10, 20, 100, 200]', emb, None),
-            ("m1", 0, 1, '[50, 60, 80, 90]', emb, None),
-            ("m1", 30, 0, '[15, 25, 100, 200]', emb, None),
-        ])
+        catalog_db.batch_insert_faces(
+            [
+                ("m1", 0, 0, "[10, 20, 100, 200]", emb, None),
+                ("m1", 0, 1, "[50, 60, 80, 90]", emb, None),
+                ("m1", 30, 0, "[15, 25, 100, 200]", emb, None),
+            ]
+        )
         updates = [
             (1, "m1", 0, 0),
             (1, "m1", 0, 1),
@@ -1048,9 +1058,7 @@ class TestCaptionsCRUD:
     def test_upsert_and_get_caption(self, catalog_db):
         """Insert caption, retrieve by PK, verify all fields."""
         _insert_test_media(catalog_db)
-        catalog_db.upsert_caption(
-            "m1", 0.0, 10.0, "A person walking on a beach", "qwen-vl-7b"
-        )
+        catalog_db.upsert_caption("m1", 0.0, 10.0, "A person walking on a beach", "qwen-vl-7b")
         result = catalog_db.get_caption("m1", 0.0, 10.0)
         assert result is not None
         assert result["media_id"] == "m1"
@@ -1092,9 +1100,7 @@ class TestCaptionsCRUD:
     def test_caption_fk_enforcement(self, catalog_db):
         """Inserting caption with nonexistent media_id raises IntegrityError."""
         with pytest.raises(sqlite3.IntegrityError):
-            catalog_db.upsert_caption(
-                "nonexistent_media", 0.0, 10.0, "caption", "model"
-            )
+            catalog_db.upsert_caption("nonexistent_media", 0.0, 10.0, "caption", "model")
 
 
 # -- has_* checkpoint convenience methods ------------------------------------
@@ -1144,9 +1150,11 @@ class TestHasCheckpointMethods:
     def test_has_faces_returns_true_when_present(self, catalog_db):
         """has_faces returns True after inserting faces."""
         _insert_test_media(catalog_db)
-        catalog_db.batch_insert_faces([
-            ("m1", 0, 0, '[10, 20, 100, 200]', None, None),
-        ])
+        catalog_db.batch_insert_faces(
+            [
+                ("m1", 0, 0, "[10, 20, 100, 200]", None, None),
+            ]
+        )
         assert catalog_db.has_faces("m1") is True
 
     def test_has_embeddings_returns_false_when_absent(self, catalog_db):

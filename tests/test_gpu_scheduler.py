@@ -702,7 +702,13 @@ class TestIntegration:
 
         # Load models in pipeline order
         pipeline_order = [
-            "whisperx", "transnet", "yolo", "insightface", "siglip", "panns", "qwen",
+            "whisperx",
+            "transnet",
+            "yolo",
+            "insightface",
+            "siglip",
+            "panns",
+            "qwen",
         ]
         for name in pipeline_order:
             with scheduler.model(name):
@@ -759,9 +765,7 @@ class TestErrorHandling:
                 pass
         assert "bad" not in scheduler.loaded_models
 
-    def test_unload_fn_exception_logged_not_raised(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_unload_fn_exception_logged_not_raised(self, caplog: pytest.LogCaptureFixture) -> None:
         """If unload_fn raises during eviction, error is logged but eviction continues."""
         scheduler = GPUScheduler(total_vram=10 * GB)
         spec_a = ModelSpec(

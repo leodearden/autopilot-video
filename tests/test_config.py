@@ -194,10 +194,7 @@ def test_load_config_partial_section(tmp_path: pathlib.Path) -> None:
 
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
-        "input_dir: /tmp/in\n"
-        "output_dir: /tmp/out\n"
-        "models:\n"
-        '  whisper_size: "large-v3-turbo"\n'
+        'input_dir: /tmp/in\noutput_dir: /tmp/out\nmodels:\n  whisper_size: "large-v3-turbo"\n'
     )
     cfg = load_config(config_file)
     assert cfg.models.whisper_size == "large-v3-turbo"
@@ -475,12 +472,7 @@ def test_load_config_camera_partial_defaults(tmp_path: pathlib.Path) -> None:
     from autopilot.config import load_config
 
     config_file = tmp_path / "config.yaml"
-    config_file.write_text(
-        f"{_BASE_REQUIRED}"
-        "cameras:\n"
-        "  minimal_cam:\n"
-        "    aspect_mode: portrait\n"
-    )
+    config_file.write_text(f"{_BASE_REQUIRED}cameras:\n  minimal_cam:\n    aspect_mode: portrait\n")
     cfg = load_config(config_file)
     cam = cfg.cameras["minimal_cam"]
     assert cam.aspect_mode == "portrait"
@@ -559,10 +551,7 @@ def test_load_config_camera_float_coercion_error(tmp_path: pathlib.Path) -> None
 
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
-        f"{_BASE_REQUIRED}"
-        "cameras:\n"
-        "  test_cam:\n"
-        "    crop_smoothing_tau: smooth\n"
+        f"{_BASE_REQUIRED}cameras:\n  test_cam:\n    crop_smoothing_tau: smooth\n"
     )
     with pytest.raises(ConfigError, match="crop_smoothing_tau"):
         load_config(config_file)
@@ -630,12 +619,7 @@ def test_load_config_resolution_too_few_elements(tmp_path: pathlib.Path) -> None
     from autopilot.config import ConfigError, load_config
 
     config_file = tmp_path / "config.yaml"
-    config_file.write_text(
-        f"{_BASE_REQUIRED}"
-        "cameras:\n"
-        "  cam:\n"
-        "    source_resolution: [1920]\n"
-    )
+    config_file.write_text(f"{_BASE_REQUIRED}cameras:\n  cam:\n    source_resolution: [1920]\n")
     with pytest.raises(ConfigError, match="resolution"):
         load_config(config_file)
 
@@ -645,12 +629,7 @@ def test_load_config_resolution_non_numeric(tmp_path: pathlib.Path) -> None:
     from autopilot.config import ConfigError, load_config
 
     config_file = tmp_path / "config.yaml"
-    config_file.write_text(
-        f"{_BASE_REQUIRED}"
-        "cameras:\n"
-        "  cam:\n"
-        "    source_resolution: [abc, def]\n"
-    )
+    config_file.write_text(f"{_BASE_REQUIRED}cameras:\n  cam:\n    source_resolution: [abc, def]\n")
     with pytest.raises(ConfigError, match="resolution"):
         load_config(config_file)
 
@@ -670,12 +649,7 @@ def test_load_config_resolution_scalar(tmp_path: pathlib.Path) -> None:
     from autopilot.config import ConfigError, load_config
 
     config_file = tmp_path / "config.yaml"
-    config_file.write_text(
-        f"{_BASE_REQUIRED}"
-        "cameras:\n"
-        "  cam:\n"
-        "    source_resolution: not-a-list\n"
-    )
+    config_file.write_text(f"{_BASE_REQUIRED}cameras:\n  cam:\n    source_resolution: not-a-list\n")
     with pytest.raises(ConfigError, match="resolution"):
         load_config(config_file)
 
@@ -690,11 +664,7 @@ def test_load_config_null_camera_entry(tmp_path: pathlib.Path) -> None:
     from autopilot.config import load_config
 
     config_file = tmp_path / "config.yaml"
-    config_file.write_text(
-        f"{_BASE_REQUIRED}"
-        "cameras:\n"
-        "  gopro:\n"
-    )
+    config_file.write_text(f"{_BASE_REQUIRED}cameras:\n  gopro:\n")
     cfg = load_config(config_file)
     assert "gopro" in cfg.cameras
     cam = cfg.cameras["gopro"]

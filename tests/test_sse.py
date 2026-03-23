@@ -194,9 +194,7 @@ class TestSSEReconnection:
 
         with patch.object(sse_module, "_event_generator", _finite_gen):
             client = TestClient(sse_app)
-            response = client.get(
-                "/api/events", headers={"Last-Event-ID": "3"}
-            )
+            response = client.get("/api/events", headers={"Last-Event-ID": "3"})
             events = _parse_sse_body(response.text)
 
         assert len(events) == 2
@@ -246,9 +244,7 @@ class TestSSEReconnection:
 
         with patch.object(sse_module, "_event_generator", _finite_gen):
             client = TestClient(sse_app)
-            response = client.get(
-                "/api/events", headers={"Last-Event-ID": "abc"}
-            )
+            response = client.get("/api/events", headers={"Last-Event-ID": "abc"})
             events = _parse_sse_body(response.text)
 
         assert len(events) == 3
@@ -269,17 +265,13 @@ class TestSSEPruning:
         sse_db.insert_event("recent_event", stage="INGEST")
 
         # Verify both exist
-        all_events = sse_db.conn.execute(
-            "SELECT * FROM pipeline_events"
-        ).fetchall()
+        all_events = sse_db.conn.execute("SELECT * FROM pipeline_events").fetchall()
         assert len(all_events) == 2
 
         # Prune should remove old event
         sse_db.prune_events(hours=24)
 
-        remaining = sse_db.conn.execute(
-            "SELECT * FROM pipeline_events"
-        ).fetchall()
+        remaining = sse_db.conn.execute("SELECT * FROM pipeline_events").fetchall()
         assert len(remaining) == 1
         assert remaining[0]["event_type"] == "recent_event"
 
@@ -290,7 +282,56 @@ class TestSSEPruning:
 
         sse_db.prune_events(hours=24)
 
-        remaining = sse_db.conn.execute(
-            "SELECT * FROM pipeline_events"
-        ).fetchall()
+        remaining = sse_db.conn.execute("SELECT * FROM pipeline_events").fetchall()
         assert len(remaining) == 3
+
+
+class TestSSEEventTypes:
+    """Tests for event type handling and the VALID_EVENT_TYPES constant."""
+
+    ALL_EVENT_TYPES = [
+        "stage_started",
+        "stage_completed",
+        "stage_error",
+        "job_started",
+        "job_completed",
+        "job_error",
+        "job_progress",
+        "gate_waiting",
+        "gate_approved",
+        "gate_skipped",
+        "run_completed",
+        "run_failed",
+    ]
+
+    def test_all_event_types_forwarded(self, sse_db, sse_app) -> None:
+        """Each of the 12 event types is forwarded correctly via SSE."""
+        from autopilot.web.routes import sse as sse_module
+
+        for etype in self.ALL_EVENT_TYPES:
+            sse_db.insert_event(etype, stage="TEST")
+
+        async def _finite_gen(request):
+            db = sse_module._get_db(request)
+            try:
+                events = db.get_events_since(0)
+                for ev in events:
+                    yield sse_module._format_event(ev)
+            finally:
+                db.close()
+
+        with patch.object(sse_module, "_event_generator", _finite_gen):
+            client = TestClient(sse_app)
+            response = client.get("/api/events")
+            events = _parse_sse_body(response.text)
+
+        received_types = [ev["event"] for ev in events]
+        for etype in self.ALL_EVENT_TYPES:
+            assert etype in received_types, f"Event type '{etype}' not received"
+
+    def test_valid_event_types_constant_defined(self) -> None:
+        """VALID_EVENT_TYPES constant exists and contains all expected types."""
+        from autopilot.web.routes.sse import VALID_EVENT_TYPES
+
+        for etype in self.ALL_EVENT_TYPES:
+            assert etype in VALID_EVENT_TYPES, f"'{etype}' missing from VALID_EVENT_TYPES"

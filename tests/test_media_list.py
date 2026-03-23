@@ -401,8 +401,11 @@ class TestMediaIntegration:
         db = CatalogDB(db_path)
         db.conn.isolation_level = None
         for i in range(60):
-            db.insert_media(f"m{i:03d}", f"/v/clip_{i:03d}.mp4",
-                            created_at=f"2025-01-{(i % 28) + 1:02d}T00:00:00")
+            db.insert_media(
+                f"m{i:03d}",
+                f"/v/clip_{i:03d}.mp4",
+                created_at=f"2025-01-{(i % 28) + 1:02d}T00:00:00",
+            )
         db.close()
 
         app = create_app(db_path)

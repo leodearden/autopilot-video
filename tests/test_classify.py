@@ -51,12 +51,18 @@ class TestSummaryAssembly:
         from autopilot.organize.classify import _assemble_cluster_summary
 
         catalog_db.insert_media(
-            "v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00",
-            gps_lat=18.788, gps_lon=98.985,
+            "v1",
+            "/tmp/v1.mp4",
+            created_at="2025-01-01T10:00:00",
+            gps_lat=18.788,
+            gps_lon=98.985,
         )
         catalog_db.insert_media(
-            "v2", "/tmp/v2.mp4", created_at="2025-01-01T10:30:00",
-            gps_lat=18.789, gps_lon=98.986,
+            "v2",
+            "/tmp/v2.mp4",
+            created_at="2025-01-01T10:30:00",
+            gps_lat=18.789,
+            gps_lon=98.986,
         )
 
         cluster = {
@@ -102,16 +108,30 @@ class TestSummaryAssembly:
         from autopilot.organize.classify import _assemble_cluster_summary
 
         catalog_db.insert_media("v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00")
-        catalog_db.batch_insert_detections([
-            ("v1", 0, json.dumps([
-                {"class": "person", "confidence": 0.95},
-                {"class": "car", "confidence": 0.88},
-            ])),
-            ("v1", 30, json.dumps([
-                {"class": "person", "confidence": 0.92},
-                {"class": "bicycle", "confidence": 0.75},
-            ])),
-        ])
+        catalog_db.batch_insert_detections(
+            [
+                (
+                    "v1",
+                    0,
+                    json.dumps(
+                        [
+                            {"class": "person", "confidence": 0.95},
+                            {"class": "car", "confidence": 0.88},
+                        ]
+                    ),
+                ),
+                (
+                    "v1",
+                    30,
+                    json.dumps(
+                        [
+                            {"class": "person", "confidence": 0.92},
+                            {"class": "bicycle", "confidence": 0.75},
+                        ]
+                    ),
+                ),
+            ]
+        )
 
         cluster = {
             "cluster_id": "c1",
@@ -131,12 +151,20 @@ class TestSummaryAssembly:
         from autopilot.organize.classify import _assemble_cluster_summary
 
         catalog_db.insert_media("v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00")
-        catalog_db.batch_insert_audio_events([
-            ("v1", 0.0, json.dumps([
-                {"class": "Speech", "probability": 0.9},
-                {"class": "Music", "probability": 0.3},
-            ])),
-        ])
+        catalog_db.batch_insert_audio_events(
+            [
+                (
+                    "v1",
+                    0.0,
+                    json.dumps(
+                        [
+                            {"class": "Speech", "probability": 0.9},
+                            {"class": "Music", "probability": 0.3},
+                        ]
+                    ),
+                ),
+            ]
+        )
 
         cluster = {
             "cluster_id": "c1",
@@ -156,8 +184,11 @@ class TestSummaryAssembly:
         from autopilot.organize.classify import _assemble_cluster_summary
 
         catalog_db.insert_media(
-            "v1", "/tmp/v1.mp4", created_at="2025-01-01T10:00:00",
-            gps_lat=18.788, gps_lon=98.985,
+            "v1",
+            "/tmp/v1.mp4",
+            created_at="2025-01-01T10:00:00",
+            gps_lat=18.788,
+            gps_lon=98.985,
         )
 
         cluster = {
@@ -280,15 +311,18 @@ class TestSummaryAssembly:
 # -- Step 9: LLM labeling tests -----------------------------------------------
 
 
-def _make_llm_response(label="Morning hike", description="A scenic hike.",
-                       split_recommended=False, split_reason=None):
+def _make_llm_response(
+    label="Morning hike", description="A scenic hike.", split_recommended=False, split_reason=None
+):
     """Create a mock Anthropic API response."""
-    result_json = json.dumps({
-        "label": label,
-        "description": description,
-        "split_recommended": split_recommended,
-        "split_reason": split_reason,
-    })
+    result_json = json.dumps(
+        {
+            "label": label,
+            "description": description,
+            "split_recommended": split_recommended,
+            "split_reason": split_reason,
+        }
+    )
     mock_response = MagicMock()
     mock_content = MagicMock()
     mock_content.text = result_json
@@ -655,16 +689,25 @@ class TestIntegration:
 
         # Insert media with timestamps, GPS, transcripts, detections, audio events
         catalog_db.insert_media(
-            "v1", "/tmp/v1.mp4",
-            created_at="2025-01-01T10:00:00", gps_lat=18.788, gps_lon=98.985,
+            "v1",
+            "/tmp/v1.mp4",
+            created_at="2025-01-01T10:00:00",
+            gps_lat=18.788,
+            gps_lon=98.985,
         )
         catalog_db.insert_media(
-            "v2", "/tmp/v2.mp4",
-            created_at="2025-01-01T10:15:00", gps_lat=18.789, gps_lon=98.986,
+            "v2",
+            "/tmp/v2.mp4",
+            created_at="2025-01-01T10:15:00",
+            gps_lat=18.789,
+            gps_lon=98.986,
         )
         catalog_db.insert_media(
-            "v3", "/tmp/v3.mp4",
-            created_at="2025-01-01T14:00:00", gps_lat=19.500, gps_lon=99.500,
+            "v3",
+            "/tmp/v3.mp4",
+            created_at="2025-01-01T14:00:00",
+            gps_lat=19.500,
+            gps_lon=99.500,
         )
 
         # Add transcripts
@@ -680,25 +723,31 @@ class TestIntegration:
         )
 
         # Add detections
-        catalog_db.batch_insert_detections([
-            ("v1", 0, json.dumps([{"class": "person", "confidence": 0.9}])),
-            ("v2", 0, json.dumps([{"class": "temple", "confidence": 0.85}])),
-            ("v3", 0, json.dumps([{"class": "food", "confidence": 0.88}])),
-        ])
+        catalog_db.batch_insert_detections(
+            [
+                ("v1", 0, json.dumps([{"class": "person", "confidence": 0.9}])),
+                ("v2", 0, json.dumps([{"class": "temple", "confidence": 0.85}])),
+                ("v3", 0, json.dumps([{"class": "food", "confidence": 0.88}])),
+            ]
+        )
 
         # Add audio events
-        catalog_db.batch_insert_audio_events([
-            ("v1", 0.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
-            ("v3", 0.0, json.dumps([{"class": "Crowd", "probability": 0.8}])),
-        ])
+        catalog_db.batch_insert_audio_events(
+            [
+                ("v1", 0.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
+                ("v3", 0.0, json.dumps([{"class": "Crowd", "probability": 0.8}])),
+            ]
+        )
 
         # Add embeddings
         emb = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32).tobytes()
-        catalog_db.batch_insert_embeddings([
-            ("v1", 0, emb),
-            ("v2", 0, emb),
-            ("v3", 0, emb),
-        ])
+        catalog_db.batch_insert_embeddings(
+            [
+                ("v1", 0, emb),
+                ("v2", 0, emb),
+                ("v3", 0, emb),
+            ]
+        )
 
         # Phase 1: Cluster
         clusters = cluster_activities(catalog_db)
@@ -706,7 +755,8 @@ class TestIntegration:
 
         # Phase 2: Label with mocked LLM
         mock_anthropic, mock_client = _setup_mock_anthropic(
-            label="Temple visit", description="Exploring a beautiful temple.",
+            label="Temple visit",
+            description="Exploring a beautiful temple.",
         )
         with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
             label_activities(catalog_db, config)
