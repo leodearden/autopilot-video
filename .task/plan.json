@@ -1,33 +1,31 @@
 {
-  "task_id": "44",
-  "title": "Media detail page",
+  "task_id": "41",
+  "title": "Dashboard page with stage cards",
   "files": [
-    "autopilot/web/routes/media.py",
-    "autopilot/web/templates/media/detail.html",
-    "autopilot/web/templates/partials/media_row.html",
-    "autopilot/web/templates/partials/tab_metadata.html",
-    "autopilot/web/templates/partials/tab_transcript.html",
-    "autopilot/web/templates/partials/tab_detections.html",
-    "autopilot/web/templates/partials/tab_faces.html",
-    "autopilot/web/templates/partials/tab_audio_events.html",
-    "autopilot/web/templates/partials/tab_embeddings.html",
-    "autopilot/db.py",
-    "tests/test_media_detail.py"
+    "autopilot/web/routes/dashboard.py",
+    "autopilot/web/routes/__init__.py",
+    "autopilot/web/app.py",
+    "autopilot/web/templates/dashboard.html",
+    "autopilot/web/templates/partials/stage_card.html",
+    "autopilot/web/templates/partials/timeline_bar.html",
+    "autopilot/web/static/app.js",
+    "autopilot/web/static/app.css",
+    "tests/test_dashboard.py"
   ],
   "modules": [
     "autopilot/web/routes",
-    "autopilot/web/templates/media",
+    "autopilot/web/templates",
     "autopilot/web/templates/partials",
-    "autopilot/db.py",
+    "autopilot/web/static",
     "tests"
   ],
-  "analysis": "Task 44 builds the media detail view at /media/{id} with HTMX-powered tabbed UI displaying metadata, transcript, detections, faces, audio events, and embeddings. The existing codebase provides: (1) CatalogDB with all needed query methods: get_media(), get_transcript(), get_detections_for_media(), get_faces_for_media(), get_audio_events_for_media(), get_embeddings_for_media(), get_face_clusters(), get_face_cluster_by_id(). (2) media.py routes with /media list page and /api/media JSON endpoint following _get_db(request) pattern. (3) Jinja2 templates extending base.html with Tailwind CSS dark theme + HTMX. (4) Test patterns in test_media_list.py showing seeded DB fixtures and TestClient testing for both JSON API and HTML endpoints.\n\nApproach: Add new routes to media.py for the detail page + API endpoints. CatalogDB already has all needed per-table query methods; add a get_media_detail() convenience aggregator. Templates use HTMX tab switching: clicking a tab loads a partial via hx-get to /media/{id}/tab/{name}. The detail.html page renders metadata tab by default. Each tab is a separate Jinja2 partial. Three JSON API endpoints (/api/media/{id}, /api/media/{id}/transcript, /api/media/{id}/detections) serve programmatic access. The media_row.html partial gets updated to link filenames to the detail page. Detection/transcript/audio data is parsed from JSON in Python, not templates.",
+  "analysis": "This task builds the primary pipeline dashboard page. The existing codebase has: (1) FastAPI app factory in app.py that registers routers and configures Jinja2 templates; (2) CatalogDB with full CRUD for pipeline_runs (get_current_run, list_runs, insert_run, update_run), pipeline_jobs (list_jobs, count_jobs_by_status, insert_job, update_job), pipeline_gates (get_all_gates, get_gate, update_gate, init_default_gates), and pipeline_events (insert_event, get_events_since, prune_events); (3) SSE endpoint at /api/events streaming pipeline events via sse-starlette; (4) base.html template with Tailwind CSS (CDN), HTMX, dark theme, and nav (already has /dashboard link); (5) app.js with SSE connectSSE() stub and toast system; (6) app.css with toast styles.\n\nThe 9 pipeline stages are defined in CatalogDB._PIPELINE_STAGES: ingest, analyze, classify, narrate, script, edl, source, render, upload.\n\nKey DB schema: pipeline_runs has run_id, started_at, finished_at, config_snapshot, current_stage, status, wall_clock_seconds, budget_remaining_seconds. pipeline_jobs has job_id, stage, job_type, target_id, target_label, status, started_at, finished_at, duration_seconds, progress_pct, error_message, worker, run_id. pipeline_gates has stage, mode, status, decided_at, decided_by, notes, timeout_hours.\n\nApproach: Create dashboard.py route module with GET /dashboard (HTML page), GET / (redirect to /dashboard), GET /api/run (JSON current run status), GET /api/stages (JSON stage summaries). Create dashboard.html template extending base.html with a responsive grid of 9 stage cards, pipeline timeline bar, and 'no active run' banner. Create stage_card.html partial for HTMX OOB swaps. Create timeline_bar.html partial. Wire SSE events in app.js to trigger HTMX fetches for stage card partials. Register dashboard_router in routes/__init__.py and app.py.\n\nThe test pattern follows test_sse.py and test_media_detail.py: file-backed CatalogDB fixture, create_app(db_path), TestClient. Seed with pipeline runs, jobs across stages, gates, and events to validate rendering.",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Create test file tests/test_media_detail.py with shared fixtures: catalog_db (from conftest), media_db_path/media_db (file-backed DB), detail_seeded_db (media file 'test1' with full metadata including codec='h264', fps=30.0, resolution 1920x1080, gps, sha256_prefix, audio_channels=2, metadata_json with extra fields, plus: transcript with segments_json containing 3 segments with timestamps/speakers, detections across 3 frames with objects like 'person'/'car'/'dog', 2 faces on separate frames assigned to cluster_id=1, face_cluster with label='Alice', 2 audio events with events_json containing classified events, 3 clip_embeddings, and a second media 'test2' with no analysis data), detail_app, detail_client.",
+      "description": "Create tests/test_dashboard.py with fixtures: file-backed CatalogDB seeded with a running pipeline run (run_id='run-1', started_at, current_stage='analyze', budget_remaining_seconds=3600), jobs across multiple stages (e.g. 5 done + 2 running in ingest, 1 running + 2 pending in analyze, 1 error in classify), initialized default gates with some modified (analyze=manual), and a few error events. Fixtures: dashboard_db_path, dashboard_db, dashboard_seeded_db, dashboard_app, dashboard_client. Follows patterns from test_sse.py and test_media_detail.py.",
       "status": "done",
-      "commit": "49d46ff",
+      "commit": "85e4d53",
       "tests": []
     }
   ],
@@ -35,211 +33,174 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing tests for CatalogDB.get_media_detail(media_id) in tests/test_media_detail.py: (1) returns None for non-existent media_id; (2) returns dict with 'media' key containing all media_files columns for existing media; (3) includes 'transcript' key with parsed segments list and language; (4) includes 'detections' key with list of detection rows; (5) includes 'faces' key with list of face rows; (6) includes 'audio_events' key with list of audio event rows; (7) includes 'embeddings' key with count of embeddings; (8) returns empty lists/None for media with no analysis data (test2).",
+      "description": "Write failing tests for GET /dashboard: (1) returns 200 with text/html; (2) contains all 9 stage names (ingest, analyze, classify, narrate, script, edl, source, render, upload); (3) extends base.html (contains 'Autopilot Video' nav); (4) contains 'Dashboard' in page title; (5) when no active run exists, shows 'Pipeline not running' banner.",
       "status": "done",
-      "commit": "c787738"
+      "commit": "92fa72f"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Implement CatalogDB.get_media_detail(media_id) in autopilot/db.py. Returns None if media_id not found. Otherwise returns dict with keys: 'media' (from get_media), 'transcript' (from get_transcript, or None), 'detections' (from get_detections_for_media), 'faces' (from get_faces_for_media), 'audio_events' (from get_audio_events_for_media), 'embeddings' (from get_embeddings_for_media), 'embedding_count' (len of embeddings list), 'face_clusters' (dict mapping cluster_id to cluster info).",
+      "description": "Create autopilot/web/routes/dashboard.py with GET /dashboard route and _get_db helper. Create dashboard.html template extending base.html with 9 stage cards in a responsive Tailwind grid (lg:grid-cols-3, md:grid-cols-2, grid-cols-1). Create partials/stage_card.html with stage name, status placeholder, and id='stage-{name}' for HTMX targeting. Add 'Pipeline not running' conditional banner. Register dashboard_router in routes/__init__.py and include in app.py.",
       "status": "done",
-      "commit": "4f7e39c"
+      "commit": "b992c1f"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write failing tests for GET /api/media/{media_id} JSON endpoint: (1) returns 404 for non-existent media_id; (2) returns 200 with JSON containing 'media', 'transcript', 'detections', 'faces', 'audio_events', 'embeddings' keys for existing media; (3) media section has all expected fields (codec, fps, resolution, etc.).",
+      "description": "Write failing tests for stage card content with seeded data: (1) ingest card shows green/done status (all 5 jobs done); (2) analyze card shows blue/running status (has running jobs); (3) classify card shows red/error status (has error job); (4) cards show progress text like '5/5' for ingest, '0/3' for analyze; (5) gate badges show correct mode ('auto' for ingest, 'manual' for analyze).",
       "status": "done",
-      "commit": "060966e"
+      "commit": "3c51cff"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement GET /api/media/{media_id} route in media.py. Uses _get_db(request), calls db.get_media_detail(media_id), returns 404 HTTPException if None, otherwise returns the detail dict as JSON.",
+      "description": "Implement dashboard route logic: query get_current_run(), count_jobs_by_status() for each stage filtered by run_id, get_all_gates(). Compute per-stage: aggregate status (idle/running/waiting/done/error), done/total counts, gate mode. Add status-to-color mapping (grey=idle, blue=running, amber=waiting, green=done, red=error) using Tailwind classes in stage_card.html. Render progress bar and gate badge in each card.",
       "status": "done",
-      "commit": "e35a88d"
+      "commit": "a839c03"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write failing tests for GET /api/media/{media_id}/transcript: (1) returns 404 for missing media; (2) returns 200 with parsed segments list and language for media with transcript; (3) each segment has 'start', 'end', 'text', 'speaker' fields. And GET /api/media/{media_id}/detections: (1) returns 404 for missing media; (2) returns 200 with detection summary including 'total_detections' count, 'classes' dict with per-class counts, 'frame_count' (number of frames with detections).",
+      "description": "Write failing tests for pipeline timeline bar: (1) dashboard HTML contains overall progress percentage element; (2) contains budget consumed vs remaining display (wall_clock_seconds and budget_remaining_seconds from run); (3) contains run duration display; (4) timeline bar not rendered when no active run.",
       "status": "done",
-      "commit": "59adcbb"
+      "commit": "306a92a"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Implement GET /api/media/{media_id}/transcript and GET /api/media/{media_id}/detections routes. Transcript endpoint parses segments_json into list of segment dicts. Detections endpoint aggregates across all frames: parses each frame's detections_json, counts total detections, builds per-class counts, and reports frame count.",
+      "description": "Create partials/timeline_bar.html with: overall progress bar (total done jobs / total jobs across all stages), budget display (wall_clock_seconds formatted as elapsed, budget_remaining_seconds formatted as remaining), run start time, estimated completion. Wire into dashboard.html below stage cards grid with id='timeline-bar'.",
       "status": "done",
-      "commit": "1dc41c7"
+      "commit": "535b0b4"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write failing tests for GET /media/{media_id} HTML detail page: (1) returns 404 for non-existent media_id; (2) returns 200 with text/html for existing media; (3) contains tab navigation with labels 'Metadata', 'Transcript', 'Detections', 'Faces', 'Audio Events', 'Embeddings'; (4) extends base.html (contains 'Autopilot Video' nav); (5) metadata tab content rendered by default (shows codec, resolution, duration); (6) tabs have hx-get attributes pointing to /media/{id}/tab/{name}.",
+      "description": "Write failing tests for JSON API endpoints: (1) GET /api/run returns 200 with JSON containing 'run' key; (2) when active run exists, 'run' has run_id, status, current_stage, wall_clock_seconds fields; (3) when no active run, 'run' is null; (4) GET /api/stages returns 200 with JSON list of 9 stage objects; (5) each stage object has 'name', 'status_counts' (dict with pending/running/done/error counts), 'gate_mode' fields.",
       "status": "done",
-      "commit": "31db1f0"
+      "commit": "a2779d1"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Implement GET /media/{media_id} route and create templates/media/detail.html extending base.html. Tab navigation bar with HTMX hx-get attributes. Default active tab is metadata. Create partials/tab_metadata.html showing: codec, FPS, resolution (WxH), audio channels, duration (formatted), file path, SHA-256 prefix, dedup status, GPS coordinates, created_at timestamp, and parsed metadata_json fields.",
+      "description": "Implement GET /api/run and GET /api/stages JSON endpoints in dashboard.py. /api/run queries get_current_run() and returns {'run': run_dict_or_null}. /api/stages iterates _PIPELINE_STAGES, calls count_jobs_by_status(stage, run_id) and get_gate(stage), returns list of stage summary dicts.",
       "status": "done",
-      "commit": "3b8c847"
+      "commit": "3e7d7e2"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write failing tests for HTMX tab endpoints GET /media/{media_id}/tab/{tab_name}: (1) transcript tab returns HTML with timestamped lines like '[00:00:10]' and speaker labels; (2) transcript tab shows language indicator; (3) detections tab returns HTML with object class names and counts; (4) detections tab shows total detection count and frame coverage.",
+      "description": "Write failing tests for HTMX stage card partial endpoint: (1) GET /dashboard/stage/ingest returns 200 with HTML containing stage name and status; (2) response includes hx-swap-oob or id='stage-ingest' for targeted swap; (3) returns 404 for invalid stage name; (4) card partial reflects current DB state (e.g. after updating a job to done, re-fetching shows updated progress).",
       "status": "done",
-      "commit": "48cc833"
+      "commit": "542e7e7"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Implement HTMX tab endpoint GET /media/{media_id}/tab/{tab_name} in media.py that dispatches to tab-specific rendering logic. Create partials/tab_transcript.html (scrollable, time-stamped '[HH:MM:SS] Speaker: text' lines with language indicator) and partials/tab_detections.html (summary with top classes, total count, frame coverage, expandable grouped list by object class).",
+      "description": "Implement GET /dashboard/stage/{stage_name} endpoint that validates stage against _PIPELINE_STAGES, queries current run and job counts for that stage, renders stage_card.html partial with hx-swap-oob='true' and id='stage-{name}'. Return 404 for invalid stage names.",
       "status": "done",
-      "commit": "c6a4971"
+      "commit": "208a02d"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write failing tests for remaining HTMX tab partials: (1) faces tab shows cluster grouping with cluster label 'Alice' and face count; (2) audio events tab shows timeline entries with event class names; (3) embeddings tab shows 'X of Y frames sampled (Z%)' format.",
+      "description": "Write tests verifying SSE integration in app.js: (1) app.js contains EventSource or connectSSE usage for '/api/events'; (2) app.js has event handlers for 'stage_started', 'stage_completed', and 'job_progress' event types; (3) handlers contain htmx.ajax or fetch call to '/dashboard/stage/' for card updates.",
       "status": "done",
-      "commit": "3c98e3a"
+      "commit": "aaaf2f1"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Create partials/tab_faces.html (grid grouped by cluster_id, showing cluster label from face_clusters table, count of appearances per cluster), partials/tab_audio_events.html (timeline-style list with parsed events_json, dominant event per time window), and partials/tab_embeddings.html (embedding count vs estimated total frames as 'X of Y frames sampled (Z%)').",
+      "description": "Update app.js: on DOMContentLoaded, if page contains '#dashboard-grid' element, call connectSSE('/api/events') and add event listeners for stage_started, stage_completed, job_progress. Each handler extracts the stage name from event data and calls htmx.ajax('GET', '/dashboard/stage/{stage}', {target: '#stage-{stage}', swap: 'outerHTML'}) to update the specific card. Update app.css with stage card status color utility classes (bg-stage-idle, bg-stage-running, etc.) and progress bar animation styles.",
       "status": "done",
-      "commit": "3eb386a"
+      "commit": "15fe32a"
     },
     {
       "id": "step-13",
       "type": "test",
-      "description": "Write failing test: media_row.html partial wraps the filename in a link to /media/{item.id} detail page.",
+      "description": "Write failing test for GET / redirect: verify GET / returns redirect (307 or 302) to /dashboard.",
       "status": "done",
-      "commit": "d9d5a43"
+      "commit": "cc1e095"
     },
     {
       "id": "step-14",
       "type": "impl",
-      "description": "Update partials/media_row.html to wrap the filename text in an <a href='/media/{{ item.id }}'> link styled with hover effect.",
+      "description": "Add GET / route to dashboard.py that uses RedirectResponse to redirect to /dashboard. Verify all tests pass end-to-end.",
       "status": "done",
-      "commit": "eb8fcda"
-    },
-    {
-      "id": "step-15",
-      "type": "test",
-      "description": "Write integration test: insert media with ALL analysis types (transcript, detections, faces with clusters, audio events, embeddings, captions), verify: detail page loads with 200, all tab endpoints return 200 with proper content, all 3 JSON API endpoints return correct structured data, edge case of media with no analysis returns empty/null sections gracefully.",
-      "status": "done",
-      "commit": "8dd3a3c"
-    },
-    {
-      "id": "step-16",
-      "type": "impl",
-      "description": "Final polish: handle edge cases (empty JSON arrays, null optional fields, zero embeddings yielding 0% coverage, missing face cluster records). Ensure all tests pass end-to-end. Verify templates render gracefully with missing data.",
-      "status": "done",
-      "commit": "b358ed3"
-    },
-    {
-      "id": "step-17",
-      "type": "test",
-      "description": "Write failing tests for four robustness issues identified in review: (1) _format_timestamp with None input: call _format_timestamp(None) and assert it returns '--:--:--' instead of raising TypeError; (2) api_media_transcript with malformed segments_json: seed a transcript row with segments_json='{{corrupt' and GET /api/media/{id}/transcript, assert 200 with empty segments list instead of 500; (3) api_media_detections with malformed detections_json: seed a detection row with detections_json='not-json' and GET /api/media/{id}/detections, assert 200 with graceful degradation (remaining valid frames still counted) instead of 500; (4) detections tab with malformed detections_json: seed a detection row with detections_json='{bad' and GET /media/{id}/tab/detections, assert 200 HTML response instead of 500, and verify valid frames' detections are still aggregated.",
-      "status": "done",
-      "commit": "4f9f03f"
-    },
-    {
-      "id": "step-18",
-      "type": "impl",
-      "description": "Fix all four robustness issues in autopilot/web/routes/media.py: (1) Add None guard to _format_timestamp (line 179): `if seconds is None: return '--:--:--'`, mirroring _format_duration's pattern; (2) Wrap json.loads in api_media_transcript (line 330) with try/except (json.JSONDecodeError, TypeError), defaulting segments=[] on failure; (3) Wrap json.loads in api_media_detections (line 348) with try/except (json.JSONDecodeError, TypeError), defaulting dets=[] on failure so remaining frames still aggregate; (4) Wrap json.loads in media_tab detections branch (line 233) with try/except (json.JSONDecodeError, TypeError), defaulting dets=[] on failure. All four fixes follow the existing defensive pattern already used in the transcript tab (lines 220-223) and audio_events branch (lines 272-275).",
-      "status": "done",
-      "commit": "c9d30bd"
+      "commit": "a428826"
     }
   ],
   "design_decisions": [
     {
-      "decision": "HTMX tab loading via dedicated /media/{id}/tab/{name} endpoint rather than embedding all tabs in initial page load",
-      "rationale": "Matches the HTMX pattern already used in /api/media for partial swaps. Lazy-loads tab content on click, reducing initial page weight. Each tab is a separate Jinja2 partial for clean separation. The metadata tab is inlined in the initial render since it's the default."
+      "decision": "Dashboard route at /dashboard (not /), with / redirecting to /dashboard",
+      "rationale": "base.html nav already links to /dashboard. Having a dedicated path keeps URL semantics clean while / provides a convenient entry point. Redirect is 307 to preserve HTTP method semantics."
     },
     {
-      "decision": "Add get_media_detail() to CatalogDB as a convenience aggregator rather than making multiple DB calls in route handlers",
-      "rationale": "Keeps route handlers thin (matching existing pattern in media.py). Single method aggregates all related data, reusable by both the HTML detail page and the JSON API endpoint. Avoids duplicating query logic across 3+ route handlers."
+      "decision": "Query job counts per stage using existing count_jobs_by_status() CatalogDB method",
+      "rationale": "CatalogDB already has count_jobs_by_status(stage, run_id) returning {status: count} dicts. No new DB methods needed -- call it for each of the 9 stages filtered by current run_id. For 9 stages this is 9 simple indexed queries, which is fast enough."
     },
     {
-      "decision": "Parse JSON (detections_json, segments_json, events_json) in Python route handler, not in Jinja2 templates",
-      "rationale": "Templates should receive pre-processed data. JSON parsing in Jinja2 is fragile and untestable. Route handlers parse JSON and pass structured Python dicts/lists to templates."
+      "decision": "HTMX partial endpoint at GET /dashboard/stage/{stage_name} for SSE-driven updates",
+      "rationale": "SSE events from /api/events trigger JS to fetch individual card partials from the server. This avoids duplicating data serialization in JavaScript -- the server renders HTML directly. Matches the existing HTMX partial pattern in media.py tab endpoints."
     },
     {
-      "decision": "Use 404 HTTPException for missing media_id across all endpoints",
-      "rationale": "Standard REST pattern. Both JSON API and HTML endpoints return 404 when media_id doesn't exist. Consistent with typical FastAPI patterns."
+      "decision": "Stage status derived from job counts rather than a separate status field",
+      "rationale": "Status logic: error = any job has status='error'; running = any job has status='running'; done = all jobs status='done' and total > 0; waiting = gate mode != 'auto' and status='idle' and no running/error jobs; idle = no jobs for this stage in current run. This avoids needing additional status tracking beyond what already exists."
     },
     {
-      "decision": "Estimate total frames from FPS * duration for embedding coverage calculation",
-      "rationale": "CatalogDB stores fps and duration_seconds on media_files. Total frames = fps * duration gives approximate total. Avoids needing actual frame count metadata that doesn't exist in the schema."
+      "decision": "Use responsive CSS grid (not horizontal scroll) for stage cards",
+      "rationale": "A responsive grid (3 cols on large, 2 on medium, 1 on small) is more usable than horizontal scroll which hides cards. Tailwind utility classes make this trivial: grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3."
     },
     {
-      "decision": "Detection summary aggregates by parsing detections_json across all frames in Python",
-      "rationale": "Each frame's detections_json contains a list of detection dicts. Aggregating in Python (iterating all frames, counting classes) is simpler and more flexible than doing it in SQL with JSON functions. Frame counts are typically modest (hundreds, not millions)."
+      "decision": "Timeline bar as a separate Jinja2 partial template",
+      "rationale": "Allows independent HTMX updates of the timeline bar without re-rendering the entire page. Can be refreshed on run_progress SSE events via a separate partial endpoint."
     },
     {
-      "decision": "Single tab dispatch endpoint /media/{id}/tab/{name} rather than per-tab endpoints",
-      "rationale": "Reduces route proliferation. One route with a path parameter dispatches to the right template. Invalid tab names return 404. Keeps the router clean."
-    },
-    {
-      "decision": "Consistent null/malformed JSON guards across all json.loads call sites",
-      "rationale": "Review found 4 unguarded code paths (3 json.loads without try/except, 1 int() without None check). The codebase already has the correct pattern in the transcript tab (lines 220-223) and audio_events branch (lines 272-275) \u2014 the fix is to apply the same try/except (json.JSONDecodeError, TypeError) + fallback pattern consistently to the missed call sites, and add a None guard to _format_timestamp mirroring _format_duration."
+      "decision": "Reuse _format_duration pattern for elapsed/ETA display",
+      "rationale": "media.py already has _format_duration(seconds) for HH:MM:SS formatting. Dashboard needs the same for elapsed time and ETA. Will either import or duplicate this small utility."
     }
   ],
   "reuse": [
     {
-      "what": "CatalogDB per-table query methods: get_media(), get_transcript(), get_detections_for_media(), get_faces_for_media(), get_audio_events_for_media(), get_embeddings_for_media(), get_face_clusters(), get_face_cluster_by_id()",
+      "what": "CatalogDB pipeline CRUD methods",
       "where": "autopilot/db.py",
-      "how": "All needed DB query methods already exist. get_media_detail() composes them. No new SQL needed for individual table queries."
+      "how": "Use get_current_run(), count_jobs_by_status(stage, run_id), get_all_gates(), get_gate(stage), list_jobs(stage=..., status='error', run_id=...) for error counting. No new DB methods needed."
     },
     {
-      "what": "_get_db(request) pattern and _format_duration() helper",
-      "where": "autopilot/web/routes/media.py lines 15-29",
-      "how": "Reuse _get_db() for obtaining CatalogDB from request.app.state.db_path. Reuse _format_duration() for timestamp formatting in transcript tab."
+      "what": "CatalogDB._PIPELINE_STAGES constant",
+      "where": "autopilot/db.py line 1109",
+      "how": "Reference for the canonical list of 9 stages to iterate when building dashboard data. Use as validation for stage_name in partial endpoint."
     },
     {
-      "what": "base.html template with Tailwind dark theme, HTMX CDN, block structure",
+      "what": "Test fixture pattern from test_sse.py and test_media_detail.py",
+      "where": "tests/test_sse.py, tests/test_media_detail.py",
+      "how": "Use file-backed CatalogDB fixture (tmp_path / 'catalog.db'), create_app(db_path), TestClient pattern. Seed with pipeline_runs, pipeline_jobs, pipeline_gates data using existing insert_run, insert_job, init_default_gates, update_gate methods."
+    },
+    {
+      "what": "FastAPI router registration pattern",
+      "where": "autopilot/web/app.py lines 38-42, autopilot/web/routes/__init__.py",
+      "how": "Follow existing pattern: create APIRouter in dashboard.py, export as dashboard_router from routes/__init__.py, app.include_router(dashboard_router) in create_app()."
+    },
+    {
+      "what": "Jinja2 template inheritance from base.html",
       "where": "autopilot/web/templates/base.html",
-      "how": "detail.html extends base.html exactly like list.html does via {% extends 'base.html' %}, filling {% block title %}, {% block content %}, {% block scripts %}."
+      "how": "Extend base.html using {% extends 'base.html' %}, override title/content/scripts blocks. Use Tailwind utility classes consistent with existing templates (dark theme, surface colors, gray text)."
     },
     {
-      "what": "Test fixture pattern: tmp_path DB -> CatalogDB -> seed -> create_app -> TestClient",
-      "where": "tests/test_media_list.py lines 176-223",
-      "how": "Replicate the media_db_path/media_db/seeded_db/media_app/media_client fixture chain. Extend seeding to include all analysis types."
+      "what": "SSE connectSSE() function in app.js",
+      "where": "autopilot/web/static/app.js lines 30-49",
+      "how": "Extend with dashboard-specific event listeners for stage_started, stage_completed, job_progress events. connectSSE already returns the EventSource object."
     },
     {
-      "what": "conftest.py catalog_db fixture (in-memory, autocommit)",
-      "where": "tests/conftest.py lines 26-39",
-      "how": "Use the shared catalog_db fixture for DB-level unit tests of get_media_detail()."
+      "what": "_format_duration helper from media.py",
+      "where": "autopilot/web/routes/media.py lines 21-30",
+      "how": "Reuse the seconds-to-HH:MM:SS formatting for elapsed time and ETA display. Either import from media module or duplicate the small helper."
     },
     {
-      "what": "Jinja2Templates.TemplateResponse and get_template().render() patterns",
-      "where": "autopilot/web/routes/media.py lines 84-93 and 126-143",
-      "how": "Use TemplateResponse for full page renders and get_template().render() for HTMX partial responses, matching the existing dual-mode pattern."
-    },
-    {
-      "what": "CatalogDB insert/upsert methods for test seeding",
-      "where": "autopilot/db.py",
-      "how": "Use insert_media(), upsert_transcript(), batch_insert_detections(), batch_insert_faces(), insert_face_cluster(), batch_insert_audio_events(), batch_insert_embeddings() to seed test data."
-    },
-    {
-      "what": "Existing try/except (json.JSONDecodeError, TypeError) guard pattern",
-      "where": "autopilot/web/routes/media.py lines 220-223 (transcript tab) and lines 272-275 (audio_events tab)",
-      "how": "The transcript tab and audio_events tab already wrap json.loads in try/except with fallback to empty list. Apply the identical pattern to the 3 unguarded json.loads call sites (detections tab line 233, api_media_transcript line 330, api_media_detections line 348)."
-    },
-    {
-      "what": "_format_duration None guard pattern",
-      "where": "autopilot/web/routes/media.py _format_duration helper",
-      "how": "_format_duration already handles None input gracefully. Mirror the same guard in _format_timestamp: `if seconds is None: return '--:--:--'`."
+      "what": "HTMX partial rendering pattern",
+      "where": "autopilot/web/routes/media.py lines 62-70 and 170-284",
+      "how": "Use templates.get_template('partials/stage_card.html').render(...) for partial responses returned as HTMLResponse, matching the existing tab endpoint pattern."
     }
   ],
-  "_session_id": "44-4ebfc2b7",
-  "_created_at": "2026-03-22T18:57:02.484668+00:00"
+  "_session_id": "41-9fecd969",
+  "_created_at": "2026-03-23T15:11:10.056509+00:00"
 }
