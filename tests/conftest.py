@@ -14,8 +14,23 @@ import pytest
 # Ensure the project's .venv site-packages is on sys.path so that tests
 # can find project dependencies (fastapi, starlette, etc.) even when pytest
 # is invoked from an external Python interpreter (e.g. the orchestrator).
+#
+# In a git worktree the .venv lives in the main repo, not in the worktree
+# checkout.  We detect this by reading the .git file (worktrees have a file,
+# not a directory) and resolving back to the main repo root.
 # ---------------------------------------------------------------------------
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_WORKTREE_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = _WORKTREE_ROOT
+
+_dot_git = _WORKTREE_ROOT / ".git"
+if _dot_git.is_file():
+    # .git is a file containing "gitdir: <path>" — resolve to main repo root
+    _gitdir_line = _dot_git.read_text().strip()
+    if _gitdir_line.startswith("gitdir:"):
+        _gitdir = Path(_gitdir_line.split(":", 1)[1].strip())
+        # _gitdir is e.g. /repo/.git/worktrees/45 — main repo is two parents up
+        _PROJECT_ROOT = _gitdir.resolve().parent.parent.parent
+
 _PY_VER = f"python{sys.version_info.major}.{sys.version_info.minor}"
 _VENV_SP = _PROJECT_ROOT / ".venv" / "lib" / _PY_VER / "site-packages"
 if _VENV_SP.is_dir() and str(_VENV_SP) not in sys.path:
