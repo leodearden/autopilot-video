@@ -317,3 +317,62 @@ class TestTimelineBar:
         """Timeline bar is not rendered when no active run."""
         resp = empty_client.get("/dashboard")
         assert "id=\"timeline-bar\"" not in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Step 7: JSON API endpoint tests
+# ---------------------------------------------------------------------------
+
+
+class TestApiRun:
+    """Tests for GET /api/run JSON endpoint."""
+
+    def test_api_run_returns_200_json(
+        self, dashboard_client: TestClient
+    ) -> None:
+        """GET /api/run returns 200 with JSON containing 'run' key."""
+        resp = dashboard_client.get("/api/run")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "run" in data
+
+    def test_api_run_active_run_fields(
+        self, dashboard_client: TestClient
+    ) -> None:
+        """Active run has run_id, status, current_stage, wall_clock_seconds."""
+        resp = dashboard_client.get("/api/run")
+        run = resp.json()["run"]
+        assert run is not None
+        assert run["run_id"] == "run-1"
+        assert run["status"] == "running"
+        assert run["current_stage"] == "analyze"
+        assert "wall_clock_seconds" in run
+
+    def test_api_run_no_active_run(self, empty_client: TestClient) -> None:
+        """When no active run, 'run' is null."""
+        resp = empty_client.get("/api/run")
+        assert resp.json()["run"] is None
+
+
+class TestApiStages:
+    """Tests for GET /api/stages JSON endpoint."""
+
+    def test_api_stages_returns_200_with_9_stages(
+        self, dashboard_client: TestClient
+    ) -> None:
+        """GET /api/stages returns 200 with JSON list of 9 stages."""
+        resp = dashboard_client.get("/api/stages")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+        assert len(data) == 9
+
+    def test_api_stages_has_required_fields(
+        self, dashboard_client: TestClient
+    ) -> None:
+        """Each stage object has name, status_counts, gate_mode."""
+        resp = dashboard_client.get("/api/stages")
+        for stage in resp.json():
+            assert "name" in stage
+            assert "status_counts" in stage
+            assert "gate_mode" in stage
