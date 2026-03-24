@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 from starlette.responses import Response
 
 from autopilot.db import CatalogDB
+from autopilot.web.deps import get_db, is_htmx
 
 router = APIRouter()
 
@@ -54,16 +55,6 @@ GATE_PRESETS = {
 }
 
 
-def _get_db(request: Request) -> CatalogDB:
-    """Create a CatalogDB connection from the app's db_path."""
-    return CatalogDB(request.app.state.db_path)
-
-
-def _is_htmx(request: Request) -> bool:
-    """Check if the request is from HTMX."""
-    return request.headers.get("hx-request") == "true"
-
-
 def _render_gate_partial(
     request: Request, gate: dict, stage: str,
 ) -> HTMLResponse:
@@ -85,7 +76,7 @@ def _render_gate_partial(
 @router.get("/gates")
 def gates_page(request: Request) -> HTMLResponse:
     """Render the gate configuration page."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         gates = db.get_all_gates()
         gates.sort(key=lambda g: _STAGE_ORDER.get(str(g["stage"]), 999))
@@ -104,7 +95,7 @@ def gates_page(request: Request) -> HTMLResponse:
 @router.get("/api/gates")
 def api_gates(request: Request) -> list[dict]:
     """Return all pipeline gates as a JSON list."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         gates = db.get_all_gates()
     finally:
@@ -118,7 +109,7 @@ def api_gate_detail(request: Request, stage: str) -> dict:
     """Return a single gate by stage name."""
     if stage not in _STAGE_ORDER:
         raise HTTPException(status_code=404, detail=f"Unknown stage: {stage}")
-    db = _get_db(request)
+    db = get_db(request)
     try:
         gate = db.get_gate(stage)
     finally:
@@ -146,7 +137,7 @@ def api_update_gate(
     """Update a gate's mode and/or timeout."""
     if stage not in _STAGE_ORDER:
         raise HTTPException(status_code=404, detail=f"Unknown stage: {stage}")
-    db = _get_db(request)
+    db = get_db(request)
     try:
         updates: dict[str, object] = {}
         if body.mode is not None:
@@ -162,7 +153,7 @@ def api_update_gate(
         db.close()
     if gate is None:
         raise HTTPException(status_code=404, detail=f"Gate not found: {stage}")
-    if _is_htmx(request):
+    if is_htmx(request):
         return _render_gate_partial(request, gate, stage)
     return JSONResponse(content=gate)
 
@@ -173,7 +164,7 @@ def _gate_decision(
     """Apply a gate decision (approve/skip) and return updated gate."""
     if stage not in _STAGE_ORDER:
         raise HTTPException(status_code=404, detail=f"Unknown stage: {stage}")
-    db = _get_db(request)
+    db = get_db(request)
     try:
         db.update_gate(
             stage,
@@ -187,7 +178,7 @@ def _gate_decision(
         db.close()
     if gate is None:
         raise HTTPException(status_code=404, detail=f"Gate not found: {stage}")
-    if _is_htmx(request):
+    if is_htmx(request):
         return _render_gate_partial(request, gate, stage)
     return JSONResponse(content=gate)
 
@@ -210,7 +201,7 @@ def api_apply_preset(request: Request, preset_name: str) -> Response:
     if preset_name not in GATE_PRESETS:
         raise HTTPException(status_code=404, detail=f"Unknown preset: {preset_name}")
     preset = GATE_PRESETS[preset_name]
-    db = _get_db(request)
+    db = get_db(request)
     try:
         for stage in _PIPELINE_STAGES:
             mode = preset.get(stage, "auto")
@@ -221,7 +212,7 @@ def api_apply_preset(request: Request, preset_name: str) -> Response:
         db.close()
     gates.sort(key=lambda g: _STAGE_ORDER.get(str(g["stage"]), 999))
 
-    if _is_htmx(request):
+    if is_htmx(request):
         # Render all gate toggle partials concatenated for innerHTML swap
         gates_by_stage = {str(g["stage"]): dict(g) for g in gates}
         templates = request.app.state.templates
