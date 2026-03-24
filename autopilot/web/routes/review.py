@@ -100,3 +100,9 @@ def _render_narrative_partial(
 def api_approve_narrative(request: Request, narrative_id: str) -> Response:
     """Approve a narrative."""
     return _narrative_status_action(request, narrative_id, "approved")
+
+
+@router.post("/api/narratives/{narrative_id}/reject", response_model=None)
+def api_reject_narrative(request: Request, narrative_id: str) -> Response:
+    """Reject a narrative."""
+    return _narrative_status_action(request, narrative_id, "rejected")
