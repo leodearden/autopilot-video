@@ -26,3 +26,15 @@ def review_hub(request: Request) -> HTMLResponse:
     templates = request.app.state.templates
     context = {"page_title": "Review Hub"}
     return templates.TemplateResponse(request, "review/hub.html", context)
+
+
+@router.get("/api/narratives")
+def api_list_narratives(
+    request: Request, status: str | None = None,
+) -> list[dict[str, object]]:
+    """Return all narratives as a JSON list, optionally filtered by status."""
+    db = _get_db(request)
+    try:
+        return db.list_narratives(status=status)
+    finally:
+        db.close()
