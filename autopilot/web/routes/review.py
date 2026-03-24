@@ -485,3 +485,51 @@ def api_list_uploads(request: Request) -> list[dict[str, object]]:
         return db.list_uploads()
     finally:
         db.close()
+
+
+@router.get("/review/render/{narrative_id}")
+def render_review_page(
+    request: Request, narrative_id: str,
+) -> HTMLResponse:
+    """Render the render review page for a single narrative."""
+    db = _get_db(request)
+    try:
+        narrative = db.get_narrative(narrative_id)
+        if narrative is None:
+            raise HTTPException(status_code=404, detail="Narrative not found")
+        edit_plan = db.get_edit_plan(narrative_id)
+        if edit_plan is None:
+            raise HTTPException(
+                status_code=404, detail="Edit plan not found",
+            )
+        script = db.get_narrative_script(narrative_id)
+    finally:
+        db.close()
+
+    parsed = _parse_render(edit_plan)
+    # Parse script scenes
+    scenes: list[dict[str, object]] = []
+    if script and script.get("script_json"):
+        script_data = json.loads(str(script["script_json"]))
+        if isinstance(script_data, dict):
+            scenes = script_data.get("scenes", [])
+        elif isinstance(script_data, list):
+            scenes = script_data
+
+    # Check if render file exists
+    render_path = parsed.get("render_path")
+    has_render = bool(
+        render_path and Path(str(render_path)).is_file()
+    )
+
+    templates = request.app.state.templates
+    context = {
+        "page_title": f"Render Review: {narrative['title']}",
+        "narrative": narrative,
+        "edit_plan": parsed,
+        "has_render": has_render,
+        "scenes": scenes,
+    }
+    return templates.TemplateResponse(
+        request, "review/renders.html", context,
+    )

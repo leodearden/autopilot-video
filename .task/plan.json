@@ -1,27 +1,26 @@
 {
-  "task_id": "47",
-  "title": "Cluster review page",
+  "task_id": "50",
+  "title": "Render + upload review",
   "files": [
     "autopilot/db.py",
     "autopilot/web/routes/review.py",
-    "autopilot/web/templates/review/clusters.html",
-    "autopilot/web/templates/partials/cluster_card.html",
-    "tests/test_cluster_review.py"
+    "autopilot/web/templates/review/renders.html",
+    "autopilot/web/templates/review/uploads.html",
+    "tests/test_render_review.py"
   ],
   "modules": [
     "autopilot/db",
     "autopilot/web/routes",
     "autopilot/web/templates/review",
-    "autopilot/web/templates/partials",
     "tests"
   ],
-  "analysis": "Build the cluster review page at /review/clusters with card grid, merge, relabel, and exclude functionality. The codebase has a well-established pattern: review.py contains both page routes (/review/*) and JSON API routes (/api/*), with HTMX-aware dual responses (HTML partial vs JSON). Templates use Tailwind dark mode with surface-* colors, and cards have predictable IDs ({entity}-{id}) for HTMX outerHTML swaps. The activity_clusters table exists with cluster_id, label, description, time_start, time_end, location_label, gps coords, and clip_ids_json. Missing from db.py: (1) single-cluster getter get_activity_cluster(id), (2) delete_activity_cluster method, (3) 'excluded' column on the table, (4) column whitelist on update_activity_cluster (it currently does raw **kwargs into SQL like the narrative update did before task 46 fixed it). The review hub already maps waiting gates to review links via _REVIEW_LINKS dict — needs 'classify' entry. Navigation in base.html already links to /review/clusters. New test file test_cluster_review.py keeps cluster tests separate from the 678-line test_review.py. All cluster routes go in the existing review.py following the task spec and narrative route convention.",
+  "analysis": "Build render review page (/review/render/{narrative_id}) with HTML5 video player and quality validation, upload status page (/review/uploads), video streaming endpoint, and supporting JSON APIs. The codebase has a mature pattern: review.py contains both /review/* page routes and /api/* JSON routes with HTMX-aware dual responses (HTML partial vs JSON). Templates extend base.html using Tailwind dark mode + HTMX. CatalogDB has edit_plans (narrative_id PK, edl_json, otio_path, validation_json, render_path) and uploads (narrative_id PK, youtube_video_id, youtube_url, uploaded_at, privacy_status) tables with single-record CRUD, but no list methods — need to add list_edit_plans() and list_uploads() with LEFT JOIN to narratives for title data. Video streaming is new to the codebase — Starlette's FileResponse supports Range headers natively for seeking. The existing gates API (/api/gates/{stage}/approve, /api/gates/{stage}/skip) handles render gate actions, so the template just wires to those endpoints. The narrative_scripts table (get_narrative_script) provides script scene data for the side-by-side view. The _REVIEW_LINKS dict in review_hub needs render/upload entries with pending counts.",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Add 'excluded INTEGER DEFAULT 0' to activity_clusters schema in CatalogDB.__init__ — add to CREATE TABLE statement for new DBs and add ALTER TABLE with try/except OperationalError for existing DBs that lack the column",
+      "description": "Create tests/test_render_review.py with shared fixtures: db fixture (tmp_path file-backed CatalogDB), app fixture (create_app with init_default_gates), client fixture (TestClient), _seed_narrative helper, _seed_edit_plan helper (inserts narrative + upserts edit_plan with render_path and validation_json), _seed_upload helper (inserts narrative + upload record)",
       "status": "done",
-      "commit": "10a3d9b",
+      "commit": "f7ae909",
       "tests": []
     }
   ],
@@ -29,245 +28,183 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing tests for get_activity_cluster(id): returns dict for existing cluster with all fields, returns None for missing cluster. Also test that excluded column defaults to 0 on newly inserted cluster.",
+      "description": "Write failing tests for CatalogDB.list_edit_plans(): returns list of all edit plans joined with narrative title; returns empty list when none exist; includes all columns (narrative_id, edl_json, otio_path, validation_json, render_path, narrative_title)",
       "status": "done",
-      "commit": "7ee8e1e"
+      "commit": "869aa32"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Implement get_activity_cluster(cluster_id) in CatalogDB — SELECT * FROM activity_clusters WHERE cluster_id=? returning dict(row) or None. Add excluded column to CREATE TABLE and ALTER TABLE migration. Pattern follows get_narrative().",
+      "description": "Implement list_edit_plans() in CatalogDB — SELECT e.*, n.title as narrative_title FROM edit_plans e LEFT JOIN narratives n ON e.narrative_id = n.narrative_id. Returns list[dict].",
       "status": "done",
-      "commit": "9aa8255"
+      "commit": "c7ddce9"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write failing tests for delete_activity_cluster(id): cluster is removed after delete (get returns None), no error when deleting missing id.",
+      "description": "Write failing tests for CatalogDB.list_uploads(): returns list of all uploads joined with narrative title; returns empty list when none exist; includes all columns (narrative_id, youtube_video_id, youtube_url, uploaded_at, privacy_status, narrative_title)",
       "status": "done",
-      "commit": "cae4b6f"
+      "commit": "5ad716e"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement delete_activity_cluster(cluster_id) in CatalogDB — DELETE FROM activity_clusters WHERE cluster_id=?",
+      "description": "Implement list_uploads() in CatalogDB — SELECT u.*, n.title as narrative_title FROM uploads u LEFT JOIN narratives n ON u.narrative_id = n.narrative_id ORDER BY u.uploaded_at DESC. Returns list[dict].",
       "status": "done",
-      "commit": "8ffc2c0"
+      "commit": "2975d21"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write failing test that update_activity_cluster rejects columns not in whitelist (raises ValueError with descriptive message), while accepting all valid columns (label, description, time_start, time_end, location_label, gps_center_lat, gps_center_lon, clip_ids_json, excluded).",
+      "description": "Write failing tests for GET /api/renders/{narrative_id}: returns JSON with edit plan data (narrative_id, render_path, validation parsed from validation_json, narrative title); returns 404 for nonexistent narrative_id",
       "status": "done",
-      "commit": "9f2d5a2"
+      "commit": "c365091"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Add _CLUSTER_ALLOWED_COLUMNS frozenset to CatalogDB and whitelist validation to update_activity_cluster, following the _NARRATIVE_ALLOWED_COLUMNS pattern. Allowed columns: label, description, time_start, time_end, location_label, gps_center_lat, gps_center_lon, clip_ids_json, excluded.",
+      "description": "Implement api_get_render route in review.py — GET /api/renders/{narrative_id}. Fetches edit_plan and narrative, parses validation_json into dict, returns composite JSON response with render status. Raises 404 if no edit plan found.",
       "status": "done",
-      "commit": "113b2e0"
+      "commit": "002c89c"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write failing tests for GET /api/clusters: returns JSON list of clusters with clip_ids parsed from clip_ids_json and clip_count added; returns empty list when no clusters exist.",
+      "description": "Write failing tests for GET /api/renders/{narrative_id}/video: returns 200 with video/mp4 content-type when render file exists (use tmp_path to create a small mock .mp4 file); returns 404 when no edit plan exists; returns 404 when render_path is null or file missing",
       "status": "done",
-      "commit": "4945084"
+      "commit": "7ac4074"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Implement api_list_clusters route and _parse_cluster helper in review.py. _parse_cluster pops clip_ids_json, parses to clip_ids list, adds clip_count. Pattern follows _parse_narrative.",
+      "description": "Implement api_stream_video route in review.py — GET /api/renders/{narrative_id}/video. Fetches edit_plan, validates render_path exists on filesystem, returns FileResponse(render_path, media_type='video/mp4'). Starlette FileResponse handles Range headers natively for seeking.",
       "status": "done",
-      "commit": "a37c387"
+      "commit": "df62afe"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write failing tests for GET /api/clusters/{cluster_id}: returns single cluster JSON with parsed clip_ids and clip_count; returns 404 for missing cluster.",
+      "description": "Write failing tests for GET /api/uploads: returns JSON list of uploads with narrative_title joined; returns empty list when no uploads exist; includes all fields (narrative_id, youtube_video_id, youtube_url, uploaded_at, privacy_status, narrative_title)",
       "status": "done",
-      "commit": "d9fefed"
+      "commit": "ba0ad8b"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Implement api_get_cluster route in review.py — get_activity_cluster(id), parse, return JSON or raise 404.",
+      "description": "Implement api_list_uploads route in review.py — GET /api/uploads. Calls db.list_uploads(), returns JSON list.",
       "status": "done",
-      "commit": "81486d6"
+      "commit": "2e70397"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write failing tests for POST /api/clusters/{cluster_id}/relabel: updates label and description, returns updated cluster JSON; 404 for missing cluster; rejects extra fields in body via Pydantic validation (422).",
+      "description": "Write failing tests for GET /review/render/{narrative_id}: returns 200 HTML containing video player element when render_path exists and file is present; shows 'No render available' when render_path is null; shows validation results when validation_json is set; shows script scene list from narrative_scripts; returns 404 for nonexistent narrative; contains links to gate actions (approve, skip)",
       "status": "done",
-      "commit": "d2282ab"
+      "commit": "5fc14ac"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Implement api_relabel_cluster route with ClusterRelabel Pydantic model (label: Optional[str], description: Optional[str], extra='forbid'). Calls update_activity_cluster with provided fields, commits, returns updated cluster.",
-      "status": "done",
-      "commit": "0897a5e"
+      "description": "Implement render_review_page route (GET /review/render/{narrative_id}) in review.py and create renders.html template. Route fetches narrative, edit_plan, and narrative_script; parses validation_json and script_json; passes structured context to template. Template: extends base.html, two-column layout — left side has HTML5 <video> player pointing to /api/renders/{id}/video with controls, validation results as badges/list, and action buttons (Approve for Upload, Reject with notes textarea, Download link, Skip Upload); right side has script scene list parsed from narrative_scripts.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-13",
       "type": "test",
-      "description": "Write failing tests for POST /api/clusters/{cluster_id}/exclude: sets excluded=1, returns updated cluster with excluded=1; 404 for missing cluster; idempotent (excluding already-excluded cluster succeeds).",
-      "status": "done",
-      "commit": "978ed7d"
+      "description": "Write failing tests for GET /review/uploads: returns 200 HTML with table containing upload data (narrative title, YouTube video ID, YouTube URL, privacy status, uploaded_at); shows 'No uploads yet' when no uploads exist",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-14",
       "type": "impl",
-      "description": "Implement api_exclude_cluster route — calls update_activity_cluster(id, excluded=1), commits, returns updated cluster JSON.",
-      "status": "done",
-      "commit": "3d04726"
+      "description": "Implement uploads_page route (GET /review/uploads) in review.py and create uploads.html template. Route calls db.list_uploads() and passes to template. Template: extends base.html, simple table with columns for narrative title (linked to render review), YouTube video ID, YouTube URL (as clickable link), privacy status badge, uploaded_at timestamp.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-15",
       "type": "test",
-      "description": "Write failing tests for POST /api/clusters/merge: (a) merges 2 clusters — combined clip_ids_json, label from largest cluster, min(time_start)/max(time_end), merged cluster kept, other deleted; (b) merges 3 clusters; (c) returns 422 for fewer than 2 cluster_ids; (d) returns 404 if any cluster_id not found.",
-      "status": "done",
-      "commit": "6f78515"
+      "description": "Write failing tests for review hub integration: when render gate is 'waiting', hub page contains 'render' card with link to /review/render and pending count of narratives with edit plans but no render_path; when upload gate is 'waiting', hub contains 'upload' card with link to /review/uploads",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-16",
       "type": "impl",
-      "description": "Implement api_merge_clusters route with MergeRequest(cluster_ids: list[str]) Pydantic model. Logic: validate >=2 ids, load all clusters (404 if any missing), find largest by clip count, combine all clip_ids, compute min time_start/max time_end, update largest cluster with combined data, delete others, commit, return merged cluster.",
-      "status": "done",
-      "commit": "cbe5442"
-    },
-    {
-      "id": "step-17",
-      "type": "test",
-      "description": "Write failing tests for GET /review/clusters HTML page: returns 200 with cluster card labels and clip counts visible; empty state shows 'No clusters' message; excluded clusters show 'excluded' badge.",
-      "status": "done",
-      "commit": "d35e433"
-    },
-    {
-      "id": "step-18",
-      "type": "impl",
-      "description": "Create review/clusters.html template (extends base.html) with card grid, merge checkboxes, Merge Selected button, and Approve Gate button. Create partials/cluster_card.html with cluster info, status badge, relabel/exclude buttons. Implement clusters_page route in review.py.",
-      "status": "done",
-      "commit": "efca2c0"
-    },
-    {
-      "id": "step-19",
-      "type": "test",
-      "description": "Write failing tests for HTMX responses: POST relabel with HX-Request:true returns HTML containing div with id='cluster-{id}' and updated label; POST exclude with HX-Request:true returns HTML partial with 'excluded' badge.",
-      "status": "done",
-      "commit": "73c5a23"
-    },
-    {
-      "id": "step-20",
-      "type": "impl",
-      "description": "Add _render_cluster_partial helper (renders partials/cluster_card.html). Wire relabel and exclude routes to return HTML partial when _is_htmx(request) is true, JSON otherwise. Pattern follows _render_narrative_partial.",
-      "status": "done",
-      "commit": "9ecd260"
-    },
-    {
-      "id": "step-21",
-      "type": "test",
-      "description": "Write failing test for review hub integration: when classify gate is 'waiting', hub page contains card with 'classify' stage, link to /review/clusters, and pending cluster count (non-excluded clusters).",
-      "status": "done",
-      "commit": "5b74a02"
-    },
-    {
-      "id": "step-22",
-      "type": "impl",
-      "description": "Update _REVIEW_LINKS to add 'classify': '/review/clusters'. In review_hub route, add classify stage handling: count non-excluded activity clusters as pending_count with 'activity clusters' as pending_label.",
-      "status": "done",
-      "commit": "990d9cd"
+      "description": "Update _REVIEW_LINKS dict to add 'render': '/review/render' and 'upload': '/review/uploads'. In review_hub route, add render stage pending count logic (count edit plans without render_path) and upload stage logic (count narratives in rendered status without upload record). Add simple GET /review/render index route listing narratives with edit plans and links to individual render review pages.",
+      "status": "pending",
+      "commit": null
     }
   ],
   "design_decisions": [
     {
-      "decision": "Add 'excluded INTEGER DEFAULT 0' column to activity_clusters rather than a separate exclusion tracking table",
-      "rationale": "Task spec suggests a boolean field directly on the table. SQLite integer-boolean is the project norm. A column on the existing table is simpler than a join table, and ALTER TABLE ADD COLUMN is safe for SQLite with a DEFAULT value. Try/except OperationalError handles existing DBs gracefully."
+      "decision": "Use Starlette FileResponse for video streaming rather than custom chunked streaming",
+      "rationale": "Starlette's FileResponse natively supports HTTP Range headers for video seeking since v0.20+. It handles Content-Range, Accept-Ranges, and 206 Partial Content responses automatically. No need to implement custom byte-range parsing. This is the standard approach for serving static files in FastAPI/Starlette apps."
     },
     {
-      "decision": "Add column whitelist to update_activity_cluster following the _NARRATIVE_ALLOWED_COLUMNS pattern from task 46",
-      "rationale": "The current update_activity_cluster interpolates raw **kwargs keys into SQL (same vulnerability task 46 fixed for narratives). Adding a frozenset whitelist is defense-in-depth. All non-PK columns are allowed: label, description, time_start, time_end, location_label, gps_center_lat, gps_center_lon, clip_ids_json, excluded."
+      "decision": "Add list_edit_plans() and list_uploads() with LEFT JOIN to narratives table for title data",
+      "rationale": "The uploads page needs narrative titles alongside upload data, and the hub needs edit plan counts. A LEFT JOIN is a single query vs N+1 individual lookups. Following the existing CatalogDB pattern of returning list[dict] from fetchall(). LEFT JOIN ensures records show even if narrative was deleted."
     },
     {
-      "decision": "Merge keeps the largest cluster (by clip count) as the surviving record and deletes the others",
-      "rationale": "Task spec says 'pick label from largest cluster' and 'delete merged clusters, keep the combined one'. Keeping the largest cluster's row preserves its cluster_id, which may be referenced in narratives via activity_cluster_ids_json. Updating in-place avoids orphaned references."
+      "decision": "Template render actions (approve, reject, skip) wire to existing gates API — no new action endpoints",
+      "rationale": "The gates.py router already provides POST /api/gates/{stage}/approve, POST /api/gates/{stage}/skip, and PUT /api/gates/{stage} for updating status/notes. The render review template's HTMX buttons target these existing endpoints directly. This avoids duplicating gate logic and keeps the action surface consistent across all pipeline stages."
     },
     {
-      "decision": "Create separate test file tests/test_cluster_review.py rather than appending to test_review.py",
-      "rationale": "test_review.py is already 678 lines focused on narrative review. Cluster review is a distinct feature area with its own fixtures (_seed_cluster), DB method tests, and API tests. Separate files keep both manageable and allow parallel test execution."
+      "decision": "Create a minimal GET /review/render index page listing narratives with edit plans",
+      "rationale": "The review hub links to /review/render for the render gate, but individual render reviews are at /review/render/{id}. Without an index, the hub link would 404. A simple list page with links to individual render reviews is the minimal viable landing page. It also serves as a render queue overview."
     },
     {
-      "decision": "All cluster routes go in review.py following the task spec and existing convention",
-      "rationale": "Task spec says 'extend autopilot/web/routes/review.py'. The file already mixes /review/* page routes and /api/* JSON routes for narratives. Adding /review/clusters and /api/clusters/* follows the same pattern. No new router registration needed."
+      "decision": "Parse validation_json and script_json in route handler, pass structured dicts to template",
+      "rationale": "Following the existing pattern where _parse_narrative and _parse_cluster extract JSON fields in Python rather than doing JSON parsing in Jinja2 templates. Keeps templates simple and makes the data easy to test via JSON API endpoints."
     },
     {
-      "decision": "_parse_cluster adds computed clip_count field alongside clip_ids",
-      "rationale": "Avoids template-side array length calculation. The API response includes both the full clip_ids list and a convenience clip_count integer. This is cheap to compute and makes the card template simpler."
+      "decision": "Create separate test file tests/test_render_review.py",
+      "rationale": "Following the precedent set by test_cluster_review.py (task 47). Render review is a distinct feature area with its own fixtures (_seed_edit_plan, mock video files), DB method tests, and API tests. Separate files keep tests organized and allow parallel execution."
     },
     {
-      "decision": "Merge endpoint returns 422 for fewer than 2 cluster_ids, 404 if any cluster not found",
-      "rationale": "Merging requires at least 2 clusters by definition. Using 422 (Unprocessable Entity) for validation errors and 404 for missing resources follows HTTP semantics and the project's existing error handling patterns in gates.py and review.py."
-    },
-    {
-      "decision": "Hub counts non-excluded clusters as pending for classify gate",
-      "rationale": "Excluded clusters are intentionally removed from consideration, so they shouldn't inflate the pending count. This gives the reviewer an accurate picture of how many clusters still need review before approving the classify gate."
+      "decision": "Video streaming returns 404 when render_path is null or file doesn't exist on filesystem",
+      "rationale": "A render may have an edit plan but no render_path yet (render not started), or the render_path may point to a file that was moved/deleted. Both cases should return 404 rather than 500, giving the client a clear signal that the video is not available."
     }
   ],
   "reuse": [
     {
-      "what": "_get_db(request) and _is_htmx(request) helpers",
+      "what": "_get_db(request) and _is_htmx(request) helper functions",
       "where": "autopilot/web/routes/review.py lines 18-25",
-      "how": "Reuse directly for all new cluster routes — same DB connection pattern and HTMX detection. No duplication needed since they're in the same file."
+      "how": "Reuse directly for all new render/upload routes. Same file, no duplication. All new routes follow the try/finally db.close() pattern."
     },
     {
-      "what": "_parse_narrative pattern for JSON field deserialization",
-      "where": "autopilot/web/routes/review.py lines 101-106",
-      "how": "Create _parse_cluster following identical pattern: pop clip_ids_json, json.loads to list, add clip_count = len(clip_ids)."
+      "what": "Existing gates API for render actions (approve, skip, reject with notes)",
+      "where": "autopilot/web/routes/gates.py — POST /api/gates/{stage}/approve, POST /api/gates/{stage}/skip, PUT /api/gates/{stage}",
+      "how": "Render review template wires HTMX buttons directly to these existing endpoints. Approve → POST /api/gates/render/approve, Skip Upload → POST /api/gates/render/skip, Reject → PUT /api/gates/render with status='rejected' and notes from textarea."
     },
     {
-      "what": "_render_narrative_partial pattern for HTMX card responses",
-      "where": "autopilot/web/routes/review.py lines 144-151",
-      "how": "Create _render_cluster_partial using same templates.get_template + template.render + HTMLResponse pattern, targeting partials/cluster_card.html."
+      "what": "CatalogDB existing single-record CRUD: get_edit_plan, get_upload, get_narrative, get_narrative_script",
+      "where": "autopilot/db.py — get_edit_plan (line 881), get_upload (line 979), get_narrative (line 752), get_narrative_script (line 910)",
+      "how": "Render review route calls get_edit_plan + get_narrative + get_narrative_script to compose the full render review context. Video streaming route calls get_edit_plan to find render_path."
     },
     {
-      "what": "Pydantic request body models with ConfigDict(extra='forbid')",
-      "where": "autopilot/web/routes/review.py lines 166-179 (NarrativeUpdate, BulkApproveRequest)",
-      "how": "Create ClusterRelabel(label, description) and MergeRequest(cluster_ids) Pydantic models with same extra='forbid' config for strict input validation."
+      "what": "Template layout pattern: extends base.html, Tailwind dark mode, HTMX attributes",
+      "where": "autopilot/web/templates/review/narratives.html and review/clusters.html",
+      "how": "renders.html follows same structure: extends base.html, max-w-7xl container, title section, content grid. uploads.html follows the simpler table layout. Both use same Tailwind color scheme (surface-800, gray-400 text, colored badges)."
     },
     {
-      "what": "_NARRATIVE_ALLOWED_COLUMNS whitelist pattern in CatalogDB",
-      "where": "autopilot/db.py lines 761-778",
-      "how": "Create _CLUSTER_ALLOWED_COLUMNS frozenset with identical validation logic: check kwargs keys against whitelist, raise ValueError listing bad keys."
+      "what": "Test fixture pattern: file-backed DB, create_app with init_default_gates, TestClient, _seed_* helpers",
+      "where": "tests/test_review.py lines 19-41 and tests/test_cluster_review.py",
+      "how": "Create analogous fixtures in test_render_review.py: db fixture with tmp_path, app/client fixtures calling init_default_gates, _seed_edit_plan helper that inserts narrative + upserts edit plan, _seed_upload helper for upload records."
     },
     {
-      "what": "Test fixture pattern: file-backed DB, create_app, TestClient, _seed_* helper",
-      "where": "tests/test_review.py lines 19-41",
-      "how": "Create analogous fixtures in test_cluster_review.py: db fixture with tmp_path, app/client fixtures, _seed_cluster helper inserting cluster with sensible defaults."
+      "what": "_parse_narrative / _parse_cluster pattern for JSON field deserialization",
+      "where": "autopilot/web/routes/review.py lines 107-112 and 218-225",
+      "how": "Create _parse_render helper that parses validation_json from edit_plan into a structured dict. Follows same pattern: pop JSON field, json.loads, add computed fields."
     },
     {
-      "what": "narratives.html template layout (card grid, bulk actions, gate approval section)",
-      "where": "autopilot/web/templates/review/narratives.html",
-      "how": "clusters.html follows identical structure: extends base.html, card grid with grid-cols-1/2/3, action header with Merge Selected button, Approve Gate section at bottom."
-    },
-    {
-      "what": "narrative_card.html partial pattern (div#entity-id, HTMX attributes)",
-      "where": "autopilot/web/templates/partials/narrative_card.html",
-      "how": "cluster_card.html uses same pattern: div#cluster-{cluster_id} as swap target, hx-post/hx-target/hx-swap='outerHTML' on action buttons, status badges with Tailwind color classes."
-    },
-    {
-      "what": "Review hub _REVIEW_LINKS dict and pending count logic",
-      "where": "autopilot/web/routes/review.py lines 28-52",
-      "how": "Add 'classify': '/review/clusters' to _REVIEW_LINKS. Add elif stage == 'classify' block to count non-excluded clusters, mirroring the narrate stage pattern."
-    },
-    {
-      "what": "Existing CatalogDB activity_clusters CRUD (insert, get_all, clear, update)",
-      "where": "autopilot/db.py lines 656-710",
-      "how": "Routes use get_activity_clusters() for list, update_activity_cluster() for relabel/exclude. New get_activity_cluster(id) and delete_activity_cluster(id) extend the existing CRUD section."
+      "what": "_REVIEW_LINKS dict and hub pending count pattern",
+      "where": "autopilot/web/routes/review.py lines 28-58",
+      "how": "Add 'render': '/review/render' and 'upload': '/review/uploads' entries. Add elif blocks for render/upload stages to compute pending counts: render counts edit plans without render_path, upload counts pending upload narratives."
     }
   ],
-  "_session_id": "47-00f54b2c",
-  "_created_at": "2026-03-24T22:31:44.633936+00:00",
-  "_schema_version": 1
+  "_session_id": "50-ca894fe6",
+  "_created_at": "2026-03-24T22:58:29.639646+00:00"
 }
