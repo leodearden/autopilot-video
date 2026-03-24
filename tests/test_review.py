@@ -377,6 +377,52 @@ class TestBulkApproveAPI:
 
 
 # ---------------------------------------------------------------------------
+# TestBulkApproveCorrectness — step-29
+# ---------------------------------------------------------------------------
+
+class TestBulkApproveCorrectness:
+    """Tests for bulk-approve persistence and accurate row count."""
+
+    def test_bulk_approve_persists_status(self, seeded_client: TestClient) -> None:
+        """After bulk-approve, approved narratives are persisted in the DB."""
+        # n-1 and n-3 are "proposed" in seeded_app
+        response = seeded_client.post(
+            "/api/narratives/bulk-approve",
+            json={"ids": ["n-1", "n-3"]},
+        )
+        assert response.status_code == 200
+        assert response.json()["approved"] == 2
+        # Verify DB persistence via GET
+        approved = seeded_client.get(
+            "/api/narratives", params={"status": "approved"},
+        )
+        approved_ids = {n["narrative_id"] for n in approved.json()}
+        assert "n-1" in approved_ids
+        assert "n-3" in approved_ids
+
+    def test_bulk_approve_nonexistent_ids(self, seeded_client: TestClient) -> None:
+        """Bulk-approve with nonexistent IDs returns approved: 0."""
+        response = seeded_client.post(
+            "/api/narratives/bulk-approve",
+            json={"ids": ["does-not-exist-1", "does-not-exist-2"]},
+        )
+        assert response.status_code == 200
+        assert response.json()["approved"] == 0
+
+    def test_bulk_approve_mixed_existing_nonexistent(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """Bulk-approve with mix of valid and nonexistent IDs counts only valid."""
+        response = seeded_client.post(
+            "/api/narratives/bulk-approve",
+            json={"ids": ["n-1", "does-not-exist"]},
+        )
+        assert response.status_code == 200
+        # Only n-1 exists, so approved should be 1
+        assert response.json()["approved"] == 1
+
+
+# ---------------------------------------------------------------------------
 # Review Hub page fixtures — step-17
 # ---------------------------------------------------------------------------
 
