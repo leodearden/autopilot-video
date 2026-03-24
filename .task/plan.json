@@ -18,7 +18,7 @@
     "autopilot/db.py",
     "tests"
   ],
-  "analysis": "Task 46 builds the review hub at /review and narrative review page at /review/narratives with full CRUD + approve/reject/edit functionality via HTMX.\n\nExisting patterns to follow:\n- FastAPI with APIRouter, Jinja2Templates, HTMX 2.0.4\n- `_get_db(request)` helper returns CatalogDB from app.state.db_path, closed in finally\n- `_is_htmx(request)` checks hx-request header for dual HTML/JSON response\n- Routes registered via __init__.py exports \u2192 app.py include_router()\n- Templates extend base.html with {% block content %}, dark theme with Tailwind\n- Partials in templates/partials/ for HTMX swap targets\n- File-backed tmp_path DB in test fixtures (web app creates its own connection)\n\nDB layer: CatalogDB already has insert_narrative, get_narrative, update_narrative_status, list_narratives. Missing: update_narrative(**kwargs) for field editing (title, description, duration). Need to add this method following the same pattern as update_gate/update_activity_cluster.\n\nGate integration: gates.py already has POST /api/gates/{stage}/approve. The review hub needs to show waiting gates and link to review pages. The narrative review page needs an 'Approve Gate' button that calls the existing gate approve endpoint when all narratives are decided.\n\nThe base.html nav already has links to /review, /review/narratives, etc. \u2014 they just 404 today.\n\nBackwards compatibility: human_review_fn in CLI remains untouched. Web review is an alternative path writing to the same narratives + pipeline_gates tables.",
+  "analysis": "Task 46 builds the review hub at /review and narrative review page at /review/narratives with full CRUD + approve/reject/edit functionality via HTMX.\n\nExisting patterns to follow:\n- FastAPI with APIRouter, Jinja2Templates, HTMX 2.0.4\n- `_get_db(request)` helper returns CatalogDB from app.state.db_path, closed in finally\n- `_is_htmx(request)` checks hx-request header for dual HTML/JSON response\n- Routes registered via __init__.py exports \u2192 app.py include_router()\n- Templates extend base.html with {% block content %}, dark theme with Tailwind\n- Partials in templates/partials/ for HTMX swap targets\n- File-backed tmp_path DB in test fixtures (web app creates its own connection)\n\nDB layer: CatalogDB already has insert_narrative, get_narrative, update_narrative_status, list_narratives. Missing: update_narrative(**kwargs) for field editing (title, description, duration). Need to add this method following the same pattern as update_gate/update_activity_cluster.\n\nGate integration: gates.py already has POST /api/gates/{stage}/approve. The review hub needs to show waiting gates and link to review pages. The narrative review page needs an 'Approve Gate' button that calls the existing gate approve endpoint when all narratives are decided.\n\nThe base.html nav already has links to /review, /review/narratives, etc. \u2014 they just 404 today.\n\nBackwards compatibility: human_review_fn in CLI remains untouched. Web review is an alternative path writing to the same narratives + pipeline_gates tables.\n\n--- Review Fix Analysis ---\nTwo blocking issues found during review:\n1. Bulk-approve returns len(body.ids) (input count) not actual rows updated. A call with all nonexistent IDs returns {\"approved\": 2} falsely. Tests don't verify DB persistence.\n2. update_narrative(**kwargs) interpolates column names from kwargs directly into SQL. Values are parameterised but keys are not. A crafted key like 'x = 1; DROP TABLE narratives; --' could inject SQL. The # noqa: S608 suppresses the linter warning.\n\nFixes: (a) Add column whitelist to update_narrative, validate before building SET clause. (b) Fix bulk-approve to return actual affected row count using update_narrative_status cursor.rowcount, and add tests for persistence verification and nonexistent-ID edge case.",
   "prerequisites": [
     {
       "id": "pre-1",
@@ -219,6 +219,34 @@
       "description": "Wire PUT endpoint to return narrative_card.html partial when _is_htmx() is true, enabling inline edit save to swap the card in-place",
       "status": "done",
       "commit": "1b48c1c"
+    },
+    {
+      "id": "step-27",
+      "type": "test",
+      "description": "[review-fix: sql_injection] Write failing test for update_narrative column whitelist: calling update_narrative with a disallowed column name (e.g. 'narrative_id', or a SQL-injection key like 'x = 1; DROP TABLE narratives; --') raises ValueError. Also test that all legitimate columns (title, description, proposed_duration_seconds, activity_cluster_ids_json, arc_notes, emotional_journey, status) are accepted without error.",
+      "status": "done",
+      "commit": "d522c32"
+    },
+    {
+      "id": "step-28",
+      "type": "impl",
+      "description": "[review-fix: sql_injection] Add _NARRATIVE_ALLOWED_COLUMNS frozenset to CatalogDB containing {title, description, proposed_duration_seconds, activity_cluster_ids_json, arc_notes, emotional_journey, status}. At the top of update_narrative, validate all kwargs keys are in the whitelist; raise ValueError with a descriptive message listing the invalid keys if any fail. Remove the # noqa: S608 comment since the column names are now validated.",
+      "status": "done",
+      "commit": "c64eef1"
+    },
+    {
+      "id": "step-29",
+      "type": "test",
+      "description": "[review-fix: missing_persistence_and_phantom_count] Write failing tests for bulk-approve correctness: (a) test_bulk_approve_persists_status \u2014 after POST bulk-approve with valid IDs, GET /api/narratives?status=approved and assert count matches the IDs sent; (b) test_bulk_approve_nonexistent_ids \u2014 POST bulk-approve with IDs that don't exist in the DB, assert response returns {\"approved\": 0} and no rows in the DB changed to approved.",
+      "status": "done",
+      "commit": "8098e72"
+    },
+    {
+      "id": "step-30",
+      "type": "impl",
+      "description": "[review-fix: missing_persistence_and_phantom_count] Fix the bulk-approve endpoint in review.py to return the actual number of rows updated instead of len(body.ids). Change update_narrative_status in db.py to return cursor.rowcount (the number of rows affected), then sum these in the endpoint loop. This way, nonexistent IDs contribute 0 to the count.",
+      "status": "done",
+      "commit": "1aaa508"
     }
   ],
   "design_decisions": [
@@ -245,6 +273,14 @@
     {
       "decision": "Parse activity_cluster_ids_json in API response rather than joining to clusters table",
       "rationale": "Keeps the API response fast. Cluster details can be fetched separately if needed. The narrative card template only needs cluster IDs for display; full cluster info is not critical for the review UX."
+    },
+    {
+      "decision": "Column whitelist in update_narrative rather than relying solely on Pydantic caller validation",
+      "rationale": "Defense-in-depth: the DB method is a public API that could be called from future code paths beyond the current Pydantic-validated PUT endpoint. A frozenset whitelist at the DB layer prevents SQL injection regardless of caller. The whitelist includes all mutable narrative columns (excludes narrative_id which is the PK). This matches the reviewer's suggested fix and eliminates the need for # noqa: S608."
+    },
+    {
+      "decision": "Return cursor.rowcount from update_narrative_status instead of void",
+      "rationale": "Changing the return type from None to int is backwards-compatible (callers that ignored the return still work). The bulk-approve endpoint can then sum actual affected rows. This is more accurate than checking existence first (avoids TOCTOU race) and cheaper than a separate SELECT."
     }
   ],
   "reuse": [
@@ -285,5 +321,5 @@
     }
   ],
   "_session_id": "46-d41d5e88",
-  "_created_at": "2026-03-24T15:11:32.701640+00:00"
+  "_created_at": "2026-03-24T15:35:03.517635+00:00"
 }
