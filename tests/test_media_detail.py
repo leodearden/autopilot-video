@@ -751,3 +751,44 @@ class TestRobustness:
         assert "text/html" in resp.headers["content-type"]
         # Valid frame's detections should still be aggregated
         assert "person" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for _parse_metadata_json helper (S5)
+# ---------------------------------------------------------------------------
+
+
+class TestParseMetadataJson:
+    """Tests for _parse_metadata_json(media) helper."""
+
+    def test_returns_parsed_dict_for_valid_json(self) -> None:
+        """Returns parsed dict when metadata_json is valid JSON."""
+        from autopilot.web.routes.media import _parse_metadata_json
+
+        media = {"metadata_json": '{"camera": "GoPro", "scene": "outdoor"}'}
+        result = _parse_metadata_json(media)
+        assert result == {"camera": "GoPro", "scene": "outdoor"}
+
+    def test_returns_empty_dict_for_malformed_json(self) -> None:
+        """Returns {} when metadata_json is malformed."""
+        from autopilot.web.routes.media import _parse_metadata_json
+
+        media = {"metadata_json": "{{corrupt"}
+        result = _parse_metadata_json(media)
+        assert result == {}
+
+    def test_returns_empty_dict_for_none(self) -> None:
+        """Returns {} when metadata_json is None."""
+        from autopilot.web.routes.media import _parse_metadata_json
+
+        media = {"metadata_json": None}
+        result = _parse_metadata_json(media)
+        assert result == {}
+
+    def test_returns_empty_dict_for_missing_key(self) -> None:
+        """Returns {} when metadata_json key is absent."""
+        from autopilot.web.routes.media import _parse_metadata_json
+
+        media = {}
+        result = _parse_metadata_json(media)
+        assert result == {}
