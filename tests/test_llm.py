@@ -211,3 +211,76 @@ class TestInvokeClaudeErrors:
         with patch("subprocess.run", return_value=mock_result):
             with pytest.raises(LlmError, match="[Rr]esult|[Mm]issing"):
                 invoke_claude(prompt="test", system="sys", model="sonnet", max_tokens=512)
+
+
+# -- Step 5: JSON schema support tests ----------------------------------------
+
+
+class TestInvokeClaudeJsonSchema:
+    """Verify --json-schema structured output support."""
+
+    def test_json_schema_adds_flag(self):
+        """When json_schema is passed, --json-schema flag is added to command."""
+        from autopilot.llm import invoke_claude
+
+        schema = {"type": "object", "properties": {"name": {"type": "string"}}}
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({"structured_output": {"name": "test"}})
+        mock_result.stderr = ""
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            invoke_claude(
+                prompt="test",
+                system="sys",
+                model="sonnet",
+                max_tokens=512,
+                json_schema=schema,
+            )
+
+        cmd = mock_run.call_args[0][0]
+        assert "--json-schema" in cmd
+        idx = cmd.index("--json-schema")
+        # The schema should be JSON-serialized
+        parsed = json.loads(cmd[idx + 1])
+        assert parsed == schema
+
+    def test_json_schema_returns_structured_output(self):
+        """With json_schema, return value comes from 'structured_output' field."""
+        from autopilot.llm import invoke_claude
+
+        schema = {"type": "object", "properties": {"count": {"type": "integer"}}}
+        expected_output = {"count": 42}
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({"structured_output": expected_output})
+        mock_result.stderr = ""
+
+        with patch("subprocess.run", return_value=mock_result):
+            result = invoke_claude(
+                prompt="test",
+                system="sys",
+                model="sonnet",
+                max_tokens=512,
+                json_schema=schema,
+            )
+
+        assert result == expected_output
+        assert isinstance(result, dict)
+
+    def test_no_schema_does_not_add_flag(self):
+        """Without json_schema, --json-schema flag is NOT in the command."""
+        from autopilot.llm import invoke_claude
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({"result": "text"})
+        mock_result.stderr = ""
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            invoke_claude(prompt="test", system="sys", model="sonnet", max_tokens=512)
+
+        cmd = mock_run.call_args[0][0]
+        assert "--json-schema" not in cmd
