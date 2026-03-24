@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+from functools import partial
 from typing import NamedTuple
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -54,16 +55,26 @@ def _aggregate_detections(det_rows: list[dict]) -> DetectionSummary:
     return DetectionSummary(total=total, classes=classes, frame_details=frame_details)
 
 
-def _format_duration(seconds: float | None) -> str:
-    """Format seconds as HH:MM:SS, or '--:--' if None."""
+def _format_seconds(seconds: float | None, *, pad_hours: bool = False) -> str:
+    """Format seconds into a human-readable time string.
+
+    pad_hours=False: M:SS for <1hr, H:MM:SS for >=1hr, None -> '--:--'
+    pad_hours=True:  00:MM:SS always, None -> '--:--:--'
+    """
     if seconds is None:
-        return "--:--"
+        return "--:--:--" if pad_hours else "--:--"
     total = int(seconds)
     h, remainder = divmod(total, 3600)
     m, s = divmod(remainder, 60)
+    if pad_hours:
+        return f"{h:02d}:{m:02d}:{s:02d}"
     if h:
         return f"{h}:{m:02d}:{s:02d}"
     return f"{m}:{s:02d}"
+
+
+_format_duration = partial(_format_seconds, pad_hours=False)
+_format_timestamp = partial(_format_seconds, pad_hours=True)
 
 
 @router.get("/api/media")
@@ -182,16 +193,6 @@ def media_detail_page(request: Request, media_id: str):
             "format_duration": _format_duration,
         },
     )
-
-
-def _format_timestamp(seconds: float | None) -> str:
-    """Format seconds as HH:MM:SS for transcript display."""
-    if seconds is None:
-        return "--:--:--"
-    total = int(seconds)
-    h, remainder = divmod(total, 3600)
-    m, s = divmod(remainder, 60)
-    return f"{h:02d}:{m:02d}:{s:02d}"
 
 
 _VALID_TABS = {"metadata", "transcript", "detections", "faces", "audio_events", "embeddings"}
