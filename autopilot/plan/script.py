@@ -12,6 +12,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from autopilot.llm import LlmError, invoke_claude
+
 if TYPE_CHECKING:
     from autopilot.config import LLMConfig
     from autopilot.db import CatalogDB
@@ -434,23 +436,18 @@ def _call_llm(user_message: str, system_prompt: str, config: LLMConfig) -> str:
     Raises:
         ScriptError: If the API call fails or response is empty.
     """
-    import anthropic  # type: ignore[reportMissingImports]
-
     try:
-        client = anthropic.Anthropic()
-        response = client.messages.create(
+        text = invoke_claude(
+            prompt=user_message,
+            system=system_prompt,
             model=config.planning_model,
             max_tokens=8192,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_message}],
         )
-    except Exception as e:
+    except LlmError as e:
         raise ScriptError(f"LLM API call failed: {e}") from e
 
-    if not response.content:
-        raise ScriptError("Empty response from LLM")
-
-    return response.content[0].text  # type: ignore[union-attr]
+    assert isinstance(text, str)  # type guard: simple call returns str
+    return text
 
 
 def _parse_script_response(text: str) -> dict:
