@@ -412,7 +412,7 @@ class TestHtmxResponses:
         assert "gate-analyze" in response.text
         # Verify the rendered partial has the correct mode selected
         selected = _get_selected_modes(response.text)
-        assert selected.get("analyze") == "pause"
+        assert selected["analyze"] == "pause"
 
     def test_put_gate_returns_json_without_htmx(self, client: TestClient) -> None:
         """PUT /api/gates/analyze without HX-Request returns application/json."""
