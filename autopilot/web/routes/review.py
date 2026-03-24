@@ -420,3 +420,36 @@ def api_bulk_approve(request: Request, body: BulkApproveRequest) -> dict[str, in
     finally:
         db.close()
     return {"approved": affected}
+
+
+# ---------------------------------------------------------------------------
+# Render review helpers + routes
+# ---------------------------------------------------------------------------
+
+
+def _parse_render(edit_plan: dict[str, object]) -> dict[str, object]:
+    """Parse validation_json from an edit plan into a structured dict."""
+    result = dict(edit_plan)
+    raw = result.pop("validation_json", None)
+    result["validation"] = json.loads(str(raw)) if raw else None
+    return result
+
+
+@router.get("/api/renders/{narrative_id}")
+def api_get_render(
+    request: Request, narrative_id: str,
+) -> dict[str, object]:
+    """Return render data for a narrative with parsed validation."""
+    db = _get_db(request)
+    try:
+        edit_plan = db.get_edit_plan(narrative_id)
+        if edit_plan is None:
+            raise HTTPException(status_code=404, detail="Edit plan not found")
+        narrative = db.get_narrative(narrative_id)
+    finally:
+        db.close()
+    parsed = _parse_render(edit_plan)
+    parsed["narrative_title"] = (
+        narrative["title"] if narrative else None
+    )
+    return parsed
