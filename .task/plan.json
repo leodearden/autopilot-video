@@ -79,106 +79,106 @@
       "id": "step-8",
       "type": "impl",
       "description": "Implement api_list_clusters route and _parse_cluster helper in review.py. _parse_cluster pops clip_ids_json, parses to clip_ids list, adds clip_count. Pattern follows _parse_narrative.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "a37c387"
     },
     {
       "id": "step-9",
       "type": "test",
       "description": "Write failing tests for GET /api/clusters/{cluster_id}: returns single cluster JSON with parsed clip_ids and clip_count; returns 404 for missing cluster.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "d9fefed"
     },
     {
       "id": "step-10",
       "type": "impl",
       "description": "Implement api_get_cluster route in review.py \u2014 get_activity_cluster(id), parse, return JSON or raise 404.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "81486d6"
     },
     {
       "id": "step-11",
       "type": "test",
       "description": "Write failing tests for POST /api/clusters/{cluster_id}/relabel: updates label and description, returns updated cluster JSON; 404 for missing cluster; rejects extra fields in body via Pydantic validation (422).",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "d2282ab"
     },
     {
       "id": "step-12",
       "type": "impl",
       "description": "Implement api_relabel_cluster route with ClusterRelabel Pydantic model (label: Optional[str], description: Optional[str], extra='forbid'). Calls update_activity_cluster with provided fields, commits, returns updated cluster.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "0897a5e"
     },
     {
       "id": "step-13",
       "type": "test",
       "description": "Write failing tests for POST /api/clusters/{cluster_id}/exclude: sets excluded=1, returns updated cluster with excluded=1; 404 for missing cluster; idempotent (excluding already-excluded cluster succeeds).",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "978ed7d"
     },
     {
       "id": "step-14",
       "type": "impl",
       "description": "Implement api_exclude_cluster route \u2014 calls update_activity_cluster(id, excluded=1), commits, returns updated cluster JSON.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "3d04726"
     },
     {
       "id": "step-15",
       "type": "test",
       "description": "Write failing tests for POST /api/clusters/merge: (a) merges 2 clusters \u2014 combined clip_ids_json, label from largest cluster, min(time_start)/max(time_end), merged cluster kept, other deleted; (b) merges 3 clusters; (c) returns 422 for fewer than 2 cluster_ids; (d) returns 404 if any cluster_id not found.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "6f78515"
     },
     {
       "id": "step-16",
       "type": "impl",
       "description": "Implement api_merge_clusters route with MergeRequest(cluster_ids: list[str]) Pydantic model. Logic: validate >=2 ids, load all clusters (404 if any missing), find largest by clip count, combine all clip_ids, compute min time_start/max time_end, update largest cluster with combined data, delete others, commit, return merged cluster.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "cbe5442"
     },
     {
       "id": "step-17",
       "type": "test",
       "description": "Write failing tests for GET /review/clusters HTML page: returns 200 with cluster card labels and clip counts visible; empty state shows 'No clusters' message; excluded clusters show 'excluded' badge.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "d35e433"
     },
     {
       "id": "step-18",
       "type": "impl",
       "description": "Create review/clusters.html template (extends base.html) with card grid, merge checkboxes, Merge Selected button, and Approve Gate button. Create partials/cluster_card.html with cluster info, status badge, relabel/exclude buttons. Implement clusters_page route in review.py.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "efca2c0"
     },
     {
       "id": "step-19",
       "type": "test",
       "description": "Write failing tests for HTMX responses: POST relabel with HX-Request:true returns HTML containing div with id='cluster-{id}' and updated label; POST exclude with HX-Request:true returns HTML partial with 'excluded' badge.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "73c5a23"
     },
     {
       "id": "step-20",
       "type": "impl",
       "description": "Add _render_cluster_partial helper (renders partials/cluster_card.html). Wire relabel and exclude routes to return HTML partial when _is_htmx(request) is true, JSON otherwise. Pattern follows _render_narrative_partial.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "9ecd260"
     },
     {
       "id": "step-21",
       "type": "test",
       "description": "Write failing test for review hub integration: when classify gate is 'waiting', hub page contains card with 'classify' stage, link to /review/clusters, and pending cluster count (non-excluded clusters).",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "5b74a02"
     },
     {
       "id": "step-22",
       "type": "impl",
       "description": "Update _REVIEW_LINKS to add 'classify': '/review/clusters'. In review_hub route, add classify stage handling: count non-excluded activity clusters as pending_count with 'activity clusters' as pending_label.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "990d9cd"
     }
   ],
   "design_decisions": [

@@ -371,7 +371,7 @@ def api_merge_clusters(
         parsed_clusters = [_parse_cluster(c) for c in clusters]
 
         # Find largest by clip count
-        largest = max(parsed_clusters, key=lambda c: c["clip_count"])
+        largest = max(parsed_clusters, key=lambda c: int(str(c["clip_count"])))
         largest_id = str(largest["cluster_id"])
 
         # Combine all clip_ids
