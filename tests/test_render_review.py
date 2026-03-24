@@ -228,3 +228,36 @@ class TestListUploads:
         result = db.list_uploads()
         assert len(result) == 1
         assert result[0]["narrative_title"] is None
+
+
+# ---------------------------------------------------------------------------
+# TestApiGetRender — step-5
+# ---------------------------------------------------------------------------
+
+
+class TestApiGetRender:
+    """Tests for GET /api/renders/{narrative_id}."""
+
+    def test_returns_render_data(self, tmp_path: Path) -> None:
+        """Returns JSON with edit plan data and narrative title."""
+        db_path = str(tmp_path / "app.db")
+        with CatalogDB(db_path) as _db:
+            _db.init_default_gates()
+            _seed_narrative(_db, "n-1", title="Morning Walk")
+            _seed_edit_plan(_db, "n-1", seed_narrative=False)
+        app = create_app(db_path=db_path)
+        client = TestClient(app)
+        resp = client.get("/api/renders/n-1")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["narrative_id"] == "n-1"
+        assert data["render_path"] == "/tmp/render.mp4"
+        assert data["narrative_title"] == "Morning Walk"
+        # validation should be parsed from JSON string to dict
+        assert isinstance(data["validation"], dict)
+        assert data["validation"]["passes"] is True
+
+    def test_returns_404_for_nonexistent(self, client: TestClient) -> None:
+        """Returns 404 for a narrative_id with no edit plan."""
+        resp = client.get("/api/renders/no-such-id")
+        assert resp.status_code == 404
