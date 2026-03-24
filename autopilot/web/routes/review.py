@@ -219,7 +219,13 @@ def _parse_cluster(row: dict[str, object]) -> dict[str, object]:
     """Enrich a cluster row with parsed clip_ids and clip_count."""
     result = dict(row)
     raw = result.pop("clip_ids_json", None)
-    clip_ids: list[str] = json.loads(str(raw)) if raw else []
+    if raw:
+        try:
+            clip_ids: list[str] = json.loads(str(raw))
+        except json.JSONDecodeError:
+            clip_ids = []
+    else:
+        clip_ids = []
     result["clip_ids"] = clip_ids
     result["clip_count"] = len(clip_ids)
     return result
