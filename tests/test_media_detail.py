@@ -154,6 +154,32 @@ def detail_client(detail_app):
 
 
 # ---------------------------------------------------------------------------
+# Redundant 'detail' template context test (S11)
+# ---------------------------------------------------------------------------
+
+
+class TestRedundantDetailContext:
+    """Test that the 'detail' dict should not be passed to template context."""
+
+    def test_detail_page_context_does_not_include_detail_key(self) -> None:
+        """media_detail_page template context should not include 'detail' key.
+
+        The detail.html and tab_metadata.html templates only use 'media',
+        'extra_metadata', and 'format_duration'. Verify by inspecting the
+        source of media_detail_page for 'detail' in the context dict.
+        """
+        import inspect
+
+        from autopilot.web.routes.media import media_detail_page
+
+        source = inspect.getsource(media_detail_page)
+        # After removal, the context dict should not contain '"detail"' key
+        assert '"detail": detail' not in source, (
+            "media_detail_page still passes 'detail' to template context"
+        )
+
+
+# ---------------------------------------------------------------------------
 # CatalogDB.get_face_clusters_by_ids() tests
 # ---------------------------------------------------------------------------
 
