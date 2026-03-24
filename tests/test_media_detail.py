@@ -1044,12 +1044,7 @@ class TestTabPerTabFetching:
             resp = client.get("/media/test1/tab/metadata")
 
         assert resp.status_code == 200
-        mock_db.get_transcript.assert_not_called()
-        mock_db.get_detections_for_media.assert_not_called()
-        mock_db.get_faces_for_media.assert_not_called()
-        mock_db.get_audio_events_for_media.assert_not_called()
-        mock_db.count_embeddings_for_media.assert_not_called()
-        mock_db.get_media_detail.assert_not_called()
+        self._assert_only_called(mock_db)
 
     def test_transcript_tab_calls_get_transcript_only(self, tmp_path) -> None:
         """Transcript tab should call get_transcript but not detection/face methods."""
