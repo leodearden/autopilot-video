@@ -27,6 +27,7 @@ def _is_htmx(request: Request) -> bool:
 
 _REVIEW_LINKS: dict[str, str] = {
     "narrate": "/review/narratives",
+    "classify": "/review/clusters",
 }
 
 
@@ -49,6 +50,11 @@ def review_hub(request: Request) -> HTMLResponse:
                     proposed = db.list_narratives(status="proposed")
                     summary["pending_count"] = len(proposed)
                     summary["pending_label"] = "proposed narratives"
+                elif stage == "classify":
+                    all_clusters = db.get_activity_clusters()
+                    pending = [c for c in all_clusters if not c.get("excluded")]
+                    summary["pending_count"] = len(pending)
+                    summary["pending_label"] = "activity clusters"
                 waiting_gates.append(summary)
     finally:
         db.close()
