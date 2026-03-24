@@ -106,6 +106,49 @@ class TestUpdateNarrative:
 
 
 # ---------------------------------------------------------------------------
+# TestUpdateNarrativeWhitelist — step-27
+# ---------------------------------------------------------------------------
+
+class TestUpdateNarrativeWhitelist:
+    """Tests for column whitelist validation in update_narrative."""
+
+    def test_rejects_disallowed_column(self, db: CatalogDB) -> None:
+        """update_narrative raises ValueError for a column not in the whitelist."""
+        _seed_narrative(db, "n-1")
+        with pytest.raises(ValueError, match="rowid"):
+            db.update_narrative("n-1", rowid=999)
+
+    def test_rejects_sql_injection_key(self, db: CatalogDB) -> None:
+        """update_narrative raises ValueError for SQL-injection column name."""
+        _seed_narrative(db, "n-1")
+        with pytest.raises(ValueError):
+            db.update_narrative("n-1", **{"x = 1; DROP TABLE narratives; --": "bad"})
+
+    def test_rejects_unknown_column(self, db: CatalogDB) -> None:
+        """update_narrative raises ValueError for an arbitrary unknown column."""
+        _seed_narrative(db, "n-1")
+        with pytest.raises(ValueError, match="nonexistent_col"):
+            db.update_narrative("n-1", nonexistent_col="value")
+
+    def test_accepts_all_legitimate_columns(self, db: CatalogDB) -> None:
+        """update_narrative accepts all legitimate mutable columns without error."""
+        _seed_narrative(db, "n-1")
+        # Each of these should succeed without raising
+        db.update_narrative("n-1", title="T")
+        db.update_narrative("n-1", description="D")
+        db.update_narrative("n-1", proposed_duration_seconds=99.0)
+        db.update_narrative("n-1", activity_cluster_ids_json='["c-3"]')
+        db.update_narrative("n-1", arc_notes="notes")
+        db.update_narrative("n-1", emotional_journey="joy")
+        db.update_narrative("n-1", status="approved")
+        db.conn.commit()
+        row = db.get_narrative("n-1")
+        assert row is not None
+        assert row["title"] == "T"
+        assert row["status"] == "approved"
+
+
+# ---------------------------------------------------------------------------
 # Web fixtures
 # ---------------------------------------------------------------------------
 
