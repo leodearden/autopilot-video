@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import math
 from functools import partial
-from typing import NamedTuple
+from typing import NamedTuple, cast
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
@@ -222,7 +222,7 @@ def media_tab(request: Request, media_id: str, tab_name: str):
             segments = []
             if transcript and transcript.get("segments_json"):
                 try:
-                    segments = json.loads(transcript["segments_json"])
+                    segments = json.loads(cast(str, transcript["segments_json"]))
                 except (json.JSONDecodeError, TypeError):
                     pass
             html = templates.get_template("partials/tab_transcript.html").render(
@@ -246,7 +246,9 @@ def media_tab(request: Request, media_id: str, tab_name: str):
             # Strip embedding BLOBs (presentation concern, matching get_media_detail)
             faces = [{k: v for k, v in f.items() if k != "embedding"} for f in raw_faces]
             # Build face_clusters with str keys and stripped BLOBs
-            cluster_ids = [f["cluster_id"] for f in faces if f.get("cluster_id") is not None]
+            cluster_ids = [
+                cast(int, f["cluster_id"]) for f in faces if f.get("cluster_id") is not None
+            ]
             raw_clusters = db.get_face_clusters_by_ids(cluster_ids)
             face_clusters: dict[str, dict] = {
                 str(cid): {k: v for k, v in c.items() if k != "representative_embedding"}
@@ -255,7 +257,8 @@ def media_tab(request: Request, media_id: str, tab_name: str):
             # Group faces by cluster_id
             cluster_groups: dict[int | None, int] = {}
             for f in faces:
-                cid = f.get("cluster_id")
+                raw_cid = f.get("cluster_id")
+                cid: int | None = cast(int, raw_cid) if raw_cid is not None else None
                 cluster_groups[cid] = cluster_groups.get(cid, 0) + 1
             clusters = []
             for cid, count in sorted(cluster_groups.items(), key=lambda x: x[1], reverse=True):
@@ -278,7 +281,7 @@ def media_tab(request: Request, media_id: str, tab_name: str):
                 parsed = []
                 if row.get("events_json"):
                     try:
-                        parsed = json.loads(row["events_json"])
+                        parsed = json.loads(cast(str, row["events_json"]))
                     except (json.JSONDecodeError, TypeError):
                         pass
                 event_classes = [
@@ -292,8 +295,8 @@ def media_tab(request: Request, media_id: str, tab_name: str):
             )
         elif tab_name == "embeddings":
             embedding_count = db.count_embeddings_for_media(media_id)
-            fps = media.get("fps") or 0
-            duration = media.get("duration_seconds") or 0
+            fps: float = cast(float, media.get("fps")) or 0
+            duration: float = cast(float, media.get("duration_seconds")) or 0
             total_frames = int(fps * duration) if fps and duration else 0
             if total_frames > 0:
                 coverage_pct = round(embedding_count / total_frames * 100, 1)

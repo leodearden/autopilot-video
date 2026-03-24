@@ -386,7 +386,9 @@ class TestApiMediaTranscript:
         resp = detail_client.get("/api/media/nonexistent/transcript")
         assert resp.status_code == 404
 
-    def test_returns_200_with_empty_transcript_when_media_has_no_transcript(self, detail_client) -> None:
+    def test_returns_200_with_empty_transcript_when_media_has_no_transcript(
+        self, detail_client,
+    ) -> None:
         """GET /api/media/test2/transcript returns 200 with empty payload when transcript absent."""
         resp = detail_client.get("/api/media/test2/transcript")
         assert resp.status_code == 200
@@ -848,8 +850,12 @@ class TestAggregateDetections:
         from autopilot.web.routes.media import _aggregate_detections
 
         rows = [
-            {"frame_number": 0, "detections_json": json.dumps([{"class": "person"}, {"class": "car"}])},
-            {"frame_number": 30, "detections_json": json.dumps([{"class": "person"}])},
+            {"frame_number": 0, "detections_json": json.dumps(
+                [{"class": "person"}, {"class": "car"}],
+            )},
+            {"frame_number": 30, "detections_json": json.dumps(
+                [{"class": "person"}],
+            )},
         ]
         result = _aggregate_detections(rows)
         assert result.total == 3
@@ -859,8 +865,12 @@ class TestAggregateDetections:
         from autopilot.web.routes.media import _aggregate_detections
 
         rows = [
-            {"frame_number": 0, "detections_json": json.dumps([{"class": "person"}, {"class": "car"}])},
-            {"frame_number": 30, "detections_json": json.dumps([{"class": "person"}, {"class": "dog"}])},
+            {"frame_number": 0, "detections_json": json.dumps(
+                [{"class": "person"}, {"class": "car"}],
+            )},
+            {"frame_number": 30, "detections_json": json.dumps(
+                [{"class": "person"}, {"class": "dog"}],
+            )},
         ]
         result = _aggregate_detections(rows)
         assert result.classes == {"person": 2, "car": 1, "dog": 1}
@@ -870,8 +880,12 @@ class TestAggregateDetections:
         from autopilot.web.routes.media import _aggregate_detections
 
         rows = [
-            {"frame_number": 0, "detections_json": json.dumps([{"class": "person"}, {"class": "car"}])},
-            {"frame_number": 30, "detections_json": json.dumps([{"class": "dog"}])},
+            {"frame_number": 0, "detections_json": json.dumps(
+                [{"class": "person"}, {"class": "car"}],
+            )},
+            {"frame_number": 30, "detections_json": json.dumps(
+                [{"class": "dog"}],
+            )},
         ]
         result = _aggregate_detections(rows)
         assert result.frame_details == [
