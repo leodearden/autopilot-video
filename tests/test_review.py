@@ -303,3 +303,31 @@ class TestUpdateNarrativeAPI:
             json={"title": "Does not exist"},
         )
         assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# TestBulkApproveAPI — step-15
+# ---------------------------------------------------------------------------
+
+class TestBulkApproveAPI:
+    """Tests for POST /api/narratives/bulk-approve endpoint."""
+
+    def test_bulk_approve_multiple(self, seeded_client: TestClient) -> None:
+        """POST /api/narratives/bulk-approve approves multiple narratives."""
+        response = seeded_client.post(
+            "/api/narratives/bulk-approve",
+            json={"ids": ["n-1", "n-3"]},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["approved"] == 2
+
+    def test_bulk_approve_empty_list(self, seeded_client: TestClient) -> None:
+        """POST /api/narratives/bulk-approve with empty list returns 0."""
+        response = seeded_client.post(
+            "/api/narratives/bulk-approve",
+            json={"ids": []},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["approved"] == 0
