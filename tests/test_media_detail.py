@@ -216,6 +216,15 @@ class TestGetMediaDetail:
         assert result["embedding_count"] == 3
         assert "embeddings" not in result
 
+    def test_face_clusters_keys_are_strings(self, detail_seeded_db: CatalogDB) -> None:
+        """face_clusters dict keys are str (not int) for JSON consistency."""
+        result = detail_seeded_db.get_media_detail("test1")
+        assert result is not None
+        fc = result["face_clusters"]
+        assert len(fc) > 0, "Expected at least one face cluster"
+        for key in fc:
+            assert isinstance(key, str), f"face_clusters key {key!r} should be str, got {type(key).__name__}"
+
     def test_empty_analysis_for_media_without_data(self, detail_seeded_db: CatalogDB) -> None:
         """get_media_detail returns empty/None for media with no analysis data."""
         result = detail_seeded_db.get_media_detail("test2")
