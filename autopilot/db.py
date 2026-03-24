@@ -750,11 +750,38 @@ class CatalogDB:
         row = cur.fetchone()
         return dict(row) if row else None
 
-    def update_narrative_status(self, narrative_id: str, status: str) -> None:
-        """Update the status of a narrative."""
-        self.conn.execute(
+    def update_narrative_status(self, narrative_id: str, status: str) -> int:
+        """Update the status of a narrative. Returns number of rows affected."""
+        cur = self.conn.execute(
             "UPDATE narratives SET status = ? WHERE narrative_id = ?",
             (status, narrative_id),
+        )
+        return cur.rowcount
+
+    _NARRATIVE_ALLOWED_COLUMNS: frozenset[str] = frozenset({
+        "title",
+        "description",
+        "proposed_duration_seconds",
+        "activity_cluster_ids_json",
+        "arc_notes",
+        "emotional_journey",
+        "status",
+    })
+
+    def update_narrative(self, narrative_id: str, **kwargs: object) -> None:
+        """Update fields of a narrative by keyword arguments."""
+        if not kwargs:
+            return
+        bad_keys = set(kwargs) - self._NARRATIVE_ALLOWED_COLUMNS
+        if bad_keys:
+            msg = f"Disallowed column(s) for narrative update: {sorted(bad_keys)}"
+            raise ValueError(msg)
+        set_clause = ", ".join(f"{k} = ?" for k in kwargs)
+        values = list(kwargs.values())
+        values.append(narrative_id)
+        self.conn.execute(
+            f"UPDATE narratives SET {set_clause} WHERE narrative_id = ?",  # noqa: S608 — column names validated above
+            values,
         )
 
     def list_narratives(self, status: str | None = None) -> list[dict[str, object]]:
