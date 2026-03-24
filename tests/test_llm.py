@@ -488,3 +488,65 @@ class TestLLMConfigUseApi:
         runner = CliRunner()
         result = runner.invoke(main, ["--api-fallback", "--help"])
         assert result.exit_code == 0
+
+
+# -- Step 13: classify._call_llm migration tests ------------------------------
+
+
+class TestClassifyMigration:
+    """Verify classify._call_llm uses invoke_claude instead of anthropic SDK."""
+
+    def test_call_llm_uses_invoke_claude(self):
+        """classify._call_llm calls invoke_claude with correct params."""
+        from autopilot.config import LLMConfig
+        from autopilot.organize.classify import _call_llm
+
+        config = LLMConfig()
+        summary = {"time_range": "2025-01-01T10:00:00 to 2025-01-01T11:00:00"}
+
+        llm_response = json.dumps({
+            "label": "Morning hike",
+            "description": "A scenic hike.",
+            "split_recommended": False,
+            "split_reason": None,
+        })
+
+        with patch("autopilot.organize.classify.invoke_claude", return_value=llm_response) as mock_invoke:
+            result = _call_llm(summary, config)
+
+        mock_invoke.assert_called_once()
+        call_kwargs = mock_invoke.call_args[1]
+        assert call_kwargs["model"] == config.utility_model
+        assert call_kwargs["max_tokens"] == 1024
+        assert "system" in call_kwargs
+        assert json.dumps(summary, indent=2) in call_kwargs["prompt"]
+
+    def test_call_llm_returns_parsed_json(self):
+        """classify._call_llm parses JSON from invoke_claude text response."""
+        from autopilot.config import LLMConfig
+        from autopilot.organize.classify import _call_llm
+
+        config = LLMConfig()
+        summary = {"time_range": "test"}
+
+        llm_response = json.dumps({
+            "label": "Beach day",
+            "description": "Fun at the beach.",
+            "split_recommended": False,
+            "split_reason": None,
+        })
+
+        with patch("autopilot.organize.classify.invoke_claude", return_value=llm_response):
+            result = _call_llm(summary, config)
+
+        assert result["label"] == "Beach day"
+        assert result["description"] == "Fun at the beach."
+
+    def test_call_llm_no_anthropic_import(self):
+        """classify._call_llm should NOT import anthropic directly."""
+        import inspect
+
+        from autopilot.organize import classify
+
+        source = inspect.getsource(classify._call_llm)
+        assert "import anthropic" not in source
