@@ -458,6 +458,35 @@ class TestClustersPage:
 
 
 # ---------------------------------------------------------------------------
+# TestClassifyGateApproveCondition — task-63 step-3
+# ---------------------------------------------------------------------------
+
+
+class TestClassifyGateApproveCondition:
+    """Tests for show_approve_gate logic on /review/clusters."""
+
+    def test_shows_approve_when_non_excluded_clusters_exist(
+        self, tmp_path: Path,
+    ) -> None:
+        """Approve gate button shows when reviewed (non-excluded) clusters exist."""
+        app = _setup_classify_gate_app(tmp_path, clusters=2, excluded=0)
+        client = TestClient(app)
+        resp = client.get("/review/clusters")
+        assert resp.status_code == 200
+        assert "Approve Gate" in resp.text
+
+    def test_hides_approve_when_all_clusters_excluded(
+        self, tmp_path: Path,
+    ) -> None:
+        """Approve gate button hidden when ALL clusters are excluded."""
+        app = _setup_classify_gate_app(tmp_path, clusters=2, excluded=2)
+        client = TestClient(app)
+        resp = client.get("/review/clusters")
+        assert resp.status_code == 200
+        assert "Approve Gate" not in resp.text
+
+
+# ---------------------------------------------------------------------------
 # TestHtmxClusterResponses — step-19
 # ---------------------------------------------------------------------------
 
