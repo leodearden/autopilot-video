@@ -1,128 +1,47 @@
 {
-  "task_id": "59",
-  "title": "Extract shared route helpers (_get_db, _is_htmx) to web deps module",
+  "task_id": "63",
+  "title": "Fix resource leak in test_get_db_returns_catalog_db",
   "files": [
-    "autopilot/web/deps.py",
-    "autopilot/web/routes/dashboard.py",
-    "autopilot/web/routes/media.py",
-    "autopilot/web/routes/sse.py",
-    "autopilot/web/routes/gates.py",
     "tests/test_web_deps.py"
   ],
   "modules": [
-    "autopilot/web",
-    "autopilot/web/routes",
     "tests"
   ],
-  "analysis": "Four route modules (dashboard.py, media.py, sse.py, gates.py) each define an identical `_get_db(request: Request) -> CatalogDB` one-liner that constructs `CatalogDB(request.app.state.db_path)`. Additionally, gates.py defines `_is_htmx(request: Request) -> bool` checking `request.headers.get('hx-request') == 'true'`, while media.py does the same check inline at line 62 with `request.headers.get('hx-request')` (truthiness-based). The task extracts both into a new `autopilot/web/deps.py` module as public functions `get_db()` and `is_htmx()`, then updates all four route modules to import from the shared module. This is a pure refactoring with no behavior change \u2014 existing tests (test_dashboard.py with 472 lines, test_gates.py with 457 lines, test_web_app.py with 237 lines) serve as regression tests. The _get_db helper is called 20+ times across the 4 modules (8 in media.py, 4 in dashboard.py, 1 in sse.py, 7 in gates.py). The _is_htmx helper is called 3 times in gates.py plus 1 inline check in media.py. media.py's inline check uses truthiness while gates.py uses `== 'true'`; since HTMX always sends the value 'true', these are functionally equivalent \u2014 we standardize on the explicit `== 'true'` form.",
+  "analysis": "In tests/test_web_deps.py, TestGetDb.test_get_db_returns_catalog_db (lines 28-35) calls get_db(request) which creates a CatalogDB wrapping sqlite3.connect(), but never closes the result. The sibling test test_get_db_uses_app_db_path (lines 37-45) correctly calls result.close() at line 45. The fix is to add try/finally with result.close() to test_get_db_returns_catalog_db, matching the cleanup pattern established by the adjacent test. This is a test-only change \u2014 no production code is modified. CatalogDB.__init__ opens a sqlite3 connection (autopilot/db.py), and CatalogDB.close() must be called to release the file descriptor. The existing test file has no fixtures for DB cleanup; both tests manage their own lifecycle inline.",
   "prerequisites": [],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing tests for `get_db()` in tests/test_web_deps.py: (1) test_get_db_returns_catalog_db \u2014 create a mock Request with app.state.db_path pointing at a tmp_path SQLite file, call get_db(), assert result is a CatalogDB instance. (2) test_get_db_uses_app_db_path \u2014 verify the returned CatalogDB is connected to the path from request.app.state.db_path by checking a known property or running a simple query.",
+      "description": "Run test_get_db_returns_catalog_db to confirm it currently passes (baseline). Then run it with -W error::ResourceWarning to verify the resource leak is detectable as an unclosed sqlite3 connection warning.",
       "status": "done",
-      "commit": "3dd725e"
+      "commit": null
     },
     {
       "id": "step-2",
-      "type": "test",
-      "description": "Write failing tests for `is_htmx()` in tests/test_web_deps.py: (1) test_is_htmx_true_when_header_present \u2014 mock Request with headers={'hx-request': 'true'}, assert is_htmx returns True. (2) test_is_htmx_false_when_header_absent \u2014 mock Request with empty headers, assert returns False. (3) test_is_htmx_false_for_non_true_value \u2014 mock Request with headers={'hx-request': 'false'}, assert returns False.",
-      "status": "done",
-      "commit": "62faddc"
-    },
-    {
-      "id": "step-3",
       "type": "impl",
-      "description": "Create autopilot/web/deps.py with two functions: `get_db(request: Request) -> CatalogDB` returning `CatalogDB(request.app.state.db_path)`, and `is_htmx(request: Request) -> bool` returning `request.headers.get('hx-request') == 'true'`. Import Request from fastapi and CatalogDB from autopilot.db. All step 1-2 tests should now pass.",
+      "description": "Add try/finally with result.close() to test_get_db_returns_catalog_db: wrap the isinstance assertion in try, call result.close() in finally. This matches the cleanup pattern of the sibling test_get_db_uses_app_db_path. Run the test again with -W error::ResourceWarning to confirm the leak is fixed.",
       "status": "done",
-      "commit": "8bd9bb5"
-    },
-    {
-      "id": "step-4",
-      "type": "impl",
-      "description": "Update autopilot/web/routes/dashboard.py: add `from autopilot.web.deps import get_db`, remove the local `_get_db` function definition (lines ~38-40), replace all 4 `_get_db(` calls with `get_db(`. Run test_dashboard.py to verify no regressions.",
-      "status": "done",
-      "commit": "4a6b77a"
-    },
-    {
-      "id": "step-5",
-      "type": "impl",
-      "description": "Update autopilot/web/routes/media.py: add `from autopilot.web.deps import get_db, is_htmx`, remove the local `_get_db` function definition (lines ~16-18), replace all 8 `_get_db(` calls with `get_db(`, replace the inline `request.headers.get('hx-request')` check at line 62 with `is_htmx(request)`. Verify no regressions.",
-      "status": "done",
-      "commit": "3646a08"
-    },
-    {
-      "id": "step-6",
-      "type": "impl",
-      "description": "Update autopilot/web/routes/sse.py: add `from autopilot.web.deps import get_db`, remove the local `_get_db` function definition (lines ~36-38), replace the single `_get_db(` call with `get_db(`. Verify no regressions.",
-      "status": "done",
-      "commit": "c5b6946"
-    },
-    {
-      "id": "step-7",
-      "type": "impl",
-      "description": "Update autopilot/web/routes/gates.py: add `from autopilot.web.deps import get_db, is_htmx`, remove both the `_get_db` function definition (lines ~57-59) and `_is_htmx` function definition (lines ~62-64), replace all 7 `_get_db(` calls with `get_db(` and all 3 `_is_htmx(` calls with `is_htmx(`. Run test_gates.py to verify no regressions.",
-      "status": "done",
-      "commit": "ceeee02"
-    },
-    {
-      "id": "step-8",
-      "type": "test",
-      "description": "Run the full regression suite: pytest tests/test_web_deps.py tests/test_dashboard.py tests/test_gates.py tests/test_web_app.py. Verify all tests pass. Grep the 4 route modules for any remaining `_get_db` or `_is_htmx` references to confirm complete extraction.",
-      "status": "pending",
       "commit": null
     }
   ],
   "design_decisions": [
     {
-      "decision": "Place shared helpers in autopilot/web/deps.py rather than autopilot/web/routes/_helpers.py",
-      "rationale": "deps.py at the web package level follows FastAPI convention (FastAPI projects commonly use a deps module for shared dependencies). It's the first suggestion in the task description. Placing it outside routes/ avoids circular import risk if future web-level code needs these helpers."
+      "decision": "Use try/finally rather than just appending result.close() after the assert",
+      "rationale": "Ensures the connection is closed even if the assertion fails, preventing fd leaks in failure paths. This is the robust cleanup pattern suggested in the task description."
     },
     {
-      "decision": "Use public names `get_db` and `is_htmx` (no leading underscore)",
-      "rationale": "These are now part of a shared module's public API, imported by multiple consumers. The underscore prefix indicated module-private scope which no longer applies."
-    },
-    {
-      "decision": "Standardize is_htmx on `== 'true'` check rather than truthiness",
-      "rationale": "gates.py's explicit `== 'true'` is more correct than media.py's truthiness check (`request.headers.get('hx-request')`). While HTMX always sends 'true', the explicit check is defensive against unexpected header values. The behavior change in media.py is technically observable but functionally equivalent in all real HTMX scenarios."
-    },
-    {
-      "decision": "Do not extract _format_duration despite it being duplicated in dashboard.py and media.py",
-      "rationale": "The task scope specifically targets _get_db and _is_htmx. Extracting _format_duration would expand scope beyond the task definition. It can be addressed in a follow-up task."
-    },
-    {
-      "decision": "Unit-test deps.py with mock Request objects, rely on existing integration tests for regression",
-      "rationale": "The deps functions are thin wrappers. Unit tests with mocks verify the contract (correct attribute access, correct return types). The 1100+ lines of existing integration tests across test_dashboard.py, test_gates.py, and test_web_app.py already exercise these helpers through real HTTP requests, so they serve as comprehensive regression tests."
+      "decision": "Match the sibling test's inline cleanup pattern rather than introducing a fixture",
+      "rationale": "The adjacent test (test_get_db_uses_app_db_path) uses inline result.close() rather than a fixture. Consistency within the test class is preferred. A fixture would be overengineering for two tests with slightly different setup logic."
     }
   ],
   "reuse": [
     {
-      "what": "Existing _get_db implementation from all 4 route modules",
-      "where": "autopilot/web/routes/{dashboard,media,sse,gates}.py",
-      "how": "Copy the identical one-liner `CatalogDB(request.app.state.db_path)` into deps.py as the canonical implementation"
-    },
-    {
-      "what": "Existing _is_htmx implementation from gates.py",
-      "where": "autopilot/web/routes/gates.py lines 62-64",
-      "how": "Copy the `request.headers.get('hx-request') == 'true'` check into deps.py as the canonical implementation"
-    },
-    {
-      "what": "Existing integration test suites as regression tests",
-      "where": "tests/test_dashboard.py (472 lines), tests/test_gates.py (457 lines), tests/test_web_app.py (237 lines)",
-      "how": "Run after each route module update to verify no behavioral regressions. These tests exercise _get_db through create_app \u2192 TestClient \u2192 route handler \u2192 _get_db, and _is_htmx through HX-Request header tests in TestHtmxResponses."
-    },
-    {
-      "what": "CatalogDB class from autopilot.db",
-      "where": "autopilot/db.py",
-      "how": "Import into deps.py; constructor takes a string db_path and creates an SQLite connection with WAL mode"
-    },
-    {
-      "what": "Test fixture patterns (mock Request, tmp_path DB)",
-      "where": "tests/test_dashboard.py fixtures, tests/test_gates.py fixtures",
-      "how": "Follow the same patterns for test_web_deps.py: use unittest.mock to create Request objects with app.state.db_path for unit-level tests of the helper functions"
+      "what": "Cleanup pattern from test_get_db_uses_app_db_path (line 45: result.close())",
+      "where": "tests/test_web_deps.py lines 37-45",
+      "how": "Apply the same result.close() call, wrapped in try/finally for robustness since the assertion could fail between open and close"
     }
   ],
-  "_session_id": "59-ed286ca6",
-  "_created_at": "2026-03-24T15:10:21.252340+00:00"
+  "_session_id": "63-d2ce9063",
+  "_created_at": "2026-03-24T15:23:02.646539+00:00"
 }

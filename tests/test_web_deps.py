@@ -32,7 +32,10 @@ class TestGetDb:
         db_file = str(tmp_path / "test.db")
         request = _make_request(db_path=db_file)
         result = get_db(request)
-        assert isinstance(result, CatalogDB)
+        try:
+            assert isinstance(result, CatalogDB)
+        finally:
+            result.close()
 
     def test_get_db_uses_app_db_path(self, tmp_path):
         """The returned CatalogDB should be connected to app.state.db_path."""
