@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,49 @@ GATE_PRESETS = {
         "upload": "pause",
     },
 }
+
+
+_VALID_GATE_IDS = {f"gate-{s}" for s in CatalogDB._PIPELINE_STAGES}
+
+
+class _SelectedOptionParser(HTMLParser):
+    """Extract the selected <option> value per gate div from HTML."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._gate_id: str | None = None
+        self._div_depth = 0
+        self._in_select = False
+        self.selected: dict[str, str] = {}  # gate div id -> selected value
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attr_dict = dict(attrs)
+        if tag == "div":
+            if self._gate_id is not None:
+                self._div_depth += 1
+            elif attr_dict.get("id") in _VALID_GATE_IDS:
+                self._gate_id = attr_dict["id"]
+                self._div_depth = 1
+        if self._gate_id is not None:
+            if tag == "select":
+                self._in_select = True
+            elif tag == "option" and self._in_select and "selected" in attr_dict:
+                self.selected[self._gate_id] = attr_dict.get("value", "")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "select":
+            self._in_select = False
+        if tag == "div" and self._gate_id is not None:
+            self._div_depth -= 1
+            if self._div_depth == 0:
+                self._gate_id = None
+
+
+def _get_selected_modes(html: str) -> dict[str, str]:
+    """Parse page HTML and return ``{stage: selected_mode}`` for each gate."""
+    parser = _SelectedOptionParser()
+    parser.feed(html)
+    return {k.removeprefix("gate-"): v for k, v in parser.selected.items()}
 
 
 @pytest.fixture
@@ -256,13 +300,17 @@ class TestGateTogglePartial:
         assert "hx-swap" in html
 
     def test_toggle_shows_current_mode(self, client: TestClient) -> None:
-        """The selected option matches the gate's current mode (default=auto)."""
-        # Set a gate to 'pause' mode first
+        """The selected option matches the gate's current mode."""
+        # Set analyze gate to 'pause' — leave others at default 'auto'
         client.put("/api/gates/analyze", json={"mode": "pause"})
         response = client.get("/gates")
-        html = response.text
-        # The 'pause' option for analyze gate should be selected
-        assert "selected" in html
+        selected = _get_selected_modes(response.text)
+
+        # Positive: analyze must reflect the updated mode
+        assert selected["analyze"] == "pause"
+
+        # Negative control: classify (not modified) must still show 'auto'
+        assert selected["classify"] == "auto"
 
 
 class TestGatePresetsUI:
