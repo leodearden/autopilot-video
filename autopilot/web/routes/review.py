@@ -67,12 +67,21 @@ def narratives_page(request: Request) -> HTMLResponse:
     try:
         narratives_raw = db.list_narratives()
         narratives = [_parse_narrative(dict(n)) for n in narratives_raw]
+        proposed_count = sum(1 for n in narratives if n.get("status") == "proposed")
+        narrate_gate = db.get_gate("narrate")
     finally:
         db.close()
+    gate_waiting = (
+        narrate_gate is not None
+        and narrate_gate.get("status") == "waiting"
+    )
+    show_approve_gate = gate_waiting and proposed_count == 0
     templates = request.app.state.templates
     context = {
         "page_title": "Narrative Review",
         "narratives": narratives,
+        "show_approve_gate": show_approve_gate,
+        "proposed_count": proposed_count,
     }
     return templates.TemplateResponse(request, "review/narratives.html", context)
 

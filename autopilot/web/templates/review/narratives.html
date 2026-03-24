@@ -59,5 +59,18 @@
     {% else %}
     <p class="text-gray-400">No narratives to review.</p>
     {% endif %}
+
+    {% if show_approve_gate %}
+    <div class="mt-6 p-4 bg-surface-800 rounded-lg border border-green-700">
+        <div class="flex items-center justify-between">
+            <p class="text-gray-300">All narratives have been reviewed. Ready to approve the narrate gate.</p>
+            <button class="bg-green-700 hover:bg-green-600 text-white px-6 py-2 rounded font-medium"
+                    hx-post="/api/gates/narrate/approve"
+                    hx-swap="none">
+                Approve Gate
+            </button>
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}
