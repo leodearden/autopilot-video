@@ -918,6 +918,28 @@ class TestAggregateDetections:
             {"number": 30, "count": 1},
         ]
 
+    def test_none_detections_json(self) -> None:
+        """None detections_json is treated as zero detections (exercises `if raw:` guard)."""
+        from autopilot.web.routes.media import _aggregate_detections
+
+        rows = [{"frame_number": 0, "detections_json": None}]
+        result = _aggregate_detections(rows)
+        assert result.total == 0
+        assert result.classes == {}
+        assert result.frame_details == [{"number": 0, "count": 0}]
+
+    def test_detection_without_class_key(self) -> None:
+        """Detection dict missing 'class' key falls back to 'unknown'."""
+        from autopilot.web.routes.media import _aggregate_detections
+
+        rows = [
+            {"frame_number": 0, "detections_json": json.dumps([{"confidence": 0.9}])},
+        ]
+        result = _aggregate_detections(rows)
+        assert result.total == 1
+        assert result.classes == {"unknown": 1}
+        assert result.frame_details == [{"number": 0, "count": 1}]
+
 
 # ---------------------------------------------------------------------------
 # Unit tests for _format_seconds helper (S6+S12)
@@ -1011,6 +1033,7 @@ class TestTabPerTabFetching:
         mock_db.get_faces_for_media.assert_not_called()
         mock_db.get_audio_events_for_media.assert_not_called()
         mock_db.count_embeddings_for_media.assert_not_called()
+        mock_db.get_media_detail.assert_not_called()
 
     def test_transcript_tab_calls_get_transcript_only(self, tmp_path) -> None:
         """Transcript tab should call get_transcript but not detection/face methods."""
@@ -1024,6 +1047,7 @@ class TestTabPerTabFetching:
         mock_db.get_transcript.assert_called_once()
         mock_db.get_detections_for_media.assert_not_called()
         mock_db.get_faces_for_media.assert_not_called()
+        mock_db.get_media_detail.assert_not_called()
 
     def test_detections_tab_calls_get_detections_only(self, tmp_path) -> None:
         """Detections tab should call get_detections_for_media only."""
@@ -1037,6 +1061,7 @@ class TestTabPerTabFetching:
         mock_db.get_detections_for_media.assert_called_once()
         mock_db.get_transcript.assert_not_called()
         mock_db.get_faces_for_media.assert_not_called()
+        mock_db.get_media_detail.assert_not_called()
 
     def test_faces_tab_calls_get_faces_only(self, tmp_path) -> None:
         """Faces tab should call get_faces_for_media (and face_clusters), not others."""
@@ -1051,6 +1076,7 @@ class TestTabPerTabFetching:
         mock_db.get_faces_for_media.assert_called_once()
         mock_db.get_transcript.assert_not_called()
         mock_db.get_detections_for_media.assert_not_called()
+        mock_db.get_media_detail.assert_not_called()
 
     def test_audio_events_tab_calls_get_audio_events_only(self, tmp_path) -> None:
         """Audio events tab should call get_audio_events_for_media only."""
@@ -1064,6 +1090,7 @@ class TestTabPerTabFetching:
         mock_db.get_audio_events_for_media.assert_called_once()
         mock_db.get_transcript.assert_not_called()
         mock_db.get_detections_for_media.assert_not_called()
+        mock_db.get_media_detail.assert_not_called()
 
     def test_embeddings_tab_calls_count_embeddings_only(self, tmp_path) -> None:
         """Embeddings tab should call count_embeddings_for_media only."""
@@ -1077,3 +1104,4 @@ class TestTabPerTabFetching:
         mock_db.count_embeddings_for_media.assert_called_once()
         mock_db.get_transcript.assert_not_called()
         mock_db.get_detections_for_media.assert_not_called()
+        mock_db.get_media_detail.assert_not_called()
