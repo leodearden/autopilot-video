@@ -471,7 +471,7 @@ class TestTabDetections:
     def test_detections_tab_has_total_count(self, detail_client) -> None:
         """Detections tab shows total detection count."""
         resp = detail_client.get("/media/test1/tab/detections")
-        assert "5" in resp.text  # 2+2+1 = 5 total detections
+        assert "5 detections" in resp.text  # template: '5 detections across 3 frames'
 
 
 # ---------------------------------------------------------------------------
@@ -491,7 +491,7 @@ class TestTabFaces:
     def test_faces_tab_shows_face_count(self, detail_client) -> None:
         """Faces tab shows count of faces per cluster."""
         resp = detail_client.get("/media/test1/tab/faces")
-        assert "2" in resp.text  # 2 faces in cluster 1
+        assert "2 appearances" in resp.text  # template: '2 appearances'
 
 
 class TestTabAudioEvents:
@@ -514,8 +514,8 @@ class TestTabEmbeddings:
         assert resp.status_code == 200
         html = resp.text
         # 3 embeddings out of ~3615 frames (30fps * 120.5s)
-        assert "3" in html  # embedding count
-        assert "%" in html  # percentage
+        assert "3 of" in html  # template: '3 of 3615 frames sampled'
+        assert "frames sampled" in html
 
 
 # ---------------------------------------------------------------------------
