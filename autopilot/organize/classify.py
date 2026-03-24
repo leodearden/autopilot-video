@@ -12,6 +12,8 @@ from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from autopilot.llm import LlmError, invoke_claude
+
 if TYPE_CHECKING:
     from autopilot.config import LLMConfig
     from autopilot.db import CatalogDB
@@ -136,8 +138,6 @@ def _call_llm(
     Raises:
         ClassifyError: If the API call fails or response is malformed.
     """
-    import anthropic  # type: ignore[reportMissingImports]
-
     try:
         prompt_text = _load_prompt()
     except OSError as e:
@@ -147,22 +147,17 @@ def _call_llm(
     user_content = json.dumps(summary, indent=2)
 
     try:
-        client = anthropic.Anthropic()
-        response = client.messages.create(
+        text = invoke_claude(
+            prompt=user_content,
+            system=prompt_text,
             model=config.utility_model,
             max_tokens=1024,
-            system=prompt_text,
-            messages=[{"role": "user", "content": user_content}],
         )
-    except Exception as e:
+    except LlmError as e:
         raise ClassifyError(f"LLM API call failed: {e}") from e
 
-    # Extract text from response
-    if not response.content:
-        raise ClassifyError("Empty response from LLM")
-    text = response.content[0].text  # type: ignore[union-attr]
-
-    # Parse JSON from response
+    # Parse JSON from response (text is a string from invoke_claude)
+    assert isinstance(text, str)  # type guard: simple call returns str
     try:
         # Try to find JSON in markdown code block first
         if "```json" in text:
