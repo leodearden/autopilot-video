@@ -8,14 +8,9 @@ import math
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 
-from autopilot.db import CatalogDB
+from autopilot.web.deps import get_db, is_htmx
 
 router = APIRouter()
-
-
-def _get_db(request: Request) -> CatalogDB:
-    """Create a CatalogDB connection from the app's db_path."""
-    return CatalogDB(request.app.state.db_path)
 
 
 def _format_duration(seconds: float | None) -> str:
@@ -43,7 +38,7 @@ def api_media(
     date_to: str | None = Query(None),
 ):
     """Return paginated, filtered media list as JSON (or HTML partial for HTMX)."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         result = db.query_media(
             q=q,
@@ -59,7 +54,7 @@ def api_media(
         db.close()
 
     # HTMX partial: return rendered table rows
-    if request.headers.get("hx-request"):
+    if is_htmx(request):
         templates = request.app.state.templates
         html = templates.get_template("partials/media_row.html")
         rows = []
@@ -84,7 +79,7 @@ def media_page(
     date_to: str | None = Query(None),
 ):
     """Render the media list HTML page."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         result = db.query_media(
             q=q,
@@ -124,7 +119,7 @@ def media_page(
 @router.get("/media/{media_id}")
 def media_detail_page(request: Request, media_id: str):
     """Render the media detail HTML page."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         detail = db.get_media_detail(media_id)
     finally:
@@ -171,7 +166,7 @@ def media_tab(request: Request, media_id: str, tab_name: str):
     """Render a single tab partial for HTMX swap."""
     if tab_name not in _VALID_TABS:
         raise HTTPException(status_code=404, detail="Invalid tab")
-    db = _get_db(request)
+    db = get_db(request)
     try:
         detail = db.get_media_detail(media_id)
     finally:
@@ -294,7 +289,7 @@ def media_tab(request: Request, media_id: str, tab_name: str):
 @router.get("/api/media/{media_id}")
 def api_media_detail(request: Request, media_id: str):
     """Return detail for a single media file as JSON."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         detail = db.get_media_detail(media_id)
     finally:
@@ -307,7 +302,7 @@ def api_media_detail(request: Request, media_id: str):
 @router.get("/api/media/{media_id}/transcript")
 def api_media_transcript(request: Request, media_id: str):
     """Return parsed transcript for a media file."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         media = db.get_media(media_id)
         if media is None:
@@ -329,7 +324,7 @@ def api_media_transcript(request: Request, media_id: str):
 @router.get("/api/media/{media_id}/detections")
 def api_media_detections(request: Request, media_id: str):
     """Return aggregated detection summary for a media file."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         media = db.get_media(media_id)
         if media is None:
