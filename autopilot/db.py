@@ -757,6 +757,19 @@ class CatalogDB:
             (status, narrative_id),
         )
 
+    def update_narrative(self, narrative_id: str, **kwargs: object) -> None:
+        """Update fields of a narrative by keyword arguments."""
+        if not kwargs:
+            return
+        set_clause = ", ".join(f"{k} = ?" for k in kwargs)
+        values = list(kwargs.values())
+        values.append(narrative_id)
+        self.conn.execute(
+            f"UPDATE narratives SET {set_clause} "  # noqa: S608
+            "WHERE narrative_id = ?",
+            values,
+        )
+
     def list_narratives(self, status: str | None = None) -> list[dict[str, object]]:
         """List all narratives, optionally filtered by status."""
         if status is not None:
