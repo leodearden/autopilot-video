@@ -439,6 +439,35 @@ class TestApiMergeClusters:
         assert len(data["clip_ids"]) == len(set(data["clip_ids"]))
         assert set(data["clip_ids"]) == {"a", "b", "c", "d"}
 
+    def test_merge_timestamp_comparison_chronological(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """Merge uses chronological (not lexicographic) timestamp comparison."""
+        # c-1: starts at 12:00 UTC (22:00+10:00), ends 13:00 UTC
+        _seed_cluster_via_db(
+            app, "c-1",
+            clip_ids_json='["a"]',
+            time_start="2025-06-15T22:00:00+10:00",
+            time_end="2025-06-15T23:00:00+10:00",
+        )
+        # c-2: starts at 14:00 UTC, ends 02:00 UTC next day
+        _seed_cluster_via_db(
+            app, "c-2",
+            clip_ids_json='["b","c"]',
+            time_start="2025-06-15T14:00:00+00:00",
+            time_end="2025-06-16T02:00:00+00:00",
+        )
+        resp = client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": ["c-1", "c-2"]},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        # c-1 starts earlier chronologically (12:00 UTC < 14:00 UTC)
+        assert data["time_start"] == "2025-06-15T22:00:00+10:00"
+        # c-2 ends later chronologically (02:00 UTC next day > 13:00 UTC)
+        assert data["time_end"] == "2025-06-16T02:00:00+00:00"
+
 
 # ---------------------------------------------------------------------------
 # TestClustersPage — step-17
