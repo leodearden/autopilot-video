@@ -360,10 +360,13 @@ class TestApiMediaTranscript:
         resp = detail_client.get("/api/media/nonexistent/transcript")
         assert resp.status_code == 404
 
-    def test_returns_404_when_media_has_no_transcript(self, detail_client) -> None:
-        """GET /api/media/test2/transcript returns 404 when media exists but has no transcript."""
+    def test_returns_200_with_empty_transcript_when_media_has_no_transcript(self, detail_client) -> None:
+        """GET /api/media/test2/transcript returns 200 with empty payload when transcript absent."""
         resp = detail_client.get("/api/media/test2/transcript")
-        assert resp.status_code == 404
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["language"] is None
+        assert data["segments"] == []
 
     def test_returns_200_with_segments(self, detail_client) -> None:
         """GET /api/media/test1/transcript returns parsed segments and language."""
