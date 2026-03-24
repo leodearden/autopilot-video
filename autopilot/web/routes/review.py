@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict
-from starlette.responses import Response
+from starlette.responses import FileResponse, Response
 
 from autopilot.db import CatalogDB
 
@@ -453,3 +454,24 @@ def api_get_render(
         narrative["title"] if narrative else None
     )
     return parsed
+
+
+@router.get("/api/renders/{narrative_id}/video")
+def api_stream_video(
+    request: Request, narrative_id: str,
+) -> FileResponse:
+    """Stream the rendered video file for a narrative.
+
+    Starlette's FileResponse handles Range headers natively for seeking.
+    """
+    db = _get_db(request)
+    try:
+        edit_plan = db.get_edit_plan(narrative_id)
+    finally:
+        db.close()
+    if edit_plan is None:
+        raise HTTPException(status_code=404, detail="Edit plan not found")
+    render_path = edit_plan.get("render_path")
+    if not render_path or not Path(str(render_path)).is_file():
+        raise HTTPException(status_code=404, detail="Render file not available")
+    return FileResponse(str(render_path), media_type="video/mp4")
