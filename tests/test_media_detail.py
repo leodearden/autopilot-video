@@ -998,6 +998,15 @@ class TestTabPerTabFetching:
     rather than calling get_media_detail() for every tab.
     """
 
+    _DB_METHODS = (
+        "get_media_detail",
+        "get_transcript",
+        "get_detections_for_media",
+        "get_faces_for_media",
+        "get_audio_events_for_media",
+        "count_embeddings_for_media",
+    )
+
     _MEDIA_ROW = {
         "id": "test1",
         "filepath": "/video/test.mp4",
@@ -1019,6 +1028,13 @@ class TestTabPerTabFetching:
         mock_db = MagicMock()
         mock_db.get_media.return_value = self._MEDIA_ROW
         return client, mock_db, patch
+
+    def _assert_only_called(self, mock_db, *allowed: str) -> None:
+        """Assert that no DB methods outside *allowed* were called on mock_db."""
+        allowed_set = set(allowed)
+        for name in self._DB_METHODS:
+            if name not in allowed_set:
+                getattr(mock_db, name).assert_not_called()
 
     def test_metadata_tab_does_not_call_get_transcript(self, tmp_path) -> None:
         """Metadata tab should not call get_transcript."""
