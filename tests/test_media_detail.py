@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -30,11 +31,12 @@ def detail_db_path(tmp_path: Path) -> str:
 
 
 @pytest.fixture
-def detail_db(detail_db_path: str) -> CatalogDB:
+def detail_db(detail_db_path: str) -> Iterator[CatalogDB]:
     """Create a CatalogDB backed by a real file for web endpoint tests."""
     db = CatalogDB(detail_db_path)
     db.conn.isolation_level = None  # autocommit
-    return db
+    yield db
+    db.close()
 
 
 @pytest.fixture
@@ -152,6 +154,37 @@ def detail_client(detail_app):
 
 
 # ---------------------------------------------------------------------------
+# CatalogDB.get_face_clusters_by_ids() tests
+# ---------------------------------------------------------------------------
+
+
+class TestGetFaceClustersByIds:
+    """Tests for CatalogDB.get_face_clusters_by_ids(cluster_ids)."""
+
+    def test_returns_dict_for_existing_ids(self, detail_seeded_db: CatalogDB) -> None:
+        """Returns dict mapping str(cluster_id) to cluster info."""
+        result = detail_seeded_db.get_face_clusters_by_ids([1])
+        assert "1" in result
+        assert result["1"]["label"] == "Alice"
+
+    def test_strips_representative_embedding(self, detail_seeded_db: CatalogDB) -> None:
+        """Returned cluster info has representative_embedding stripped."""
+        result = detail_seeded_db.get_face_clusters_by_ids([1])
+        assert "representative_embedding" not in result["1"]
+
+    def test_returns_empty_dict_for_empty_input(self, detail_seeded_db: CatalogDB) -> None:
+        """Returns empty dict when given empty list."""
+        result = detail_seeded_db.get_face_clusters_by_ids([])
+        assert result == {}
+
+    def test_skips_nonexistent_ids(self, detail_seeded_db: CatalogDB) -> None:
+        """Silently skips IDs that don't exist in face_clusters table."""
+        result = detail_seeded_db.get_face_clusters_by_ids([1, 999])
+        assert "1" in result
+        assert "999" not in result
+
+
+# ---------------------------------------------------------------------------
 # CatalogDB.get_media_detail() tests
 # ---------------------------------------------------------------------------
 
@@ -215,6 +248,18 @@ class TestGetMediaDetail:
         assert result["embedding_count"] == 3
         assert "embeddings" not in result
 
+    def test_face_clusters_keys_are_strings(self, detail_seeded_db: CatalogDB) -> None:
+        """face_clusters dict keys are str (not int) for JSON consistency."""
+        result = detail_seeded_db.get_media_detail("test1")
+        assert result is not None
+        fc = result["face_clusters"]
+        assert len(fc) > 0, "Expected at least one face cluster"
+        for key in fc:
+            assert isinstance(key, str), (
+                f"face_clusters key {key!r} should be str,"
+                f" got {type(key).__name__}"
+            )
+
     def test_empty_analysis_for_media_without_data(self, detail_seeded_db: CatalogDB) -> None:
         """get_media_detail returns empty/None for media with no analysis data."""
         result = detail_seeded_db.get_media_detail("test2")
@@ -225,6 +270,7 @@ class TestGetMediaDetail:
         assert result["faces"] == []
         assert result["audio_events"] == []
         assert result["embedding_count"] == 0
+        assert result["face_clusters"] == {}
 
 
 # ---------------------------------------------------------------------------
@@ -291,6 +337,11 @@ class TestApiMediaTranscript:
         resp = detail_client.get("/api/media/nonexistent/transcript")
         assert resp.status_code == 404
 
+    def test_returns_404_when_media_has_no_transcript(self, detail_client) -> None:
+        """GET /api/media/test2/transcript returns 404 when media exists but has no transcript."""
+        resp = detail_client.get("/api/media/test2/transcript")
+        assert resp.status_code == 404
+
     def test_returns_200_with_segments(self, detail_client) -> None:
         """GET /api/media/test1/transcript returns parsed segments and language."""
         resp = detail_client.get("/api/media/test1/transcript")
@@ -301,14 +352,18 @@ class TestApiMediaTranscript:
         assert len(data["segments"]) == 3
 
     def test_segment_fields(self, detail_client) -> None:
-        """Each segment has start, end, text, speaker fields."""
+        """Each segment has start, end, text, speaker fields with correct types."""
         resp = detail_client.get("/api/media/test1/transcript")
         data = resp.json()
-        seg = data["segments"][0]
-        assert "start" in seg
-        assert "end" in seg
-        assert "text" in seg
-        assert "speaker" in seg
+        assert len(data["segments"]) > 1, "Need multiple segments for thorough validation"
+        for i, seg in enumerate(data["segments"]):
+            assert "start" in seg, f"segments[{i}] missing 'start'"
+            assert "end" in seg, f"segments[{i}] missing 'end'"
+            assert "text" in seg, f"segments[{i}] missing 'text'"
+            assert "speaker" in seg, f"segments[{i}] missing 'speaker'"
+            assert isinstance(seg["start"], float), f"segments[{i}] start should be float"
+            assert isinstance(seg["end"], float), f"segments[{i}] end should be float"
+            assert isinstance(seg["text"], str), f"segments[{i}] text should be str"
 
 
 class TestApiMediaDetections:
@@ -430,7 +485,7 @@ class TestTabDetections:
     def test_detections_tab_has_total_count(self, detail_client) -> None:
         """Detections tab shows total detection count."""
         resp = detail_client.get("/media/test1/tab/detections")
-        assert "5" in resp.text  # 2+2+1 = 5 total detections
+        assert "5 detections" in resp.text  # template: '5 detections across 3 frames'
 
 
 # ---------------------------------------------------------------------------
@@ -450,7 +505,7 @@ class TestTabFaces:
     def test_faces_tab_shows_face_count(self, detail_client) -> None:
         """Faces tab shows count of faces per cluster."""
         resp = detail_client.get("/media/test1/tab/faces")
-        assert "2" in resp.text  # 2 faces in cluster 1
+        assert "2 appearances" in resp.text  # template: '2 appearances'
 
 
 class TestTabAudioEvents:
@@ -473,8 +528,8 @@ class TestTabEmbeddings:
         assert resp.status_code == 200
         html = resp.text
         # 3 embeddings out of ~3615 frames (30fps * 120.5s)
-        assert "3" in html  # embedding count
-        assert "%" in html  # percentage
+        assert "3 of" in html  # template: '3 of 3615 frames sampled'
+        assert "frames sampled" in html
 
 
 # ---------------------------------------------------------------------------
@@ -556,6 +611,7 @@ class TestMediaDetailIntegration:
         assert data["faces"] == []
         assert data["audio_events"] == []
         assert data["embedding_count"] == 0
+        assert data["face_clusters"] == {}
 
     def test_no_analysis_media_detail_page_loads(self, detail_client) -> None:
         """GET /media/test2 returns 200 even with no analysis data."""
