@@ -456,3 +456,52 @@ class TestHtmxClusterResponses:
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
         assert "excluded" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# TestReviewHubClassifyGate — step-21
+# ---------------------------------------------------------------------------
+
+def _setup_classify_gate_app(tmp_path: Path, clusters: int = 2, excluded: int = 0) -> FastAPI:
+    """Create an app with classify gate waiting and some clusters."""
+    db_path = str(tmp_path / "catalog.db")
+    with CatalogDB(db_path) as _db:
+        _db.init_default_gates()
+        _db.update_gate("classify", status="waiting")
+        _db.conn.commit()
+        for i in range(clusters):
+            _db.insert_activity_cluster(
+                f"c-{i}",
+                label=f"Cluster {i}",
+                description=f"Description {i}",
+                time_start="2025-01-01T08:00:00",
+                time_end="2025-01-01T09:00:00",
+                location_label="Park",
+                gps_center_lat=37.7749,
+                gps_center_lon=-122.4194,
+                clip_ids_json='["clip-1"]',
+            )
+        # Exclude some clusters
+        for i in range(excluded):
+            _db.update_activity_cluster(f"c-{i}", excluded=1)
+        _db.conn.commit()
+    return create_app(db_path=db_path)
+
+
+class TestReviewHubClassifyGate:
+    """Tests for review hub integration with classify gate."""
+
+    def test_hub_shows_classify_gate_with_pending_count(self, tmp_path: Path) -> None:
+        """Hub shows classify card with link and non-excluded cluster count."""
+        app = _setup_classify_gate_app(tmp_path, clusters=3, excluded=1)
+        client = TestClient(app)
+        resp = client.get("/review")
+        assert resp.status_code == 200
+        body = resp.text
+        # Gate stage visible
+        assert "classify" in body.lower()
+        # Link to cluster review page
+        assert "/review/clusters" in body
+        # Pending count: 3 clusters - 1 excluded = 2
+        assert "2" in body
+        assert "activity clusters" in body
