@@ -457,3 +457,34 @@ class TestRenderReviewPage:
         assert resp.status_code == 200
         assert "/api/gates/render/approve" in resp.text
         assert "/api/gates/render/skip" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# TestUploadsPage — step-13
+# ---------------------------------------------------------------------------
+
+
+class TestUploadsPage:
+    """Tests for GET /review/uploads."""
+
+    def test_returns_200_with_upload_table(self, tmp_path: Path) -> None:
+        """Returns 200 HTML with table containing upload data."""
+        db_path = str(tmp_path / "app.db")
+        with CatalogDB(db_path) as _db:
+            _db.init_default_gates()
+            _seed_upload(_db, "n-1")
+        app = create_app(db_path=db_path)
+        client = TestClient(app)
+        resp = client.get("/review/uploads")
+        assert resp.status_code == 200
+        assert "Morning Walk" in resp.text
+        assert "abc123" in resp.text
+        assert "https://youtube.com/watch?v=abc123" in resp.text
+        assert "unlisted" in resp.text
+        assert "2025-01-15" in resp.text
+
+    def test_shows_no_uploads_message(self, client: TestClient) -> None:
+        """Shows 'No uploads yet' when no uploads exist."""
+        resp = client.get("/review/uploads")
+        assert resp.status_code == 200
+        assert "No uploads yet" in resp.text
