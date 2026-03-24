@@ -204,6 +204,32 @@ def api_update_narrative(
     return JSONResponse(content=parsed)
 
 
+# ---------------------------------------------------------------------------
+# Cluster review helpers + routes
+# ---------------------------------------------------------------------------
+
+
+def _parse_cluster(row: dict[str, object]) -> dict[str, object]:
+    """Enrich a cluster row with parsed clip_ids and clip_count."""
+    result = dict(row)
+    raw = result.pop("clip_ids_json", None)
+    clip_ids: list[str] = json.loads(str(raw)) if raw else []
+    result["clip_ids"] = clip_ids
+    result["clip_count"] = len(clip_ids)
+    return result
+
+
+@router.get("/api/clusters")
+def api_list_clusters(request: Request) -> list[dict[str, object]]:
+    """Return all activity clusters as a JSON list with parsed clip_ids."""
+    db = _get_db(request)
+    try:
+        rows = db.get_activity_clusters()
+        return [_parse_cluster(dict(r)) for r in rows]
+    finally:
+        db.close()
+
+
 @router.post("/api/narratives/bulk-approve")
 def api_bulk_approve(request: Request, body: BulkApproveRequest) -> dict[str, int]:
     """Approve multiple narratives at once, returning actual count of rows updated."""
