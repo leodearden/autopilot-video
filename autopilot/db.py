@@ -134,7 +134,8 @@ class CatalogDB:
                 location_label TEXT,
                 gps_center_lat REAL,
                 gps_center_lon REAL,
-                clip_ids_json TEXT
+                clip_ids_json TEXT,
+                excluded INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS narratives (
@@ -263,6 +264,13 @@ class CatalogDB:
                 ON pipeline_events(created_at);
             """
         )
+        # Migrations for existing databases missing new columns
+        try:
+            self.conn.execute(
+                "ALTER TABLE activity_clusters ADD COLUMN excluded INTEGER DEFAULT 0"
+            )
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
     # -- media_files CRUD -------------------------------------------------------
 
