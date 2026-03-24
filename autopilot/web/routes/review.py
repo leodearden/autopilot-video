@@ -243,6 +243,38 @@ def api_get_cluster(request: Request, cluster_id: str) -> dict[str, object]:
     return _parse_cluster(dict(row))
 
 
+class ClusterRelabel(BaseModel):
+    """Request body for relabelling a cluster."""
+
+    label: Optional[str] = None
+    description: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+@router.post("/api/clusters/{cluster_id}/relabel", response_model=None)
+def api_relabel_cluster(
+    request: Request, cluster_id: str, body: ClusterRelabel,
+) -> Response:
+    """Update label/description of a cluster."""
+    db = _get_db(request)
+    try:
+        row = db.get_activity_cluster(cluster_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Cluster not found")
+        updates = body.model_dump(exclude_unset=True)
+        if updates:
+            db.update_activity_cluster(cluster_id, **updates)
+            db.conn.commit()
+        updated = db.get_activity_cluster(cluster_id)
+    finally:
+        db.close()
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+    parsed = _parse_cluster(dict(updated))
+    return JSONResponse(content=parsed)
+
+
 @router.post("/api/narratives/bulk-approve")
 def api_bulk_approve(request: Request, body: BulkApproveRequest) -> dict[str, int]:
     """Approve multiple narratives at once, returning actual count of rows updated."""
