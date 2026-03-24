@@ -1,7 +1,8 @@
-"""EDL generation: Claude Opus tool-use edit decision list construction.
+"""EDL generation: Claude CLI structured-output edit decision list construction.
 
-Provides generate_edl() for LLM-powered EDL construction using tool-use
-function calling, and TOOL_DEFINITIONS parsed from the edit_planner prompt.
+Provides generate_edl() for LLM-powered EDL construction using structured
+JSON output via the Claude CLI, and TOOL_DEFINITIONS parsed from the
+edit_planner prompt.
 """
 
 from __future__ import annotations
@@ -10,7 +11,9 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+from autopilot.llm import LlmError, invoke_claude
 
 if TYPE_CHECKING:
     from autopilot.config import LLMConfig
@@ -21,6 +24,7 @@ logger = logging.getLogger(__name__)
 _PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "edit_planner.md"
 
 __all__ = [
+    "EDL_SCHEMA",
     "EdlError",
     "TOOL_DEFINITIONS",
     "generate_edl",
@@ -59,6 +63,46 @@ def _parse_tool_definitions(prompt_path: Path) -> list[dict]:
 TOOL_DEFINITIONS: list[dict] = _parse_tool_definitions(_PROMPT_PATH)
 
 
+def _build_edl_schema(tools: list[dict]) -> dict[str, Any]:
+    """Derive JSON schema for EDL structured output from tool definitions.
+
+    Maps each tool's input_schema to the items schema for its corresponding
+    EDL array (e.g. select_clip.input_schema → clips[].items).
+    """
+    _TOOL_TO_KEY = {
+        "select_clip": "clips",
+        "add_transition": "transitions",
+        "set_crop_mode": "crop_modes",
+        "add_title": "titles",
+        "set_audio": "audio_settings",
+        "add_music": "music",
+        "add_voiceover": "voiceovers",
+        "request_broll": "broll_requests",
+    }
+
+    properties: dict[str, Any] = {}
+    for tool in tools:
+        key = _TOOL_TO_KEY.get(tool.get("name", ""))
+        if key is None:
+            continue
+        item_schema = tool.get("input_schema", {"type": "object"})
+        properties[key] = {"type": "array", "items": item_schema}
+
+    # Ensure all 8 keys exist even if some tools weren't parsed
+    for key in _TOOL_TO_KEY.values():
+        if key not in properties:
+            properties[key] = {"type": "array", "items": {"type": "object"}}
+
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": list(properties.keys()),
+    }
+
+
+EDL_SCHEMA: dict[str, Any] = _build_edl_schema(TOOL_DEFINITIONS)
+
+
 def _build_user_message(narrative: dict, script_data: dict, storyboard: str) -> str:
     """Build user message with script and storyboard for the LLM."""
     title = str(narrative.get("title") or "")
@@ -77,93 +121,12 @@ def _build_user_message(narrative: dict, script_data: dict, storyboard: str) -> 
     )
 
 
-def _collect_tool_calls(content_blocks: list) -> dict:
-    """Collect tool_use content blocks into an EDL structure.
-
-    Args:
-        content_blocks: List of content blocks from the API response.
-
-    Returns:
-        EDL dict with categorized tool calls.
-    """
-    edl: dict = {
-        "clips": [],
-        "transitions": [],
-        "crop_modes": [],
-        "titles": [],
-        "audio_settings": [],
-        "music": [],
-        "voiceovers": [],
-        "broll_requests": [],
-    }
-
-    _TOOL_TO_KEY = {
-        "select_clip": "clips",
-        "add_transition": "transitions",
-        "set_crop_mode": "crop_modes",
-        "add_title": "titles",
-        "set_audio": "audio_settings",
-        "add_music": "music",
-        "add_voiceover": "voiceovers",
-        "request_broll": "broll_requests",
-    }
-
-    for block in content_blocks:
-        if getattr(block, "type", None) != "tool_use":
-            continue
-        key = _TOOL_TO_KEY.get(block.name)
-        if key is not None:
-            edl[key].append(block.input)
-
-    return edl
-
-
-def _call_llm_with_messages(
-    messages: list[dict],
-    system_prompt: str,
-    config: LLMConfig,
-    tools: list[dict],
-) -> list:
-    """Call Claude Opus with tool-use for EDL generation.
-
-    Args:
-        messages: Conversation messages list.
-        system_prompt: System prompt text.
-        config: LLM config with planning_model.
-        tools: Tool definitions for tool-use.
-
-    Returns:
-        List of content blocks from the response.
-
-    Raises:
-        EdlError: If the API call fails or response is empty.
-    """
-    import anthropic  # type: ignore[reportMissingImports]
-
-    try:
-        client = anthropic.Anthropic()
-        response = client.messages.create(
-            model=config.planning_model,
-            max_tokens=16384,
-            system=system_prompt,
-            messages=messages,  # type: ignore[arg-type]
-            tools=tools,  # type: ignore[arg-type]
-        )
-    except Exception as e:
-        raise EdlError(f"LLM API call failed: {e}") from e
-
-    if not response.content:
-        raise EdlError("Empty response from LLM")
-
-    return response.content
-
-
 def generate_edl(narrative_id: str, db: CatalogDB, config: LLMConfig) -> dict:
-    """Generate an EDL for a narrative using Claude Opus tool-use.
+    """Generate an EDL for a narrative using Claude CLI structured output.
 
     Loads the script and storyboard, sends them with the edit_planner
-    prompt to the LLM with tool definitions, collects tool_use response
-    blocks into an EDL structure, validates, and stores in DB.
+    prompt to the LLM with a JSON schema, receives a structured EDL dict
+    directly, validates, and stores in DB.
 
     Args:
         narrative_id: ID of the narrative to plan edits for.
@@ -213,19 +176,22 @@ def generate_edl(narrative_id: str, db: CatalogDB, config: LLMConfig) -> dict:
 
     target_duration = narrative.get("proposed_duration_seconds", 0)
     max_retries = 3
-    messages: list[dict] = [{"role": "user", "content": user_message}]
+    prompt = user_message
 
     for attempt in range(1 + max_retries):
-        # Call LLM
-        content_blocks = _call_llm_with_messages(
-            messages,
-            system_prompt,
-            config,
-            TOOL_DEFINITIONS,
-        )
+        # Call LLM with structured output
+        try:
+            edl = invoke_claude(
+                prompt=prompt,
+                system=system_prompt,
+                model=config.planning_model,
+                max_tokens=16384,
+                json_schema=EDL_SCHEMA,
+            )
+        except LlmError as e:
+            raise EdlError(f"LLM API call failed: {e}") from e
 
-        # Collect tool calls into EDL
-        edl = _collect_tool_calls(content_blocks)
+        assert isinstance(edl, dict)  # type guard: json_schema returns dict
         edl["target_duration_seconds"] = target_duration
 
         # Validate
@@ -247,24 +213,19 @@ def generate_edl(narrative_id: str, db: CatalogDB, config: LLMConfig) -> dict:
                 db.update_narrative_status(narrative_id, "planned")
             return edl
 
-        # Validation failed — prepare retry message with error feedback
+        # Validation failed — append error feedback to prompt for retry
         if attempt < max_retries:
             error_list = "\n".join(f"- {e}" for e in validation.errors)
             warning_list = "\n".join(f"- {w}" for w in validation.warnings)
             feedback = (
-                "The EDL you generated has validation errors. "
+                "\n\nThe EDL you generated has validation errors. "
                 "Please fix these issues and regenerate the EDL:\n\n"
                 f"**Errors:**\n{error_list}"
             )
             if warning_list:
                 feedback += f"\n\n**Warnings:**\n{warning_list}"
 
-            # Build conversation with assistant tool_use + user feedback
-            messages = [
-                {"role": "user", "content": user_message},
-                {"role": "assistant", "content": "I'll create the EDL."},
-                {"role": "user", "content": feedback},
-            ]
+            prompt = user_message + feedback
             logger.info(
                 "EDL validation failed (attempt %d/%d): %s",
                 attempt + 1,
