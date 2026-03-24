@@ -216,3 +216,24 @@ class TestGetNarrativeAPI:
         """GET /api/narratives/nonexistent returns 404."""
         response = seeded_client.get("/api/narratives/nonexistent")
         assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# TestApproveNarrativeAPI — step-9
+# ---------------------------------------------------------------------------
+
+class TestApproveNarrativeAPI:
+    """Tests for POST /api/narratives/{id}/approve endpoint."""
+
+    def test_approve_sets_status(self, seeded_client: TestClient) -> None:
+        """POST /api/narratives/n-1/approve sets status to approved."""
+        response = seeded_client.post("/api/narratives/n-1/approve")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "approved"
+        assert data["narrative_id"] == "n-1"
+
+    def test_approve_404_for_missing(self, seeded_client: TestClient) -> None:
+        """POST /api/narratives/nonexistent/approve returns 404."""
+        response = seeded_client.post("/api/narratives/nonexistent/approve")
+        assert response.status_code == 404
