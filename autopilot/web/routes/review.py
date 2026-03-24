@@ -25,11 +25,38 @@ def _is_htmx(request: Request) -> bool:
     return request.headers.get("hx-request") == "true"
 
 
+_REVIEW_LINKS: dict[str, str] = {
+    "narrate": "/review/narratives",
+}
+
+
 @router.get("/review")
 def review_hub(request: Request) -> HTMLResponse:
-    """Render the review hub page."""
+    """Render the review hub page with waiting gate summaries."""
+    db = _get_db(request)
+    try:
+        gates = db.get_all_gates()
+        waiting_gates = []
+        for gate in gates:
+            if gate.get("status") == "waiting":
+                stage = str(gate["stage"])
+                summary: dict[str, object] = {
+                    "stage": stage,
+                    "link": _REVIEW_LINKS.get(stage, f"/review/{stage}"),
+                }
+                # Add pending counts per stage
+                if stage == "narrate":
+                    proposed = db.list_narratives(status="proposed")
+                    summary["pending_count"] = len(proposed)
+                    summary["pending_label"] = "proposed narratives"
+                waiting_gates.append(summary)
+    finally:
+        db.close()
     templates = request.app.state.templates
-    context = {"page_title": "Review Hub"}
+    context = {
+        "page_title": "Review Hub",
+        "waiting_gates": waiting_gates,
+    }
     return templates.TemplateResponse(request, "review/hub.html", context)
 
 
@@ -120,6 +147,12 @@ class NarrativeUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class BulkApproveRequest(BaseModel):
+    """Request body for bulk-approving narratives."""
+
+    ids: list[str]
+
+
 @router.put("/api/narratives/{narrative_id}", response_model=None)
 def api_update_narrative(
     request: Request, narrative_id: str, body: NarrativeUpdate,
@@ -143,3 +176,16 @@ def api_update_narrative(
     if _is_htmx(request):
         return _render_narrative_partial(request, parsed)
     return JSONResponse(content=parsed)
+
+
+@router.post("/api/narratives/bulk-approve")
+def api_bulk_approve(request: Request, body: BulkApproveRequest) -> dict[str, int]:
+    """Approve multiple narratives at once, returning count."""
+    db = _get_db(request)
+    try:
+        for nid in body.ids:
+            db.update_narrative_status(nid, "approved")
+        db.conn.commit()
+    finally:
+        db.close()
+    return {"approved": len(body.ids)}

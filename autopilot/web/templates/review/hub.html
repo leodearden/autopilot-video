@@ -5,6 +5,23 @@
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 py-8">
     <h1 class="text-3xl font-bold text-white mb-6">Review Hub</h1>
+
+    {% if waiting_gates %}
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {% for gate in waiting_gates %}
+        <a href="{{ gate.link }}" class="block bg-surface-800 rounded-lg p-6 border border-amber-700 hover:border-amber-500 transition-colors">
+            <div class="flex items-center justify-between mb-2">
+                <h2 class="text-xl font-semibold text-white capitalize">{{ gate.stage }}</h2>
+                <span class="px-2 py-1 rounded text-xs font-medium bg-amber-900 text-amber-300">waiting</span>
+            </div>
+            {% if gate.pending_count is defined %}
+            <p class="text-gray-400 text-sm">{{ gate.pending_count }} {{ gate.pending_label }}</p>
+            {% endif %}
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
     <p class="text-gray-400">No pending reviews.</p>
+    {% endif %}
 </div>
 {% endblock %}
