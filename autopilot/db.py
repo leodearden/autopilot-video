@@ -695,6 +695,15 @@ class CatalogDB:
             ),
         )
 
+    def get_activity_cluster(self, cluster_id: str) -> dict[str, object] | None:
+        """Return a single activity cluster by ID, or None if not found."""
+        cur = self.conn.execute(
+            "SELECT * FROM activity_clusters WHERE cluster_id = ?",
+            (cluster_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
     def get_activity_clusters(self) -> list[dict[str, object]]:
         """List all activity clusters."""
         cur = self.conn.execute("SELECT * FROM activity_clusters")
