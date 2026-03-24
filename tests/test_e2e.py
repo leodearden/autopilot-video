@@ -8,6 +8,21 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+# Pre-import submodules of packages with empty __init__.py so that
+# @patch("autopilot.<pkg>.<sub>") can find the attribute.
+import autopilot.analyze.asr  # noqa: F401
+import autopilot.analyze.audio_events  # noqa: F401
+import autopilot.analyze.embeddings  # noqa: F401
+import autopilot.analyze.faces  # noqa: F401
+import autopilot.analyze.gpu_scheduler  # noqa: F401
+import autopilot.analyze.objects  # noqa: F401
+import autopilot.analyze.scenes  # noqa: F401
+import autopilot.plan.edl  # noqa: F401
+import autopilot.plan.otio_export  # noqa: F401
+import autopilot.plan.script  # noqa: F401
+import autopilot.plan.validator  # noqa: F401
+import autopilot.source.resolve  # noqa: F401
+
 
 class TestEndToEnd:
     """Comprehensive e2e test using in-memory DB and mocked external deps."""
@@ -45,28 +60,28 @@ class TestEndToEnd:
         narr.status = "proposed"
         return narr
 
-    @patch("autopilot.orchestrator.thumbnail")
-    @patch("autopilot.orchestrator.youtube")
-    @patch("autopilot.orchestrator.render_validate")
-    @patch("autopilot.orchestrator.router")
-    @patch("autopilot.orchestrator.resolve")
-    @patch("autopilot.orchestrator.otio_export")
-    @patch("autopilot.orchestrator.validator")
-    @patch("autopilot.orchestrator.edl_mod")
-    @patch("autopilot.orchestrator.script")
-    @patch("autopilot.orchestrator.narratives")
-    @patch("autopilot.orchestrator.classify")
-    @patch("autopilot.orchestrator.cluster")
-    @patch("autopilot.orchestrator.faces")
-    @patch("autopilot.orchestrator.audio_events")
-    @patch("autopilot.orchestrator.embeddings")
-    @patch("autopilot.orchestrator.objects")
-    @patch("autopilot.orchestrator.scenes")
-    @patch("autopilot.orchestrator.asr")
-    @patch("autopilot.orchestrator.GPUScheduler")
-    @patch("autopilot.orchestrator.dedup")
-    @patch("autopilot.orchestrator.normalizer")
-    @patch("autopilot.orchestrator.scanner")
+    @patch("autopilot.upload.thumbnail")
+    @patch("autopilot.upload.youtube")
+    @patch("autopilot.render.validate")
+    @patch("autopilot.render.router")
+    @patch("autopilot.source.resolve")
+    @patch("autopilot.plan.otio_export")
+    @patch("autopilot.plan.validator")
+    @patch("autopilot.plan.edl")
+    @patch("autopilot.plan.script")
+    @patch("autopilot.organize.narratives")
+    @patch("autopilot.organize.classify")
+    @patch("autopilot.organize.cluster")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.ingest.dedup")
+    @patch("autopilot.ingest.normalizer")
+    @patch("autopilot.ingest.scanner")
     def test_full_pipeline_smoke(
         self,
         mock_scanner,
