@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+import json
+
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from autopilot.db import CatalogDB
@@ -38,3 +40,24 @@ def api_list_narratives(
         return db.list_narratives(status=status)
     finally:
         db.close()
+
+
+def _parse_narrative(row: dict[str, object]) -> dict[str, object]:
+    """Enrich a narrative row with parsed activity_cluster_ids."""
+    result = dict(row)
+    raw = result.pop("activity_cluster_ids_json", None)
+    result["activity_cluster_ids"] = json.loads(str(raw)) if raw else []
+    return result
+
+
+@router.get("/api/narratives/{narrative_id}")
+def api_get_narrative(request: Request, narrative_id: str) -> dict[str, object]:
+    """Return a single narrative by ID with parsed cluster IDs."""
+    db = _get_db(request)
+    try:
+        row = db.get_narrative(narrative_id)
+    finally:
+        db.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Narrative not found")
+    return _parse_narrative(row)
