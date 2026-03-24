@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from autopilot.web.deps import get_db, is_htmx
 
 
-def _make_request(*, db_path: str | None = None, headers: dict[str, str] | None = None) -> MagicMock:
+def _make_request(
+    *, db_path: str | None = None, headers: dict[str, str] | None = None,
+) -> MagicMock:
     """Build a mock Request with optional app.state.db_path and headers."""
     request = MagicMock()
     if db_path is not None:

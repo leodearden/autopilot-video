@@ -8,7 +8,6 @@ import math
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 
-from autopilot.db import CatalogDB
 from autopilot.web.deps import get_db, is_htmx
 
 router = APIRouter()
