@@ -134,7 +134,7 @@ class TestGateDetailAPI:
 class TestGateUpdateAPI:
     """Tests for PUT /api/gates/{stage} endpoint."""
 
-    @pytest.mark.parametrize("mode", ["pause", "notify"])
+    @pytest.mark.parametrize("mode", ["auto", "pause", "notify"])
     def test_update_gate_mode_persists(self, client: TestClient, mode: str) -> None:
         """PUT /api/gates/analyze with mode updates and persists via re-GET."""
         response = client.put("/api/gates/analyze", json={"mode": mode})
