@@ -246,7 +246,7 @@ def clusters_page(request: Request) -> HTMLResponse:
         and classify_gate.get("status") == "waiting"
     )
     non_excluded = [c for c in clusters if not c.get("excluded")]
-    show_approve_gate = gate_waiting and len(non_excluded) == 0
+    show_approve_gate = gate_waiting and len(non_excluded) > 0
     templates = request.app.state.templates
     context = {
         "page_title": "Cluster Review",
