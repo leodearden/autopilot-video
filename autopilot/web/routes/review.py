@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel, ConfigDict
 from starlette.responses import Response
 
 from autopilot.db import CatalogDB
@@ -106,3 +108,38 @@ def api_approve_narrative(request: Request, narrative_id: str) -> Response:
 def api_reject_narrative(request: Request, narrative_id: str) -> Response:
     """Reject a narrative."""
     return _narrative_status_action(request, narrative_id, "rejected")
+
+
+class NarrativeUpdate(BaseModel):
+    """Request body for updating narrative fields."""
+
+    title: Optional[str] = None
+    description: Optional[str] = None
+    proposed_duration_seconds: Optional[float] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+@router.put("/api/narratives/{narrative_id}", response_model=None)
+def api_update_narrative(
+    request: Request, narrative_id: str, body: NarrativeUpdate,
+) -> Response:
+    """Update editable fields of a narrative."""
+    db = _get_db(request)
+    try:
+        row = db.get_narrative(narrative_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Narrative not found")
+        updates = body.model_dump(exclude_unset=True)
+        if updates:
+            db.update_narrative(narrative_id, **updates)
+            db.conn.commit()
+        updated = db.get_narrative(narrative_id)
+    finally:
+        db.close()
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Narrative not found")
+    parsed = _parse_narrative(updated)
+    if _is_htmx(request):
+        return _render_narrative_partial(request, parsed)
+    return JSONResponse(content=parsed)
