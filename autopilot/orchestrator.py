@@ -15,17 +15,6 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from autopilot.analyze import asr, audio_events, embeddings, faces, objects, scenes
-from autopilot.analyze.gpu_scheduler import GPUScheduler
-from autopilot.ingest import dedup, normalizer, scanner
-from autopilot.organize import classify, cluster, narratives
-from autopilot.plan import edl as edl_mod
-from autopilot.plan import otio_export, script, validator
-from autopilot.render import router
-from autopilot.render import validate as render_validate
-from autopilot.source import resolve
-from autopilot.upload import thumbnail, youtube
-
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -233,6 +222,8 @@ def _run_ingest(
     emit_fn: Callable[..., Any] | None = None,
 ) -> None:
     """INGEST stage: scan directory, insert media, normalize audio, mark duplicates."""
+    from autopilot.ingest import dedup, normalizer, scanner
+
     files = scanner.scan_directory(config.input_dir, max_workers=None)
     norm_dir = config.output_dir / "normalized"
     norm_dir.mkdir(parents=True, exist_ok=True)
@@ -335,6 +326,9 @@ def _run_analyze(
     emit_fn: Callable[..., Any] | None = None,
 ) -> None:
     """ANALYZE stage: run all analysis passes on each media file."""
+    from autopilot.analyze import asr, audio_events, embeddings, faces, objects, scenes
+    from autopilot.analyze.gpu_scheduler import GPUScheduler
+
     scheduler = GPUScheduler(
         total_vram=0,
         device=config.processing.gpu_device,
@@ -556,6 +550,8 @@ def _run_classify(
     emit_fn: Callable[..., Any] | None = None,
 ) -> None:
     """CLASSIFY stage: cluster and label activities."""
+    from autopilot.organize import classify, cluster
+
     if not force:
         existing = db.get_activity_clusters()
         if existing and all(c.get("label") for c in existing):
@@ -587,6 +583,8 @@ def _run_narrate(
     emit_fn: Callable[..., Any] | None = None,
 ) -> None:
     """NARRATE stage: build storyboard, propose narratives, human review."""
+    from autopilot.organize import narratives
+
     _jkw: dict[str, Any] = {"run_id": run_id, "emit_fn": emit_fn}
     if run_id is not None:
         with _track_job(db, "NARRATE", "build_storyboard", worker="cpu", **_jkw):
@@ -626,6 +624,8 @@ def _run_script(
     emit_fn: Callable[..., Any] | None = None,
 ) -> None:
     """SCRIPT stage: generate scripts for each approved narrative."""
+    from autopilot.plan import script
+
     approved = db.list_narratives("approved")
 
     # Checkpoint/resume: skip narratives that already have a script
@@ -685,6 +685,9 @@ def _run_edl(
     emit_fn: Callable[..., Any] | None = None,
 ) -> None:
     """EDL stage: generate EDL, validate, and export OTIO per narrative."""
+    from autopilot.plan import edl as edl_mod
+    from autopilot.plan import otio_export, validator
+
     approved = db.list_narratives("approved")
 
     # Checkpoint/resume: skip narratives that already have an edit plan with edl_json
@@ -780,6 +783,8 @@ def _run_source_assets(
     emit_fn: Callable[..., Any] | None = None,
 ) -> None:
     """SOURCE_ASSETS stage: resolve assets for each narrative with an edit plan."""
+    from autopilot.source import resolve
+
     approved = db.list_narratives("approved")
 
     # Checkpoint/resume: skip narratives where asset directory exists and is non-empty
@@ -862,6 +867,9 @@ def _run_render(
     emit_fn: Callable[..., Any] | None = None,
 ) -> None:
     """RENDER stage: route, render, and validate per narrative."""
+    from autopilot.render import router
+    from autopilot.render import validate as render_validate
+
     approved = db.list_narratives("approved")
 
     # Checkpoint/resume: skip narratives with existing render output on disk
@@ -965,6 +973,8 @@ def _run_upload(
     emit_fn: Callable[..., Any] | None = None,
 ) -> None:
     """UPLOAD stage: upload video and extract thumbnail per narrative."""
+    from autopilot.upload import thumbnail, youtube
+
     approved = db.list_narratives("approved")
 
     # Checkpoint/resume: skip narratives that already have uploads

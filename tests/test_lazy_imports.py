@@ -66,8 +66,8 @@ class TestLazyImportOrchestrator:
             import sys
             import autopilot.orchestrator as orch
 
-            # Instantiate with a minimal config dict
-            _obj = orch.PipelineOrchestrator({"project": "/tmp/test"})
+            # Instantiate with no args (constructor doesn't need stage modules)
+            _obj = orch.PipelineOrchestrator()
 
             leaked = [
                 m for m in sorted(sys.modules)
