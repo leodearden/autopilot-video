@@ -6,8 +6,9 @@ from datetime import datetime, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict
+from starlette.responses import Response
 
 from autopilot.db import CatalogDB
 
@@ -56,6 +57,29 @@ GATE_PRESETS = {
 def _get_db(request: Request) -> CatalogDB:
     """Create a CatalogDB connection from the app's db_path."""
     return CatalogDB(request.app.state.db_path)
+
+
+def _is_htmx(request: Request) -> bool:
+    """Check if the request is from HTMX."""
+    return request.headers.get("hx-request") == "true"
+
+
+def _render_gate_partial(
+    request: Request, gate: dict, stage: str,
+) -> HTMLResponse:
+    """Render a single gate toggle partial as HTML."""
+    # Find the transition for this stage
+    from_stage = "start"
+    for fs, _ts, gs in _STAGE_TRANSITIONS:
+        if gs == stage:
+            from_stage = fs
+            break
+    templates = request.app.state.templates
+    template = templates.get_template("partials/gate_toggle.html")
+    html = template.render(
+        gate=gate, gate_stage=stage, from_stage=from_stage,
+    )
+    return HTMLResponse(content=html)
 
 
 @router.get("/gates")
@@ -115,8 +139,10 @@ class GateUpdate(BaseModel):
     )
 
 
-@router.put("/api/gates/{stage}")
-def api_update_gate(request: Request, stage: str, body: GateUpdate) -> dict:
+@router.put("/api/gates/{stage}", response_model=None)
+def api_update_gate(
+    request: Request, stage: str, body: GateUpdate,
+) -> Response:
     """Update a gate's mode and/or timeout."""
     if stage not in _STAGE_ORDER:
         raise HTTPException(status_code=404, detail=f"Unknown stage: {stage}")
@@ -136,10 +162,14 @@ def api_update_gate(request: Request, stage: str, body: GateUpdate) -> dict:
         db.close()
     if gate is None:
         raise HTTPException(status_code=404, detail=f"Gate not found: {stage}")
-    return gate
+    if _is_htmx(request):
+        return _render_gate_partial(request, gate, stage)
+    return JSONResponse(content=gate)
 
 
-def _gate_decision(request: Request, stage: str, status: str) -> dict:
+def _gate_decision(
+    request: Request, stage: str, status: str,
+) -> Response:
     """Apply a gate decision (approve/skip) and return updated gate."""
     if stage not in _STAGE_ORDER:
         raise HTTPException(status_code=404, detail=f"Unknown stage: {stage}")
@@ -157,17 +187,19 @@ def _gate_decision(request: Request, stage: str, status: str) -> dict:
         db.close()
     if gate is None:
         raise HTTPException(status_code=404, detail=f"Gate not found: {stage}")
-    return gate
+    if _is_htmx(request):
+        return _render_gate_partial(request, gate, stage)
+    return JSONResponse(content=gate)
 
 
-@router.post("/api/gates/{stage}/approve")
-def api_approve_gate(request: Request, stage: str) -> dict:
+@router.post("/api/gates/{stage}/approve", response_model=None)
+def api_approve_gate(request: Request, stage: str) -> Response:
     """Approve a waiting gate."""
     return _gate_decision(request, stage, "approved")
 
 
-@router.post("/api/gates/{stage}/skip")
-def api_skip_gate(request: Request, stage: str) -> dict:
+@router.post("/api/gates/{stage}/skip", response_model=None)
+def api_skip_gate(request: Request, stage: str) -> Response:
     """Skip a waiting gate."""
     return _gate_decision(request, stage, "skipped")
 

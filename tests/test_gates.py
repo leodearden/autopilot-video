@@ -338,3 +338,46 @@ class TestGateStatusDisplay:
         assert "bg-amber-900" in html  # waiting
         assert "bg-green-900" in html  # approved
         assert "bg-gray-900" in html  # idle (default for other gates)
+
+
+class TestHtmxResponses:
+    """Tests for HTMX-aware response logic (HTML partial vs JSON)."""
+
+    def test_put_gate_returns_html_for_htmx(self, client: TestClient) -> None:
+        """PUT /api/gates/analyze with HX-Request returns text/html partial."""
+        response = client.put(
+            "/api/gates/analyze",
+            json={"mode": "pause"},
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "gate-analyze" in response.text
+
+    def test_put_gate_returns_json_without_htmx(self, client: TestClient) -> None:
+        """PUT /api/gates/analyze without HX-Request returns application/json."""
+        response = client.put("/api/gates/analyze", json={"mode": "pause"})
+        assert response.status_code == 200
+        assert "application/json" in response.headers["content-type"]
+        data = response.json()
+        assert data["mode"] == "pause"
+
+    def test_approve_returns_html_for_htmx(self, client: TestClient) -> None:
+        """POST approve with HX-Request returns HTML partial."""
+        response = client.post(
+            "/api/gates/classify/approve",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "gate-classify" in response.text
+
+    def test_skip_returns_html_for_htmx(self, client: TestClient) -> None:
+        """POST skip with HX-Request returns HTML partial."""
+        response = client.post(
+            "/api/gates/classify/skip",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "gate-classify" in response.text
