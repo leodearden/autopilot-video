@@ -393,3 +393,42 @@ class TestReviewHub:
         response = waiting_gate_client.get("/review")
         # Should show "2" somewhere for the 2 proposed narratives
         assert "2" in response.text
+
+
+# ---------------------------------------------------------------------------
+# TestNarrativesPage — step-19
+# ---------------------------------------------------------------------------
+
+class TestNarrativesPage:
+    """Tests for GET /review/narratives page."""
+
+    def test_page_returns_200_html(self, seeded_client: TestClient) -> None:
+        """GET /review/narratives returns 200 with HTML content."""
+        response = seeded_client.get("/review/narratives")
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+
+    def test_page_contains_narrative_titles(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """Page shows narrative titles."""
+        response = seeded_client.get("/review/narratives")
+        assert "Morning Walk" in response.text
+        assert "Sunset Hike" in response.text
+        assert "Beach Day" in response.text
+
+    def test_page_shows_approve_reject_buttons(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """Page has approve and reject buttons for proposed narratives."""
+        response = seeded_client.get("/review/narratives")
+        assert "approve" in response.text.lower()
+        assert "reject" in response.text.lower()
+
+    def test_page_shows_status_badges(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """Page shows status badges (proposed, approved)."""
+        response = seeded_client.get("/review/narratives")
+        assert "proposed" in response.text.lower()
+        assert "approved" in response.text.lower()
