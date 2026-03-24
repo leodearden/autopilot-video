@@ -381,3 +381,79 @@ class TestApiListUploads:
         assert row["uploaded_at"] == "2025-01-15T10:30:00"
         assert row["privacy_status"] == "unlisted"
         assert row["narrative_title"] == "Morning Walk"
+
+
+# ---------------------------------------------------------------------------
+# TestRenderReviewPage — step-11
+# ---------------------------------------------------------------------------
+
+
+class TestRenderReviewPage:
+    """Tests for GET /review/render/{narrative_id}."""
+
+    def test_returns_200_with_video_player(self, tmp_path: Path) -> None:
+        """Returns 200 HTML containing video player when render exists."""
+        video_file = tmp_path / "render.mp4"
+        video_file.write_bytes(b"\x00" * 512)
+        db_path = str(tmp_path / "app.db")
+        with CatalogDB(db_path) as _db:
+            _db.init_default_gates()
+            _seed_narrative(_db, "n-1", title="Morning Walk")
+            _seed_edit_plan(
+                _db, "n-1", seed_narrative=False,
+                render_path=str(video_file),
+            )
+        app = create_app(db_path=db_path)
+        client = TestClient(app)
+        resp = client.get("/review/render/n-1")
+        assert resp.status_code == 200
+        assert "<video" in resp.text
+        assert "/api/renders/n-1/video" in resp.text
+
+    def test_shows_no_render_when_path_null(self, tmp_path: Path) -> None:
+        """Shows 'No render available' when render_path is null."""
+        db_path = str(tmp_path / "app.db")
+        with CatalogDB(db_path) as _db:
+            _db.init_default_gates()
+            _seed_narrative(_db, "n-1")
+            _seed_edit_plan(
+                _db, "n-1", seed_narrative=False, render_path=None,
+            )
+        app = create_app(db_path=db_path)
+        client = TestClient(app)
+        resp = client.get("/review/render/n-1")
+        assert resp.status_code == 200
+        assert "No render available" in resp.text
+
+    def test_shows_validation_results(self, tmp_path: Path) -> None:
+        """Shows validation results when validation_json is set."""
+        db_path = str(tmp_path / "app.db")
+        with CatalogDB(db_path) as _db:
+            _db.init_default_gates()
+            _seed_narrative(_db, "n-1")
+            _seed_edit_plan(_db, "n-1", seed_narrative=False)
+        app = create_app(db_path=db_path)
+        client = TestClient(app)
+        resp = client.get("/review/render/n-1")
+        assert resp.status_code == 200
+        assert "1920x1080" in resp.text
+        assert "h264" in resp.text
+
+    def test_returns_404_for_nonexistent(self, client: TestClient) -> None:
+        """Returns 404 for nonexistent narrative."""
+        resp = client.get("/review/render/no-such-id")
+        assert resp.status_code == 404
+
+    def test_contains_gate_action_links(self, tmp_path: Path) -> None:
+        """Contains links to gate actions (approve, skip)."""
+        db_path = str(tmp_path / "app.db")
+        with CatalogDB(db_path) as _db:
+            _db.init_default_gates()
+            _seed_narrative(_db, "n-1")
+            _seed_edit_plan(_db, "n-1", seed_narrative=False)
+        app = create_app(db_path=db_path)
+        client = TestClient(app)
+        resp = client.get("/review/render/n-1")
+        assert resp.status_code == 200
+        assert "/api/gates/render/approve" in resp.text
+        assert "/api/gates/render/skip" in resp.text
