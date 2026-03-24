@@ -143,6 +143,19 @@ class TestGateUpdateAPI:
         check = client.get("/api/gates/analyze")
         assert check.json()["mode"] == "pause"
 
+    def test_update_gate_notify_mode(self, client: TestClient) -> None:
+        """PUT /api/gates/analyze with mode='notify' updates and persists."""
+        response = client.put("/api/gates/analyze", json={"mode": "notify"})
+        assert response.status_code == 200
+        assert response.json()["mode"] == "notify"
+        # Re-GET confirms persistence
+        check = client.get("/api/gates/analyze")
+        assert check.json()["mode"] == "notify"
+        # Verify mode renders as selected in the full page
+        page = client.get("/gates")
+        selected = _get_selected_modes(page.text)
+        assert selected["analyze"] == "notify"
+
     def test_update_gate_invalid_mode(self, client: TestClient) -> None:
         """PUT with invalid mode returns 422."""
         response = client.put("/api/gates/analyze", json={"mode": "invalid"})
@@ -162,6 +175,14 @@ class TestGateUpdateAPI:
         response = client.put("/api/gates/render", json={"timeout_hours": None})
         assert response.status_code == 200
         assert response.json()["timeout_hours"] is None
+
+    def test_update_gate_empty_body(self, client: TestClient) -> None:
+        """PUT /api/gates/analyze with {} returns gate unchanged (no-op path)."""
+        response = client.put("/api/gates/analyze", json={})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["stage"] == "analyze"
+        assert data["mode"] == "auto"
 
     def test_update_gate_unknown_stage(self, client: TestClient) -> None:
         """PUT /api/gates/nonexistent returns 404."""
@@ -370,7 +391,7 @@ class TestGateStatusDisplay:
         response = client.get("/gates")
         html = response.text
         assert "2026-03-24T12:00:00" in html
-        assert "console" in html
+        assert "by console" in html
 
     def test_status_color_coding(self, client: TestClient, app: FastAPI) -> None:
         """Waiting gate has amber class, approved has green, idle has gray."""
@@ -401,6 +422,9 @@ class TestHtmxResponses:
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
         assert "gate-analyze" in response.text
+        # Verify the rendered partial has the correct mode selected
+        selected = _get_selected_modes(response.text)
+        assert selected.get("analyze") == "pause"
 
     def test_put_gate_returns_json_without_htmx(self, client: TestClient) -> None:
         """PUT /api/gates/analyze without HX-Request returns application/json."""
@@ -445,6 +469,10 @@ class TestPresetHtmxResponse:
         # Should contain all 9 gate toggle divs
         for stage in CatalogDB._PIPELINE_STAGES:
             assert f"gate-{stage}" in response.text
+        # Verify all 9 gate partials render with mode='auto' for full_auto preset
+        selected = _get_selected_modes(response.text)
+        assert len(selected) == 9
+        assert all(v == "auto" for v in selected.values())
 
     def test_preset_returns_json_without_htmx(self, client: TestClient) -> None:
         """PUT /api/gates/preset/full_auto without HX-Request returns JSON list."""
