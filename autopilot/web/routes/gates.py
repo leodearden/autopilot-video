@@ -88,7 +88,7 @@ def gates_page(request: Request) -> HTMLResponse:
     db = _get_db(request)
     try:
         gates = db.get_all_gates()
-        gates.sort(key=lambda g: _STAGE_ORDER.get(g["stage"], 999))
+        gates.sort(key=lambda g: _STAGE_ORDER.get(str(g["stage"]), 999))
         gates_by_stage: dict[str, dict] = {str(g["stage"]): dict(g) for g in gates}
         templates = request.app.state.templates
         context = {
@@ -109,7 +109,7 @@ def api_gates(request: Request) -> list[dict]:
         gates = db.get_all_gates()
     finally:
         db.close()
-    gates.sort(key=lambda g: _STAGE_ORDER.get(g["stage"], 999))
+    gates.sort(key=lambda g: _STAGE_ORDER.get(str(g["stage"]), 999))
     return gates
 
 
@@ -219,7 +219,7 @@ def api_apply_preset(request: Request, preset_name: str) -> Response:
         gates = db.get_all_gates()
     finally:
         db.close()
-    gates.sort(key=lambda g: _STAGE_ORDER.get(g["stage"], 999))
+    gates.sort(key=lambda g: _STAGE_ORDER.get(str(g["stage"]), 999))
 
     if _is_htmx(request):
         # Render all gate toggle partials concatenated for innerHTML swap
