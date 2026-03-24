@@ -93,6 +93,42 @@ class TestGetActivityCluster:
 
 
 # ---------------------------------------------------------------------------
+# TestParseClusterMalformedJson — task-63 step-1
+# ---------------------------------------------------------------------------
+
+
+class TestParseClusterMalformedJson:
+    """Tests for _parse_cluster handling of malformed JSON in clip_ids_json."""
+
+    def test_malformed_json_returns_empty_clip_ids(self) -> None:
+        """_parse_cluster returns empty clip_ids and clip_count=0 for invalid JSON."""
+        from autopilot.web.routes.review import _parse_cluster
+
+        row: dict[str, object] = {"clip_ids_json": "{bad json"}
+        result = _parse_cluster(row)
+        assert result["clip_ids"] == []
+        assert result["clip_count"] == 0
+
+    def test_none_clip_ids_json_returns_empty_list(self) -> None:
+        """_parse_cluster returns empty clip_ids when clip_ids_json is None."""
+        from autopilot.web.routes.review import _parse_cluster
+
+        row: dict[str, object] = {"clip_ids_json": None}
+        result = _parse_cluster(row)
+        assert result["clip_ids"] == []
+        assert result["clip_count"] == 0
+
+    def test_valid_json_still_works(self) -> None:
+        """_parse_cluster still parses valid JSON correctly."""
+        from autopilot.web.routes.review import _parse_cluster
+
+        row: dict[str, object] = {"clip_ids_json": '["a","b"]'}
+        result = _parse_cluster(row)
+        assert result["clip_ids"] == ["a", "b"]
+        assert result["clip_count"] == 2
+
+
+# ---------------------------------------------------------------------------
 # TestDeleteActivityCluster — step-3
 # ---------------------------------------------------------------------------
 
