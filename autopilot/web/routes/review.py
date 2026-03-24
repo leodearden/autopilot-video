@@ -219,6 +219,31 @@ def _parse_cluster(row: dict[str, object]) -> dict[str, object]:
     return result
 
 
+@router.get("/review/clusters")
+def clusters_page(request: Request) -> HTMLResponse:
+    """Render the cluster review page with all clusters."""
+    db = _get_db(request)
+    try:
+        rows = db.get_activity_clusters()
+        clusters = [_parse_cluster(dict(r)) for r in rows]
+        classify_gate = db.get_gate("classify")
+    finally:
+        db.close()
+    gate_waiting = (
+        classify_gate is not None
+        and classify_gate.get("status") == "waiting"
+    )
+    non_excluded = [c for c in clusters if not c.get("excluded")]
+    show_approve_gate = gate_waiting and len(non_excluded) == 0
+    templates = request.app.state.templates
+    context = {
+        "page_title": "Cluster Review",
+        "clusters": clusters,
+        "show_approve_gate": show_approve_gate,
+    }
+    return templates.TemplateResponse(request, "review/clusters.html", context)
+
+
 @router.get("/api/clusters")
 def api_list_clusters(request: Request) -> list[dict[str, object]]:
     """Return all activity clusters as a JSON list with parsed clip_ids."""
