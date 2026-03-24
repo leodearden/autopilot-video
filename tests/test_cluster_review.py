@@ -90,3 +90,22 @@ class TestGetActivityCluster:
         result = db.get_activity_cluster("c-1")
         assert result is not None
         assert result["excluded"] == 0
+
+
+# ---------------------------------------------------------------------------
+# TestDeleteActivityCluster — step-3
+# ---------------------------------------------------------------------------
+
+class TestDeleteActivityCluster:
+    """Tests for CatalogDB.delete_activity_cluster(cluster_id)."""
+
+    def test_cluster_removed_after_delete(self, db: CatalogDB) -> None:
+        """delete_activity_cluster removes the cluster; get returns None."""
+        _seed_cluster(db, "c-1")
+        db.delete_activity_cluster("c-1")
+        db.conn.commit()
+        assert db.get_activity_cluster("c-1") is None
+
+    def test_no_error_deleting_missing_id(self, db: CatalogDB) -> None:
+        """delete_activity_cluster does not raise for a non-existent id."""
+        db.delete_activity_cluster("nonexistent")  # should not raise
