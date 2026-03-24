@@ -258,3 +258,48 @@ class TestRejectNarrativeAPI:
         """POST /api/narratives/nonexistent/reject returns 404."""
         response = seeded_client.post("/api/narratives/nonexistent/reject")
         assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# TestUpdateNarrativeAPI — step-13
+# ---------------------------------------------------------------------------
+
+class TestUpdateNarrativeAPI:
+    """Tests for PUT /api/narratives/{id} endpoint."""
+
+    def test_update_title_and_description(self, seeded_client: TestClient) -> None:
+        """PUT /api/narratives/n-1 updates title and description."""
+        response = seeded_client.put(
+            "/api/narratives/n-1",
+            json={"title": "Evening Walk", "description": "A sunset stroll"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["title"] == "Evening Walk"
+        assert data["description"] == "A sunset stroll"
+
+    def test_update_duration(self, seeded_client: TestClient) -> None:
+        """PUT /api/narratives/n-1 updates proposed_duration_seconds."""
+        response = seeded_client.put(
+            "/api/narratives/n-1",
+            json={"proposed_duration_seconds": 300.0},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["proposed_duration_seconds"] == 300.0
+
+    def test_rejects_unknown_fields(self, seeded_client: TestClient) -> None:
+        """PUT /api/narratives/n-1 with unknown field returns 422."""
+        response = seeded_client.put(
+            "/api/narratives/n-1",
+            json={"unknown_field": "bad"},
+        )
+        assert response.status_code == 422
+
+    def test_404_for_missing(self, seeded_client: TestClient) -> None:
+        """PUT /api/narratives/nonexistent returns 404."""
+        response = seeded_client.put(
+            "/api/narratives/nonexistent",
+            json={"title": "Does not exist"},
+        )
+        assert response.status_code == 404
