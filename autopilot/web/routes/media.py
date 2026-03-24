@@ -44,7 +44,12 @@ def _aggregate_detections(det_rows: list[dict]) -> DetectionSummary:
         raw = row.get("detections_json")
         if raw:
             try:
-                dets = json.loads(raw) if isinstance(raw, str) else json.loads(str(raw))
+                if isinstance(raw, str):
+                    dets = json.loads(raw)
+                elif isinstance(raw, list):
+                    dets = raw
+                else:
+                    dets = json.loads(str(raw))
             except (json.JSONDecodeError, TypeError):
                 pass
         total += len(dets)
