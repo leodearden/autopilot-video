@@ -1,0 +1,10 @@
+<div id="gate-{{ gate_stage }}" class="dark:bg-surface-800 border border-gray-700 rounded-lg p-4">
+    <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+            <span class="text-sm text-gray-400">{{ from_stage }}</span>
+            <span class="text-gray-500">&rarr;</span>
+            <span class="text-sm font-semibold text-white">{{ gate_stage }}</span>
+        </div>
+        <span class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300">{{ gate.get('mode', 'auto') }}</span>
+    </div>
+</div>

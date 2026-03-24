@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict
 
 from autopilot.db import CatalogDB
@@ -55,6 +56,25 @@ GATE_PRESETS = {
 def _get_db(request: Request) -> CatalogDB:
     """Create a CatalogDB connection from the app's db_path."""
     return CatalogDB(request.app.state.db_path)
+
+
+@router.get("/gates")
+def gates_page(request: Request) -> HTMLResponse:
+    """Render the gate configuration page."""
+    db = _get_db(request)
+    try:
+        gates = db.get_all_gates()
+        gates.sort(key=lambda g: _STAGE_ORDER.get(g["stage"], 999))
+        gates_by_stage: dict[str, dict] = {str(g["stage"]): dict(g) for g in gates}
+        templates = request.app.state.templates
+        context = {
+            "page_title": "Gate Configuration",
+            "transitions": _STAGE_TRANSITIONS,
+            "gates_by_stage": gates_by_stage,
+        }
+        return templates.TemplateResponse(request, "gates/config.html", context)
+    finally:
+        db.close()
 
 
 @router.get("/api/gates")

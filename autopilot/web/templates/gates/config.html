@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Gate Configuration{% endblock %}
+
+{% block content %}
+<div id="gates-page">
+    <h1 class="text-2xl font-bold mb-6">Gate Configuration</h1>
+
+    <!-- Gate list -->
+    <div id="gate-list" class="space-y-3">
+        {% for from_stage, to_stage, gate_stage in transitions %}
+        {% set gate = gates_by_stage.get(gate_stage, {}) %}
+        {% include "partials/gate_toggle.html" %}
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
