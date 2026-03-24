@@ -176,6 +176,14 @@ class TestGateUpdateAPI:
         assert response.status_code == 200
         assert response.json()["timeout_hours"] is None
 
+    def test_update_gate_empty_body(self, client: TestClient) -> None:
+        """PUT /api/gates/analyze with {} returns gate unchanged (no-op path)."""
+        response = client.put("/api/gates/analyze", json={})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["stage"] == "analyze"
+        assert data["mode"] == "auto"
+
     def test_update_gate_unknown_stage(self, client: TestClient) -> None:
         """PUT /api/gates/nonexistent returns 404."""
         response = client.put("/api/gates/nonexistent", json={"mode": "auto"})
