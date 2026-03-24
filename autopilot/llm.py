@@ -57,13 +57,29 @@ def invoke_claude(
         "--", prompt,
     ]
 
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=timeout,
-    )
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=timeout,
+        )
+    except FileNotFoundError as exc:
+        raise LlmError("Claude CLI not found — is it installed?") from exc
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr or ""
+        raise LlmError(f"Claude CLI exited with code {exc.returncode}: {stderr}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise LlmError(f"Claude CLI timeout after {exc.timeout}s") from exc
 
-    data = json.loads(result.stdout)
-    return data["result"]
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise LlmError(f"Failed to parse CLI JSON output: {exc}") from exc
+
+    result_text = data.get("result")
+    if not result_text:
+        raise LlmError(f"Empty or missing result in CLI output (keys: {list(data.keys())})")
+
+    return result_text
