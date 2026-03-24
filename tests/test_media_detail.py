@@ -154,6 +154,32 @@ def detail_client(detail_app):
 
 
 # ---------------------------------------------------------------------------
+# Redundant 'detail' template context test (S11)
+# ---------------------------------------------------------------------------
+
+
+class TestRedundantDetailContext:
+    """Test that the 'detail' dict should not be passed to template context."""
+
+    def test_detail_page_context_does_not_include_detail_key(self) -> None:
+        """media_detail_page template context should not include 'detail' key.
+
+        The detail.html and tab_metadata.html templates only use 'media',
+        'extra_metadata', and 'format_duration'. Verify by inspecting the
+        source of media_detail_page for 'detail' in the context dict.
+        """
+        import inspect
+
+        from autopilot.web.routes.media import media_detail_page
+
+        source = inspect.getsource(media_detail_page)
+        # After removal, the context dict should not contain '"detail"' key
+        assert '"detail": detail' not in source, (
+            "media_detail_page still passes 'detail' to template context"
+        )
+
+
+# ---------------------------------------------------------------------------
 # CatalogDB.get_face_clusters_by_ids() tests
 # ---------------------------------------------------------------------------
 
@@ -360,10 +386,15 @@ class TestApiMediaTranscript:
         resp = detail_client.get("/api/media/nonexistent/transcript")
         assert resp.status_code == 404
 
-    def test_returns_404_when_media_has_no_transcript(self, detail_client) -> None:
-        """GET /api/media/test2/transcript returns 404 when media exists but has no transcript."""
+    def test_returns_200_with_empty_transcript_when_media_has_no_transcript(
+        self, detail_client,
+    ) -> None:
+        """GET /api/media/test2/transcript returns 200 with empty payload when transcript absent."""
         resp = detail_client.get("/api/media/test2/transcript")
-        assert resp.status_code == 404
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["language"] is None
+        assert data["segments"] == []
 
     def test_returns_200_with_segments(self, detail_client) -> None:
         """GET /api/media/test1/transcript returns parsed segments and language."""
@@ -751,3 +782,298 @@ class TestRobustness:
         assert "text/html" in resp.headers["content-type"]
         # Valid frame's detections should still be aggregated
         assert "person" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for _parse_metadata_json helper (S5)
+# ---------------------------------------------------------------------------
+
+
+class TestParseMetadataJson:
+    """Tests for _parse_metadata_json(media) helper."""
+
+    def test_returns_parsed_dict_for_valid_json(self) -> None:
+        """Returns parsed dict when metadata_json is valid JSON."""
+        from autopilot.web.routes.media import _parse_metadata_json
+
+        media = {"metadata_json": '{"camera": "GoPro", "scene": "outdoor"}'}
+        result = _parse_metadata_json(media)
+        assert result == {"camera": "GoPro", "scene": "outdoor"}
+
+    def test_returns_empty_dict_for_malformed_json(self) -> None:
+        """Returns {} when metadata_json is malformed."""
+        from autopilot.web.routes.media import _parse_metadata_json
+
+        media = {"metadata_json": "{{corrupt"}
+        result = _parse_metadata_json(media)
+        assert result == {}
+
+    def test_returns_empty_dict_for_none(self) -> None:
+        """Returns {} when metadata_json is None."""
+        from autopilot.web.routes.media import _parse_metadata_json
+
+        media = {"metadata_json": None}
+        result = _parse_metadata_json(media)
+        assert result == {}
+
+    def test_returns_empty_dict_for_missing_key(self) -> None:
+        """Returns {} when metadata_json key is absent."""
+        from autopilot.web.routes.media import _parse_metadata_json
+
+        media = {}
+        result = _parse_metadata_json(media)
+        assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for _aggregate_detections helper (S4)
+# ---------------------------------------------------------------------------
+
+
+class TestAggregateDetections:
+    """Tests for _aggregate_detections(det_rows) helper."""
+
+    def test_returns_named_tuple_with_correct_fields(self) -> None:
+        """Returns a DetectionSummary with total, classes, frame_details."""
+        from autopilot.web.routes.media import _aggregate_detections
+
+        rows = [
+            {"frame_number": 0, "detections_json": json.dumps([{"class": "person"}])},
+        ]
+        result = _aggregate_detections(rows)
+        assert hasattr(result, "total")
+        assert hasattr(result, "classes")
+        assert hasattr(result, "frame_details")
+
+    def test_counts_detections_across_frames(self) -> None:
+        """Total counts all detections across all frames."""
+        from autopilot.web.routes.media import _aggregate_detections
+
+        rows = [
+            {"frame_number": 0, "detections_json": json.dumps(
+                [{"class": "person"}, {"class": "car"}],
+            )},
+            {"frame_number": 30, "detections_json": json.dumps(
+                [{"class": "person"}],
+            )},
+        ]
+        result = _aggregate_detections(rows)
+        assert result.total == 3
+
+    def test_aggregates_class_counts(self) -> None:
+        """Classes dict has per-class counts."""
+        from autopilot.web.routes.media import _aggregate_detections
+
+        rows = [
+            {"frame_number": 0, "detections_json": json.dumps(
+                [{"class": "person"}, {"class": "car"}],
+            )},
+            {"frame_number": 30, "detections_json": json.dumps(
+                [{"class": "person"}, {"class": "dog"}],
+            )},
+        ]
+        result = _aggregate_detections(rows)
+        assert result.classes == {"person": 2, "car": 1, "dog": 1}
+
+    def test_frame_details_structure(self) -> None:
+        """frame_details has correct structure with number and count keys."""
+        from autopilot.web.routes.media import _aggregate_detections
+
+        rows = [
+            {"frame_number": 0, "detections_json": json.dumps(
+                [{"class": "person"}, {"class": "car"}],
+            )},
+            {"frame_number": 30, "detections_json": json.dumps(
+                [{"class": "dog"}],
+            )},
+        ]
+        result = _aggregate_detections(rows)
+        assert result.frame_details == [
+            {"number": 0, "count": 2},
+            {"number": 30, "count": 1},
+        ]
+
+    def test_handles_empty_list(self) -> None:
+        """Returns zeros and empty collections for empty input."""
+        from autopilot.web.routes.media import _aggregate_detections
+
+        result = _aggregate_detections([])
+        assert result.total == 0
+        assert result.classes == {}
+        assert result.frame_details == []
+
+    def test_handles_malformed_detections_json(self) -> None:
+        """Malformed detections_json treated as zero detections for that frame."""
+        from autopilot.web.routes.media import _aggregate_detections
+
+        rows = [
+            {"frame_number": 0, "detections_json": "{{corrupt"},
+            {"frame_number": 30, "detections_json": json.dumps([{"class": "person"}])},
+        ]
+        result = _aggregate_detections(rows)
+        assert result.total == 1
+        assert result.classes == {"person": 1}
+        assert result.frame_details == [
+            {"number": 0, "count": 0},
+            {"number": 30, "count": 1},
+        ]
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for _format_seconds helper (S6+S12)
+# ---------------------------------------------------------------------------
+
+
+class TestFormatSeconds:
+    """Tests for _format_seconds(seconds, pad_hours=False) unified formatter."""
+
+    @pytest.mark.parametrize(
+        ("seconds", "expected"),
+        [
+            (0, "0:00"),
+            (59, "0:59"),
+            (60, "1:00"),
+            (119, "1:59"),
+            (3600, "1:00:00"),
+            (3661, "1:01:01"),
+            (None, "--:--"),
+        ],
+    )
+    def test_pad_hours_false(self, seconds, expected) -> None:
+        """pad_hours=False: M:SS for <1hr, H:MM:SS for >=1hr, None->'--:--'."""
+        from autopilot.web.routes.media import _format_seconds
+
+        assert _format_seconds(seconds, pad_hours=False) == expected
+
+    @pytest.mark.parametrize(
+        ("seconds", "expected"),
+        [
+            (0, "00:00:00"),
+            (59, "00:00:59"),
+            (60, "00:01:00"),
+            (119, "00:01:59"),
+            (3600, "01:00:00"),
+            (3661, "01:01:01"),
+            (None, "--:--:--"),
+        ],
+    )
+    def test_pad_hours_true(self, seconds, expected) -> None:
+        """pad_hours=True: always 00:MM:SS, None->'--:--:--'."""
+        from autopilot.web.routes.media import _format_seconds
+
+        assert _format_seconds(seconds, pad_hours=True) == expected
+
+
+# ---------------------------------------------------------------------------
+# Per-tab data fetching tests (S1 over-fetching fix)
+# ---------------------------------------------------------------------------
+
+
+class TestTabPerTabFetching:
+    """Verify that each tab only calls the DB methods it needs.
+
+    Uses mock patching to confirm that media_tab() dispatches per-tab
+    rather than calling get_media_detail() for every tab.
+    """
+
+    _MEDIA_ROW = {
+        "id": "test1",
+        "filepath": "/video/test.mp4",
+        "fps": 30.0,
+        "duration_seconds": 120.5,
+        "metadata_json": '{"camera": "GoPro"}',
+    }
+
+    def _get_client(self):
+        """Import and create a test client with mocked DB."""
+        from unittest.mock import MagicMock, patch
+
+        from starlette.testclient import TestClient
+
+        from autopilot.web.app import create_app
+
+        app = create_app(":memory:")
+        client = TestClient(app)
+        mock_db = MagicMock()
+        mock_db.get_media.return_value = self._MEDIA_ROW
+        return client, mock_db, patch
+
+    def test_metadata_tab_does_not_call_get_transcript(self, tmp_path) -> None:
+        """Metadata tab should not call get_transcript."""
+        client, mock_db, patch = self._get_client()
+
+        with patch("autopilot.web.routes.media.get_db", return_value=mock_db):
+            resp = client.get("/media/test1/tab/metadata")
+
+        assert resp.status_code == 200
+        mock_db.get_transcript.assert_not_called()
+        mock_db.get_detections_for_media.assert_not_called()
+        mock_db.get_faces_for_media.assert_not_called()
+        mock_db.get_audio_events_for_media.assert_not_called()
+        mock_db.count_embeddings_for_media.assert_not_called()
+
+    def test_transcript_tab_calls_get_transcript_only(self, tmp_path) -> None:
+        """Transcript tab should call get_transcript but not detection/face methods."""
+        client, mock_db, patch = self._get_client()
+        mock_db.get_transcript.return_value = {"segments_json": "[]", "language": "en"}
+
+        with patch("autopilot.web.routes.media.get_db", return_value=mock_db):
+            resp = client.get("/media/test1/tab/transcript")
+
+        assert resp.status_code == 200
+        mock_db.get_transcript.assert_called_once()
+        mock_db.get_detections_for_media.assert_not_called()
+        mock_db.get_faces_for_media.assert_not_called()
+
+    def test_detections_tab_calls_get_detections_only(self, tmp_path) -> None:
+        """Detections tab should call get_detections_for_media only."""
+        client, mock_db, patch = self._get_client()
+        mock_db.get_detections_for_media.return_value = []
+
+        with patch("autopilot.web.routes.media.get_db", return_value=mock_db):
+            resp = client.get("/media/test1/tab/detections")
+
+        assert resp.status_code == 200
+        mock_db.get_detections_for_media.assert_called_once()
+        mock_db.get_transcript.assert_not_called()
+        mock_db.get_faces_for_media.assert_not_called()
+
+    def test_faces_tab_calls_get_faces_only(self, tmp_path) -> None:
+        """Faces tab should call get_faces_for_media (and face_clusters), not others."""
+        client, mock_db, patch = self._get_client()
+        mock_db.get_faces_for_media.return_value = []
+        mock_db.get_face_clusters_by_ids.return_value = {}
+
+        with patch("autopilot.web.routes.media.get_db", return_value=mock_db):
+            resp = client.get("/media/test1/tab/faces")
+
+        assert resp.status_code == 200
+        mock_db.get_faces_for_media.assert_called_once()
+        mock_db.get_transcript.assert_not_called()
+        mock_db.get_detections_for_media.assert_not_called()
+
+    def test_audio_events_tab_calls_get_audio_events_only(self, tmp_path) -> None:
+        """Audio events tab should call get_audio_events_for_media only."""
+        client, mock_db, patch = self._get_client()
+        mock_db.get_audio_events_for_media.return_value = []
+
+        with patch("autopilot.web.routes.media.get_db", return_value=mock_db):
+            resp = client.get("/media/test1/tab/audio_events")
+
+        assert resp.status_code == 200
+        mock_db.get_audio_events_for_media.assert_called_once()
+        mock_db.get_transcript.assert_not_called()
+        mock_db.get_detections_for_media.assert_not_called()
+
+    def test_embeddings_tab_calls_count_embeddings_only(self, tmp_path) -> None:
+        """Embeddings tab should call count_embeddings_for_media only."""
+        client, mock_db, patch = self._get_client()
+        mock_db.count_embeddings_for_media.return_value = 0
+
+        with patch("autopilot.web.routes.media.get_db", return_value=mock_db):
+            resp = client.get("/media/test1/tab/embeddings")
+
+        assert resp.status_code == 200
+        mock_db.count_embeddings_for_media.assert_called_once()
+        mock_db.get_transcript.assert_not_called()
+        mock_db.get_detections_for_media.assert_not_called()
