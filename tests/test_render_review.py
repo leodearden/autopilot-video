@@ -261,3 +261,66 @@ class TestApiGetRender:
         """Returns 404 for a narrative_id with no edit plan."""
         resp = client.get("/api/renders/no-such-id")
         assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# TestApiStreamVideo — step-7
+# ---------------------------------------------------------------------------
+
+
+class TestApiStreamVideo:
+    """Tests for GET /api/renders/{narrative_id}/video."""
+
+    def test_returns_video_when_file_exists(self, tmp_path: Path) -> None:
+        """Returns 200 with video/mp4 content-type when render file exists."""
+        video_file = tmp_path / "render.mp4"
+        video_file.write_bytes(b"\x00" * 1024)  # mock video content
+        db_path = str(tmp_path / "app.db")
+        with CatalogDB(db_path) as _db:
+            _db.init_default_gates()
+            _seed_narrative(_db, "n-1")
+            _seed_edit_plan(
+                _db, "n-1", seed_narrative=False,
+                render_path=str(video_file),
+            )
+        app = create_app(db_path=db_path)
+        client = TestClient(app)
+        resp = client.get("/api/renders/n-1/video")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "video/mp4"
+
+    def test_returns_404_when_no_edit_plan(self, client: TestClient) -> None:
+        """Returns 404 when no edit plan exists for the narrative."""
+        resp = client.get("/api/renders/no-such-id/video")
+        assert resp.status_code == 404
+
+    def test_returns_404_when_render_path_is_null(
+        self, tmp_path: Path,
+    ) -> None:
+        """Returns 404 when render_path is null (render not done)."""
+        db_path = str(tmp_path / "app.db")
+        with CatalogDB(db_path) as _db:
+            _db.init_default_gates()
+            _seed_narrative(_db, "n-1")
+            _seed_edit_plan(
+                _db, "n-1", seed_narrative=False, render_path=None,
+            )
+        app = create_app(db_path=db_path)
+        client = TestClient(app)
+        resp = client.get("/api/renders/n-1/video")
+        assert resp.status_code == 404
+
+    def test_returns_404_when_file_missing(self, tmp_path: Path) -> None:
+        """Returns 404 when render_path points to a nonexistent file."""
+        db_path = str(tmp_path / "app.db")
+        with CatalogDB(db_path) as _db:
+            _db.init_default_gates()
+            _seed_narrative(_db, "n-1")
+            _seed_edit_plan(
+                _db, "n-1", seed_narrative=False,
+                render_path="/nonexistent/video.mp4",
+            )
+        app = create_app(db_path=db_path)
+        client = TestClient(app)
+        resp = client.get("/api/renders/n-1/video")
+        assert resp.status_code == 404
