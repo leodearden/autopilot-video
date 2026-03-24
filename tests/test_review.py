@@ -483,3 +483,54 @@ class TestNarrativePartialHTMX:
             headers={"HX-Request": "true"},
         )
         assert "bg-red-900" in response.text
+
+
+# ---------------------------------------------------------------------------
+# Gate Approval fixtures — step-23
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def all_decided_app(tmp_path: Path) -> FastAPI:
+    """App with narrate gate waiting and all narratives decided (none proposed)."""
+    db_path = str(tmp_path / "catalog.db")
+    with CatalogDB(db_path) as _db:
+        _db.init_default_gates()
+        _db.update_gate("narrate", status="waiting")
+        _db.conn.commit()
+        _seed_narrative(_db, "n-1", title="Morning Walk", status="approved")
+        _seed_narrative(_db, "n-2", title="Sunset Hike", status="rejected")
+    return create_app(db_path)
+
+
+@pytest.fixture
+def all_decided_client(all_decided_app: FastAPI) -> TestClient:
+    return TestClient(all_decided_app)
+
+
+# ---------------------------------------------------------------------------
+# TestGateApprovalIntegration — step-23
+# ---------------------------------------------------------------------------
+
+class TestGateApprovalIntegration:
+    """Tests for Approve Gate button on narrative review page."""
+
+    def test_no_approve_gate_when_proposed_remain(
+        self, waiting_gate_client: TestClient,
+    ) -> None:
+        """Page does NOT show Approve Gate button when proposed narratives remain."""
+        response = waiting_gate_client.get("/review/narratives")
+        assert "Approve Gate" not in response.text
+
+    def test_shows_approve_gate_when_all_decided(
+        self, all_decided_client: TestClient,
+    ) -> None:
+        """Page shows Approve Gate button when no proposed narratives remain."""
+        response = all_decided_client.get("/review/narratives")
+        assert "Approve Gate" in response.text
+
+    def test_approve_gate_targets_gates_api(
+        self, all_decided_client: TestClient,
+    ) -> None:
+        """Approve Gate button targets POST /api/gates/narrate/approve."""
+        response = all_decided_client.get("/review/narratives")
+        assert "/api/gates/narrate/approve" in response.text
