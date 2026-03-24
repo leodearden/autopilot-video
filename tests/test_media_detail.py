@@ -940,6 +940,36 @@ class TestAggregateDetections:
         assert result.classes == {"unknown": 1}
         assert result.frame_details == [{"number": 0, "count": 1}]
 
+    def test_non_string_list_detections_json(self) -> None:
+        """Raw Python list used directly without broken str-to-json round-trip."""
+        from autopilot.web.routes.media import _aggregate_detections
+
+        rows = [{"frame_number": 0, "detections_json": [{"class": "cat"}]}]
+        result = _aggregate_detections(rows)
+        assert result.total == 1
+        assert result.classes == {"cat": 1}
+        assert result.frame_details == [{"number": 0, "count": 1}]
+
+    def test_non_string_dict_detections_json(self) -> None:
+        """Raw Python dict (non-string, non-list) degrades to zero detections."""
+        from autopilot.web.routes.media import _aggregate_detections
+
+        rows = [{"frame_number": 0, "detections_json": {"not": "a list"}}]
+        result = _aggregate_detections(rows)
+        assert result.total == 0
+        assert result.classes == {}
+        assert result.frame_details == [{"number": 0, "count": 0}]
+
+    def test_non_string_integer_detections_json(self) -> None:
+        """Integer detections_json degrades gracefully instead of crashing."""
+        from autopilot.web.routes.media import _aggregate_detections
+
+        rows = [{"frame_number": 0, "detections_json": 42}]
+        result = _aggregate_detections(rows)
+        assert result.total == 0
+        assert result.classes == {}
+        assert result.frame_details == [{"number": 0, "count": 0}]
+
 
 # ---------------------------------------------------------------------------
 # Unit tests for _format_seconds helper (S6+S12)
