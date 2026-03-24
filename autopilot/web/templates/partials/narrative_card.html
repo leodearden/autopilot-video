@@ -12,6 +12,29 @@
     </div>
     <p class="text-gray-400 text-sm mb-2">{{ narrative.description or '' }}</p>
     {% if narrative.proposed_duration_seconds %}
-    <p class="text-gray-500 text-xs">Duration: {{ narrative.proposed_duration_seconds }}s</p>
+    <p class="text-gray-500 text-xs mb-3">Duration: {{ narrative.proposed_duration_seconds }}s</p>
+    {% endif %}
+    {% if narrative.status == 'proposed' %}
+    <div class="flex items-center space-x-2 mt-2">
+        <input type="checkbox" name="narrative_id" value="{{ narrative.narrative_id }}" class="mr-1">
+        <button class="bg-green-700 hover:bg-green-600 text-white px-3 py-1 rounded text-xs font-medium"
+                hx-post="/api/narratives/{{ narrative.narrative_id }}/approve"
+                hx-target="#narrative-{{ narrative.narrative_id }}"
+                hx-swap="outerHTML">
+            Approve
+        </button>
+        <button class="bg-red-700 hover:bg-red-600 text-white px-3 py-1 rounded text-xs font-medium"
+                hx-post="/api/narratives/{{ narrative.narrative_id }}/reject"
+                hx-target="#narrative-{{ narrative.narrative_id }}"
+                hx-swap="outerHTML">
+            Reject
+        </button>
+        <button class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded text-xs font-medium"
+                hx-get="/api/narratives/{{ narrative.narrative_id }}"
+                hx-target="#narrative-{{ narrative.narrative_id }}"
+                hx-swap="outerHTML">
+            Edit
+        </button>
+    </div>
     {% endif %}
 </div>
