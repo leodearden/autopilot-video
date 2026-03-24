@@ -324,3 +324,60 @@ class TestApiStreamVideo:
         client = TestClient(app)
         resp = client.get("/api/renders/n-1/video")
         assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# TestApiListUploads — step-9
+# ---------------------------------------------------------------------------
+
+
+class TestApiListUploads:
+    """Tests for GET /api/uploads."""
+
+    def test_returns_empty_list(self, client: TestClient) -> None:
+        """Returns empty JSON list when no uploads exist."""
+        resp = client.get("/api/uploads")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    def test_returns_uploads_with_narrative_title(
+        self, tmp_path: Path,
+    ) -> None:
+        """Returns JSON list of uploads with narrative_title joined."""
+        db_path = str(tmp_path / "app.db")
+        with CatalogDB(db_path) as _db:
+            _db.init_default_gates()
+            _seed_upload(_db, "n-1")
+            _seed_narrative(_db, "n-2", title="Sunset Hike")
+            _seed_upload(
+                _db, "n-2", seed_narrative=False,
+                youtube_video_id="xyz789",
+                youtube_url="https://youtube.com/watch?v=xyz789",
+            )
+        app = create_app(db_path=db_path)
+        client = TestClient(app)
+        resp = client.get("/api/uploads")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 2
+        titles = {d["narrative_title"] for d in data}
+        assert titles == {"Morning Walk", "Sunset Hike"}
+
+    def test_includes_all_fields(self, tmp_path: Path) -> None:
+        """Each upload includes all expected fields."""
+        db_path = str(tmp_path / "app.db")
+        with CatalogDB(db_path) as _db:
+            _db.init_default_gates()
+            _seed_upload(_db, "n-1")
+        app = create_app(db_path=db_path)
+        client = TestClient(app)
+        resp = client.get("/api/uploads")
+        data = resp.json()
+        assert len(data) == 1
+        row = data[0]
+        assert row["narrative_id"] == "n-1"
+        assert row["youtube_video_id"] == "abc123"
+        assert row["youtube_url"] == "https://youtube.com/watch?v=abc123"
+        assert row["uploaded_at"] == "2025-01-15T10:30:00"
+        assert row["privacy_status"] == "unlisted"
+        assert row["narrative_title"] == "Morning Walk"
