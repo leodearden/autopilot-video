@@ -205,101 +205,108 @@ def media_tab(request: Request, media_id: str, tab_name: str):
         raise HTTPException(status_code=404, detail="Invalid tab")
     db = get_db(request)
     try:
-        detail = db.get_media_detail(media_id)
-    finally:
-        db.close()
-    if detail is None:
-        raise HTTPException(status_code=404, detail="Media not found")
+        media = db.get_media(media_id)
+        if media is None:
+            raise HTTPException(status_code=404, detail="Media not found")
 
-    media = detail["media"]
-    templates = request.app.state.templates
+        templates = request.app.state.templates
 
-    if tab_name == "metadata":
-        extra_metadata = _parse_metadata_json(media)
-        html = templates.get_template("partials/tab_metadata.html").render(
-            media=media,
-            extra_metadata=extra_metadata,
-            format_duration=_format_duration,
-        )
-    elif tab_name == "transcript":
-        transcript = detail["transcript"]
-        segments = []
-        if transcript and transcript.get("segments_json"):
-            try:
-                segments = json.loads(transcript["segments_json"])
-            except (json.JSONDecodeError, TypeError):
-                pass
-        html = templates.get_template("partials/tab_transcript.html").render(
-            transcript=transcript,
-            segments=segments,
-            format_timestamp=_format_timestamp,
-        )
-    elif tab_name == "detections":
-        det_rows = detail["detections"]
-        summary = _aggregate_detections(det_rows)
-        class_counts = sorted(summary.classes.items(), key=lambda x: x[1], reverse=True)
-        html = templates.get_template("partials/tab_detections.html").render(
-            detections=det_rows,
-            total_detections=summary.total,
-            frame_count=len(det_rows),
-            class_counts=class_counts,
-            frame_details=summary.frame_details,
-        )
-    elif tab_name == "faces":
-        faces = detail["faces"]
-        face_clusters = detail.get("face_clusters", {})
-        # Group faces by cluster_id
-        cluster_groups: dict[int | None, int] = {}
-        for f in faces:
-            cid = f.get("cluster_id")
-            cluster_groups[cid] = cluster_groups.get(cid, 0) + 1
-        clusters = []
-        for cid, count in sorted(cluster_groups.items(), key=lambda x: x[1], reverse=True):
-            cluster_info = face_clusters.get(str(cid), {}) if cid is not None else {}
-            clusters.append(
-                {
-                    "cluster_id": cid,
-                    "label": cluster_info.get("label"),
-                    "count": count,
-                }
+        if tab_name == "metadata":
+            extra_metadata = _parse_metadata_json(media)
+            html = templates.get_template("partials/tab_metadata.html").render(
+                media=media,
+                extra_metadata=extra_metadata,
+                format_duration=_format_duration,
             )
-        html = templates.get_template("partials/tab_faces.html").render(
-            clusters=clusters,
-            total_faces=len(faces),
-        )
-    elif tab_name == "audio_events":
-        audio_rows = detail["audio_events"]
-        events = []
-        for row in audio_rows:
-            parsed = []
-            if row.get("events_json"):
+        elif tab_name == "transcript":
+            transcript = db.get_transcript(media_id)
+            segments = []
+            if transcript and transcript.get("segments_json"):
                 try:
-                    parsed = json.loads(row["events_json"])
+                    segments = json.loads(transcript["segments_json"])
                 except (json.JSONDecodeError, TypeError):
                     pass
-            event_classes = [
-                {"name": e.get("class", "unknown"), "confidence": e.get("confidence", 0)}
-                for e in parsed
-            ]
-            events.append({"timestamp": row["timestamp_seconds"], "classes": event_classes})
-        html = templates.get_template("partials/tab_audio_events.html").render(
-            events=events,
-            format_timestamp=_format_timestamp,
-        )
-    elif tab_name == "embeddings":
-        embedding_count = detail["embedding_count"]
-        fps = media.get("fps") or 0
-        duration = media.get("duration_seconds") or 0
-        total_frames = int(fps * duration) if fps and duration else 0
-        if total_frames > 0:
-            coverage_pct = round(embedding_count / total_frames * 100, 1)
-        else:
-            coverage_pct = 0
-        html = templates.get_template("partials/tab_embeddings.html").render(
-            embedding_count=embedding_count,
-            total_frames=total_frames,
-            coverage_pct=coverage_pct,
-        )
+            html = templates.get_template("partials/tab_transcript.html").render(
+                transcript=transcript,
+                segments=segments,
+                format_timestamp=_format_timestamp,
+            )
+        elif tab_name == "detections":
+            det_rows = db.get_detections_for_media(media_id)
+            summary = _aggregate_detections(det_rows)
+            class_counts = sorted(summary.classes.items(), key=lambda x: x[1], reverse=True)
+            html = templates.get_template("partials/tab_detections.html").render(
+                detections=det_rows,
+                total_detections=summary.total,
+                frame_count=len(det_rows),
+                class_counts=class_counts,
+                frame_details=summary.frame_details,
+            )
+        elif tab_name == "faces":
+            raw_faces = db.get_faces_for_media(media_id)
+            # Strip embedding BLOBs (presentation concern, matching get_media_detail)
+            faces = [{k: v for k, v in f.items() if k != "embedding"} for f in raw_faces]
+            # Build face_clusters with str keys and stripped BLOBs
+            cluster_ids = [f["cluster_id"] for f in faces if f.get("cluster_id") is not None]
+            raw_clusters = db.get_face_clusters_by_ids(cluster_ids)
+            face_clusters: dict[str, dict] = {
+                str(cid): {k: v for k, v in c.items() if k != "representative_embedding"}
+                for cid, c in raw_clusters.items()
+            }
+            # Group faces by cluster_id
+            cluster_groups: dict[int | None, int] = {}
+            for f in faces:
+                cid = f.get("cluster_id")
+                cluster_groups[cid] = cluster_groups.get(cid, 0) + 1
+            clusters = []
+            for cid, count in sorted(cluster_groups.items(), key=lambda x: x[1], reverse=True):
+                cluster_info = face_clusters.get(str(cid), {}) if cid is not None else {}
+                clusters.append(
+                    {
+                        "cluster_id": cid,
+                        "label": cluster_info.get("label"),
+                        "count": count,
+                    }
+                )
+            html = templates.get_template("partials/tab_faces.html").render(
+                clusters=clusters,
+                total_faces=len(faces),
+            )
+        elif tab_name == "audio_events":
+            audio_rows = db.get_audio_events_for_media(media_id)
+            events = []
+            for row in audio_rows:
+                parsed = []
+                if row.get("events_json"):
+                    try:
+                        parsed = json.loads(row["events_json"])
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                event_classes = [
+                    {"name": e.get("class", "unknown"), "confidence": e.get("confidence", 0)}
+                    for e in parsed
+                ]
+                events.append({"timestamp": row["timestamp_seconds"], "classes": event_classes})
+            html = templates.get_template("partials/tab_audio_events.html").render(
+                events=events,
+                format_timestamp=_format_timestamp,
+            )
+        elif tab_name == "embeddings":
+            embedding_count = db.count_embeddings_for_media(media_id)
+            fps = media.get("fps") or 0
+            duration = media.get("duration_seconds") or 0
+            total_frames = int(fps * duration) if fps and duration else 0
+            if total_frames > 0:
+                coverage_pct = round(embedding_count / total_frames * 100, 1)
+            else:
+                coverage_pct = 0
+            html = templates.get_template("partials/tab_embeddings.html").render(
+                embedding_count=embedding_count,
+                total_frames=total_frames,
+                coverage_pct=coverage_pct,
+            )
+    finally:
+        db.close()
 
     return HTMLResponse(html)
 
