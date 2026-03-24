@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from autopilot.llm import LlmError, invoke_claude
+
 if TYPE_CHECKING:
     from autopilot.config import AutopilotConfig
     from autopilot.db import CatalogDB
@@ -260,8 +262,6 @@ def _call_llm(
     Raises:
         NarrativeError: If the API call fails or response is empty.
     """
-    import anthropic  # type: ignore[reportMissingImports]
-
     try:
         system_prompt = _load_and_fill_prompt(config)
     except NarrativeError:
@@ -270,20 +270,17 @@ def _call_llm(
         raise NarrativeError(f"Failed to load prompt: {e}") from e
 
     try:
-        client = anthropic.Anthropic()
-        response = client.messages.create(
+        text = invoke_claude(
+            prompt=storyboard,
+            system=system_prompt,
             model=config.llm.planning_model,
             max_tokens=4096,
-            system=system_prompt,
-            messages=[{"role": "user", "content": storyboard}],
         )
-    except Exception as e:
+    except LlmError as e:
         raise NarrativeError(f"LLM API call failed: {e}") from e
 
-    if not response.content:
-        raise NarrativeError("Empty response from LLM")
-
-    return response.content[0].text  # type: ignore[union-attr]
+    assert isinstance(text, str)  # type guard: simple call returns str
+    return text
 
 
 _REQUIRED_NARRATIVE_FIELDS = {"title", "activity_cluster_ids", "proposed_duration_seconds"}

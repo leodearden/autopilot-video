@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import inspect
 import json
-import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -488,38 +487,37 @@ class TestLoadAndFillPrompt:
 # -- Step 9: _call_llm / _parse_narratives tests ------------------------------
 
 
-def _make_narrative_llm_response(narratives_json=None):
-    """Create a mock Anthropic API response for narrative proposals."""
-    if narratives_json is None:
-        narratives_json = json.dumps(
-            [
-                {
-                    "title": "Three Days in Northern Thailand",
-                    "activity_cluster_ids": ["c1", "c2"],
-                    "proposed_duration_seconds": 600,
-                    "arc": {
-                        "beginning": "Arrival at the temple",
-                        "middle": "Exploring the grounds",
-                        "end": "Sunset reflections",
-                    },
-                    "emotional_journey": "Curiosity to wonder to peace",
-                    "target_audience": "Travel enthusiasts",
-                    "reasoning": "These clusters form a natural arc.",
-                }
-            ]
-        )
-    mock_response = MagicMock()
-    mock_content = MagicMock()
-    mock_content.text = narratives_json
-    mock_response.content = [mock_content]
-    return mock_response
+_DEFAULT_NARRATIVE_JSON = json.dumps(
+    [
+        {
+            "title": "Three Days in Northern Thailand",
+            "activity_cluster_ids": ["c1", "c2"],
+            "proposed_duration_seconds": 600,
+            "arc": {
+                "beginning": "Arrival at the temple",
+                "middle": "Exploring the grounds",
+                "end": "Sunset reflections",
+            },
+            "emotional_journey": "Curiosity to wonder to peace",
+            "target_audience": "Travel enthusiasts",
+            "reasoning": "These clusters form a natural arc.",
+        }
+    ]
+)
+
+
+def _make_narrative_llm_text(narratives_data=None):
+    """Create a mock invoke_claude text response for narrative proposals."""
+    if narratives_data is not None:
+        return json.dumps(narratives_data)
+    return _DEFAULT_NARRATIVE_JSON
 
 
 class TestCallLLM:
-    """Tests for _call_llm() helper."""
+    """Tests for _call_llm() helper using invoke_claude."""
 
     def test_uses_planning_model(self):
-        """_call_llm calls Anthropic API with planning_model (not utility_model)."""
+        """_call_llm calls invoke_claude with planning_model."""
         from autopilot.config import AutopilotConfig
         from autopilot.organize.narratives import _call_llm
 
@@ -529,19 +527,17 @@ class TestCallLLM:
         )
         storyboard = "# Master Storyboard\n\nCluster c1: Temple visit"
 
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _make_narrative_llm_response()
-
-        mock_anthropic = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.organize.narratives.invoke_claude",
+            return_value=_make_narrative_llm_text(),
+        ) as mock_invoke:
             _call_llm(storyboard, config)
 
-        call_kwargs = mock_client.messages.create.call_args[1]
+        call_kwargs = mock_invoke.call_args[1]
         assert call_kwargs["model"] == config.llm.planning_model
 
-    def test_sends_storyboard_as_user_message(self):
-        """Storyboard text is sent as user message content."""
+    def test_sends_storyboard_as_prompt(self):
+        """Storyboard text is sent as prompt to invoke_claude."""
         from autopilot.config import AutopilotConfig
         from autopilot.organize.narratives import _call_llm
 
@@ -551,19 +547,14 @@ class TestCallLLM:
         )
         storyboard = "# My unique storyboard content"
 
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _make_narrative_llm_response()
-
-        mock_anthropic = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.organize.narratives.invoke_claude",
+            return_value=_make_narrative_llm_text(),
+        ) as mock_invoke:
             _call_llm(storyboard, config)
 
-        call_kwargs = mock_client.messages.create.call_args[1]
-        messages = call_kwargs["messages"]
-        user_msg = messages[0]
-        assert user_msg["role"] == "user"
-        assert "My unique storyboard content" in user_msg["content"]
+        call_kwargs = mock_invoke.call_args[1]
+        assert call_kwargs["prompt"] == storyboard
 
     def test_system_prompt_from_narrative_planner(self):
         """System prompt contains narrative_planner.md content."""
@@ -575,20 +566,19 @@ class TestCallLLM:
             output_dir=Path("."),
         )
 
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _make_narrative_llm_response()
-
-        mock_anthropic = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.organize.narratives.invoke_claude",
+            return_value=_make_narrative_llm_text(),
+        ) as mock_invoke:
             _call_llm("storyboard", config)
 
-        call_kwargs = mock_client.messages.create.call_args[1]
+        call_kwargs = mock_invoke.call_args[1]
         assert "Narrative Architect" in call_kwargs["system"]
 
-    def test_api_error_raises_narrative_error(self):
-        """API errors wrapped in NarrativeError."""
+    def test_llm_error_raises_narrative_error(self):
+        """LlmError wrapped in NarrativeError."""
         from autopilot.config import AutopilotConfig
+        from autopilot.llm import LlmError
         from autopilot.organize.narratives import NarrativeError, _call_llm
 
         config = AutopilotConfig(
@@ -596,18 +586,17 @@ class TestCallLLM:
             output_dir=Path("."),
         )
 
-        mock_client = MagicMock()
-        mock_client.messages.create.side_effect = RuntimeError("API timeout")
-
-        mock_anthropic = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.organize.narratives.invoke_claude",
+            side_effect=LlmError("CLI timeout"),
+        ):
             with pytest.raises(NarrativeError, match="API.*failed"):
                 _call_llm("storyboard", config)
 
-    def test_empty_response_raises_narrative_error(self):
-        """Empty response.content raises NarrativeError."""
+    def test_llm_error_empty_response_raises_narrative_error(self):
+        """LlmError from empty response raises NarrativeError."""
         from autopilot.config import AutopilotConfig
+        from autopilot.llm import LlmError
         from autopilot.organize.narratives import NarrativeError, _call_llm
 
         config = AutopilotConfig(
@@ -615,16 +604,11 @@ class TestCallLLM:
             output_dir=Path("."),
         )
 
-        mock_response = MagicMock()
-        mock_response.content = []
-
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = mock_response
-
-        mock_anthropic = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
-            with pytest.raises(NarrativeError, match="[Ee]mpty"):
+        with patch(
+            "autopilot.organize.narratives.invoke_claude",
+            side_effect=LlmError("Empty or missing result in CLI output"),
+        ):
+            with pytest.raises(NarrativeError, match="API.*failed"):
                 _call_llm("storyboard", config)
 
 
@@ -734,38 +718,28 @@ class TestParseNarratives:
 # -- Step 11: propose_narratives end-to-end tests -----------------------------
 
 
-def _setup_mock_narrative_anthropic(narratives_data=None):
-    """Create a mock anthropic module and client for narrative tests."""
-    mock_response = _make_narrative_llm_response(
-        json.dumps(narratives_data) if narratives_data is not None else None
-    )
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = mock_response
-    mock_anthropic = MagicMock()
-    mock_anthropic.Anthropic.return_value = mock_client
-    return mock_anthropic, mock_client
-
-
 class TestProposeNarratives:
     """Tests for propose_narratives() end-to-end."""
 
     def test_calls_llm_and_returns_narratives(self, catalog_db):
-        """propose_narratives calls LLM and returns Narrative list."""
+        """propose_narratives calls invoke_claude and returns Narrative list."""
         from autopilot.config import AutopilotConfig
         from autopilot.organize.narratives import Narrative, propose_narratives
 
         config = AutopilotConfig(input_dir=Path("."), output_dir=Path("."))
         storyboard = "# Master Storyboard\n\n## Cluster: c1\n- **Label**: Temple visit"
 
-        mock_anthropic, mock_client = _setup_mock_narrative_anthropic()
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.organize.narratives.invoke_claude",
+            return_value=_make_narrative_llm_text(),
+        ) as mock_invoke:
             result = propose_narratives(storyboard, catalog_db, config)
 
         assert isinstance(result, list)
         assert len(result) == 1
         assert isinstance(result[0], Narrative)
         assert result[0].title == "Three Days in Northern Thailand"
-        mock_client.messages.create.assert_called_once()
+        mock_invoke.assert_called_once()
 
     def test_stores_narratives_in_db(self, catalog_db):
         """Proposed narratives are stored in the DB with status='proposed'."""
@@ -775,8 +749,10 @@ class TestProposeNarratives:
         config = AutopilotConfig(input_dir=Path("."), output_dir=Path("."))
         storyboard = "# Master Storyboard"
 
-        mock_anthropic, _ = _setup_mock_narrative_anthropic()
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.organize.narratives.invoke_claude",
+            return_value=_make_narrative_llm_text(),
+        ):
             result = propose_narratives(storyboard, catalog_db, config)
 
         # Check DB
@@ -792,8 +768,10 @@ class TestProposeNarratives:
 
         config = AutopilotConfig(input_dir=Path("."), output_dir=Path("."))
 
-        mock_anthropic, _ = _setup_mock_narrative_anthropic([])
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.organize.narratives.invoke_claude",
+            return_value=_make_narrative_llm_text([]),
+        ):
             result = propose_narratives("", catalog_db, config)
 
         assert result == []
@@ -827,8 +805,10 @@ class TestProposeNarratives:
             },
         ]
 
-        mock_anthropic, _ = _setup_mock_narrative_anthropic(two_narratives)
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.organize.narratives.invoke_claude",
+            return_value=_make_narrative_llm_text(two_narratives),
+        ):
             result = propose_narratives("storyboard", catalog_db, config)
 
         assert len(result) == 2
@@ -1042,8 +1022,10 @@ class TestIntegration:
             }
         ]
 
-        mock_anthropic, mock_client = _setup_mock_narrative_anthropic(mock_narratives)
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.organize.narratives.invoke_claude",
+            return_value=_make_narrative_llm_text(mock_narratives),
+        ) as mock_invoke:
             narratives = propose_narratives(storyboard, catalog_db, config)
 
         assert len(narratives) == 1
@@ -1063,11 +1045,11 @@ class TestIntegration:
         assert db_narratives[0]["status"] == "proposed"
         assert db_narratives[0]["title"] == "A Day in Northern Thailand"
 
-        # Verify storyboard was sent to LLM
-        mock_client.messages.create.assert_called_once()
-        call_kwargs = mock_client.messages.create.call_args[1]
+        # Verify storyboard was sent to invoke_claude
+        mock_invoke.assert_called_once()
+        call_kwargs = mock_invoke.call_args[1]
         assert call_kwargs["model"] == config.llm.planning_model
-        assert "Temple visit" in call_kwargs["messages"][0]["content"]
+        assert "Temple visit" in call_kwargs["prompt"]
 
 
 # -- Step 17: Corrupt-cluster resilience tests ---------------------------------
@@ -1186,8 +1168,6 @@ class TestProposeNarrativesTransactional:
             },
         ]
 
-        mock_anthropic, _ = _setup_mock_narrative_anthropic(two_narratives)
-
         # Make the second insert_narrative call fail
         original_insert = catalog_db.insert_narrative
         call_count = 0
@@ -1206,7 +1186,10 @@ class TestProposeNarrativesTransactional:
         catalog_db.conn.isolation_level = "DEFERRED"
         try:
             with (
-                patch.dict(sys.modules, {"anthropic": mock_anthropic}),
+                patch(
+                    "autopilot.organize.narratives.invoke_claude",
+                    return_value=_make_narrative_llm_text(two_narratives),
+                ),
                 patch.object(
                     catalog_db,
                     "insert_narrative",
@@ -1241,10 +1224,11 @@ class TestProposeNarrativesTransactional:
             }
         ]
 
-        mock_anthropic, _ = _setup_mock_narrative_anthropic(one_narrative)
-
         with (
-            patch.dict(sys.modules, {"anthropic": mock_anthropic}),
+            patch(
+                "autopilot.organize.narratives.invoke_claude",
+                return_value=_make_narrative_llm_text(one_narrative),
+            ),
             patch.object(
                 catalog_db,
                 "insert_narrative",
