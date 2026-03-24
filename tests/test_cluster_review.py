@@ -264,3 +264,37 @@ class TestApiRelabelCluster:
             json={"label": "X", "evil": "field"},
         )
         assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# TestApiExcludeCluster — step-13
+# ---------------------------------------------------------------------------
+
+class TestApiExcludeCluster:
+    """Tests for POST /api/clusters/{cluster_id}/exclude."""
+
+    def test_sets_excluded_flag(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """POST exclude sets excluded=1 and returns updated cluster."""
+        _seed_cluster_via_db(app, "c-1")
+        resp = client.post("/api/clusters/c-1/exclude")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["excluded"] == 1
+        assert data["cluster_id"] == "c-1"
+
+    def test_returns_404_for_missing_cluster(self, client: TestClient) -> None:
+        """POST exclude returns 404 for non-existent cluster."""
+        resp = client.post("/api/clusters/nonexistent/exclude")
+        assert resp.status_code == 404
+
+    def test_idempotent_exclude(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """Excluding already-excluded cluster succeeds."""
+        _seed_cluster_via_db(app, "c-1")
+        client.post("/api/clusters/c-1/exclude")
+        resp = client.post("/api/clusters/c-1/exclude")
+        assert resp.status_code == 200
+        assert resp.json()["excluded"] == 1
