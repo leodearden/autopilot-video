@@ -380,10 +380,10 @@ def api_merge_clusters(
         largest = max(parsed_clusters, key=lambda c: int(str(c["clip_count"])))
         largest_id = str(largest["cluster_id"])
 
-        # Combine all clip_ids
-        all_clip_ids: list[str] = []
-        for pc in parsed_clusters:
-            all_clip_ids.extend(pc["clip_ids"])  # type: ignore[arg-type]
+        # Combine all clip_ids (deduplicated, preserving order)
+        all_clip_ids: list[str] = list(dict.fromkeys(
+            cid for pc in parsed_clusters for cid in pc["clip_ids"]  # type: ignore[union-attr]
+        ))
 
         # Compute time range
         time_starts = [str(c["time_start"]) for c in clusters if c.get("time_start")]
