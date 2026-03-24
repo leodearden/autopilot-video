@@ -222,3 +222,45 @@ class TestApiGetCluster:
         """GET /api/clusters/{id} returns 404 for non-existent cluster."""
         resp = client.get("/api/clusters/nonexistent")
         assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# TestApiRelabelCluster — step-11
+# ---------------------------------------------------------------------------
+
+class TestApiRelabelCluster:
+    """Tests for POST /api/clusters/{cluster_id}/relabel."""
+
+    def test_updates_label_and_description(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """POST relabel updates label and description, returns updated cluster."""
+        _seed_cluster_via_db(app, "c-1", label="Old", description="Old desc")
+        resp = client.post(
+            "/api/clusters/c-1/relabel",
+            json={"label": "New Label", "description": "New desc"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["label"] == "New Label"
+        assert data["description"] == "New desc"
+        assert data["cluster_id"] == "c-1"
+
+    def test_returns_404_for_missing_cluster(self, client: TestClient) -> None:
+        """POST relabel returns 404 for non-existent cluster."""
+        resp = client.post(
+            "/api/clusters/nonexistent/relabel",
+            json={"label": "X"},
+        )
+        assert resp.status_code == 404
+
+    def test_rejects_extra_fields(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """POST relabel rejects extra fields via Pydantic validation (422)."""
+        _seed_cluster_via_db(app, "c-1")
+        resp = client.post(
+            "/api/clusters/c-1/relabel",
+            json={"label": "X", "evil": "field"},
+        )
+        assert resp.status_code == 422
