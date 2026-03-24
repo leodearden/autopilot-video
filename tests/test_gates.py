@@ -143,6 +143,19 @@ class TestGateUpdateAPI:
         check = client.get("/api/gates/analyze")
         assert check.json()["mode"] == "pause"
 
+    def test_update_gate_notify_mode(self, client: TestClient) -> None:
+        """PUT /api/gates/analyze with mode='notify' updates and persists."""
+        response = client.put("/api/gates/analyze", json={"mode": "notify"})
+        assert response.status_code == 200
+        assert response.json()["mode"] == "notify"
+        # Re-GET confirms persistence
+        check = client.get("/api/gates/analyze")
+        assert check.json()["mode"] == "notify"
+        # Verify mode renders as selected in the full page
+        page = client.get("/gates")
+        selected = _get_selected_modes(page.text)
+        assert selected["analyze"] == "notify"
+
     def test_update_gate_invalid_mode(self, client: TestClient) -> None:
         """PUT with invalid mode returns 422."""
         response = client.put("/api/gates/analyze", json={"mode": "invalid"})
