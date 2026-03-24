@@ -887,6 +887,15 @@ class CatalogDB:
         row = cur.fetchone()
         return dict(row) if row else None
 
+    def list_edit_plans(self) -> list[dict[str, object]]:
+        """List all edit plans with narrative title via LEFT JOIN."""
+        cur = self.conn.execute(
+            "SELECT e.*, n.title AS narrative_title "
+            "FROM edit_plans e "
+            "LEFT JOIN narratives n ON e.narrative_id = n.narrative_id",
+        )
+        return [dict(row) for row in cur.fetchall()]
+
     # -- narrative_scripts CRUD -------------------------------------------------
 
     def upsert_narrative_script(

@@ -131,7 +131,8 @@ class TestListEditPlans:
     ) -> None:
         """list_edit_plans returns all edit plans joined with narrative title."""
         _seed_edit_plan(db, "n-1")
-        _seed_edit_plan(db, "n-2", title="Sunset Hike")
+        _seed_narrative(db, "n-2", title="Sunset Hike")
+        _seed_edit_plan(db, "n-2", seed_narrative=False)
         result = db.list_edit_plans()
         assert len(result) == 2
         ids = {r["narrative_id"] for r in result}
