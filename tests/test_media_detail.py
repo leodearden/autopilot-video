@@ -1119,6 +1119,14 @@ class TestTabPerTabFetching:
         with pytest.raises(AssertionError):
             self._assert_only_called(mock_db)  # no methods allowed → should raise
 
+    def test_assert_only_called_permits_allowed(self) -> None:
+        """Meta-test: _assert_only_called does not raise when the called method is allowed."""
+        from unittest.mock import MagicMock
+
+        mock_db = MagicMock()
+        mock_db.get_transcript()  # simulate an expected call
+        self._assert_only_called(mock_db, "get_transcript")  # should NOT raise
+
     def test_embeddings_tab_calls_count_embeddings_only(self, tmp_path) -> None:
         """Embeddings tab should call count_embeddings_for_media only."""
         client, mock_db, patch = self._get_client()
