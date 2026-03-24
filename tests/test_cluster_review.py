@@ -439,6 +439,45 @@ class TestApiMergeClusters:
         assert len(data["clip_ids"]) == len(set(data["clip_ids"]))
         assert set(data["clip_ids"]) == {"a", "b", "c", "d"}
 
+    def test_merge_rolls_back_on_failure(
+        self, app: FastAPI, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Merge rolls back all changes if delete_activity_cluster fails mid-operation."""
+        _seed_cluster_via_db(app, "c-1", clip_ids_json='["a"]', label="Original-1")
+        _seed_cluster_via_db(
+            app, "c-2", clip_ids_json='["b","c"]', label="Original-2",
+        )
+
+        # Make delete_activity_cluster fail after update has been applied
+        original_delete = CatalogDB.delete_activity_cluster
+
+        def _exploding_delete(self: CatalogDB, cluster_id: str) -> None:
+            raise RuntimeError("simulated DB failure")
+
+        monkeypatch.setattr(CatalogDB, "delete_activity_cluster", _exploding_delete)
+
+        err_client = TestClient(app, raise_server_exceptions=False)
+        resp = err_client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": ["c-1", "c-2"]},
+        )
+        assert resp.status_code == 500
+
+        # Restore original delete so we can read
+        monkeypatch.setattr(CatalogDB, "delete_activity_cluster", original_delete)
+
+        # Both clusters should still exist with original data (rolled back)
+        read_client = TestClient(app)
+        r1 = read_client.get("/api/clusters/c-1")
+        assert r1.status_code == 200
+        assert r1.json()["label"] == "Original-1"
+
+        r2 = read_client.get("/api/clusters/c-2")
+        assert r2.status_code == 200
+        assert r2.json()["label"] == "Original-2"
+        # c-2 clip_ids should be unchanged (update was rolled back)
+        assert r2.json()["clip_ids"] == ["b", "c"]
+
     def test_merge_timestamp_comparison_chronological(
         self, app: FastAPI, client: TestClient,
     ) -> None:
