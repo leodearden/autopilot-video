@@ -263,3 +263,23 @@ class TestGateTogglePartial:
         html = response.text
         # The 'pause' option for analyze gate should be selected
         assert "selected" in html
+
+
+class TestGatePresetsUI:
+    """Tests for preset buttons on the gates page."""
+
+    def test_gates_page_shows_preset_buttons(self, client: TestClient) -> None:
+        """GET /gates HTML contains buttons for all 4 presets."""
+        response = client.get("/gates")
+        html = response.text
+        assert "Full Auto" in html
+        assert "Review Creative" in html
+        assert "Review Everything" in html
+        assert "Review Before Render" in html
+
+    def test_preset_buttons_have_htmx(self, client: TestClient) -> None:
+        """Each preset button has hx-put targeting /api/gates/preset/{name}."""
+        response = client.get("/gates")
+        html = response.text
+        for preset_name in GATE_PRESETS:
+            assert f"/api/gates/preset/{preset_name}" in html
