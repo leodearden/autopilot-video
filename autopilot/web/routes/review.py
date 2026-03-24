@@ -27,6 +27,7 @@ def _is_htmx(request: Request) -> bool:
 
 _REVIEW_LINKS: dict[str, str] = {
     "narrate": "/review/narratives",
+    "classify": "/review/clusters",
 }
 
 
@@ -49,6 +50,11 @@ def review_hub(request: Request) -> HTMLResponse:
                     proposed = db.list_narratives(status="proposed")
                     summary["pending_count"] = len(proposed)
                     summary["pending_label"] = "proposed narratives"
+                elif stage == "classify":
+                    all_clusters = db.get_activity_clusters()
+                    pending = [c for c in all_clusters if not c.get("excluded")]
+                    summary["pending_count"] = len(pending)
+                    summary["pending_label"] = "activity clusters"
                 waiting_gates.append(summary)
     finally:
         db.close()
@@ -202,6 +208,206 @@ def api_update_narrative(
     if _is_htmx(request):
         return _render_narrative_partial(request, parsed)
     return JSONResponse(content=parsed)
+
+
+# ---------------------------------------------------------------------------
+# Cluster review helpers + routes
+# ---------------------------------------------------------------------------
+
+
+def _parse_cluster(row: dict[str, object]) -> dict[str, object]:
+    """Enrich a cluster row with parsed clip_ids and clip_count."""
+    result = dict(row)
+    raw = result.pop("clip_ids_json", None)
+    clip_ids: list[str] = json.loads(str(raw)) if raw else []
+    result["clip_ids"] = clip_ids
+    result["clip_count"] = len(clip_ids)
+    return result
+
+
+@router.get("/review/clusters")
+def clusters_page(request: Request) -> HTMLResponse:
+    """Render the cluster review page with all clusters."""
+    db = _get_db(request)
+    try:
+        rows = db.get_activity_clusters()
+        clusters = [_parse_cluster(dict(r)) for r in rows]
+        classify_gate = db.get_gate("classify")
+    finally:
+        db.close()
+    gate_waiting = (
+        classify_gate is not None
+        and classify_gate.get("status") == "waiting"
+    )
+    non_excluded = [c for c in clusters if not c.get("excluded")]
+    show_approve_gate = gate_waiting and len(non_excluded) == 0
+    templates = request.app.state.templates
+    context = {
+        "page_title": "Cluster Review",
+        "clusters": clusters,
+        "show_approve_gate": show_approve_gate,
+    }
+    return templates.TemplateResponse(request, "review/clusters.html", context)
+
+
+@router.get("/api/clusters")
+def api_list_clusters(request: Request) -> list[dict[str, object]]:
+    """Return all activity clusters as a JSON list with parsed clip_ids."""
+    db = _get_db(request)
+    try:
+        rows = db.get_activity_clusters()
+        return [_parse_cluster(dict(r)) for r in rows]
+    finally:
+        db.close()
+
+
+@router.get("/api/clusters/{cluster_id}")
+def api_get_cluster(request: Request, cluster_id: str) -> dict[str, object]:
+    """Return a single cluster by ID with parsed clip_ids."""
+    db = _get_db(request)
+    try:
+        row = db.get_activity_cluster(cluster_id)
+    finally:
+        db.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+    return _parse_cluster(dict(row))
+
+
+def _render_cluster_partial(
+    request: Request, cluster: dict[str, object],
+) -> HTMLResponse:
+    """Render a single cluster card partial as HTML."""
+    templates = request.app.state.templates
+    template = templates.get_template("partials/cluster_card.html")
+    html = template.render(cluster=cluster)
+    return HTMLResponse(content=html)
+
+
+class ClusterRelabel(BaseModel):
+    """Request body for relabelling a cluster."""
+
+    label: Optional[str] = None
+    description: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+@router.post("/api/clusters/{cluster_id}/relabel", response_model=None)
+def api_relabel_cluster(
+    request: Request, cluster_id: str, body: ClusterRelabel,
+) -> Response:
+    """Update label/description of a cluster."""
+    db = _get_db(request)
+    try:
+        row = db.get_activity_cluster(cluster_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Cluster not found")
+        updates = body.model_dump(exclude_unset=True)
+        if updates:
+            db.update_activity_cluster(cluster_id, **updates)
+            db.conn.commit()
+        updated = db.get_activity_cluster(cluster_id)
+    finally:
+        db.close()
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+    parsed = _parse_cluster(dict(updated))
+    if _is_htmx(request):
+        return _render_cluster_partial(request, parsed)
+    return JSONResponse(content=parsed)
+
+
+@router.post("/api/clusters/{cluster_id}/exclude", response_model=None)
+def api_exclude_cluster(request: Request, cluster_id: str) -> Response:
+    """Mark a cluster as excluded."""
+    db = _get_db(request)
+    try:
+        row = db.get_activity_cluster(cluster_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Cluster not found")
+        db.update_activity_cluster(cluster_id, excluded=1)
+        db.conn.commit()
+        updated = db.get_activity_cluster(cluster_id)
+    finally:
+        db.close()
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+    parsed = _parse_cluster(dict(updated))
+    if _is_htmx(request):
+        return _render_cluster_partial(request, parsed)
+    return JSONResponse(content=parsed)
+
+
+class MergeRequest(BaseModel):
+    """Request body for merging clusters."""
+
+    cluster_ids: list[str]
+
+
+@router.post("/api/clusters/merge")
+def api_merge_clusters(
+    request: Request, body: MergeRequest,
+) -> dict[str, object]:
+    """Merge multiple clusters into the largest one by clip count."""
+    if len(body.cluster_ids) < 2:
+        raise HTTPException(
+            status_code=422, detail="At least 2 cluster_ids required",
+        )
+    db = _get_db(request)
+    try:
+        # Load all clusters
+        clusters: list[dict[str, object]] = []
+        for cid in body.cluster_ids:
+            row = db.get_activity_cluster(cid)
+            if row is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Cluster {cid} not found",
+                )
+            clusters.append(dict(row))
+
+        # Parse clip_ids for each cluster
+        parsed_clusters = [_parse_cluster(c) for c in clusters]
+
+        # Find largest by clip count
+        largest = max(parsed_clusters, key=lambda c: int(str(c["clip_count"])))
+        largest_id = str(largest["cluster_id"])
+
+        # Combine all clip_ids
+        all_clip_ids: list[str] = []
+        for pc in parsed_clusters:
+            all_clip_ids.extend(pc["clip_ids"])  # type: ignore[arg-type]
+
+        # Compute time range
+        time_starts = [str(c["time_start"]) for c in clusters if c.get("time_start")]
+        time_ends = [str(c["time_end"]) for c in clusters if c.get("time_end")]
+        min_start = min(time_starts) if time_starts else None
+        max_end = max(time_ends) if time_ends else None
+
+        # Update largest cluster with combined data
+        update_kwargs: dict[str, object] = {
+            "clip_ids_json": json.dumps(all_clip_ids),
+        }
+        if min_start is not None:
+            update_kwargs["time_start"] = min_start
+        if max_end is not None:
+            update_kwargs["time_end"] = max_end
+        db.update_activity_cluster(largest_id, **update_kwargs)
+
+        # Delete non-largest clusters
+        for pc in parsed_clusters:
+            cid = str(pc["cluster_id"])
+            if cid != largest_id:
+                db.delete_activity_cluster(cid)
+
+        db.conn.commit()
+        merged = db.get_activity_cluster(largest_id)
+    finally:
+        db.close()
+    if merged is None:
+        raise HTTPException(status_code=500, detail="Merged cluster missing")
+    return _parse_cluster(dict(merged))
 
 
 @router.post("/api/narratives/bulk-approve")

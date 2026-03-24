@@ -134,7 +134,8 @@ class CatalogDB:
                 location_label TEXT,
                 gps_center_lat REAL,
                 gps_center_lon REAL,
-                clip_ids_json TEXT
+                clip_ids_json TEXT,
+                excluded INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS narratives (
@@ -263,6 +264,13 @@ class CatalogDB:
                 ON pipeline_events(created_at);
             """
         )
+        # Migrations for existing databases missing new columns
+        try:
+            self.conn.execute(
+                "ALTER TABLE activity_clusters ADD COLUMN excluded INTEGER DEFAULT 0"
+            )
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
     # -- media_files CRUD -------------------------------------------------------
 
@@ -687,19 +695,51 @@ class CatalogDB:
             ),
         )
 
+    def get_activity_cluster(self, cluster_id: str) -> dict[str, object] | None:
+        """Return a single activity cluster by ID, or None if not found."""
+        cur = self.conn.execute(
+            "SELECT * FROM activity_clusters WHERE cluster_id = ?",
+            (cluster_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
     def get_activity_clusters(self) -> list[dict[str, object]]:
         """List all activity clusters."""
         cur = self.conn.execute("SELECT * FROM activity_clusters")
         return [dict(row) for row in cur.fetchall()]
 
+    def delete_activity_cluster(self, cluster_id: str) -> None:
+        """Delete a single activity cluster by ID. No-op if not found."""
+        self.conn.execute(
+            "DELETE FROM activity_clusters WHERE cluster_id = ?",
+            (cluster_id,),
+        )
+
     def clear_activity_clusters(self) -> None:
         """Delete all rows from activity_clusters table."""
         self.conn.execute("DELETE FROM activity_clusters")
+
+    _CLUSTER_ALLOWED_COLUMNS: frozenset[str] = frozenset({
+        "label",
+        "description",
+        "time_start",
+        "time_end",
+        "location_label",
+        "gps_center_lat",
+        "gps_center_lon",
+        "clip_ids_json",
+        "excluded",
+    })
 
     def update_activity_cluster(self, cluster_id: str, **kwargs: object) -> None:
         """Update fields of an activity cluster by keyword arguments."""
         if not kwargs:
             return
+        bad_keys = set(kwargs) - self._CLUSTER_ALLOWED_COLUMNS
+        if bad_keys:
+            msg = f"Disallowed column(s) for cluster update: {sorted(bad_keys)}"
+            raise ValueError(msg)
         set_clause = ", ".join(f"{k} = ?" for k in kwargs)
         values = list(kwargs.values())
         values.append(cluster_id)

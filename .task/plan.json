@@ -1,150 +1,273 @@
 {
-  "task_id": "54",
-  "title": "Media routes cleanup: over-fetching, duplication, organization",
+  "task_id": "47",
+  "title": "Cluster review page",
   "files": [
-    "autopilot/web/routes/media.py",
-    "tests/test_media_detail.py"
+    "autopilot/db.py",
+    "autopilot/web/routes/review.py",
+    "autopilot/web/templates/review/clusters.html",
+    "autopilot/web/templates/partials/cluster_card.html",
+    "tests/test_cluster_review.py"
   ],
   "modules": [
+    "autopilot/db",
     "autopilot/web/routes",
+    "autopilot/web/templates/review",
+    "autopilot/web/templates/partials",
     "tests"
   ],
-  "analysis": "media.py (353 lines) has 7 non-blocking review issues from task 44. After thorough analysis:\n\n(S5) _parse_metadata_json: Identical try/except json.loads blocks at lines 131-136 (media_detail_page) and 181-186 (media_tab metadata branch). Extract to a shared helper.\n\n(S4) _aggregate_detections: Same loop/counting pattern at lines 206-222 (media_tab detections branch) and 335-347 (api_media_detections). The tab version also builds frame_details; the API version does not. A shared helper can return all three (total, classes, frame_details) and callers pick what they need.\n\n(S6+S12) Time formatters: _format_duration (line 16) omits hours if <1hr, None->'--:--'. _format_timestamp (line 151, after route handlers) always pads hours, None->'--:--:--'. They serve genuinely different purposes (display duration vs timeline position). Unify into a single _format_seconds(seconds, pad_hours=False) with the pad_hours flag controlling both zero-padding and the None fallback. Move _format_timestamp definition next to _format_duration at top of module.\n\n(S1) Over-fetching: media_tab() calls get_media_detail() for every tab click, which runs 6 DB queries + face cluster join. Individual getter methods already exist in CatalogDB (get_media, get_transcript, get_detections_for_media, get_faces_for_media, get_audio_events_for_media, count_embeddings_for_media, get_face_clusters_by_ids). Refactor to dispatch per tab, calling only the methods needed. Face BLOB stripping (currently in get_media_detail) must be replicated in the faces tab branch.\n\n(S8) API contract: /api/media/{id}/transcript returns 404 for missing transcript; /api/media/{id} returns null. Standardize: 404 only for missing parent media; missing analysis data returns 200 with empty payload. Change transcript endpoint to return {\"language\": null, \"segments\": []} when transcript is absent.\n\n(S11) Redundant template context: detail.html and tab_metadata.html only reference 'media', 'extra_metadata', 'format_duration'. The 'detail' dict is passed but never used. Remove it.\n\nExisting test suite (test_media_detail.py, 754 lines) covers all endpoints comprehensively including robustness tests for malformed JSON. Tests use file-backed CatalogDB + Starlette TestClient.",
-  "prerequisites": [],
+  "analysis": "Build the cluster review page at /review/clusters with card grid, merge, relabel, and exclude functionality. The codebase has a well-established pattern: review.py contains both page routes (/review/*) and JSON API routes (/api/*), with HTMX-aware dual responses (HTML partial vs JSON). Templates use Tailwind dark mode with surface-* colors, and cards have predictable IDs ({entity}-{id}) for HTMX outerHTML swaps. The activity_clusters table exists with cluster_id, label, description, time_start, time_end, location_label, gps coords, and clip_ids_json. Missing from db.py: (1) single-cluster getter get_activity_cluster(id), (2) delete_activity_cluster method, (3) 'excluded' column on the table, (4) column whitelist on update_activity_cluster (it currently does raw **kwargs into SQL like the narrative update did before task 46 fixed it). The review hub already maps waiting gates to review links via _REVIEW_LINKS dict — needs 'classify' entry. Navigation in base.html already links to /review/clusters. New test file test_cluster_review.py keeps cluster tests separate from the 678-line test_review.py. All cluster routes go in the existing review.py following the task spec and narrative route convention.",
+  "prerequisites": [
+    {
+      "id": "pre-1",
+      "description": "Add 'excluded INTEGER DEFAULT 0' to activity_clusters schema in CatalogDB.__init__ — add to CREATE TABLE statement for new DBs and add ALTER TABLE with try/except OperationalError for existing DBs that lack the column",
+      "status": "done",
+      "commit": "10a3d9b",
+      "tests": []
+    }
+  ],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing unit tests for _parse_metadata_json(media_row) helper: returns parsed dict for valid JSON, returns {} for malformed JSON, returns {} for None/missing key. Import directly from media module.",
+      "description": "Write failing tests for get_activity_cluster(id): returns dict for existing cluster with all fields, returns None for missing cluster. Also test that excluded column defaults to 0 on newly inserted cluster.",
       "status": "done",
-      "commit": "7d5adb0"
+      "commit": "7ee8e1e"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Extract _parse_metadata_json(media) helper in media.py (after _format_duration). Takes a media dict, returns parsed metadata_json or {} on error. Replace duplicate blocks in media_detail_page (lines 131-136) and media_tab metadata branch (lines 181-186) with calls to the helper.",
+      "description": "Implement get_activity_cluster(cluster_id) in CatalogDB — SELECT * FROM activity_clusters WHERE cluster_id=? returning dict(row) or None. Add excluded column to CREATE TABLE and ALTER TABLE migration. Pattern follows get_narrative().",
       "status": "done",
-      "commit": "725c6ae"
+      "commit": "9aa8255"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write failing unit tests for _aggregate_detections(det_rows) helper: returns NamedTuple(total, classes, frame_details) for normal data; handles empty list; handles malformed detections_json gracefully; verifies frame_details has correct structure with number and count keys.",
+      "description": "Write failing tests for delete_activity_cluster(id): cluster is removed after delete (get returns None), no error when deleting missing id.",
       "status": "done",
-      "commit": "796c2ae"
+      "commit": "cae4b6f"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Extract _aggregate_detections(det_rows) helper in media.py returning a DetectionSummary NamedTuple(total, classes, frame_details). Replace duplicate logic in media_tab detections branch (lines 206-222) and api_media_detections (lines 335-347) with calls to the helper. api_media_detections ignores frame_details.",
+      "description": "Implement delete_activity_cluster(cluster_id) in CatalogDB — DELETE FROM activity_clusters WHERE cluster_id=?",
       "status": "done",
-      "commit": "2fbcfba"
+      "commit": "8ffc2c0"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write failing unit tests for unified _format_seconds(seconds, pad_hours=False) helper: pad_hours=False gives M:SS for <1hr and HH:MM:SS for >=1hr with None->'--:--'; pad_hours=True always gives 00:MM:SS with None->'--:--:--'. Parametrize covering 0s, 59s, 3600s, 3661s, None for both modes.",
+      "description": "Write failing test that update_activity_cluster rejects columns not in whitelist (raises ValueError with descriptive message), while accepting all valid columns (label, description, time_start, time_end, location_label, gps_center_lat, gps_center_lon, clip_ids_json, excluded).",
       "status": "done",
-      "commit": "bbda408"
+      "commit": "9f2d5a2"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Replace _format_duration and _format_timestamp with a single _format_seconds(seconds, pad_hours=False) helper at top of media.py (line ~16). Create thin wrappers _format_duration=partial(_format_seconds, pad_hours=False) and _format_timestamp=partial(_format_seconds, pad_hours=True). Remove old _format_timestamp from line 151 (fixes S12 placement). All callers/templates unchanged.",
+      "description": "Add _CLUSTER_ALLOWED_COLUMNS frozenset to CatalogDB and whitelist validation to update_activity_cluster, following the _NARRATIVE_ALLOWED_COLUMNS pattern. Allowed columns: label, description, time_start, time_end, location_label, gps_center_lat, gps_center_lon, clip_ids_json, excluded.",
       "status": "done",
-      "commit": "745f4bd"
+      "commit": "113b2e0"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write failing tests for per-tab data fetching (S1): add TestTabPerTabFetching class that uses unittest.mock to patch individual CatalogDB methods, verifying that e.g. transcript tab calls get_transcript but NOT get_detections_for_media or get_faces_for_media. Cover all 6 tabs.",
+      "description": "Write failing tests for GET /api/clusters: returns JSON list of clusters with clip_ids parsed from clip_ids_json and clip_count added; returns empty list when no clusters exist.",
       "status": "done",
-      "commit": "efa52a2"
+      "commit": "4945084"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Refactor media_tab() to replace the single get_media_detail() call with per-tab DB method dispatch. Start with db.get_media(media_id) for existence check. Then: metadata needs nothing extra; transcript calls get_transcript; detections calls get_detections_for_media; faces calls get_faces_for_media + get_face_clusters_by_ids with BLOB stripping; audio_events calls get_audio_events_for_media; embeddings calls count_embeddings_for_media. All existing integration tests must still pass.",
+      "description": "Implement api_list_clusters route and _parse_cluster helper in review.py. _parse_cluster pops clip_ids_json, parses to clip_ids list, adds clip_count. Pattern follows _parse_narrative.",
       "status": "done",
-      "commit": "23c42f0"
+      "commit": "a37c387"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Update TestApiMediaTranscript.test_returns_404_when_media_has_no_transcript to expect 200 with {language: null, segments: []} instead of 404 (S8 contract fix). This test will now fail against current code.",
+      "description": "Write failing tests for GET /api/clusters/{cluster_id}: returns single cluster JSON with parsed clip_ids and clip_count; returns 404 for missing cluster.",
       "status": "done",
-      "commit": "b7422b6"
+      "commit": "d9fefed"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Change api_media_transcript() to return {\"language\": null, \"segments\": []} with 200 when transcript is None, instead of raising HTTPException(404). Keep 404 only for missing parent media.",
+      "description": "Implement api_get_cluster route in review.py — get_activity_cluster(id), parse, return JSON or raise 404.",
       "status": "done",
-      "commit": "2b40847"
+      "commit": "81486d6"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write explicit test asserting the detail page template context does not include 'detail' key \u2014 verify existing test_returns_200_html and test_metadata_tab_rendered_by_default still pass, confirming the template never needed it.",
+      "description": "Write failing tests for POST /api/clusters/{cluster_id}/relabel: updates label and description, returns updated cluster JSON; 404 for missing cluster; rejects extra fields in body via Pydantic validation (422).",
       "status": "done",
-      "commit": "3f83282"
+      "commit": "d2282ab"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Remove 'detail' key from the template context dict in media_detail_page() (line 144). Only pass 'media', 'extra_metadata', 'format_duration'. Run full test suite to confirm no regression.",
+      "description": "Implement api_relabel_cluster route with ClusterRelabel Pydantic model (label: Optional[str], description: Optional[str], extra='forbid'). Calls update_activity_cluster with provided fields, commits, returns updated cluster.",
       "status": "done",
-      "commit": "445f54e"
+      "commit": "0897a5e"
+    },
+    {
+      "id": "step-13",
+      "type": "test",
+      "description": "Write failing tests for POST /api/clusters/{cluster_id}/exclude: sets excluded=1, returns updated cluster with excluded=1; 404 for missing cluster; idempotent (excluding already-excluded cluster succeeds).",
+      "status": "done",
+      "commit": "978ed7d"
+    },
+    {
+      "id": "step-14",
+      "type": "impl",
+      "description": "Implement api_exclude_cluster route — calls update_activity_cluster(id, excluded=1), commits, returns updated cluster JSON.",
+      "status": "done",
+      "commit": "3d04726"
+    },
+    {
+      "id": "step-15",
+      "type": "test",
+      "description": "Write failing tests for POST /api/clusters/merge: (a) merges 2 clusters — combined clip_ids_json, label from largest cluster, min(time_start)/max(time_end), merged cluster kept, other deleted; (b) merges 3 clusters; (c) returns 422 for fewer than 2 cluster_ids; (d) returns 404 if any cluster_id not found.",
+      "status": "done",
+      "commit": "6f78515"
+    },
+    {
+      "id": "step-16",
+      "type": "impl",
+      "description": "Implement api_merge_clusters route with MergeRequest(cluster_ids: list[str]) Pydantic model. Logic: validate >=2 ids, load all clusters (404 if any missing), find largest by clip count, combine all clip_ids, compute min time_start/max time_end, update largest cluster with combined data, delete others, commit, return merged cluster.",
+      "status": "done",
+      "commit": "cbe5442"
+    },
+    {
+      "id": "step-17",
+      "type": "test",
+      "description": "Write failing tests for GET /review/clusters HTML page: returns 200 with cluster card labels and clip counts visible; empty state shows 'No clusters' message; excluded clusters show 'excluded' badge.",
+      "status": "done",
+      "commit": "d35e433"
+    },
+    {
+      "id": "step-18",
+      "type": "impl",
+      "description": "Create review/clusters.html template (extends base.html) with card grid, merge checkboxes, Merge Selected button, and Approve Gate button. Create partials/cluster_card.html with cluster info, status badge, relabel/exclude buttons. Implement clusters_page route in review.py.",
+      "status": "done",
+      "commit": "efca2c0"
+    },
+    {
+      "id": "step-19",
+      "type": "test",
+      "description": "Write failing tests for HTMX responses: POST relabel with HX-Request:true returns HTML containing div with id='cluster-{id}' and updated label; POST exclude with HX-Request:true returns HTML partial with 'excluded' badge.",
+      "status": "done",
+      "commit": "73c5a23"
+    },
+    {
+      "id": "step-20",
+      "type": "impl",
+      "description": "Add _render_cluster_partial helper (renders partials/cluster_card.html). Wire relabel and exclude routes to return HTML partial when _is_htmx(request) is true, JSON otherwise. Pattern follows _render_narrative_partial.",
+      "status": "done",
+      "commit": "9ecd260"
+    },
+    {
+      "id": "step-21",
+      "type": "test",
+      "description": "Write failing test for review hub integration: when classify gate is 'waiting', hub page contains card with 'classify' stage, link to /review/clusters, and pending cluster count (non-excluded clusters).",
+      "status": "done",
+      "commit": "5b74a02"
+    },
+    {
+      "id": "step-22",
+      "type": "impl",
+      "description": "Update _REVIEW_LINKS to add 'classify': '/review/clusters'. In review_hub route, add classify stage handling: count non-excluded activity clusters as pending_count with 'activity clusters' as pending_label.",
+      "status": "done",
+      "commit": "990d9cd"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use functools.partial for _format_duration/_format_timestamp wrappers instead of lambdas",
-      "rationale": "partial preserves the function signature for introspection and has a readable repr. Keeps template context passing unchanged \u2014 templates still receive format_duration and format_timestamp by name."
+      "decision": "Add 'excluded INTEGER DEFAULT 0' column to activity_clusters rather than a separate exclusion tracking table",
+      "rationale": "Task spec suggests a boolean field directly on the table. SQLite integer-boolean is the project norm. A column on the existing table is simpler than a join table, and ALTER TABLE ADD COLUMN is safe for SQLite with a DEFAULT value. Try/except OperationalError handles existing DBs gracefully."
     },
     {
-      "decision": "Return NamedTuple from _aggregate_detections rather than a plain tuple",
-      "rationale": "Named fields (total, classes, frame_details) are self-documenting at call sites. NamedTuple is lighter than dataclass and naturally unpacks."
+      "decision": "Add column whitelist to update_activity_cluster following the _NARRATIVE_ALLOWED_COLUMNS pattern from task 46",
+      "rationale": "The current update_activity_cluster interpolates raw **kwargs keys into SQL (same vulnerability task 46 fixed for narratives). Adding a frozenset whitelist is defense-in-depth. All non-PK columns are allowed: label, description, time_start, time_end, location_label, gps_center_lat, gps_center_lon, clip_ids_json, excluded."
     },
     {
-      "decision": "Standardize API contract: 404 only for missing parent media, 200 with empty payload for missing analysis data",
-      "rationale": "Clients shouldn't need to distinguish between 'media has no transcript yet' and 'transcript data is empty'. This aligns with the aggregate /api/media/{id} endpoint which returns null for transcript. Makes API consumption uniform across endpoints."
+      "decision": "Merge keeps the largest cluster (by clip count) as the surviving record and deletes the others",
+      "rationale": "Task spec says 'pick label from largest cluster' and 'delete merged clusters, keep the combined one'. Keeping the largest cluster's row preserves its cluster_id, which may be referenced in narratives via activity_cluster_ids_json. Updating in-place avoids orphaned references."
     },
     {
-      "decision": "Keep face BLOB stripping in the media_tab faces branch rather than adding a db.py helper",
-      "rationale": "BLOB stripping is a presentation concern. The DB layer (get_faces_for_media) correctly returns raw rows. get_media_detail already handles this for the aggregate case. The tab handler strips BLOBs locally, matching the existing pattern. No db.py changes needed."
+      "decision": "Create separate test file tests/test_cluster_review.py rather than appending to test_review.py",
+      "rationale": "test_review.py is already 678 lines focused on narrative review. Cluster review is a distinct feature area with its own fixtures (_seed_cluster), DB method tests, and API tests. Separate files keep both manageable and allow parallel test execution."
     },
     {
-      "decision": "Use mock-based tests for verifying per-tab fetching (S1) rather than only relying on integration tests",
-      "rationale": "Integration tests verify correctness but can't verify the absence of over-fetching. Mock-based tests patch specific CatalogDB methods to assert only required methods are called per tab, ensuring the performance improvement is actually enforced."
+      "decision": "All cluster routes go in review.py following the task spec and existing convention",
+      "rationale": "Task spec says 'extend autopilot/web/routes/review.py'. The file already mixes /review/* page routes and /api/* JSON routes for narratives. Adding /review/clusters and /api/clusters/* follows the same pattern. No new router registration needed."
     },
     {
-      "decision": "No modifications to db.py \u2014 all changes confined to media.py and tests",
-      "rationale": "CatalogDB already has all needed granular methods (get_media, get_transcript, get_detections_for_media, etc.). The over-fetching problem is in the route layer calling the wrong aggregator method. No new DB methods are needed."
+      "decision": "_parse_cluster adds computed clip_count field alongside clip_ids",
+      "rationale": "Avoids template-side array length calculation. The API response includes both the full clip_ids list and a convenience clip_count integer. This is cheap to compute and makes the card template simpler."
+    },
+    {
+      "decision": "Merge endpoint returns 422 for fewer than 2 cluster_ids, 404 if any cluster not found",
+      "rationale": "Merging requires at least 2 clusters by definition. Using 422 (Unprocessable Entity) for validation errors and 404 for missing resources follows HTTP semantics and the project's existing error handling patterns in gates.py and review.py."
+    },
+    {
+      "decision": "Hub counts non-excluded clusters as pending for classify gate",
+      "rationale": "Excluded clusters are intentionally removed from consideration, so they shouldn't inflate the pending count. This gives the reviewer an accurate picture of how many clusters still need review before approving the classify gate."
     }
   ],
   "reuse": [
     {
-      "what": "CatalogDB individual getter methods",
-      "where": "autopilot/db.py: get_media(), get_transcript(), get_detections_for_media(), get_faces_for_media(), get_audio_events_for_media(), count_embeddings_for_media(), get_face_clusters_by_ids()",
-      "how": "Use these existing per-table methods in media_tab() instead of get_media_detail() to fetch only the data needed for each tab."
+      "what": "_get_db(request) and _is_htmx(request) helpers",
+      "where": "autopilot/web/routes/review.py lines 18-25",
+      "how": "Reuse directly for all new cluster routes — same DB connection pattern and HTMX detection. No duplication needed since they're in the same file."
     },
     {
-      "what": "Existing test fixtures and seeded DB",
-      "where": "tests/test_media_detail.py: detail_seeded_db, detail_client, robustness_client fixtures",
-      "how": "Reuse these fixtures for new helper unit tests and per-tab fetching tests. The seeded DB has test1 (full data) and test2 (no data) covering both happy and empty paths."
+      "what": "_parse_narrative pattern for JSON field deserialization",
+      "where": "autopilot/web/routes/review.py lines 101-106",
+      "how": "Create _parse_cluster following identical pattern: pop clip_ids_json, json.loads to list, add clip_count = len(clip_ids)."
     },
     {
-      "what": "Existing integration test suite as regression safety net",
-      "where": "tests/test_media_detail.py: TestMediaDetailIntegration, TestRobustness classes",
-      "how": "These 15+ integration tests verify correctness of all endpoints. All must continue passing after the S1 refactor and other changes, serving as a comprehensive regression gate."
+      "what": "_render_narrative_partial pattern for HTMX card responses",
+      "where": "autopilot/web/routes/review.py lines 144-151",
+      "how": "Create _render_cluster_partial using same templates.get_template + template.render + HTMLResponse pattern, targeting partials/cluster_card.html."
     },
     {
-      "what": "functools.partial from stdlib",
-      "where": "Python standard library",
-      "how": "Use partial(_format_seconds, pad_hours=False/True) to create _format_duration/_format_timestamp wrappers that preserve the existing caller interface without code duplication."
+      "what": "Pydantic request body models with ConfigDict(extra='forbid')",
+      "where": "autopilot/web/routes/review.py lines 166-179 (NarrativeUpdate, BulkApproveRequest)",
+      "how": "Create ClusterRelabel(label, description) and MergeRequest(cluster_ids) Pydantic models with same extra='forbid' config for strict input validation."
+    },
+    {
+      "what": "_NARRATIVE_ALLOWED_COLUMNS whitelist pattern in CatalogDB",
+      "where": "autopilot/db.py lines 761-778",
+      "how": "Create _CLUSTER_ALLOWED_COLUMNS frozenset with identical validation logic: check kwargs keys against whitelist, raise ValueError listing bad keys."
+    },
+    {
+      "what": "Test fixture pattern: file-backed DB, create_app, TestClient, _seed_* helper",
+      "where": "tests/test_review.py lines 19-41",
+      "how": "Create analogous fixtures in test_cluster_review.py: db fixture with tmp_path, app/client fixtures, _seed_cluster helper inserting cluster with sensible defaults."
+    },
+    {
+      "what": "narratives.html template layout (card grid, bulk actions, gate approval section)",
+      "where": "autopilot/web/templates/review/narratives.html",
+      "how": "clusters.html follows identical structure: extends base.html, card grid with grid-cols-1/2/3, action header with Merge Selected button, Approve Gate section at bottom."
+    },
+    {
+      "what": "narrative_card.html partial pattern (div#entity-id, HTMX attributes)",
+      "where": "autopilot/web/templates/partials/narrative_card.html",
+      "how": "cluster_card.html uses same pattern: div#cluster-{cluster_id} as swap target, hx-post/hx-target/hx-swap='outerHTML' on action buttons, status badges with Tailwind color classes."
+    },
+    {
+      "what": "Review hub _REVIEW_LINKS dict and pending count logic",
+      "where": "autopilot/web/routes/review.py lines 28-52",
+      "how": "Add 'classify': '/review/clusters' to _REVIEW_LINKS. Add elif stage == 'classify' block to count non-excluded clusters, mirroring the narrate stage pattern."
+    },
+    {
+      "what": "Existing CatalogDB activity_clusters CRUD (insert, get_all, clear, update)",
+      "where": "autopilot/db.py lines 656-710",
+      "how": "Routes use get_activity_clusters() for list, update_activity_cluster() for relabel/exclude. New get_activity_cluster(id) and delete_activity_cluster(id) extend the existing CRUD section."
     }
   ],
-  "_session_id": "54-9620947b",
-  "_created_at": "2026-03-24T22:26:51.337246+00:00"
+  "_session_id": "47-00f54b2c",
+  "_created_at": "2026-03-24T22:31:44.633936+00:00",
+  "_schema_version": 1
 }
