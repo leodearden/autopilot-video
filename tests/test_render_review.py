@@ -529,3 +529,59 @@ class TestReviewHubIntegration:
         resp = client.get("/review")
         assert resp.status_code == 200
         assert "/review/uploads" in resp.text
+
+    def test_upload_pending_count_is_rendered_minus_uploaded(
+        self, tmp_path: Path,
+    ) -> None:
+        """Upload pending count = rendered narratives without upload records.
+
+        Seeds 3 narratives with rendered edit plans (render_path set) and
+        1 upload record for one of them. Also seeds 1 edit plan WITHOUT
+        render_path. The pending count should be 2: only the 2
+        rendered-but-not-uploaded narratives, excluding both the uploaded
+        one and the unrendered one.
+
+        This test exposes the bug at review.py:68-71 where len(uploads)
+        counts completed uploads instead of pending ones.
+        """
+        db_path = str(tmp_path / "app.db")
+        with CatalogDB(db_path) as _db:
+            _db.init_default_gates()
+            _db.update_gate("upload", status="waiting")
+            _db.conn.commit()
+
+            # 3 rendered narratives (have render_path)
+            _seed_edit_plan(
+                _db, "n-1", render_path="/tmp/render1.mp4",
+            )
+            _seed_narrative(_db, "n-2", title="Video Two")
+            _seed_edit_plan(
+                _db, "n-2", seed_narrative=False,
+                render_path="/tmp/render2.mp4",
+            )
+            _seed_narrative(_db, "n-3", title="Video Three")
+            _seed_edit_plan(
+                _db, "n-3", seed_narrative=False,
+                render_path="/tmp/render3.mp4",
+            )
+
+            # 1 upload record for n-1 (already uploaded)
+            _seed_upload(
+                _db, "n-1", seed_narrative=False,
+                youtube_video_id="vid1",
+            )
+
+            # 1 unrendered edit plan (no render_path) — should NOT count
+            _seed_narrative(_db, "n-4", title="Not Rendered")
+            _seed_edit_plan(
+                _db, "n-4", seed_narrative=False,
+                render_path=None,
+            )
+
+        app = create_app(db_path=db_path)
+        client = TestClient(app)
+        resp = client.get("/review")
+        assert resp.status_code == 200
+        # Pending count should be 2 (n-2, n-3 are rendered but not uploaded)
+        # Template renders: "{{ pending_count }} {{ pending_label }}"
+        assert "2 pending uploads" in resp.text
