@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import inspect
 import json
-import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
+
+from autopilot.llm import LlmError
 
 # -- Pre-1: narrative_scripts DB CRUD tests ------------------------------------
 
@@ -525,27 +526,11 @@ _SAMPLE_SCRIPT_JSON = {
 }
 
 
-def _make_script_llm_response(script_json=None):
-    """Create a mock Anthropic API response for script generation."""
-    if script_json is None:
-        script_json = json.dumps(_SAMPLE_SCRIPT_JSON)
-    mock_response = MagicMock()
-    mock_content = MagicMock()
-    mock_content.text = script_json
-    mock_response.content = [mock_content]
-    return mock_response
-
-
-def _setup_mock_script_anthropic(script_data=None):
-    """Create mock anthropic module and client for script tests."""
-    mock_response = _make_script_llm_response(
-        json.dumps(script_data) if script_data is not None else None
-    )
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = mock_response
-    mock_anthropic = MagicMock()
-    mock_anthropic.Anthropic.return_value = mock_client
-    return mock_anthropic, mock_client
+def _make_script_llm_text(script_data=None):
+    """Create a mock invoke_claude text response for script generation."""
+    if script_data is not None:
+        return json.dumps(script_data)
+    return json.dumps(_SAMPLE_SCRIPT_JSON)
 
 
 def _seed_minimal_narrative(db):
@@ -568,21 +553,23 @@ def _seed_minimal_narrative(db):
 
 
 class TestGenerateScriptLLM:
-    """Tests for generate_script LLM interaction."""
+    """Tests for generate_script LLM interaction via invoke_claude."""
 
     def test_uses_planning_model(self, catalog_db):
-        """generate_script calls Anthropic API with planning_model."""
+        """generate_script calls invoke_claude with planning_model."""
         from autopilot.config import LLMConfig
         from autopilot.plan.script import generate_script
 
         config = LLMConfig()
         _seed_minimal_narrative(catalog_db)
 
-        mock_anthropic, mock_client = _setup_mock_script_anthropic()
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.plan.script.invoke_claude",
+            return_value=_make_script_llm_text(),
+        ) as mock_invoke:
             generate_script("n1", catalog_db, config)
 
-        call_kwargs = mock_client.messages.create.call_args[1]
+        call_kwargs = mock_invoke.call_args[1]
         assert call_kwargs["model"] == config.planning_model
 
     def test_uses_script_writer_prompt(self, catalog_db):
@@ -593,11 +580,13 @@ class TestGenerateScriptLLM:
         config = LLMConfig()
         _seed_minimal_narrative(catalog_db)
 
-        mock_anthropic, mock_client = _setup_mock_script_anthropic()
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.plan.script.invoke_claude",
+            return_value=_make_script_llm_text(),
+        ) as mock_invoke:
             generate_script("n1", catalog_db, config)
 
-        call_kwargs = mock_client.messages.create.call_args[1]
+        call_kwargs = mock_invoke.call_args[1]
         # script_writer.md starts with "# Professional Video Script Writer"
         assert "Script Writer" in call_kwargs["system"]
 
@@ -609,12 +598,14 @@ class TestGenerateScriptLLM:
         config = LLMConfig()
         _seed_minimal_narrative(catalog_db)
 
-        mock_anthropic, mock_client = _setup_mock_script_anthropic()
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.plan.script.invoke_claude",
+            return_value=_make_script_llm_text(),
+        ) as mock_invoke:
             generate_script("n1", catalog_db, config)
 
-        call_kwargs = mock_client.messages.create.call_args[1]
-        user_content = call_kwargs["messages"][0]["content"]
+        call_kwargs = mock_invoke.call_args[1]
+        user_content = call_kwargs["prompt"]
         # Should contain storyboard content
         assert "L-Storyboard" in user_content or "Test Activity" in user_content
         # Should contain narrative description
@@ -645,8 +636,7 @@ class TestGenerateScriptParsing:
         config = LLMConfig()
         _seed_minimal_narrative(catalog_db)
 
-        mock_anthropic, _ = _setup_mock_script_anthropic()
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch("autopilot.plan.script.invoke_claude", return_value=_make_script_llm_text()):
             result = generate_script("n1", catalog_db, config)
 
         assert isinstance(result, dict)
@@ -665,12 +655,8 @@ class TestGenerateScriptParsing:
         _seed_minimal_narrative(catalog_db)
 
         wrapped = f"Here's the script:\n```json\n{json.dumps(_SAMPLE_SCRIPT_JSON)}\n```"
-        mock_anthropic, _ = _setup_mock_script_anthropic()
-        # Override the response text
-        mock_client = mock_anthropic.Anthropic.return_value
-        mock_client.messages.create.return_value.content[0].text = wrapped
 
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch("autopilot.plan.script.invoke_claude", return_value=wrapped):
             result = generate_script("n1", catalog_db, config)
 
         assert isinstance(result, dict)
@@ -684,26 +670,20 @@ class TestGenerateScriptParsing:
         config = LLMConfig()
         _seed_minimal_narrative(catalog_db)
 
-        mock_anthropic, mock_client = _setup_mock_script_anthropic()
-        mock_client.messages.create.return_value.content[0].text = "NOT VALID JSON {"
-
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch("autopilot.plan.script.invoke_claude", return_value="NOT VALID JSON {"):
             with pytest.raises(ScriptError, match="parse"):
                 generate_script("n1", catalog_db, config)
 
     def test_empty_llm_response_raises_script_error(self, catalog_db):
-        """Empty LLM response (no content) raises ScriptError."""
+        """Empty/failed LLM response raises ScriptError."""
         from autopilot.config import LLMConfig
         from autopilot.plan.script import ScriptError, generate_script
 
         config = LLMConfig()
         _seed_minimal_narrative(catalog_db)
 
-        mock_anthropic, mock_client = _setup_mock_script_anthropic()
-        mock_client.messages.create.return_value.content = []
-
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
-            with pytest.raises(ScriptError, match="[Ee]mpty"):
+        with patch("autopilot.plan.script.invoke_claude", side_effect=LlmError("Empty response")):
+            with pytest.raises(ScriptError, match="LLM.*failed"):
                 generate_script("n1", catalog_db, config)
 
 
@@ -721,8 +701,7 @@ class TestGenerateScriptPersistence:
         config = LLMConfig()
         _seed_minimal_narrative(catalog_db)
 
-        mock_anthropic, _ = _setup_mock_script_anthropic()
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch("autopilot.plan.script.invoke_claude", return_value=_make_script_llm_text()):
             generate_script("n1", catalog_db, config)
 
         stored = catalog_db.get_narrative_script("n1")
@@ -739,8 +718,7 @@ class TestGenerateScriptPersistence:
         config = LLMConfig()
         _seed_minimal_narrative(catalog_db)
 
-        mock_anthropic, _ = _setup_mock_script_anthropic()
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch("autopilot.plan.script.invoke_claude", return_value=_make_script_llm_text()):
             generate_script("n1", catalog_db, config)
 
         narrative = catalog_db.get_narrative("n1")
@@ -748,22 +726,22 @@ class TestGenerateScriptPersistence:
         assert narrative["status"] == "scripted"
 
     def test_api_error_wrapped_as_script_error(self, catalog_db):
-        """API errors are wrapped as ScriptError with chained cause."""
+        """LLM errors are wrapped as ScriptError with chained cause."""
         from autopilot.config import LLMConfig
         from autopilot.plan.script import ScriptError, generate_script
 
         config = LLMConfig()
         _seed_minimal_narrative(catalog_db)
 
-        mock_anthropic, mock_client = _setup_mock_script_anthropic()
-        mock_client.messages.create.side_effect = RuntimeError("Connection timeout")
-
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
-            with pytest.raises(ScriptError, match="API.*failed") as exc_info:
+        with patch(
+            "autopilot.plan.script.invoke_claude",
+            side_effect=LlmError("Connection timeout"),
+        ):
+            with pytest.raises(ScriptError, match="LLM.*failed") as exc_info:
                 generate_script("n1", catalog_db, config)
 
         assert exc_info.value.__cause__ is not None
-        assert isinstance(exc_info.value.__cause__, RuntimeError)
+        assert isinstance(exc_info.value.__cause__, LlmError)
 
 
 # -- Step 15: Integration test -------------------------------------------------
@@ -857,8 +835,10 @@ class TestIntegration:
             ],
         }
 
-        mock_anthropic, mock_client = _setup_mock_script_anthropic(script_response)
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.plan.script.invoke_claude",
+            return_value=_make_script_llm_text(script_response),
+        ) as mock_invoke:
             result = generate_script("n1", catalog_db, config)
 
         # --- Verify return value ---
@@ -881,11 +861,11 @@ class TestIntegration:
         assert narrative["status"] == "scripted"
 
         # --- Verify LLM was called correctly ---
-        mock_client.messages.create.assert_called_once()
-        call_kwargs = mock_client.messages.create.call_args[1]
+        mock_invoke.assert_called_once()
+        call_kwargs = mock_invoke.call_args[1]
         assert call_kwargs["model"] == config.planning_model
-        # Storyboard content was in the user message
-        assert "Temple visit" in call_kwargs["messages"][0]["content"]
+        # Storyboard content was in the prompt
+        assert "Temple visit" in call_kwargs["prompt"]
         # System prompt was script_writer.md
         assert "Script Writer" in call_kwargs["system"]
 

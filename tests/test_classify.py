@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import inspect
 import json
-import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
+
+from autopilot.llm import LlmError
 
 # -- Step 7: Public API and summary assembly tests ----------------------------
 
@@ -311,11 +312,11 @@ class TestSummaryAssembly:
 # -- Step 9: LLM labeling tests -----------------------------------------------
 
 
-def _make_llm_response(
+def _make_llm_text(
     label="Morning hike", description="A scenic hike.", split_recommended=False, split_reason=None
 ):
-    """Create a mock Anthropic API response."""
-    result_json = json.dumps(
+    """Create a mock invoke_claude text response."""
+    return json.dumps(
         {
             "label": label,
             "description": description,
@@ -323,35 +324,29 @@ def _make_llm_response(
             "split_reason": split_reason,
         }
     )
-    mock_response = MagicMock()
-    mock_content = MagicMock()
-    mock_content.text = result_json
-    mock_response.content = [mock_content]
-    return mock_response
 
 
 class TestLLMLabeling:
-    """Tests for _call_llm() helper."""
+    """Tests for _call_llm() helper using invoke_claude."""
 
-    def test_calls_anthropic_api(self):
-        """_call_llm calls Anthropic API with correct model."""
+    def test_calls_invoke_claude(self):
+        """_call_llm calls invoke_claude with correct model and params."""
         from autopilot.config import LLMConfig
         from autopilot.organize.classify import _call_llm
 
         config = LLMConfig()
         summary = {"time_range": "2025-01-01T10:00:00 to 2025-01-01T11:00:00"}
 
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _make_llm_response()
-
-        mock_anthropic = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.organize.classify.invoke_claude",
+            return_value=_make_llm_text(),
+        ) as mock_invoke:
             _call_llm(summary, config)
 
-        mock_client.messages.create.assert_called_once()
-        call_kwargs = mock_client.messages.create.call_args[1]
+        mock_invoke.assert_called_once()
+        call_kwargs = mock_invoke.call_args[1]
         assert call_kwargs["model"] == config.utility_model
+        assert call_kwargs["max_tokens"] == 1024
 
     def test_prompt_includes_activity_label_content(self):
         """System prompt contains activity_label.md content."""
@@ -361,34 +356,30 @@ class TestLLMLabeling:
         config = LLMConfig()
         summary = {"time_range": "test"}
 
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _make_llm_response()
-
-        mock_anthropic = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.organize.classify.invoke_claude",
+            return_value=_make_llm_text(),
+        ) as mock_invoke:
             _call_llm(summary, config)
 
-        call_kwargs = mock_client.messages.create.call_args[1]
+        call_kwargs = mock_invoke.call_args[1]
         assert "Activity Classification Specialist" in call_kwargs["system"]
 
     def test_parses_json_response(self):
-        """Correctly parses JSON from response text."""
+        """Correctly parses JSON from invoke_claude text response."""
         from autopilot.config import LLMConfig
         from autopilot.organize.classify import _call_llm
 
         config = LLMConfig()
         summary = {"time_range": "test"}
 
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _make_llm_response(
-            label="Sunset kayaking",
-            description="A beautiful evening on the river.",
-        )
-
-        mock_anthropic = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.organize.classify.invoke_claude",
+            return_value=_make_llm_text(
+                label="Sunset kayaking",
+                description="A beautiful evening on the river.",
+            ),
+        ):
             result = _call_llm(summary, config)
 
         assert result["label"] == "Sunset kayaking"
@@ -402,38 +393,28 @@ class TestLLMLabeling:
         config = LLMConfig()
         summary = {"time_range": "test"}
 
-        mock_response = MagicMock()
-        mock_content = MagicMock()
-        mock_content.text = (
+        code_block_response = (
             '```json\n{"label": "Beach day", "description": "Fun at the beach.",'
             ' "split_recommended": false, "split_reason": null}\n```'
         )
-        mock_response.content = [mock_content]
 
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = mock_response
-
-        mock_anthropic = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch("autopilot.organize.classify.invoke_claude", return_value=code_block_response):
             result = _call_llm(summary, config)
 
         assert result["label"] == "Beach day"
 
-    def test_api_error_raises_classify_error(self):
-        """API errors wrapped in ClassifyError."""
+    def test_llm_error_raises_classify_error(self):
+        """LlmError wrapped in ClassifyError."""
         from autopilot.config import LLMConfig
         from autopilot.organize.classify import ClassifyError, _call_llm
 
         config = LLMConfig()
         summary = {"time_range": "test"}
 
-        mock_client = MagicMock()
-        mock_client.messages.create.side_effect = RuntimeError("API timeout")
-
-        mock_anthropic = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.organize.classify.invoke_claude",
+            side_effect=LlmError("CLI timeout"),
+        ):
             with pytest.raises(ClassifyError, match="API.*failed"):
                 _call_llm(summary, config)
 
@@ -445,17 +426,10 @@ class TestLLMLabeling:
         config = LLMConfig()
         summary = {"time_range": "test"}
 
-        mock_response = MagicMock()
-        mock_content = MagicMock()
-        mock_content.text = "This is not valid JSON at all"
-        mock_response.content = [mock_content]
-
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = mock_response
-
-        mock_anthropic = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.organize.classify.invoke_claude",
+            return_value="This is not valid JSON at all",
+        ):
             with pytest.raises(ClassifyError, match="parse"):
                 _call_llm(summary, config)
 
@@ -467,17 +441,10 @@ class TestLLMLabeling:
         config = LLMConfig()
         summary = {"time_range": "test"}
 
-        mock_response = MagicMock()
-        mock_content = MagicMock()
-        mock_content.text = json.dumps({"only_label": "test"})
-        mock_response.content = [mock_content]
-
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = mock_response
-
-        mock_anthropic = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.organize.classify.invoke_claude",
+            return_value=json.dumps({"only_label": "test"}),
+        ):
             with pytest.raises(ClassifyError, match="missing required"):
                 _call_llm(summary, config)
 
@@ -489,47 +456,30 @@ class TestLLMLabeling:
         config = LLMConfig()
         summary = {"time_range": "test"}
 
-        mock_anthropic = MagicMock()
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
-            with patch(
-                "autopilot.organize.classify._load_prompt",
-                side_effect=FileNotFoundError("activity_label.md not found"),
-            ):
-                with pytest.raises(ClassifyError, match="[Pp]rompt"):
-                    _call_llm(summary, config)
+        with patch(
+            "autopilot.organize.classify._load_prompt",
+            side_effect=FileNotFoundError("activity_label.md not found"),
+        ):
+            with pytest.raises(ClassifyError, match="[Pp]rompt"):
+                _call_llm(summary, config)
 
-    def test_empty_content_raises_classify_error(self):
-        """Empty response.content list raises ClassifyError, not IndexError."""
+    def test_llm_error_empty_response_raises_classify_error(self):
+        """LlmError from empty response raises ClassifyError."""
         from autopilot.config import LLMConfig
         from autopilot.organize.classify import ClassifyError, _call_llm
 
         config = LLMConfig()
         summary = {"time_range": "test"}
 
-        mock_response = MagicMock()
-        mock_response.content = []  # empty content list
-
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = mock_response
-
-        mock_anthropic = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
-            with pytest.raises(ClassifyError, match="[Ee]mpty response"):
+        with patch(
+            "autopilot.organize.classify.invoke_claude",
+            side_effect=LlmError("Empty or missing result in CLI output"),
+        ):
+            with pytest.raises(ClassifyError, match="API.*failed"):
                 _call_llm(summary, config)
 
 
 # -- Step 11: label_activities end-to-end tests --------------------------------
-
-
-def _setup_mock_anthropic(label="Morning hike", description="A scenic morning hike."):
-    """Create a mock anthropic module and client for label_activities tests."""
-    mock_response = _make_llm_response(label=label, description=description)
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = mock_response
-    mock_anthropic = MagicMock()
-    mock_anthropic.Anthropic.return_value = mock_client
-    return mock_anthropic, mock_client
 
 
 class TestLabelActivities:
@@ -551,8 +501,10 @@ class TestLabelActivities:
             clip_ids_json=json.dumps(["v1"]),
         )
 
-        mock_anthropic, mock_client = _setup_mock_anthropic()
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.organize.classify.invoke_claude",
+            return_value=_make_llm_text(description="A scenic morning hike."),
+        ):
             label_activities(catalog_db, config)
 
         # Check DB was updated
@@ -578,12 +530,11 @@ class TestLabelActivities:
             clip_ids_json=json.dumps(["v1"]),
         )
 
-        mock_anthropic, mock_client = _setup_mock_anthropic()
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch("autopilot.organize.classify.invoke_claude") as mock_invoke:
             label_activities(catalog_db, config)
 
         # LLM should NOT have been called
-        mock_client.messages.create.assert_not_called()
+        mock_invoke.assert_not_called()
 
         # Label should remain unchanged
         clusters = catalog_db.get_activity_clusters()
@@ -599,7 +550,7 @@ class TestLabelActivities:
         label_activities(catalog_db, config)  # Should not raise
 
     def test_labels_multiple_clusters(self, catalog_db):
-        """Labels multiple clusters, calling LLM for each."""
+        """Labels multiple clusters, calling invoke_claude for each."""
         from autopilot.config import LLMConfig
         from autopilot.organize.classify import label_activities
 
@@ -620,14 +571,16 @@ class TestLabelActivities:
             clip_ids_json=json.dumps(["v2"]),
         )
 
-        mock_anthropic, mock_client = _setup_mock_anthropic()
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.organize.classify.invoke_claude",
+            return_value=_make_llm_text(),
+        ) as mock_invoke:
             label_activities(catalog_db, config)
 
         # Both should be labeled
         clusters = catalog_db.get_activity_clusters()
         assert all(c["label"] == "Morning hike" for c in clusters)
-        assert mock_client.messages.create.call_count == 2
+        assert mock_invoke.call_count == 2
 
     def test_split_recommended_logs_warning(self, catalog_db, caplog):
         """split_recommended=true triggers WARNING log with cluster_id and split_reason."""
@@ -646,19 +599,15 @@ class TestLabelActivities:
             clip_ids_json=json.dumps(["v1"]),
         )
 
-        mock_response = _make_llm_response(
+        split_response = _make_llm_text(
             label="Mixed activity",
             description="A mix of hiking and dining.",
             split_recommended=True,
             split_reason="Topic shift at 10:15 from hiking to restaurant",
         )
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = mock_response
-        mock_anthropic = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
 
         with caplog.at_level(logging.WARNING, logger="autopilot.organize.classify"):
-            with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            with patch("autopilot.organize.classify.invoke_claude", return_value=split_response):
                 label_activities(catalog_db, config)
 
         # Should have a WARNING log mentioning the cluster_id and split reason
@@ -753,12 +702,15 @@ class TestIntegration:
         clusters = cluster_activities(catalog_db)
         assert len(clusters) == 2
 
-        # Phase 2: Label with mocked LLM
-        mock_anthropic, mock_client = _setup_mock_anthropic(
+        # Phase 2: Label with mocked invoke_claude
+        temple_response = _make_llm_text(
             label="Temple visit",
             description="Exploring a beautiful temple.",
         )
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.organize.classify.invoke_claude",
+            return_value=temple_response,
+        ) as mock_invoke:
             label_activities(catalog_db, config)
 
         # Verify all clusters labeled
@@ -768,5 +720,5 @@ class TestIntegration:
             assert c["label"] == "Temple visit"
             assert c["description"] is not None
 
-        # Verify LLM called twice (once per cluster)
-        assert mock_client.messages.create.call_count == 2
+        # Verify invoke_claude called twice (once per cluster)
+        assert mock_invoke.call_count == 2

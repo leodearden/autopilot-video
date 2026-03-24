@@ -82,6 +82,7 @@ class LLMConfig:
     provider: str = "anthropic"
     planning_model: str = "claude-opus-4-20250514"
     utility_model: str = "claude-sonnet-4-20250514"
+    use_api: bool = False
 
 
 @dataclass
@@ -250,6 +251,8 @@ def _build_llm(data: dict[str, Any]) -> LLMConfig:
         result.planning_model = str(data["planning_model"])
     if "utility_model" in data:
         result.utility_model = str(data["utility_model"])
+    if "use_api" in data:
+        result.use_api = bool(data["use_api"])
     return result
 
 

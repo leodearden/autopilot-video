@@ -25,11 +25,18 @@ logger = logging.getLogger(__name__)
     default="config.yaml",
     help="Path to config YAML.",
 )
+@click.option(
+    "--api-fallback",
+    is_flag=True,
+    default=False,
+    help="Use Anthropic SDK instead of Claude CLI for LLM calls.",
+)
 @click.pass_context
-def main(ctx: click.Context, config: str) -> None:
+def main(ctx: click.Context, config: str, api_fallback: bool) -> None:
     """Autopilot Video — automated video editing pipeline."""
     ctx.ensure_object(dict)
     ctx.obj["config_path"] = config
+    ctx.obj["api_fallback"] = api_fallback
 
 
 def _common_options(f: Any) -> Any:
@@ -75,6 +82,8 @@ def _setup_context(
         config.input_dir = Path(input_dir)
     if output_dir is not None:
         config.output_dir = Path(output_dir)
+    if ctx.obj.get("api_fallback"):
+        config.llm.use_api = True
 
     if verbose:
         logging.basicConfig(level=logging.DEBUG)

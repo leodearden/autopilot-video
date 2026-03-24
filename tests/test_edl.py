@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import inspect
 import json
-import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
+
+from autopilot.llm import LlmError
 
 # -- Step 13: Public API surface tests ----------------------------------------
 
@@ -52,44 +53,54 @@ class TestEdlPublicAPI:
 # -- Helpers for generate_edl tests -------------------------------------------
 
 
-def _make_tool_use_block(name: str, input_data: dict) -> MagicMock:
-    """Create a mock tool_use content block."""
-    block = MagicMock()
-    block.type = "tool_use"
-    block.name = name
-    block.input = input_data
-    return block
+def _make_edl_dict(overrides=None):
+    """Create a valid EDL dict as returned by invoke_claude structured output."""
+    edl = {
+        "clips": [
+            {
+                "clip_id": "v1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            },
+        ],
+        "transitions": [],
+        "crop_modes": [],
+        "titles": [],
+        "audio_settings": [],
+        "music": [],
+        "voiceovers": [],
+        "broll_requests": [],
+    }
+    if overrides:
+        edl.update(overrides)
+    return edl
 
 
-def _make_tool_use_response(tool_calls: list[tuple[str, dict]]) -> MagicMock:
-    """Create a mock Anthropic response with tool_use content blocks."""
-    blocks = [_make_tool_use_block(name, data) for name, data in tool_calls]
-    mock_response = MagicMock()
-    mock_response.content = blocks
-    mock_response.stop_reason = "end_turn"
-    return mock_response
-
-
-def _setup_mock_edl_anthropic(tool_calls: list[tuple[str, dict]] | None = None):
-    """Create mock anthropic module and client for EDL tests."""
-    if tool_calls is None:
-        tool_calls = [
-            (
-                "select_clip",
-                {
-                    "clip_id": "v1",
-                    "in_timecode": "00:00:00.000",
-                    "out_timecode": "00:00:10.000",
-                    "track": 1,
-                },
-            ),
-        ]
-    mock_response = _make_tool_use_response(tool_calls)
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = mock_response
-    mock_anthropic = MagicMock()
-    mock_anthropic.Anthropic.return_value = mock_client
-    return mock_anthropic, mock_client
+# EDL with overlapping clips for validation failure tests
+_BAD_EDL_DICT = {
+    "clips": [
+        {
+            "clip_id": "v1",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:10.000",
+            "track": 1,
+        },
+        {
+            "clip_id": "v1",
+            "in_timecode": "00:00:05.000",
+            "out_timecode": "00:00:15.000",
+            "track": 1,
+        },
+    ],
+    "transitions": [],
+    "crop_modes": [],
+    "titles": [],
+    "audio_settings": [],
+    "music": [],
+    "voiceovers": [],
+    "broll_requests": [],
+}
 
 
 def _seed_edl_narrative(db):
@@ -136,25 +147,26 @@ def _seed_edl_narrative(db):
     )
 
 
-# -- Step 15: LLM interaction basic tests ------------------------------------
+# -- Step 15: LLM interaction basic tests (via invoke_claude) -----------------
 
 
 class TestGenerateEdlLLM:
-    """Tests for generate_edl LLM interaction."""
+    """Tests for generate_edl LLM interaction via invoke_claude structured output."""
 
     def test_uses_planning_model(self, catalog_db):
-        """generate_edl calls Anthropic API with config.planning_model."""
+        """generate_edl calls invoke_claude with config.planning_model."""
         from autopilot.config import LLMConfig
         from autopilot.plan.edl import generate_edl
 
         config = LLMConfig()
         _seed_edl_narrative(catalog_db)
 
-        mock_anthropic, mock_client = _setup_mock_edl_anthropic()
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.plan.edl.invoke_claude", return_value=_make_edl_dict(),
+        ) as mock_invoke:
             generate_edl("n1", catalog_db, config)
 
-        call_kwargs = mock_client.messages.create.call_args[1]
+        call_kwargs = mock_invoke.call_args[1]
         assert call_kwargs["model"] == config.planning_model
 
     def test_passes_edit_planner_prompt(self, catalog_db):
@@ -165,46 +177,59 @@ class TestGenerateEdlLLM:
         config = LLMConfig()
         _seed_edl_narrative(catalog_db)
 
-        mock_anthropic, mock_client = _setup_mock_edl_anthropic()
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.plan.edl.invoke_claude", return_value=_make_edl_dict(),
+        ) as mock_invoke:
             generate_edl("n1", catalog_db, config)
 
-        call_kwargs = mock_client.messages.create.call_args[1]
+        call_kwargs = mock_invoke.call_args[1]
         assert "EDL" in call_kwargs["system"] or "edit" in call_kwargs["system"].lower()
 
-    def test_passes_tool_definitions(self, catalog_db):
-        """Tool definitions are passed in the tools parameter."""
+    def test_passes_json_schema(self, catalog_db):
+        """invoke_claude is called with json_schema parameter for structured output."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.edl import EDL_SCHEMA, generate_edl
+
+        config = LLMConfig()
+        _seed_edl_narrative(catalog_db)
+
+        with patch(
+            "autopilot.plan.edl.invoke_claude", return_value=_make_edl_dict(),
+        ) as mock_invoke:
+            generate_edl("n1", catalog_db, config)
+
+        call_kwargs = mock_invoke.call_args[1]
+        assert call_kwargs["json_schema"] == EDL_SCHEMA
+
+    def test_edl_schema_has_all_8_arrays(self):
+        """EDL_SCHEMA defines all 8 EDL array fields."""
+        from autopilot.plan.edl import EDL_SCHEMA
+
+        assert isinstance(EDL_SCHEMA, dict)
+        props = EDL_SCHEMA.get("properties", {})
+        expected_keys = {
+            "clips", "transitions", "crop_modes", "titles",
+            "audio_settings", "music", "voiceovers", "broll_requests",
+        }
+        assert expected_keys.issubset(set(props.keys()))
+
+    def test_prompt_includes_script_and_storyboard(self, catalog_db):
+        """Prompt contains script and storyboard data."""
         from autopilot.config import LLMConfig
         from autopilot.plan.edl import generate_edl
 
         config = LLMConfig()
         _seed_edl_narrative(catalog_db)
 
-        mock_anthropic, mock_client = _setup_mock_edl_anthropic()
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.plan.edl.invoke_claude", return_value=_make_edl_dict(),
+        ) as mock_invoke:
             generate_edl("n1", catalog_db, config)
 
-        call_kwargs = mock_client.messages.create.call_args[1]
-        assert "tools" in call_kwargs
-        tool_names = [t["name"] for t in call_kwargs["tools"]]
-        assert "select_clip" in tool_names
-
-    def test_user_message_includes_script_and_storyboard(self, catalog_db):
-        """User message contains script and storyboard data."""
-        from autopilot.config import LLMConfig
-        from autopilot.plan.edl import generate_edl
-
-        config = LLMConfig()
-        _seed_edl_narrative(catalog_db)
-
-        mock_anthropic, mock_client = _setup_mock_edl_anthropic()
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
-            generate_edl("n1", catalog_db, config)
-
-        call_kwargs = mock_client.messages.create.call_args[1]
-        user_content = call_kwargs["messages"][0]["content"]
+        call_kwargs = mock_invoke.call_args[1]
+        prompt = call_kwargs["prompt"]
         # Should contain script data
-        assert "scene" in user_content.lower() or "opening" in user_content.lower()
+        assert "scene" in prompt.lower() or "opening" in prompt.lower()
 
     def test_narrative_not_found_raises_edl_error(self, catalog_db):
         """generate_edl raises EdlError for missing narrative."""
@@ -217,181 +242,92 @@ class TestGenerateEdlLLM:
             generate_edl("nonexistent", catalog_db, config)
 
 
-# -- Step 17: Tool-use response collection tests ------------------------------
+# -- Step 17: Structured output EDL dict tests --------------------------------
 
 
-class TestToolUseCollection:
-    """Tests for tool_use content block collection into EDL structure."""
+class TestStructuredOutput:
+    """Tests for EDL dict returned directly from invoke_claude structured output."""
 
-    def test_select_clip_collected_into_clips(self, catalog_db):
-        """select_clip tool calls are collected into clips array."""
+    def test_clips_from_structured_output(self, catalog_db):
+        """Clips array from structured output is used directly in EDL."""
         from autopilot.config import LLMConfig
         from autopilot.plan.edl import generate_edl
 
         config = LLMConfig()
         _seed_edl_narrative(catalog_db)
 
-        tool_calls = [
-            (
-                "select_clip",
-                {
-                    "clip_id": "v1",
-                    "in_timecode": "00:00:00.000",
-                    "out_timecode": "00:00:10.000",
-                    "track": 1,
-                },
-            ),
-        ]
-        mock_anthropic, _ = _setup_mock_edl_anthropic(tool_calls)
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        edl_dict = _make_edl_dict()
+        with patch("autopilot.plan.edl.invoke_claude", return_value=edl_dict):
             edl = generate_edl("n1", catalog_db, config)
 
         assert len(edl["clips"]) == 1
         assert edl["clips"][0]["clip_id"] == "v1"
 
-    def test_add_transition_collected_into_transitions(self, catalog_db):
-        """add_transition tool calls are collected into transitions array."""
+    def test_transitions_from_structured_output(self, catalog_db):
+        """Transitions from structured output are used directly."""
         from autopilot.config import LLMConfig
         from autopilot.plan.edl import generate_edl
 
         config = LLMConfig()
         _seed_edl_narrative(catalog_db)
 
-        tool_calls = [
-            (
-                "select_clip",
-                {
-                    "clip_id": "v1",
-                    "in_timecode": "00:00:00.000",
-                    "out_timecode": "00:00:10.000",
-                    "track": 1,
-                },
-            ),
-            (
-                "add_transition",
-                {
-                    "type": "crossfade",
-                    "duration": 1.0,
-                    "position": "00:00:10.000",
-                },
-            ),
-        ]
-        mock_anthropic, _ = _setup_mock_edl_anthropic(tool_calls)
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        edl_dict = _make_edl_dict({
+            "transitions": [{"type": "crossfade", "duration": 1.0, "position": "00:00:10.000"}],
+        })
+        with patch("autopilot.plan.edl.invoke_claude", return_value=edl_dict):
             edl = generate_edl("n1", catalog_db, config)
 
         assert len(edl["transitions"]) == 1
         assert edl["transitions"][0]["type"] == "crossfade"
 
-    def test_set_audio_collected_into_audio_settings(self, catalog_db):
-        """set_audio tool calls are collected into audio_settings array."""
+    def test_audio_settings_from_structured_output(self, catalog_db):
+        """Audio settings from structured output are used directly."""
         from autopilot.config import LLMConfig
         from autopilot.plan.edl import generate_edl
 
         config = LLMConfig()
         _seed_edl_narrative(catalog_db)
 
-        tool_calls = [
-            (
-                "select_clip",
-                {
-                    "clip_id": "v1",
-                    "in_timecode": "00:00:00.000",
-                    "out_timecode": "00:00:10.000",
-                    "track": 1,
-                },
-            ),
-            (
-                "set_audio",
-                {
-                    "clip_id": "v1",
-                    "level_db": -6.0,
-                },
-            ),
-        ]
-        mock_anthropic, _ = _setup_mock_edl_anthropic(tool_calls)
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        edl_dict = _make_edl_dict({
+            "audio_settings": [{"clip_id": "v1", "level_db": -6.0}],
+        })
+        with patch("autopilot.plan.edl.invoke_claude", return_value=edl_dict):
             edl = generate_edl("n1", catalog_db, config)
 
         assert len(edl["audio_settings"]) == 1
         assert edl["audio_settings"][0]["level_db"] == -6.0
 
-    def test_all_8_tool_types_categorized(self, catalog_db):
-        """All 8 tool types are properly categorized in EDL dict."""
+    def test_all_8_edl_fields_from_structured_output(self, catalog_db):
+        """All 8 EDL fields are populated from structured output dict."""
         from autopilot.config import LLMConfig
         from autopilot.plan.edl import generate_edl
 
         config = LLMConfig()
         _seed_edl_narrative(catalog_db)
 
-        tool_calls = [
-            (
-                "select_clip",
+        full_edl = {
+            "clips": [
                 {
-                    "clip_id": "v1",
-                    "in_timecode": "00:00:00.000",
-                    "out_timecode": "00:00:10.000",
-                    "track": 1,
+                    "clip_id": "v1", "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000", "track": 1,
                 },
-            ),
-            (
-                "add_transition",
+            ],
+            "transitions": [{"type": "cut", "duration": 0, "position": "00:00:10.000"}],
+            "crop_modes": [{"clip_id": "v1", "mode": "center"}],
+            "titles": [
                 {
-                    "type": "cut",
-                    "duration": 0,
-                    "position": "00:00:10.000",
+                    "text": "Title", "style": "lower_third",
+                    "position": "00:00:02.000", "duration": 3.0,
                 },
-            ),
-            (
-                "set_crop_mode",
-                {
-                    "clip_id": "v1",
-                    "mode": "center",
-                },
-            ),
-            (
-                "add_title",
-                {
-                    "text": "Title",
-                    "style": "lower_third",
-                    "position": "00:00:02.000",
-                    "duration": 3.0,
-                },
-            ),
-            (
-                "set_audio",
-                {
-                    "clip_id": "v1",
-                    "level_db": -6.0,
-                },
-            ),
-            (
-                "add_music",
-                {
-                    "mood": "ambient",
-                    "duration": 10.0,
-                    "start_time": "00:00:00.000",
-                },
-            ),
-            (
-                "add_voiceover",
-                {
-                    "text": "Welcome",
-                    "start_time": "00:00:00.000",
-                    "duration": 5.0,
-                },
-            ),
-            (
-                "request_broll",
-                {
-                    "description": "Aerial shot",
-                    "duration": 3.0,
-                    "start_time": "00:00:05.000",
-                },
-            ),
-        ]
-        mock_anthropic, _ = _setup_mock_edl_anthropic(tool_calls)
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            ],
+            "audio_settings": [{"clip_id": "v1", "level_db": -6.0}],
+            "music": [{"mood": "ambient", "duration": 10.0, "start_time": "00:00:00.000"}],
+            "voiceovers": [{"text": "Welcome", "start_time": "00:00:00.000", "duration": 5.0}],
+            "broll_requests": [
+                {"description": "Aerial shot", "duration": 3.0, "start_time": "00:00:05.000"},
+            ],
+        }
+        with patch("autopilot.plan.edl.invoke_claude", return_value=full_edl):
             edl = generate_edl("n1", catalog_db, config)
 
         assert len(edl["clips"]) == 1
@@ -418,8 +354,7 @@ class TestEdlPersistence:
         config = LLMConfig()
         _seed_edl_narrative(catalog_db)
 
-        mock_anthropic, _ = _setup_mock_edl_anthropic()
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch("autopilot.plan.edl.invoke_claude", return_value=_make_edl_dict()):
             generate_edl("n1", catalog_db, config)
 
         stored = catalog_db.get_edit_plan("n1")
@@ -436,8 +371,7 @@ class TestEdlPersistence:
         config = LLMConfig()
         _seed_edl_narrative(catalog_db)
 
-        mock_anthropic, _ = _setup_mock_edl_anthropic()
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch("autopilot.plan.edl.invoke_claude", return_value=_make_edl_dict()):
             generate_edl("n1", catalog_db, config)
 
         narrative = catalog_db.get_narrative("n1")
@@ -452,8 +386,7 @@ class TestEdlPersistence:
         config = LLMConfig()
         _seed_edl_narrative(catalog_db)
 
-        mock_anthropic, _ = _setup_mock_edl_anthropic()
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch("autopilot.plan.edl.invoke_claude", return_value=_make_edl_dict()):
             generate_edl("n1", catalog_db, config)
 
         stored = catalog_db.get_edit_plan("n1")
@@ -467,125 +400,59 @@ class TestEdlPersistence:
 
 
 class TestEdlRetryLoop:
-    """Tests for generate_edl validation retry loop."""
+    """Tests for generate_edl validation retry loop with invoke_claude."""
 
     def test_validation_passes_first_try_no_retry(self, catalog_db):
-        """Validation passes on first try — LLM called only once."""
+        """Validation passes on first try — invoke_claude called only once."""
         from autopilot.config import LLMConfig
         from autopilot.plan.edl import generate_edl
 
         config = LLMConfig()
         _seed_edl_narrative(catalog_db)
 
-        mock_anthropic, mock_client = _setup_mock_edl_anthropic()
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.plan.edl.invoke_claude", return_value=_make_edl_dict(),
+        ) as mock_invoke:
             generate_edl("n1", catalog_db, config)
 
-        assert mock_client.messages.create.call_count == 1
+        assert mock_invoke.call_count == 1
 
     def test_validation_fails_then_passes_on_retry(self, catalog_db):
-        """Validation fails then passes on retry — LLM called twice."""
+        """Validation fails then passes — invoke_claude called twice."""
         from autopilot.config import LLMConfig
         from autopilot.plan.edl import generate_edl
 
         config = LLMConfig()
         _seed_edl_narrative(catalog_db)
 
-        # First response: overlapping clips (invalid)
-        bad_response = _make_tool_use_response(
-            [
-                (
-                    "select_clip",
-                    {
-                        "clip_id": "v1",
-                        "in_timecode": "00:00:00.000",
-                        "out_timecode": "00:00:10.000",
-                        "track": 1,
-                    },
-                ),
-                (
-                    "select_clip",
-                    {
-                        "clip_id": "v1",
-                        "in_timecode": "00:00:05.000",
-                        "out_timecode": "00:00:15.000",
-                        "track": 1,
-                    },
-                ),
-            ]
-        )
-        # Second response: valid (non-overlapping)
-        good_response = _make_tool_use_response(
-            [
-                (
-                    "select_clip",
-                    {
-                        "clip_id": "v1",
-                        "in_timecode": "00:00:00.000",
-                        "out_timecode": "00:00:10.000",
-                        "track": 1,
-                    },
-                ),
-            ]
-        )
-
-        mock_client = MagicMock()
-        mock_client.messages.create.side_effect = [bad_response, good_response]
-        mock_anthropic = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
-
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        # First call: bad EDL (overlapping clips), second: good EDL
+        with patch(
+            "autopilot.plan.edl.invoke_claude",
+            side_effect=[_BAD_EDL_DICT, _make_edl_dict()],
+        ) as mock_invoke:
             edl = generate_edl("n1", catalog_db, config)
 
-        assert mock_client.messages.create.call_count == 2
+        assert mock_invoke.call_count == 2
         assert len(edl["clips"]) == 1  # good response
 
-    def test_validation_fails_3_times_raises_edl_error(self, catalog_db):
-        """Validation fails 3 times — EdlError raised with validation errors."""
+    def test_validation_fails_max_retries_raises_edl_error(self, catalog_db):
+        """Validation fails after max retries — EdlError raised."""
         from autopilot.config import LLMConfig
         from autopilot.plan.edl import EdlError, generate_edl
 
         config = LLMConfig()
         _seed_edl_narrative(catalog_db)
 
-        # All responses: overlapping clips (invalid)
-        bad_response = _make_tool_use_response(
-            [
-                (
-                    "select_clip",
-                    {
-                        "clip_id": "v1",
-                        "in_timecode": "00:00:00.000",
-                        "out_timecode": "00:00:10.000",
-                        "track": 1,
-                    },
-                ),
-                (
-                    "select_clip",
-                    {
-                        "clip_id": "v1",
-                        "in_timecode": "00:00:05.000",
-                        "out_timecode": "00:00:15.000",
-                        "track": 1,
-                    },
-                ),
-            ]
-        )
-
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = bad_response
-        mock_anthropic = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
-
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        # All calls return bad EDL
+        with patch("autopilot.plan.edl.invoke_claude", return_value=_BAD_EDL_DICT) as mock_invoke:
             with pytest.raises(EdlError, match="[Vv]alidation"):
                 generate_edl("n1", catalog_db, config)
 
         # Initial + 3 retries = 4 calls max
-        assert mock_client.messages.create.call_count <= 4
+        assert mock_invoke.call_count <= 4
 
-    def test_retry_message_includes_validation_errors(self, catalog_db):
-        """Retry message includes previous validation errors for context."""
+    def test_retry_prompt_includes_validation_errors(self, catalog_db):
+        """On retry, the prompt includes previous validation errors."""
         from autopilot.config import LLMConfig
         from autopilot.plan.edl import generate_edl
 
@@ -593,65 +460,35 @@ class TestEdlRetryLoop:
         _seed_edl_narrative(catalog_db)
 
         # First: bad, second: good
-        bad_response = _make_tool_use_response(
-            [
-                (
-                    "select_clip",
-                    {
-                        "clip_id": "v1",
-                        "in_timecode": "00:00:00.000",
-                        "out_timecode": "00:00:10.000",
-                        "track": 1,
-                    },
-                ),
-                (
-                    "select_clip",
-                    {
-                        "clip_id": "v1",
-                        "in_timecode": "00:00:05.000",
-                        "out_timecode": "00:00:15.000",
-                        "track": 1,
-                    },
-                ),
-            ]
-        )
-        good_response = _make_tool_use_response(
-            [
-                (
-                    "select_clip",
-                    {
-                        "clip_id": "v1",
-                        "in_timecode": "00:00:00.000",
-                        "out_timecode": "00:00:10.000",
-                        "track": 1,
-                    },
-                ),
-            ]
-        )
-
-        mock_client = MagicMock()
-        mock_client.messages.create.side_effect = [bad_response, good_response]
-        mock_anthropic = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
-
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch(
+            "autopilot.plan.edl.invoke_claude",
+            side_effect=[_BAD_EDL_DICT, _make_edl_dict()],
+        ) as mock_invoke:
             generate_edl("n1", catalog_db, config)
 
-        # The second call's messages should include error feedback
-        second_call = mock_client.messages.create.call_args_list[1]
-        messages = second_call[1]["messages"]
-        # Should have more than just the initial user message
-        assert len(messages) >= 2
-        # Check that validation errors are mentioned in the feedback
-        feedback_text = str(messages)
-        assert "overlap" in feedback_text.lower() or "error" in feedback_text.lower()
+        # Second call's prompt should include error feedback
+        second_call_kwargs = mock_invoke.call_args_list[1][1]
+        prompt = second_call_kwargs["prompt"]
+        assert "error" in prompt.lower() or "overlap" in prompt.lower()
+
+    def test_llm_error_wrapped_as_edl_error(self, catalog_db):
+        """LlmError from invoke_claude is wrapped as EdlError."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.edl import EdlError, generate_edl
+
+        config = LLMConfig()
+        _seed_edl_narrative(catalog_db)
+
+        with patch("autopilot.plan.edl.invoke_claude", side_effect=LlmError("CLI timeout")):
+            with pytest.raises(EdlError, match="LLM.*failed"):
+                generate_edl("n1", catalog_db, config)
 
 
 # -- Step 23: Integration test ------------------------------------------------
 
 
 class TestEdlIntegration:
-    """Full pipeline: seeded DB -> generate_edl with mocked LLM -> verify."""
+    """Full pipeline: seeded DB -> generate_edl with mocked invoke_claude -> verify."""
 
     def test_full_pipeline(self, catalog_db):
         """End-to-end: seed DB -> generate_edl -> verify EDL, DB state, validation."""
@@ -742,80 +579,69 @@ class TestEdlIntegration:
             ),
         )
 
-        # --- Mock LLM to return valid tool-use response ---
-        tool_calls = [
-            (
-                "select_clip",
+        # --- Mock invoke_claude to return valid structured EDL ---
+        full_edl = {
+            "clips": [
                 {
                     "clip_id": "v1",
                     "in_timecode": "00:00:00.000",
                     "out_timecode": "00:00:15.000",
                     "track": 1,
                 },
-            ),
-            (
-                "select_clip",
                 {
                     "clip_id": "v2",
                     "in_timecode": "00:00:15.000",
                     "out_timecode": "00:00:25.000",
                     "track": 1,
                 },
-            ),
-            (
-                "add_transition",
+            ],
+            "transitions": [
                 {
                     "type": "crossfade",
                     "duration": 1.0,
                     "position": "00:00:15.000",
                 },
-            ),
-            (
-                "set_audio",
-                {
-                    "clip_id": "v1",
-                    "level_db": -6.0,
-                    "fade_in": 0.5,
-                },
-            ),
-            (
-                "set_audio",
-                {
-                    "clip_id": "v2",
-                    "level_db": -12.0,
-                },
-            ),
-            (
-                "add_voiceover",
-                {
-                    "text": "Dawn breaks over ancient walls...",
-                    "start_time": "00:00:00.000",
-                    "duration": 8.0,
-                },
-            ),
-            (
-                "add_title",
+            ],
+            "crop_modes": [],
+            "titles": [
                 {
                     "text": "Thailand",
                     "style": "lower_third",
                     "position": "00:00:02.000",
                     "duration": 4.0,
                 },
-            ),
-            (
-                "add_music",
+            ],
+            "audio_settings": [
+                {
+                    "clip_id": "v1",
+                    "level_db": -6.0,
+                    "fade_in": 0.5,
+                },
+                {
+                    "clip_id": "v2",
+                    "level_db": -12.0,
+                },
+            ],
+            "music": [
                 {
                     "mood": "ambient contemplative",
                     "duration": 25.0,
                     "start_time": "00:00:00.000",
                 },
-            ),
-        ]
+            ],
+            "voiceovers": [
+                {
+                    "text": "Dawn breaks over ancient walls...",
+                    "start_time": "00:00:00.000",
+                    "duration": 8.0,
+                },
+            ],
+            "broll_requests": [],
+        }
 
         config = LLMConfig()
-        mock_anthropic, mock_client = _setup_mock_edl_anthropic(tool_calls)
 
-        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+        with patch("autopilot.plan.edl.invoke_claude", return_value=full_edl) as mock_invoke:
             edl = generate_edl("n1", catalog_db, config)
 
         # --- Verify EDL structure ---
@@ -846,14 +672,12 @@ class TestEdlIntegration:
         narrative = catalog_db.get_narrative("n1")
         assert narrative["status"] == "planned"
 
-        # --- Verify LLM called correctly ---
-        mock_client.messages.create.assert_called_once()
-        call_kwargs = mock_client.messages.create.call_args[1]
+        # --- Verify invoke_claude called correctly ---
+        mock_invoke.assert_called_once()
+        call_kwargs = mock_invoke.call_args[1]
         assert call_kwargs["model"] == config.planning_model
-        assert "tools" in call_kwargs
-        assert len(call_kwargs["tools"]) == 8
+        assert "json_schema" in call_kwargs
         # System prompt is edit_planner
         assert "EDL" in call_kwargs["system"]
-        # User message contains script and storyboard
-        user_msg = call_kwargs["messages"][0]["content"]
-        assert "Temple" in user_msg or "temple" in user_msg
+        # Prompt contains script and storyboard
+        assert "Temple" in call_kwargs["prompt"] or "temple" in call_kwargs["prompt"]
