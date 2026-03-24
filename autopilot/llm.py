@@ -20,6 +20,18 @@ class LlmError(Exception):
     """Raised for all LLM invocation failures."""
 
 
+# Full Anthropic model IDs → CLI short names
+_MODEL_MAP: dict[str, str] = {
+    "claude-opus-4-20250514": "opus",
+    "claude-sonnet-4-20250514": "sonnet",
+}
+
+
+def _resolve_model(model: str) -> str:
+    """Map full Anthropic model ID to CLI short name, or pass through."""
+    return _MODEL_MAP.get(model, model)
+
+
 def invoke_claude(
     *,
     prompt: str,
@@ -47,11 +59,13 @@ def invoke_claude(
     Raises:
         LlmError: On any invocation failure.
     """
+    resolved_model = _resolve_model(model)
+
     cmd = [
         "claude",
         "--print",
         "--output-format", "json",
-        "--model", model,
+        "--model", resolved_model,
         "--max-tokens", str(max_tokens),
         "--system-prompt", system,
     ]
