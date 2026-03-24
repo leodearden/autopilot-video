@@ -659,3 +659,66 @@ class TestScriptMigration:
 
         source = inspect.getsource(script._call_llm)
         assert "import anthropic" not in source
+
+
+# -- Step 21: No anthropic import outside llm.py fallback path ----------------
+
+
+class TestNoAnthropicImport:
+    """Verify anthropic SDK is not imported at module level in migrated modules."""
+
+    def test_classify_no_anthropic_import(self):
+        """classify.py must not contain 'import anthropic' anywhere."""
+        import inspect
+
+        from autopilot.organize import classify
+
+        source = inspect.getsource(classify)
+        assert "import anthropic" not in source
+
+    def test_narratives_no_anthropic_import(self):
+        """narratives.py must not contain 'import anthropic' anywhere."""
+        import inspect
+
+        from autopilot.organize import narratives
+
+        source = inspect.getsource(narratives)
+        assert "import anthropic" not in source
+
+    def test_script_no_anthropic_import(self):
+        """script.py must not contain 'import anthropic' anywhere."""
+        import inspect
+
+        from autopilot.plan import script
+
+        source = inspect.getsource(script)
+        assert "import anthropic" not in source
+
+    def test_edl_no_anthropic_import(self):
+        """edl.py must not contain 'import anthropic' anywhere."""
+        import inspect
+
+        from autopilot.plan import edl
+
+        source = inspect.getsource(edl)
+        assert "import anthropic" not in source
+
+    def test_llm_anthropic_only_in_fallback(self):
+        """llm.py only imports anthropic inside _invoke_via_api (fallback path)."""
+        import inspect
+
+        from autopilot import llm
+
+        # anthropic import should be inside _invoke_via_api only
+        fallback_source = inspect.getsource(llm._invoke_via_api)
+        assert "import anthropic" in fallback_source
+
+        # Module-level source should not have a top-level import anthropic
+        module_source = inspect.getsource(llm)
+        lines = module_source.split("\n")
+        top_level_imports = [
+            line for line in lines
+            if line.strip().startswith("import anthropic")
+            and not line.startswith(" ")
+        ]
+        assert len(top_level_imports) == 0
