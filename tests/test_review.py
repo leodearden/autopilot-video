@@ -119,9 +119,27 @@ def app(tmp_path: Path) -> FastAPI:
 
 
 @pytest.fixture
+def seeded_app(tmp_path: Path) -> FastAPI:
+    """Create a FastAPI app with seeded narratives."""
+    db_path = str(tmp_path / "catalog.db")
+    with CatalogDB(db_path) as _db:
+        _db.init_default_gates()
+        _seed_narrative(_db, "n-1", title="Morning Walk", status="proposed")
+        _seed_narrative(_db, "n-2", title="Sunset Hike", status="approved")
+        _seed_narrative(_db, "n-3", title="Beach Day", status="proposed")
+    return create_app(db_path)
+
+
+@pytest.fixture
 def client(app: FastAPI) -> TestClient:
     """Create a TestClient for the app."""
     return TestClient(app)
+
+
+@pytest.fixture
+def seeded_client(seeded_app: FastAPI) -> TestClient:
+    """Create a TestClient for the seeded app."""
+    return TestClient(seeded_app)
 
 
 # ---------------------------------------------------------------------------
@@ -139,3 +157,34 @@ class TestReviewRouter:
         """GET /review returns HTTP 200."""
         response = client.get("/review")
         assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# TestListNarrativesAPI — step-5
+# ---------------------------------------------------------------------------
+
+class TestListNarrativesAPI:
+    """Tests for GET /api/narratives endpoint."""
+
+    def test_returns_json_list(self, seeded_client: TestClient) -> None:
+        """GET /api/narratives returns a JSON list of narratives."""
+        response = seeded_client.get("/api/narratives")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) == 3
+
+    def test_filter_by_status(self, seeded_client: TestClient) -> None:
+        """GET /api/narratives?status=proposed returns only proposed narratives."""
+        response = seeded_client.get("/api/narratives", params={"status": "proposed"})
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        assert all(n["status"] == "proposed" for n in data)
+
+    def test_empty_list_when_no_narratives(self, client: TestClient) -> None:
+        """GET /api/narratives returns empty list when no narratives exist."""
+        response = client.get("/api/narratives")
+        assert response.status_code == 200
+        data = response.json()
+        assert data == []
