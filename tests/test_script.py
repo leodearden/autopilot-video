@@ -563,7 +563,10 @@ class TestGenerateScriptLLM:
         config = LLMConfig()
         _seed_minimal_narrative(catalog_db)
 
-        with patch("autopilot.plan.script.invoke_claude", return_value=_make_script_llm_text()) as mock_invoke:
+        with patch(
+            "autopilot.plan.script.invoke_claude",
+            return_value=_make_script_llm_text(),
+        ) as mock_invoke:
             generate_script("n1", catalog_db, config)
 
         call_kwargs = mock_invoke.call_args[1]
@@ -577,7 +580,10 @@ class TestGenerateScriptLLM:
         config = LLMConfig()
         _seed_minimal_narrative(catalog_db)
 
-        with patch("autopilot.plan.script.invoke_claude", return_value=_make_script_llm_text()) as mock_invoke:
+        with patch(
+            "autopilot.plan.script.invoke_claude",
+            return_value=_make_script_llm_text(),
+        ) as mock_invoke:
             generate_script("n1", catalog_db, config)
 
         call_kwargs = mock_invoke.call_args[1]
@@ -592,7 +598,10 @@ class TestGenerateScriptLLM:
         config = LLMConfig()
         _seed_minimal_narrative(catalog_db)
 
-        with patch("autopilot.plan.script.invoke_claude", return_value=_make_script_llm_text()) as mock_invoke:
+        with patch(
+            "autopilot.plan.script.invoke_claude",
+            return_value=_make_script_llm_text(),
+        ) as mock_invoke:
             generate_script("n1", catalog_db, config)
 
         call_kwargs = mock_invoke.call_args[1]
@@ -724,7 +733,10 @@ class TestGenerateScriptPersistence:
         config = LLMConfig()
         _seed_minimal_narrative(catalog_db)
 
-        with patch("autopilot.plan.script.invoke_claude", side_effect=LlmError("Connection timeout")):
+        with patch(
+            "autopilot.plan.script.invoke_claude",
+            side_effect=LlmError("Connection timeout"),
+        ):
             with pytest.raises(ScriptError, match="LLM.*failed") as exc_info:
                 generate_script("n1", catalog_db, config)
 
@@ -823,7 +835,10 @@ class TestIntegration:
             ],
         }
 
-        with patch("autopilot.plan.script.invoke_claude", return_value=_make_script_llm_text(script_response)) as mock_invoke:
+        with patch(
+            "autopilot.plan.script.invoke_claude",
+            return_value=_make_script_llm_text(script_response),
+        ) as mock_invoke:
             result = generate_script("n1", catalog_db, config)
 
         # --- Verify return value ---
