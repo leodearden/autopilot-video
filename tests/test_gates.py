@@ -134,7 +134,7 @@ class TestGateDetailAPI:
 class TestGateUpdateAPI:
     """Tests for PUT /api/gates/{stage} endpoint."""
 
-    @pytest.mark.parametrize("mode", ["pause", "notify"])
+    @pytest.mark.parametrize("mode", ["auto", "pause", "notify"])
     def test_update_gate_mode_persists(self, client: TestClient, mode: str) -> None:
         """PUT /api/gates/analyze with mode updates and persists via re-GET."""
         response = client.put("/api/gates/analyze", json={"mode": mode})
@@ -308,7 +308,7 @@ class TestGateTogglePartial:
         assert "hx-put" in html
         assert "hx-swap" in html
 
-    @pytest.mark.parametrize("mode", ["pause", "notify"])
+    @pytest.mark.parametrize("mode", ["auto", "pause", "notify"])
     def test_toggle_shows_current_mode(self, client: TestClient, mode: str) -> None:
         """The selected option matches the gate's current mode."""
         # Set analyze gate to given mode — leave others at default 'auto'
