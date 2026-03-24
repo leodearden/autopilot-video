@@ -13,6 +13,23 @@ import pytest
 
 from autopilot.orchestrator import PipelineOrchestrator, StageDefinition, StageStatus
 
+# Pre-import submodules of packages with empty __init__.py so that
+# @patch("autopilot.<pkg>.<sub>") can find the attribute.  Packages whose
+# __init__.py already re-exports (ingest, organize, render, upload) don't
+# need this.
+import autopilot.analyze.asr  # noqa: F401
+import autopilot.analyze.audio_events  # noqa: F401
+import autopilot.analyze.embeddings  # noqa: F401
+import autopilot.analyze.faces  # noqa: F401
+import autopilot.analyze.gpu_scheduler  # noqa: F401
+import autopilot.analyze.objects  # noqa: F401
+import autopilot.analyze.scenes  # noqa: F401
+import autopilot.plan.edl  # noqa: F401
+import autopilot.plan.otio_export  # noqa: F401
+import autopilot.plan.script  # noqa: F401
+import autopilot.plan.validator  # noqa: F401
+import autopilot.source.resolve  # noqa: F401
+
 EXPECTED_STAGES = [
     "INGEST",
     "ANALYZE",
@@ -389,9 +406,9 @@ class TestBudgetTracking:
 class TestIngestStage:
     """Tests for the real _run_ingest stage function."""
 
-    @patch("autopilot.orchestrator.dedup")
-    @patch("autopilot.orchestrator.normalizer")
-    @patch("autopilot.orchestrator.scanner")
+    @patch("autopilot.ingest.dedup")
+    @patch("autopilot.ingest.normalizer")
+    @patch("autopilot.ingest.scanner")
     def test_ingest_calls_scan_directory(
         self, mock_scanner, mock_normalizer, mock_dedup, minimal_config
     ):
@@ -409,9 +426,9 @@ class TestIngestStage:
             minimal_config.input_dir, max_workers=None
         )
 
-    @patch("autopilot.orchestrator.dedup")
-    @patch("autopilot.orchestrator.normalizer")
-    @patch("autopilot.orchestrator.scanner")
+    @patch("autopilot.ingest.dedup")
+    @patch("autopilot.ingest.normalizer")
+    @patch("autopilot.ingest.scanner")
     def test_ingest_inserts_media_into_db(
         self, mock_scanner, mock_normalizer, mock_dedup, minimal_config
     ):
@@ -430,9 +447,9 @@ class TestIngestStage:
 
         assert db.insert_media.call_count == 2
 
-    @patch("autopilot.orchestrator.dedup")
-    @patch("autopilot.orchestrator.normalizer")
-    @patch("autopilot.orchestrator.scanner")
+    @patch("autopilot.ingest.dedup")
+    @patch("autopilot.ingest.normalizer")
+    @patch("autopilot.ingest.scanner")
     def test_ingest_normalizes_audio(
         self, mock_scanner, mock_normalizer, mock_dedup, minimal_config
     ):
@@ -449,9 +466,9 @@ class TestIngestStage:
 
         mock_normalizer.normalize_audio.assert_called_once()
 
-    @patch("autopilot.orchestrator.dedup")
-    @patch("autopilot.orchestrator.normalizer")
-    @patch("autopilot.orchestrator.scanner")
+    @patch("autopilot.ingest.dedup")
+    @patch("autopilot.ingest.normalizer")
+    @patch("autopilot.ingest.scanner")
     def test_ingest_marks_duplicates(
         self, mock_scanner, mock_normalizer, mock_dedup, minimal_config
     ):
@@ -469,13 +486,13 @@ class TestIngestStage:
 class TestAnalyzeStage:
     """Tests for the real _run_analyze stage function."""
 
-    @patch("autopilot.orchestrator.GPUScheduler")
-    @patch("autopilot.orchestrator.faces")
-    @patch("autopilot.orchestrator.audio_events")
-    @patch("autopilot.orchestrator.embeddings")
-    @patch("autopilot.orchestrator.objects")
-    @patch("autopilot.orchestrator.scenes")
-    @patch("autopilot.orchestrator.asr")
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
     def test_analyze_creates_gpu_scheduler(
         self,
         mock_asr,
@@ -497,13 +514,13 @@ class TestAnalyzeStage:
 
         mock_gpu_cls.assert_called_once()
 
-    @patch("autopilot.orchestrator.GPUScheduler")
-    @patch("autopilot.orchestrator.faces")
-    @patch("autopilot.orchestrator.audio_events")
-    @patch("autopilot.orchestrator.embeddings")
-    @patch("autopilot.orchestrator.objects")
-    @patch("autopilot.orchestrator.scenes")
-    @patch("autopilot.orchestrator.asr")
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
     def test_analyze_runs_all_analysis_per_media(
         self,
         mock_asr,
@@ -539,13 +556,13 @@ class TestAnalyzeStage:
         assert mock_embeddings.compute_embeddings.call_count == 2
         assert mock_audio_events.classify_audio_events.call_count == 2
 
-    @patch("autopilot.orchestrator.GPUScheduler")
-    @patch("autopilot.orchestrator.faces")
-    @patch("autopilot.orchestrator.audio_events")
-    @patch("autopilot.orchestrator.embeddings")
-    @patch("autopilot.orchestrator.objects")
-    @patch("autopilot.orchestrator.scenes")
-    @patch("autopilot.orchestrator.asr")
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
     def test_analyze_calls_cluster_faces_after_analysis(
         self,
         mock_asr,
@@ -570,13 +587,13 @@ class TestAnalyzeStage:
 
         mock_faces.cluster_faces.assert_called_once_with(db, eps=0.5, min_samples=3)
 
-    @patch("autopilot.orchestrator.GPUScheduler")
-    @patch("autopilot.orchestrator.faces")
-    @patch("autopilot.orchestrator.audio_events")
-    @patch("autopilot.orchestrator.embeddings")
-    @patch("autopilot.orchestrator.objects")
-    @patch("autopilot.orchestrator.scenes")
-    @patch("autopilot.orchestrator.asr")
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
     def test_analyze_skips_duplicate_media(
         self,
         mock_asr,
@@ -610,13 +627,13 @@ class TestAnalyzeStage:
         # Only m1 should be analyzed, not m2 (duplicate)
         assert mock_asr.transcribe_media.call_count == 1
 
-    @patch("autopilot.orchestrator.GPUScheduler")
-    @patch("autopilot.orchestrator.faces")
-    @patch("autopilot.orchestrator.audio_events")
-    @patch("autopilot.orchestrator.embeddings")
-    @patch("autopilot.orchestrator.objects")
-    @patch("autopilot.orchestrator.scenes")
-    @patch("autopilot.orchestrator.asr")
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
     def test_analyze_calls_force_unload_all_on_success(
         self,
         mock_asr,
@@ -642,13 +659,13 @@ class TestAnalyzeStage:
 
         mock_scheduler.force_unload_all.assert_called_once()
 
-    @patch("autopilot.orchestrator.GPUScheduler")
-    @patch("autopilot.orchestrator.faces")
-    @patch("autopilot.orchestrator.audio_events")
-    @patch("autopilot.orchestrator.embeddings")
-    @patch("autopilot.orchestrator.objects")
-    @patch("autopilot.orchestrator.scenes")
-    @patch("autopilot.orchestrator.asr")
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
     def test_analyze_calls_force_unload_all_on_error(
         self,
         mock_asr,
@@ -677,13 +694,13 @@ class TestAnalyzeStage:
 
         mock_scheduler.force_unload_all.assert_called_once()
 
-    @patch("autopilot.orchestrator.GPUScheduler")
-    @patch("autopilot.orchestrator.faces")
-    @patch("autopilot.orchestrator.audio_events")
-    @patch("autopilot.orchestrator.embeddings")
-    @patch("autopilot.orchestrator.objects")
-    @patch("autopilot.orchestrator.scenes")
-    @patch("autopilot.orchestrator.asr")
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
     def test_analyze_continues_on_per_media_error(
         self,
         mock_asr,
@@ -724,13 +741,13 @@ class TestAnalyzeStage:
         # m2 and m3 should still be analyzed (scenes.detect_shots for all 3)
         assert mock_scenes.detect_shots.call_count >= 2
 
-    @patch("autopilot.orchestrator.GPUScheduler")
-    @patch("autopilot.orchestrator.faces")
-    @patch("autopilot.orchestrator.audio_events")
-    @patch("autopilot.orchestrator.embeddings")
-    @patch("autopilot.orchestrator.objects")
-    @patch("autopilot.orchestrator.scenes")
-    @patch("autopilot.orchestrator.asr")
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
     def test_analyze_logs_per_media_error(
         self,
         mock_asr,
@@ -765,13 +782,13 @@ class TestAnalyzeStage:
 
         assert any("m1" in r.message for r in caplog.records)
 
-    @patch("autopilot.orchestrator.GPUScheduler")
-    @patch("autopilot.orchestrator.faces")
-    @patch("autopilot.orchestrator.audio_events")
-    @patch("autopilot.orchestrator.embeddings")
-    @patch("autopilot.orchestrator.objects")
-    @patch("autopilot.orchestrator.scenes")
-    @patch("autopilot.orchestrator.asr")
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
     def test_analyze_counts_failures(
         self,
         mock_asr,
@@ -816,8 +833,8 @@ class TestAnalyzeStage:
 class TestClassifyStage:
     """Tests for the real _run_classify stage function."""
 
-    @patch("autopilot.orchestrator.classify")
-    @patch("autopilot.orchestrator.cluster")
+    @patch("autopilot.organize.classify")
+    @patch("autopilot.organize.cluster")
     def test_classify_calls_cluster_activities(self, mock_cluster, mock_classify, minimal_config):
         """_run_classify calls cluster.cluster_activities with db."""
         from autopilot.orchestrator import _run_classify
@@ -828,8 +845,8 @@ class TestClassifyStage:
 
         mock_cluster.cluster_activities.assert_called_once_with(db)
 
-    @patch("autopilot.orchestrator.classify")
-    @patch("autopilot.orchestrator.cluster")
+    @patch("autopilot.organize.classify")
+    @patch("autopilot.organize.cluster")
     def test_classify_calls_label_activities(self, mock_cluster, mock_classify, minimal_config):
         """_run_classify calls classify.label_activities with db and config.llm."""
         from autopilot.orchestrator import _run_classify
@@ -844,7 +861,7 @@ class TestClassifyStage:
 class TestNarrateStage:
     """Tests for the real _run_narrate stage function."""
 
-    @patch("autopilot.orchestrator.narratives")
+    @patch("autopilot.organize.narratives")
     def test_narrate_builds_storyboard(self, mock_narratives, minimal_config):
         """_run_narrate calls build_master_storyboard with db."""
         from autopilot.orchestrator import _run_narrate
@@ -858,7 +875,7 @@ class TestNarrateStage:
 
         mock_narratives.build_master_storyboard.assert_called_once_with(db)
 
-    @patch("autopilot.orchestrator.narratives")
+    @patch("autopilot.organize.narratives")
     def test_narrate_proposes_narratives(self, mock_narratives, minimal_config):
         """_run_narrate calls propose_narratives with storyboard, db, config."""
         from autopilot.orchestrator import _run_narrate
@@ -872,7 +889,7 @@ class TestNarrateStage:
 
         mock_narratives.propose_narratives.assert_called_once_with("storyboard", db, minimal_config)
 
-    @patch("autopilot.orchestrator.narratives")
+    @patch("autopilot.organize.narratives")
     def test_narrate_calls_human_review_callback(self, mock_narratives, minimal_config):
         """_run_narrate invokes human_review_fn with formatted text and narratives."""
         from autopilot.orchestrator import _run_narrate
@@ -889,7 +906,7 @@ class TestNarrateStage:
 
         review_fn.assert_called_once_with("review text", [narr])
 
-    @patch("autopilot.orchestrator.narratives")
+    @patch("autopilot.organize.narratives")
     def test_narrate_auto_approves_when_no_callback(self, mock_narratives, minimal_config):
         """Without human_review_fn all narratives get status='approved'."""
         from autopilot.orchestrator import _run_narrate
@@ -905,7 +922,7 @@ class TestNarrateStage:
 
         db.update_narrative_status.assert_any_call("n1", "approved")
 
-    @patch("autopilot.orchestrator.narratives")
+    @patch("autopilot.organize.narratives")
     def test_narrate_respects_review_rejections(self, mock_narratives, minimal_config):
         """human_review_fn returns subset of IDs; rejected ones get status='rejected'."""
         from autopilot.orchestrator import _run_narrate
@@ -930,7 +947,7 @@ class TestNarrateStage:
 class TestScriptStage:
     """Tests for the real _run_script stage function."""
 
-    @patch("autopilot.orchestrator.script")
+    @patch("autopilot.plan.script")
     def test_script_generates_per_approved_narrative(self, mock_script, minimal_config):
         """_run_script calls generate_script once per approved narrative."""
         from autopilot.orchestrator import _run_script
@@ -947,7 +964,7 @@ class TestScriptStage:
 
         assert mock_script.generate_script.call_count == 2
 
-    @patch("autopilot.orchestrator.script")
+    @patch("autopilot.plan.script")
     def test_script_continues_on_per_narrative_error(self, mock_script, minimal_config):
         """First narrative raises ScriptError, second still gets generated."""
         from autopilot.orchestrator import _run_script
@@ -968,7 +985,7 @@ class TestScriptStage:
 
         assert mock_script.generate_script.call_count == 2
 
-    @patch("autopilot.orchestrator.script")
+    @patch("autopilot.plan.script")
     def test_script_raises_if_all_narratives_fail(self, mock_script, minimal_config):
         """If every narrative fails, stage itself raises RuntimeError."""
         from autopilot.orchestrator import _run_script
@@ -989,9 +1006,9 @@ class TestScriptStage:
 class TestEdlStage:
     """Tests for the real _run_edl stage function."""
 
-    @patch("autopilot.orchestrator.otio_export")
-    @patch("autopilot.orchestrator.validator")
-    @patch("autopilot.orchestrator.edl_mod")
+    @patch("autopilot.plan.otio_export")
+    @patch("autopilot.plan.validator")
+    @patch("autopilot.plan.edl")
     def test_edl_generates_validates_exports_per_narrative(
         self, mock_edl, mock_validator, mock_otio, minimal_config
     ):
@@ -1012,9 +1029,9 @@ class TestEdlStage:
         mock_validator.validate_edl.assert_called_once()
         mock_otio.export_otio.assert_called_once()
 
-    @patch("autopilot.orchestrator.otio_export")
-    @patch("autopilot.orchestrator.validator")
-    @patch("autopilot.orchestrator.edl_mod")
+    @patch("autopilot.plan.otio_export")
+    @patch("autopilot.plan.validator")
+    @patch("autopilot.plan.edl")
     def test_edl_stores_validation_result(
         self, mock_edl, mock_validator, mock_otio, minimal_config
     ):
@@ -1034,9 +1051,9 @@ class TestEdlStage:
 
         db.upsert_edit_plan.assert_called_once()
 
-    @patch("autopilot.orchestrator.otio_export")
-    @patch("autopilot.orchestrator.validator")
-    @patch("autopilot.orchestrator.edl_mod")
+    @patch("autopilot.plan.otio_export")
+    @patch("autopilot.plan.validator")
+    @patch("autopilot.plan.edl")
     def test_edl_continues_on_failure(self, mock_edl, mock_validator, mock_otio, minimal_config):
         """One narrative fails EDL, others still processed."""
         from autopilot.orchestrator import _run_edl
@@ -1061,9 +1078,9 @@ class TestEdlStage:
         # Second narrative should still be processed
         assert mock_edl.generate_edl.call_count == 2
 
-    @patch("autopilot.orchestrator.otio_export")
-    @patch("autopilot.orchestrator.validator")
-    @patch("autopilot.orchestrator.edl_mod")
+    @patch("autopilot.plan.otio_export")
+    @patch("autopilot.plan.validator")
+    @patch("autopilot.plan.edl")
     def test_edl_raises_if_all_narratives_fail(
         self, mock_edl, mock_validator, mock_otio, minimal_config
     ):
@@ -1086,7 +1103,7 @@ class TestEdlStage:
 class TestSourceStage:
     """Tests for the real _run_source_assets stage function."""
 
-    @patch("autopilot.orchestrator.resolve")
+    @patch("autopilot.source.resolve")
     def test_source_resolves_assets_per_narrative(self, mock_resolve, minimal_config):
         """_run_source_assets calls resolve_edl_assets for each narrative with an edit plan."""
         from autopilot.orchestrator import _run_source_assets
@@ -1105,7 +1122,7 @@ class TestSourceStage:
         call_kwargs = mock_resolve.resolve_edl_assets.call_args
         assert call_kwargs[1]["narrative_id"] == "n1"
 
-    @patch("autopilot.orchestrator.resolve")
+    @patch("autopilot.source.resolve")
     def test_source_raises_if_all_narratives_fail(self, mock_resolve, minimal_config):
         """If every narrative fails source resolution, stage raises RuntimeError."""
         from autopilot.orchestrator import _run_source_assets
@@ -1128,8 +1145,8 @@ class TestSourceStage:
 class TestRenderStage:
     """Tests for the real _run_render stage function."""
 
-    @patch("autopilot.orchestrator.render_validate")
-    @patch("autopilot.orchestrator.router")
+    @patch("autopilot.render.validate")
+    @patch("autopilot.render.router")
     def test_render_routes_and_validates_per_narrative(
         self, mock_router, mock_validate, minimal_config
     ):
@@ -1150,8 +1167,8 @@ class TestRenderStage:
         mock_router.route_and_render.assert_called_once()
         mock_validate.validate_render.assert_called_once()
 
-    @patch("autopilot.orchestrator.render_validate")
-    @patch("autopilot.orchestrator.router")
+    @patch("autopilot.render.validate")
+    @patch("autopilot.render.router")
     def test_render_logs_validation_warnings(
         self, mock_router, mock_validate, minimal_config, caplog
     ):
@@ -1175,8 +1192,8 @@ class TestRenderStage:
 
         assert any("Low bitrate" in r.message for r in caplog.records)
 
-    @patch("autopilot.orchestrator.render_validate")
-    @patch("autopilot.orchestrator.router")
+    @patch("autopilot.render.validate")
+    @patch("autopilot.render.router")
     def test_render_continues_on_failure(self, mock_router, mock_validate, minimal_config):
         """One narrative's render fails, others still processed."""
         from autopilot.orchestrator import _run_render
@@ -1201,8 +1218,8 @@ class TestRenderStage:
 
         assert mock_router.route_and_render.call_count == 2
 
-    @patch("autopilot.orchestrator.render_validate")
-    @patch("autopilot.orchestrator.router")
+    @patch("autopilot.render.validate")
+    @patch("autopilot.render.router")
     def test_render_persists_render_path_to_db(self, mock_router, mock_validate, minimal_config):
         """_run_render persists render output path to DB via upsert_edit_plan."""
         from autopilot.orchestrator import _run_render
@@ -1222,8 +1239,8 @@ class TestRenderStage:
         call_kwargs = db.upsert_edit_plan.call_args
         assert call_kwargs[1]["render_path"] == "/out/renders/n1/output.mp4"
 
-    @patch("autopilot.orchestrator.render_validate")
-    @patch("autopilot.orchestrator.router")
+    @patch("autopilot.render.validate")
+    @patch("autopilot.render.router")
     def test_render_raises_if_all_narratives_fail(self, mock_router, mock_validate, minimal_config):
         """If every narrative fails render, stage raises RuntimeError."""
         from autopilot.orchestrator import _run_render
@@ -1246,8 +1263,8 @@ class TestRenderStage:
 class TestUploadStage:
     """Tests for the real _run_upload stage function."""
 
-    @patch("autopilot.orchestrator.thumbnail")
-    @patch("autopilot.orchestrator.youtube")
+    @patch("autopilot.upload.thumbnail")
+    @patch("autopilot.upload.youtube")
     def test_upload_uploads_and_thumbnails_per_narrative(
         self, mock_youtube, mock_thumbnail, minimal_config
     ):
@@ -1271,8 +1288,8 @@ class TestUploadStage:
         mock_youtube.upload_video.assert_called_once()
         mock_thumbnail.extract_best_thumbnail.assert_called_once()
 
-    @patch("autopilot.orchestrator.thumbnail")
-    @patch("autopilot.orchestrator.youtube")
+    @patch("autopilot.upload.thumbnail")
+    @patch("autopilot.upload.youtube")
     def test_upload_continues_on_failure(self, mock_youtube, mock_thumbnail, minimal_config):
         """One narrative fails upload, others still uploaded."""
         from autopilot.orchestrator import _run_upload
@@ -1299,8 +1316,8 @@ class TestUploadStage:
 
         assert mock_youtube.upload_video.call_count == 2
 
-    @patch("autopilot.orchestrator.thumbnail")
-    @patch("autopilot.orchestrator.youtube")
+    @patch("autopilot.upload.thumbnail")
+    @patch("autopilot.upload.youtube")
     def test_upload_reads_render_path_from_db(self, mock_youtube, mock_thumbnail, minimal_config):
         """_run_upload reads render_path from DB instead of filesystem convention."""
         from autopilot.orchestrator import _run_upload
@@ -1322,8 +1339,8 @@ class TestUploadStage:
         call_args = mock_youtube.upload_video.call_args
         assert call_args[0][1] == Path("/db/stored/path.mp4")
 
-    @patch("autopilot.orchestrator.thumbnail")
-    @patch("autopilot.orchestrator.youtube")
+    @patch("autopilot.upload.thumbnail")
+    @patch("autopilot.upload.youtube")
     def test_upload_skips_narrative_when_no_render_path(
         self, mock_youtube, mock_thumbnail, minimal_config, caplog
     ):
@@ -1345,8 +1362,8 @@ class TestUploadStage:
         mock_youtube.upload_video.assert_not_called()
         assert any("n1" in r.message for r in caplog.records)
 
-    @patch("autopilot.orchestrator.thumbnail")
-    @patch("autopilot.orchestrator.youtube")
+    @patch("autopilot.upload.thumbnail")
+    @patch("autopilot.upload.youtube")
     def test_upload_raises_if_all_narratives_fail(
         self, mock_youtube, mock_thumbnail, minimal_config
     ):
@@ -1602,9 +1619,9 @@ class TestIngestResume:
 
         _reset_shutdown()
 
-    @patch("autopilot.orchestrator.dedup")
-    @patch("autopilot.orchestrator.normalizer")
-    @patch("autopilot.orchestrator.scanner")
+    @patch("autopilot.ingest.dedup")
+    @patch("autopilot.ingest.normalizer")
+    @patch("autopilot.ingest.scanner")
     def test_ingest_breaks_on_shutdown(
         self,
         mock_scanner,
@@ -1643,9 +1660,9 @@ class TestIngestResume:
         # should see shutdown and break before processing
         assert mock_normalizer.normalize_audio.call_count == 1
 
-    @patch("autopilot.orchestrator.dedup")
-    @patch("autopilot.orchestrator.normalizer")
-    @patch("autopilot.orchestrator.scanner")
+    @patch("autopilot.ingest.dedup")
+    @patch("autopilot.ingest.normalizer")
+    @patch("autopilot.ingest.scanner")
     def test_ingest_skips_already_ingested_media(
         self,
         mock_scanner,
@@ -1674,9 +1691,9 @@ class TestIngestResume:
         assert db.insert_media.call_count == 1
         assert mock_normalizer.normalize_audio.call_count == 1
 
-    @patch("autopilot.orchestrator.dedup")
-    @patch("autopilot.orchestrator.normalizer")
-    @patch("autopilot.orchestrator.scanner")
+    @patch("autopilot.ingest.dedup")
+    @patch("autopilot.ingest.normalizer")
+    @patch("autopilot.ingest.scanner")
     def test_ingest_still_deduplicates_on_shutdown(
         self,
         mock_scanner,
@@ -1713,13 +1730,13 @@ class TestAnalyzeShutdown:
 
         _reset_shutdown()
 
-    @patch("autopilot.orchestrator.GPUScheduler")
-    @patch("autopilot.orchestrator.faces")
-    @patch("autopilot.orchestrator.audio_events")
-    @patch("autopilot.orchestrator.embeddings")
-    @patch("autopilot.orchestrator.objects")
-    @patch("autopilot.orchestrator.scenes")
-    @patch("autopilot.orchestrator.asr")
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
     def test_analyze_breaks_on_shutdown(
         self,
         mock_asr,
@@ -1763,13 +1780,13 @@ class TestAnalyzeShutdown:
         # Only 1 media should be analyzed
         assert mock_asr.transcribe_media.call_count == 1
 
-    @patch("autopilot.orchestrator.GPUScheduler")
-    @patch("autopilot.orchestrator.faces")
-    @patch("autopilot.orchestrator.audio_events")
-    @patch("autopilot.orchestrator.embeddings")
-    @patch("autopilot.orchestrator.objects")
-    @patch("autopilot.orchestrator.scenes")
-    @patch("autopilot.orchestrator.asr")
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
     def test_analyze_unloads_gpu_on_shutdown(
         self,
         mock_asr,
@@ -1811,7 +1828,7 @@ class TestRemainingStagesShutdown:
 
         _reset_shutdown()
 
-    @patch("autopilot.orchestrator.script")
+    @patch("autopilot.plan.script")
     def test_script_breaks_on_shutdown(self, mock_script, minimal_config) -> None:
         """_run_script breaks after first narrative when shutdown requested."""
         from autopilot.orchestrator import _run_script, request_shutdown
@@ -1839,9 +1856,9 @@ class TestRemainingStagesShutdown:
 
         assert mock_script.generate_script.call_count == 1
 
-    @patch("autopilot.orchestrator.otio_export")
-    @patch("autopilot.orchestrator.validator")
-    @patch("autopilot.orchestrator.edl_mod")
+    @patch("autopilot.plan.otio_export")
+    @patch("autopilot.plan.validator")
+    @patch("autopilot.plan.edl")
     def test_edl_breaks_on_shutdown(
         self,
         mock_edl_mod,
@@ -1879,7 +1896,7 @@ class TestRemainingStagesShutdown:
 
         assert mock_edl_mod.generate_edl.call_count == 1
 
-    @patch("autopilot.orchestrator.resolve")
+    @patch("autopilot.source.resolve")
     def test_source_assets_breaks_on_shutdown(
         self,
         mock_resolve,
@@ -1909,8 +1926,8 @@ class TestRemainingStagesShutdown:
 
         assert mock_resolve.resolve_edl_assets.call_count == 1
 
-    @patch("autopilot.orchestrator.render_validate")
-    @patch("autopilot.orchestrator.router")
+    @patch("autopilot.render.validate")
+    @patch("autopilot.render.router")
     def test_render_breaks_on_shutdown(
         self,
         mock_router,
@@ -1944,8 +1961,8 @@ class TestRemainingStagesShutdown:
 
         assert mock_router.route_and_render.call_count == 1
 
-    @patch("autopilot.orchestrator.thumbnail")
-    @patch("autopilot.orchestrator.youtube")
+    @patch("autopilot.upload.thumbnail")
+    @patch("autopilot.upload.youtube")
     def test_upload_breaks_on_shutdown(
         self,
         mock_youtube,
@@ -2127,9 +2144,9 @@ class TestShutdownSkipDetails:
         ]:
             assert f"{name}: skipped" in summary, f"Missing skipped entry for {name} in summary"
 
-    @patch("autopilot.orchestrator.dedup")
-    @patch("autopilot.orchestrator.normalizer")
-    @patch("autopilot.orchestrator.scanner")
+    @patch("autopilot.ingest.dedup")
+    @patch("autopilot.ingest.normalizer")
+    @patch("autopilot.ingest.scanner")
     def test_ingest_logs_resume_counts(
         self,
         mock_scanner,
@@ -2157,9 +2174,9 @@ class TestShutdownSkipDetails:
 
         assert any("Resuming INGEST" in r.message and "1/2" in r.message for r in caplog.records)
 
-    @patch("autopilot.orchestrator.dedup")
-    @patch("autopilot.orchestrator.normalizer")
-    @patch("autopilot.orchestrator.scanner")
+    @patch("autopilot.ingest.dedup")
+    @patch("autopilot.ingest.normalizer")
+    @patch("autopilot.ingest.scanner")
     def test_ingest_force_reprocesses_all(
         self,
         mock_scanner,
@@ -2195,13 +2212,13 @@ class TestAnalyzeResume:
     """Tests for _run_analyze per-pass checkpoint/resume logic."""
 
     ANALYZE_PATCHES = [
-        "autopilot.orchestrator.GPUScheduler",
-        "autopilot.orchestrator.faces",
-        "autopilot.orchestrator.audio_events",
-        "autopilot.orchestrator.embeddings",
-        "autopilot.orchestrator.objects",
-        "autopilot.orchestrator.scenes",
-        "autopilot.orchestrator.asr",
+        "autopilot.analyze.gpu_scheduler.GPUScheduler",
+        "autopilot.analyze.faces",
+        "autopilot.analyze.audio_events",
+        "autopilot.analyze.embeddings",
+        "autopilot.analyze.objects",
+        "autopilot.analyze.scenes",
+        "autopilot.analyze.asr",
     ]
 
     def _make_db_with_media(self, media_ids, **has_overrides):
@@ -2222,13 +2239,13 @@ class TestAnalyzeResume:
             getattr(db, k).return_value = v
         return db
 
-    @patch("autopilot.orchestrator.GPUScheduler")
-    @patch("autopilot.orchestrator.faces")
-    @patch("autopilot.orchestrator.audio_events")
-    @patch("autopilot.orchestrator.embeddings")
-    @patch("autopilot.orchestrator.objects")
-    @patch("autopilot.orchestrator.scenes")
-    @patch("autopilot.orchestrator.asr")
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
     def test_analyze_skips_transcribed_media(
         self,
         mock_asr,
@@ -2253,13 +2270,13 @@ class TestAnalyzeResume:
         # Only m2 should get transcribed
         assert mock_asr.transcribe_media.call_count == 1
 
-    @patch("autopilot.orchestrator.GPUScheduler")
-    @patch("autopilot.orchestrator.faces")
-    @patch("autopilot.orchestrator.audio_events")
-    @patch("autopilot.orchestrator.embeddings")
-    @patch("autopilot.orchestrator.objects")
-    @patch("autopilot.orchestrator.scenes")
-    @patch("autopilot.orchestrator.asr")
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
     def test_analyze_skips_detected_media(
         self,
         mock_asr,
@@ -2282,13 +2299,13 @@ class TestAnalyzeResume:
 
         mock_objects.detect_objects.assert_not_called()
 
-    @patch("autopilot.orchestrator.GPUScheduler")
-    @patch("autopilot.orchestrator.faces")
-    @patch("autopilot.orchestrator.audio_events")
-    @patch("autopilot.orchestrator.embeddings")
-    @patch("autopilot.orchestrator.objects")
-    @patch("autopilot.orchestrator.scenes")
-    @patch("autopilot.orchestrator.asr")
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
     def test_analyze_skips_boundaries_faces_embeddings_audio(
         self,
         mock_asr,
@@ -2320,13 +2337,13 @@ class TestAnalyzeResume:
         mock_asr.transcribe_media.assert_called_once()
         mock_objects.detect_objects.assert_called_once()
 
-    @patch("autopilot.orchestrator.GPUScheduler")
-    @patch("autopilot.orchestrator.faces")
-    @patch("autopilot.orchestrator.audio_events")
-    @patch("autopilot.orchestrator.embeddings")
-    @patch("autopilot.orchestrator.objects")
-    @patch("autopilot.orchestrator.scenes")
-    @patch("autopilot.orchestrator.asr")
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
     def test_analyze_logs_resume_counts(
         self,
         mock_asr,
@@ -2352,13 +2369,13 @@ class TestAnalyzeResume:
 
         assert any("transcri" in r.message.lower() and "2/3" in r.message for r in caplog.records)
 
-    @patch("autopilot.orchestrator.GPUScheduler")
-    @patch("autopilot.orchestrator.faces")
-    @patch("autopilot.orchestrator.audio_events")
-    @patch("autopilot.orchestrator.embeddings")
-    @patch("autopilot.orchestrator.objects")
-    @patch("autopilot.orchestrator.scenes")
-    @patch("autopilot.orchestrator.asr")
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
     def test_analyze_force_reprocesses_all(
         self,
         mock_asr,
@@ -2400,8 +2417,8 @@ class TestAnalyzeResume:
 class TestClassifyResume:
     """Tests for _run_classify checkpoint/resume logic."""
 
-    @patch("autopilot.orchestrator.classify")
-    @patch("autopilot.orchestrator.cluster")
+    @patch("autopilot.organize.classify")
+    @patch("autopilot.organize.cluster")
     def test_classify_skips_when_clusters_exist(
         self,
         mock_cluster,
@@ -2422,8 +2439,8 @@ class TestClassifyResume:
         mock_cluster.cluster_activities.assert_not_called()
         mock_classify.label_activities.assert_not_called()
 
-    @patch("autopilot.orchestrator.classify")
-    @patch("autopilot.orchestrator.cluster")
+    @patch("autopilot.organize.classify")
+    @patch("autopilot.organize.cluster")
     def test_classify_force_clears_and_reprocesses(
         self,
         mock_cluster,
@@ -2450,7 +2467,7 @@ class TestClassifyResume:
 class TestScriptResume:
     """Tests for _run_script checkpoint/resume logic."""
 
-    @patch("autopilot.orchestrator.script")
+    @patch("autopilot.plan.script")
     def test_script_skips_narrative_with_existing_script(
         self,
         mock_script,
@@ -2476,7 +2493,7 @@ class TestScriptResume:
         assert mock_script.generate_script.call_count == 1
         mock_script.generate_script.assert_called_once_with("n2", db, minimal_config.llm)
 
-    @patch("autopilot.orchestrator.script")
+    @patch("autopilot.plan.script")
     def test_script_logs_resume_counts(
         self,
         mock_script,
@@ -2503,7 +2520,7 @@ class TestScriptResume:
 
         assert any("Resuming SCRIPT" in r.message and "2/3" in r.message for r in caplog.records)
 
-    @patch("autopilot.orchestrator.script")
+    @patch("autopilot.plan.script")
     def test_script_force_regenerates_all(
         self,
         mock_script,
@@ -2533,9 +2550,9 @@ class TestScriptResume:
 class TestEdlResume:
     """Tests for _run_edl checkpoint/resume logic."""
 
-    @patch("autopilot.orchestrator.otio_export")
-    @patch("autopilot.orchestrator.validator")
-    @patch("autopilot.orchestrator.edl_mod")
+    @patch("autopilot.plan.otio_export")
+    @patch("autopilot.plan.validator")
+    @patch("autopilot.plan.edl")
     def test_edl_skips_narrative_with_existing_edit_plan(
         self,
         mock_edl,
@@ -2564,9 +2581,9 @@ class TestEdlResume:
         # Only n2 should get generate_edl called
         assert mock_edl.generate_edl.call_count == 1
 
-    @patch("autopilot.orchestrator.otio_export")
-    @patch("autopilot.orchestrator.validator")
-    @patch("autopilot.orchestrator.edl_mod")
+    @patch("autopilot.plan.otio_export")
+    @patch("autopilot.plan.validator")
+    @patch("autopilot.plan.edl")
     def test_edl_logs_resume_counts(
         self,
         mock_edl,
@@ -2597,9 +2614,9 @@ class TestEdlResume:
 
         assert any("Resuming EDL" in r.message and "2/3" in r.message for r in caplog.records)
 
-    @patch("autopilot.orchestrator.otio_export")
-    @patch("autopilot.orchestrator.validator")
-    @patch("autopilot.orchestrator.edl_mod")
+    @patch("autopilot.plan.otio_export")
+    @patch("autopilot.plan.validator")
+    @patch("autopilot.plan.edl")
     def test_edl_force_regenerates_all(
         self,
         mock_edl,
@@ -2633,7 +2650,7 @@ class TestEdlResume:
 class TestSourceResume:
     """Tests for _run_source_assets checkpoint/resume logic."""
 
-    @patch("autopilot.orchestrator.resolve")
+    @patch("autopilot.source.resolve")
     def test_source_skips_narrative_with_resolved_assets(
         self,
         mock_resolve,
@@ -2665,7 +2682,7 @@ class TestSourceResume:
         # Only n2 should get resolve_edl_assets called
         assert mock_resolve.resolve_edl_assets.call_count == 1
 
-    @patch("autopilot.orchestrator.resolve")
+    @patch("autopilot.source.resolve")
     def test_source_logs_resume_counts(
         self,
         mock_resolve,
@@ -2701,7 +2718,7 @@ class TestSourceResume:
             "Resuming SOURCE_ASSETS" in r.message and "2/3" in r.message for r in caplog.records
         )
 
-    @patch("autopilot.orchestrator.resolve")
+    @patch("autopilot.source.resolve")
     def test_source_force_re_resolves_all(
         self,
         mock_resolve,
@@ -2740,8 +2757,8 @@ class TestSourceResume:
 class TestRenderResume:
     """Tests for _run_render checkpoint/resume logic."""
 
-    @patch("autopilot.orchestrator.render_validate")
-    @patch("autopilot.orchestrator.router")
+    @patch("autopilot.render.validate")
+    @patch("autopilot.render.router")
     def test_render_skips_narrative_with_existing_render_path(
         self,
         mock_router,
@@ -2785,8 +2802,8 @@ class TestRenderResume:
         # Only n2 should get route_and_render called
         assert mock_router.route_and_render.call_count == 1
 
-    @patch("autopilot.orchestrator.render_validate")
-    @patch("autopilot.orchestrator.router")
+    @patch("autopilot.render.validate")
+    @patch("autopilot.render.router")
     def test_render_logs_resume_counts(
         self,
         mock_router,
@@ -2832,8 +2849,8 @@ class TestRenderResume:
 
         assert any("Resuming RENDER" in r.message and "2/3" in r.message for r in caplog.records)
 
-    @patch("autopilot.orchestrator.render_validate")
-    @patch("autopilot.orchestrator.router")
+    @patch("autopilot.render.validate")
+    @patch("autopilot.render.router")
     def test_render_force_re_renders_all(
         self,
         mock_router,
@@ -2876,8 +2893,8 @@ class TestRenderResume:
 class TestUploadResume:
     """Tests for _run_upload checkpoint/resume logic."""
 
-    @patch("autopilot.orchestrator.thumbnail")
-    @patch("autopilot.orchestrator.youtube")
+    @patch("autopilot.upload.thumbnail")
+    @patch("autopilot.upload.youtube")
     def test_upload_skips_narrative_with_existing_upload(
         self,
         mock_youtube,
@@ -2909,8 +2926,8 @@ class TestUploadResume:
         # Only n2 should get upload_video called
         assert mock_youtube.upload_video.call_count == 1
 
-    @patch("autopilot.orchestrator.thumbnail")
-    @patch("autopilot.orchestrator.youtube")
+    @patch("autopilot.upload.thumbnail")
+    @patch("autopilot.upload.youtube")
     def test_upload_logs_resume_counts(
         self,
         mock_youtube,
@@ -2944,8 +2961,8 @@ class TestUploadResume:
 
         assert any("Resuming UPLOAD" in r.message and "2/3" in r.message for r in caplog.records)
 
-    @patch("autopilot.orchestrator.thumbnail")
-    @patch("autopilot.orchestrator.youtube")
+    @patch("autopilot.upload.thumbnail")
+    @patch("autopilot.upload.youtube")
     def test_upload_force_re_uploads_all(
         self,
         mock_youtube,
@@ -3892,9 +3909,9 @@ class TestJobHelperResilience:
 class TestIngestJobTracking:
     """Tests for per-job tracking in _run_ingest."""
 
-    @patch("autopilot.orchestrator.dedup")
-    @patch("autopilot.orchestrator.normalizer")
-    @patch("autopilot.orchestrator.scanner")
+    @patch("autopilot.ingest.dedup")
+    @patch("autopilot.ingest.normalizer")
+    @patch("autopilot.ingest.scanner")
     def test_ingest_creates_ingest_file_job_per_file(
         self,
         mock_scanner,
@@ -3930,9 +3947,9 @@ class TestIngestJobTracking:
             assert call[0][1] == "INGEST"
             assert call[1]["worker"] == "cpu"
 
-    @patch("autopilot.orchestrator.dedup")
-    @patch("autopilot.orchestrator.normalizer")
-    @patch("autopilot.orchestrator.scanner")
+    @patch("autopilot.ingest.dedup")
+    @patch("autopilot.ingest.normalizer")
+    @patch("autopilot.ingest.scanner")
     def test_ingest_creates_dedup_job(
         self,
         mock_scanner,
@@ -3957,9 +3974,9 @@ class TestIngestJobTracking:
         assert len(dedup_calls) == 1
         assert dedup_calls[0][0][1] == "INGEST"
 
-    @patch("autopilot.orchestrator.dedup")
-    @patch("autopilot.orchestrator.normalizer")
-    @patch("autopilot.orchestrator.scanner")
+    @patch("autopilot.ingest.dedup")
+    @patch("autopilot.ingest.normalizer")
+    @patch("autopilot.ingest.scanner")
     def test_ingest_no_jobs_when_no_run_id(
         self,
         mock_scanner,
@@ -3984,13 +4001,13 @@ class TestIngestJobTracking:
 class TestAnalyzeJobTracking:
     """Tests for per-job tracking in _run_analyze."""
 
-    @patch("autopilot.orchestrator.GPUScheduler")
-    @patch("autopilot.orchestrator.faces")
-    @patch("autopilot.orchestrator.audio_events")
-    @patch("autopilot.orchestrator.embeddings")
-    @patch("autopilot.orchestrator.objects")
-    @patch("autopilot.orchestrator.scenes")
-    @patch("autopilot.orchestrator.asr")
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
     def test_analyze_creates_job_per_media_per_analysis(
         self,
         mock_asr,
@@ -4036,13 +4053,13 @@ class TestAnalyzeJobTracking:
         for call in db.insert_job.call_args_list:
             assert call[0][1] == "ANALYZE"
 
-    @patch("autopilot.orchestrator.GPUScheduler")
-    @patch("autopilot.orchestrator.faces")
-    @patch("autopilot.orchestrator.audio_events")
-    @patch("autopilot.orchestrator.embeddings")
-    @patch("autopilot.orchestrator.objects")
-    @patch("autopilot.orchestrator.scenes")
-    @patch("autopilot.orchestrator.asr")
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
     def test_analyze_gpu_worker_for_analysis_jobs(
         self,
         mock_asr,
@@ -4082,13 +4099,13 @@ class TestAnalyzeJobTracking:
             else:
                 assert call[1]["worker"] == "gpu"
 
-    @patch("autopilot.orchestrator.GPUScheduler")
-    @patch("autopilot.orchestrator.faces")
-    @patch("autopilot.orchestrator.audio_events")
-    @patch("autopilot.orchestrator.embeddings")
-    @patch("autopilot.orchestrator.objects")
-    @patch("autopilot.orchestrator.scenes")
-    @patch("autopilot.orchestrator.asr")
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
     def test_analyze_no_jobs_when_no_run_id(
         self,
         mock_asr,
@@ -4123,8 +4140,8 @@ class TestAnalyzeJobTracking:
 class TestClassifyJobTracking:
     """Tests for per-job tracking in _run_classify."""
 
-    @patch("autopilot.orchestrator.classify")
-    @patch("autopilot.orchestrator.cluster")
+    @patch("autopilot.organize.classify")
+    @patch("autopilot.organize.cluster")
     def test_classify_creates_two_jobs(
         self,
         mock_cluster,
@@ -4152,8 +4169,8 @@ class TestClassifyJobTracking:
             assert call[0][1] == "CLASSIFY"
             assert call[1]["worker"] == "cpu"
 
-    @patch("autopilot.orchestrator.classify")
-    @patch("autopilot.orchestrator.cluster")
+    @patch("autopilot.organize.classify")
+    @patch("autopilot.organize.cluster")
     def test_classify_no_jobs_when_no_run_id(
         self,
         mock_cluster,
@@ -4174,7 +4191,7 @@ class TestClassifyJobTracking:
 class TestNarrateJobTracking:
     """Tests for per-job tracking in _run_narrate."""
 
-    @patch("autopilot.orchestrator.narratives")
+    @patch("autopilot.organize.narratives")
     def test_narrate_creates_two_jobs(
         self,
         mock_narratives,
@@ -4203,7 +4220,7 @@ class TestNarrateJobTracking:
             assert call[0][1] == "NARRATE"
             assert call[1]["worker"] == "cpu"
 
-    @patch("autopilot.orchestrator.narratives")
+    @patch("autopilot.organize.narratives")
     def test_narrate_no_jobs_when_no_run_id(
         self,
         mock_narratives,
@@ -4225,7 +4242,7 @@ class TestNarrateJobTracking:
 class TestScriptJobTracking:
     """Tests for per-job tracking in _run_script."""
 
-    @patch("autopilot.orchestrator.script")
+    @patch("autopilot.plan.script")
     def test_script_creates_job_per_narrative(
         self,
         mock_script,
@@ -4258,7 +4275,7 @@ class TestScriptJobTracking:
         assert "n1" in target_ids
         assert "n2" in target_ids
 
-    @patch("autopilot.orchestrator.script")
+    @patch("autopilot.plan.script")
     def test_script_no_jobs_when_no_run_id(
         self,
         mock_script,
@@ -4279,9 +4296,9 @@ class TestScriptJobTracking:
 class TestEdlJobTracking:
     """Tests for per-job tracking in _run_edl."""
 
-    @patch("autopilot.orchestrator.otio_export")
-    @patch("autopilot.orchestrator.validator")
-    @patch("autopilot.orchestrator.edl_mod")
+    @patch("autopilot.plan.otio_export")
+    @patch("autopilot.plan.validator")
+    @patch("autopilot.plan.edl")
     def test_edl_creates_three_jobs_per_narrative(
         self,
         mock_edl,
@@ -4315,9 +4332,9 @@ class TestEdlJobTracking:
             assert call[0][1] == "EDL"
             assert call[1]["worker"] == "cpu"
 
-    @patch("autopilot.orchestrator.otio_export")
-    @patch("autopilot.orchestrator.validator")
-    @patch("autopilot.orchestrator.edl_mod")
+    @patch("autopilot.plan.otio_export")
+    @patch("autopilot.plan.validator")
+    @patch("autopilot.plan.edl")
     def test_edl_no_jobs_when_no_run_id(
         self,
         mock_edl,
@@ -4343,7 +4360,7 @@ class TestEdlJobTracking:
 class TestSourceAssetsJobTracking:
     """Tests for per-job tracking in _run_source_assets."""
 
-    @patch("autopilot.orchestrator.resolve")
+    @patch("autopilot.source.resolve")
     def test_source_creates_job_per_narrative(
         self,
         mock_resolve,
@@ -4369,7 +4386,7 @@ class TestSourceAssetsJobTracking:
         assert job_calls[0][1]["worker"] == "cpu"
         assert job_calls[0][1]["target_id"] == "n1"
 
-    @patch("autopilot.orchestrator.resolve")
+    @patch("autopilot.source.resolve")
     def test_source_no_jobs_when_no_run_id(
         self,
         mock_resolve,
@@ -4390,8 +4407,8 @@ class TestSourceAssetsJobTracking:
 class TestRenderJobTracking:
     """Tests for per-job tracking in _run_render."""
 
-    @patch("autopilot.orchestrator.render_validate")
-    @patch("autopilot.orchestrator.router")
+    @patch("autopilot.render.validate")
+    @patch("autopilot.render.router")
     def test_render_creates_two_jobs_per_narrative(
         self,
         mock_router,
@@ -4427,8 +4444,8 @@ class TestRenderJobTracking:
         assert workers["render"] == "gpu"
         assert workers["validate_render"] == "cpu"
 
-    @patch("autopilot.orchestrator.render_validate")
-    @patch("autopilot.orchestrator.router")
+    @patch("autopilot.render.validate")
+    @patch("autopilot.render.router")
     def test_render_no_jobs_when_no_run_id(
         self,
         mock_router,
@@ -4452,8 +4469,8 @@ class TestRenderJobTracking:
 class TestUploadJobTracking:
     """Tests for per-job tracking in _run_upload."""
 
-    @patch("autopilot.orchestrator.thumbnail")
-    @patch("autopilot.orchestrator.youtube")
+    @patch("autopilot.upload.thumbnail")
+    @patch("autopilot.upload.youtube")
     def test_upload_creates_two_jobs_per_narrative(
         self,
         mock_yt,
@@ -4484,8 +4501,8 @@ class TestUploadJobTracking:
             assert call[1]["worker"] == "cpu"
             assert call[1]["target_id"] == "n1"
 
-    @patch("autopilot.orchestrator.thumbnail")
-    @patch("autopilot.orchestrator.youtube")
+    @patch("autopilot.upload.thumbnail")
+    @patch("autopilot.upload.youtube")
     def test_upload_no_jobs_when_no_run_id(
         self,
         mock_yt,
@@ -5171,7 +5188,7 @@ class TestGateIntegrationInRun:
 class TestGateBackwardsCompat:
     """Tests for backwards compatibility of gate system with human_review_fn."""
 
-    @patch("autopilot.orchestrator.narratives")
+    @patch("autopilot.organize.narratives")
     def test_human_review_fn_still_invoked_with_auto_gate(self, mock_narratives) -> None:
         """With human_review_fn and NARRATE gate mode='auto', callback is still used."""
         narr = MagicMock()
@@ -5219,7 +5236,7 @@ class TestGateBackwardsCompat:
         """
         from autopilot.orchestrator import _run_narrate
 
-        with patch("autopilot.orchestrator.narratives") as mock_narratives:
+        with patch("autopilot.organize.narratives") as mock_narratives:
             narr = MagicMock()
             narr.narrative_id = "n1"
             mock_narratives.build_master_storyboard.return_value = "sb"
