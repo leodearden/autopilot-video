@@ -1,309 +1,128 @@
 {
-  "task_id": "45",
-  "title": "Gate configuration page + API",
+  "task_id": "59",
+  "title": "Extract shared route helpers (_get_db, _is_htmx) to web deps module",
   "files": [
+    "autopilot/web/deps.py",
+    "autopilot/web/routes/dashboard.py",
+    "autopilot/web/routes/media.py",
+    "autopilot/web/routes/sse.py",
     "autopilot/web/routes/gates.py",
-    "autopilot/web/routes/__init__.py",
-    "autopilot/web/app.py",
-    "autopilot/web/templates/gates/config.html",
-    "autopilot/web/templates/partials/gate_toggle.html",
-    "autopilot/web/static/app.css",
-    "autopilot/web/static/app.js",
-    "tests/test_gates.py"
+    "tests/test_web_deps.py"
   ],
   "modules": [
+    "autopilot/web",
     "autopilot/web/routes",
-    "autopilot/web/templates/gates",
-    "autopilot/web/templates/partials",
-    "autopilot/web/static",
     "tests"
   ],
-  "analysis": "This task builds the gate configuration page and API on top of the existing pipeline_gates table (stage TEXT PK, mode TEXT DEFAULT 'auto', status TEXT DEFAULT 'idle', decided_at TEXT, decided_by TEXT DEFAULT 'system', notes TEXT, timeout_hours REAL). The DB layer already has get_gate(), get_all_gates(), update_gate(**kwargs), and init_default_gates() methods in CatalogDB. The web framework (FastAPI + Jinja2 + HTMX) is established by Task 36 with clear patterns: routes use APIRouter(), _get_db(request) helper, try/finally for DB cleanup, and templates extend base.html. The nav already links to /gates. Stage transitions are derived from the ordered _PIPELINE_STAGES tuple — each gate represents the entry into that stage (e.g., the 'analyze' gate controls ingest→analyze). The task introduces three gate modes (auto/pause/notify) replacing the prior auto/manual distinction, presets for bulk mode assignment, approve/skip actions for waiting gates, and per-gate timeout configuration. All of this maps directly onto existing DB columns with no schema changes needed.",
-  "prerequisites": [
-    {
-      "id": "pre-1",
-      "description": "Create tests/test_gates.py with imports (pytest, FastAPI, TestClient, create_app, CatalogDB), app/client fixtures (file-backed CatalogDB via tmp_path with init_default_gates() called), and constants mirroring VALID_MODES and GATE_PRESETS from the route module. Create the autopilot/web/templates/gates/ directory.",
-      "status": "done",
-      "commit": "8dd20a3",
-      "tests": []
-    },
-    {
-      "id": "pre-2",
-      "description": "Create autopilot/web/routes/gates.py skeleton with router = APIRouter(), _get_db(request) helper, VALID_MODES = ('auto', 'pause', 'notify'), _GATE_STATUS_COLORS dict, _STAGE_TRANSITIONS list (adjacent pairs from CatalogDB._PIPELINE_STAGES), and GATE_PRESETS dict with four presets: full_auto, review_creative, review_everything, review_before_render. Register gates_router in routes/__init__.py and include in app.py via app.include_router(gates_router).",
-      "status": "done",
-      "commit": "c5fa73b",
-      "tests": []
-    }
-  ],
+  "analysis": "Four route modules (dashboard.py, media.py, sse.py, gates.py) each define an identical `_get_db(request: Request) -> CatalogDB` one-liner that constructs `CatalogDB(request.app.state.db_path)`. Additionally, gates.py defines `_is_htmx(request: Request) -> bool` checking `request.headers.get('hx-request') == 'true'`, while media.py does the same check inline at line 62 with `request.headers.get('hx-request')` (truthiness-based). The task extracts both into a new `autopilot/web/deps.py` module as public functions `get_db()` and `is_htmx()`, then updates all four route modules to import from the shared module. This is a pure refactoring with no behavior change \u2014 existing tests (test_dashboard.py with 472 lines, test_gates.py with 457 lines, test_web_app.py with 237 lines) serve as regression tests. The _get_db helper is called 20+ times across the 4 modules (8 in media.py, 4 in dashboard.py, 1 in sse.py, 7 in gates.py). The _is_htmx helper is called 3 times in gates.py plus 1 inline check in media.py. media.py's inline check uses truthiness while gates.py uses `== 'true'`; since HTMX always sends the value 'true', these are functionally equivalent \u2014 we standardize on the explicit `== 'true'` form.",
+  "prerequisites": [],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write TestGateListAPI::test_api_gates_returns_all_gates: GET /api/gates returns 200 with JSON list of 9 gate dicts, each containing keys 'stage', 'mode', 'status', 'timeout_hours', 'decided_at', 'decided_by'. Verify stages match _PIPELINE_STAGES order and default mode is 'auto'.",
+      "description": "Write failing tests for `get_db()` in tests/test_web_deps.py: (1) test_get_db_returns_catalog_db \u2014 create a mock Request with app.state.db_path pointing at a tmp_path SQLite file, call get_db(), assert result is a CatalogDB instance. (2) test_get_db_uses_app_db_path \u2014 verify the returned CatalogDB is connected to the path from request.app.state.db_path by checking a known property or running a simple query.",
       "status": "done",
-      "commit": "e67cc05"
+      "commit": "3dd725e"
     },
     {
       "id": "step-2",
-      "type": "impl",
-      "description": "Implement GET /api/gates endpoint in gates.py: call db.get_all_gates(), return list of gate dicts as JSON.",
+      "type": "test",
+      "description": "Write failing tests for `is_htmx()` in tests/test_web_deps.py: (1) test_is_htmx_true_when_header_present \u2014 mock Request with headers={'hx-request': 'true'}, assert is_htmx returns True. (2) test_is_htmx_false_when_header_absent \u2014 mock Request with empty headers, assert returns False. (3) test_is_htmx_false_for_non_true_value \u2014 mock Request with headers={'hx-request': 'false'}, assert returns False.",
       "status": "done",
-      "commit": "e67cc05"
+      "commit": "62faddc"
     },
     {
       "id": "step-3",
-      "type": "test",
-      "description": "Write TestGateDetailAPI::test_api_gate_detail_returns_single_gate: GET /api/gates/analyze returns 200 with gate dict for 'analyze'. Write test_api_gate_detail_unknown_stage_returns_404: GET /api/gates/nonexistent returns 404.",
+      "type": "impl",
+      "description": "Create autopilot/web/deps.py with two functions: `get_db(request: Request) -> CatalogDB` returning `CatalogDB(request.app.state.db_path)`, and `is_htmx(request: Request) -> bool` returning `request.headers.get('hx-request') == 'true'`. Import Request from fastapi and CatalogDB from autopilot.db. All step 1-2 tests should now pass.",
       "status": "done",
-      "commit": "55b27ad"
+      "commit": "8bd9bb5"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement GET /api/gates/{stage} endpoint: validate stage in _PIPELINE_STAGES, call db.get_gate(stage), return dict or raise HTTPException(404).",
+      "description": "Update autopilot/web/routes/dashboard.py: add `from autopilot.web.deps import get_db`, remove the local `_get_db` function definition (lines ~38-40), replace all 4 `_get_db(` calls with `get_db(`. Run test_dashboard.py to verify no regressions.",
       "status": "done",
-      "commit": "55b27ad"
+      "commit": "4a6b77a"
     },
     {
       "id": "step-5",
-      "type": "test",
-      "description": "Write TestGateUpdateAPI: (1) test_update_gate_mode: PUT /api/gates/analyze with JSON {\"mode\": \"pause\"} returns 200, response shows mode='pause', re-GET confirms persistence. (2) test_update_gate_invalid_mode: PUT with {\"mode\": \"invalid\"} returns 400/422. (3) test_update_gate_timeout: PUT /api/gates/render with {\"timeout_hours\": 24.0} returns 200, timeout persisted. (4) test_update_gate_clear_timeout: PUT with {\"timeout_hours\": null} clears timeout. (5) test_update_gate_unknown_stage: PUT /api/gates/nonexistent returns 404.",
+      "type": "impl",
+      "description": "Update autopilot/web/routes/media.py: add `from autopilot.web.deps import get_db, is_htmx`, remove the local `_get_db` function definition (lines ~16-18), replace all 8 `_get_db(` calls with `get_db(`, replace the inline `request.headers.get('hx-request')` check at line 62 with `is_htmx(request)`. Verify no regressions.",
       "status": "done",
-      "commit": "c68f99a"
+      "commit": "3646a08"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Implement PUT /api/gates/{stage} endpoint: define Pydantic GateUpdate model with optional mode (validated against VALID_MODES) and optional timeout_hours (float | None). Validate stage, call db.update_gate() with non-None fields, return updated gate dict from db.get_gate(). Use Body(...) or Pydantic model for request parsing.",
+      "description": "Update autopilot/web/routes/sse.py: add `from autopilot.web.deps import get_db`, remove the local `_get_db` function definition (lines ~36-38), replace the single `_get_db(` call with `get_db(`. Verify no regressions.",
       "status": "done",
-      "commit": "c68f99a"
+      "commit": "c5b6946"
     },
     {
       "id": "step-7",
-      "type": "test",
-      "description": "Write TestGateApproveAPI: (1) test_approve_gate: POST /api/gates/classify/approve returns 200, response has status='approved', decided_by='console', decided_at is non-null ISO timestamp. (2) test_approve_unknown_stage_returns_404: POST /api/gates/nonexistent/approve returns 404.",
+      "type": "impl",
+      "description": "Update autopilot/web/routes/gates.py: add `from autopilot.web.deps import get_db, is_htmx`, remove both the `_get_db` function definition (lines ~57-59) and `_is_htmx` function definition (lines ~62-64), replace all 7 `_get_db(` calls with `get_db(` and all 3 `_is_htmx(` calls with `is_htmx(`. Run test_gates.py to verify no regressions.",
       "status": "done",
-      "commit": "7fce473"
+      "commit": "ceeee02"
     },
     {
       "id": "step-8",
-      "type": "impl",
-      "description": "Implement POST /api/gates/{stage}/approve: validate stage, call db.update_gate(stage, status='approved', decided_by='console', decided_at=datetime.utcnow().isoformat()), return updated gate.",
-      "status": "done",
-      "commit": "7fce473"
-    },
-    {
-      "id": "step-9",
       "type": "test",
-      "description": "Write TestGateSkipAPI: (1) test_skip_gate: POST /api/gates/classify/skip returns 200, response has status='skipped', decided_by='console', decided_at set. (2) test_skip_unknown_stage_returns_404.",
-      "status": "done",
-      "commit": "7fce473"
-    },
-    {
-      "id": "step-10",
-      "type": "impl",
-      "description": "Implement POST /api/gates/{stage}/skip: same pattern as approve but status='skipped'.",
-      "status": "done",
-      "commit": "7fce473"
-    },
-    {
-      "id": "step-11",
-      "type": "test",
-      "description": "Write TestGatePresetsAPI: (1) test_preset_full_auto: PUT /api/gates/preset/full_auto returns 200, response is list of 9 gates all with mode='auto'. (2) test_preset_review_creative: verify classify, narrate, upload gates are 'pause', rest 'auto'. (3) test_preset_review_everything: all 9 gates mode='pause'. (4) test_preset_review_before_render: edl and render gates 'pause', rest 'auto'. (5) test_preset_unknown_returns_404: PUT /api/gates/preset/nonexistent returns 404.",
-      "status": "done",
-      "commit": "f16d073"
-    },
-    {
-      "id": "step-12",
-      "type": "impl",
-      "description": "Implement PUT /api/gates/preset/{preset_name}: validate preset_name in GATE_PRESETS, iterate preset config (dict mapping stage→mode), call db.update_gate() for each, return db.get_all_gates() as response. Define GATE_PRESETS: full_auto (all 'auto'), review_creative (classify/narrate/upload → 'pause'), review_everything (all 'pause'), review_before_render (edl/render → 'pause').",
-      "status": "done",
-      "commit": "f16d073"
-    },
-    {
-      "id": "step-13",
-      "type": "test",
-      "description": "Write TestGatesPage: (1) test_gates_page_returns_200: GET /gates returns 200 with text/html. (2) test_gates_page_has_title: HTML contains 'Gate Configuration'. (3) test_gates_page_shows_all_stages: HTML contains all 9 stage names. (4) test_gates_page_shows_transitions: HTML contains transition labels (e.g., 'ingest' paired with 'analyze' in transition rows).",
-      "status": "done",
-      "commit": "f16d073"
-    },
-    {
-      "id": "step-14",
-      "type": "impl",
-      "description": "Create gates/config.html template extending base.html with title 'Gate Configuration'. Build _STAGE_TRANSITIONS in route as list of (from_stage, to_stage, gate_stage) tuples. Render vertical list of transitions, each including the gate_toggle partial. Add GET /gates route that queries all gates, builds transitions context, renders template.",
-      "status": "done",
-      "commit": "5be4ab4"
-    },
-    {
-      "id": "step-15",
-      "type": "test",
-      "description": "Write TestGateTogglePartial: (1) test_toggle_contains_mode_select: gate_toggle partial HTML contains a select/dropdown with options 'auto', 'pause', 'notify'. (2) test_toggle_has_htmx_attributes: HTML contains hx-put and hx-swap attributes for HTMX gate update. (3) test_toggle_shows_current_mode: the selected option matches the gate's current mode.",
-      "status": "done",
-      "commit": "971ac4f"
-    },
-    {
-      "id": "step-16",
-      "type": "impl",
-      "description": "Create partials/gate_toggle.html: a div with id='gate-{stage}' containing from→to stage labels, mode select with hx-put='/api/gates/{stage}' hx-target='#gate-{stage}' hx-swap='outerHTML', timeout_hours input field, status badge with color class, and conditional approve/skip buttons when status='waiting' with hx-post targeting approve/skip endpoints.",
-      "status": "done",
-      "commit": "971ac4f"
-    },
-    {
-      "id": "step-17",
-      "type": "test",
-      "description": "Write TestGatePresetsUI: (1) test_gates_page_shows_preset_buttons: GET /gates HTML contains buttons/links for all 4 presets (Full Auto, Review Creative, Review Everything, Review Before Render). (2) test_preset_buttons_have_htmx: each button has hx-put targeting /api/gates/preset/{name}.",
-      "status": "done",
-      "commit": "402070d"
-    },
-    {
-      "id": "step-18",
-      "type": "impl",
-      "description": "Add presets section to gates/config.html above the gate list: a row of 4 styled buttons, each with hx-put='/api/gates/preset/{name}' hx-target='#gate-list' hx-swap='innerHTML' to replace the entire gate list after preset application.",
-      "status": "done",
-      "commit": "402070d"
-    },
-    {
-      "id": "step-19",
-      "type": "test",
-      "description": "Write TestGateStatusDisplay: (1) test_waiting_gate_shows_approve_skip_buttons: set a gate to status='waiting', GET /gates HTML shows 'Approve' and 'Skip' buttons for that gate. (2) test_approved_gate_shows_decided_info: set status='approved' with decided_at and decided_by, verify these appear in HTML. (3) test_status_color_coding: waiting gate has amber class, approved has green class, idle has gray class.",
-      "status": "done",
-      "commit": "8e78770"
-    },
-    {
-      "id": "step-20",
-      "type": "impl",
-      "description": "Enhance gate_toggle.html: add status badge with conditional Tailwind color classes (idle=gray, waiting=amber, approved=green, rejected=red, skipped=blue), decided_at/decided_by display when set, and prominent approve/skip buttons when status='waiting'. Add gate-specific CSS to app.css for gate row styling and status badge colors.",
-      "status": "done",
-      "commit": "8e78770"
-    },
-    {
-      "id": "step-21",
-      "type": "test",
-      "description": "Write TestHtmxResponses: (1) test_put_gate_returns_html_for_htmx: PUT /api/gates/analyze with HX-Request header returns text/html containing the gate_toggle partial. (2) test_put_gate_returns_json_without_htmx: same PUT without HX-Request returns application/json. (3) test_approve_returns_html_for_htmx: POST approve with HX-Request returns HTML partial. (4) test_skip_returns_html_for_htmx similarly.",
-      "status": "done",
-      "commit": "50b9dca"
-    },
-    {
-      "id": "step-22",
-      "type": "impl",
-      "description": "Add HTMX-aware response logic: in PUT /api/gates/{stage}, POST approve, POST skip, check request.headers.get('hx-request'). If present, render gate_toggle.html partial with updated gate data and return HTMLResponse. Otherwise return JSON dict. Build _render_gate_partial() helper to avoid duplication.",
-      "status": "done",
-      "commit": "50b9dca"
-    },
-    {
-      "id": "step-23",
-      "type": "test",
-      "description": "Write TestPresetHtmxResponse: (1) test_preset_returns_html_for_htmx: PUT /api/gates/preset/full_auto with HX-Request header returns HTML containing all 9 gate toggle rows (one per stage). (2) test_preset_returns_json_without_htmx: same request without HX-Request returns JSON list.",
-      "status": "done",
-      "commit": "6fee53d"
-    },
-    {
-      "id": "step-24",
-      "type": "impl",
-      "description": "Add HTMX-aware response to preset endpoint: when HX-Request present, render all gate_toggle partials concatenated and return as HTMLResponse for swapping the gate list container. Add refreshGateRow() JS helper to app.js for potential SSE-driven gate updates. Final polish: verify all endpoints work end-to-end, templates render correctly, HTMX interactions are wired.",
-      "status": "done",
-      "commit": "6fee53d"
-    },
-    {
-      "id": "step-25",
-      "type": "test",
-      "description": "Fix vacuous assertion in TestGateTogglePartial::test_toggle_shows_current_mode. The current test asserts only `'selected' in html` which is unconditionally true (every gate renders its current mode as selected). Replace with a stdlib html.parser-based helper that extracts the selected option value from a specific gate's select element. The rewritten test must: (1) PUT /api/gates/analyze with mode='pause', (2) GET /gates, (3) parse the HTML to find the <div id=\"gate-analyze\"> section, (4) within that section find the <select> and extract the <option> with the 'selected' attribute, (5) assert its value is 'pause'. Also add a negative-control assertion: verify that a gate NOT set to 'pause' (e.g., classify) still has 'auto' as its selected option, proving the assertion discriminates between gates.",
-      "status": "done",
-      "commit": "8a9182a"
-    },
-    {
-      "id": "step-26",
-      "type": "impl",
-      "description": "No template or route changes needed — the gate_toggle.html template already renders `selected` correctly on the matching option (line 18: `{% if gate.get('mode', 'auto') == m %}selected{% endif %}`). This step verifies the fixed test passes against the existing implementation by running pytest on TestGateTogglePartial::test_toggle_shows_current_mode. The html.parser helper added in step-25 lives entirely in the test file.",
-      "status": "done",
-      "commit": "8a9182a"
+      "description": "Run the full regression suite: pytest tests/test_web_deps.py tests/test_dashboard.py tests/test_gates.py tests/test_web_app.py. Verify all tests pass. Grep the 4 route modules for any remaining `_get_db` or `_is_htmx` references to confirm complete extraction.",
+      "status": "pending",
+      "commit": null
     }
   ],
   "design_decisions": [
     {
-      "decision": "Gate modes are 'auto', 'pause', 'notify' stored as text in existing mode column",
-      "rationale": "The DB mode column is TEXT with no constraint. The prior 'manual' value maps conceptually to 'pause'. No schema migration needed — we validate in the route layer via VALID_MODES constant."
+      "decision": "Place shared helpers in autopilot/web/deps.py rather than autopilot/web/routes/_helpers.py",
+      "rationale": "deps.py at the web package level follows FastAPI convention (FastAPI projects commonly use a deps module for shared dependencies). It's the first suggestion in the task description. Placing it outside routes/ avoids circular import risk if future web-level code needs these helpers."
     },
     {
-      "decision": "Stage transitions derived from ordered _PIPELINE_STAGES tuple as adjacent pairs",
-      "rationale": "The 9 pipeline stages form a linear sequence. Each gate controls entry into its stage, so 'analyze' gate = transition from ingest→analyze. The first stage (ingest) gate controls pipeline entry. This gives 8 transition pairs plus the ingest entry gate = 9 total gate rows."
+      "decision": "Use public names `get_db` and `is_htmx` (no leading underscore)",
+      "rationale": "These are now part of a shared module's public API, imported by multiple consumers. The underscore prefix indicated module-private scope which no longer applies."
     },
     {
-      "decision": "Presets defined as Python dicts in gates.py, not in the database",
-      "rationale": "Presets are fixed business logic (Full Auto, Review Creative, Review Everything, Review Before Render). Storing them in code keeps them version-controlled and avoids an extra DB table. Each preset maps stage names to modes; stages not mentioned default to 'auto'."
+      "decision": "Standardize is_htmx on `== 'true'` check rather than truthiness",
+      "rationale": "gates.py's explicit `== 'true'` is more correct than media.py's truthiness check (`request.headers.get('hx-request')`). While HTMX always sends 'true', the explicit check is defensive against unexpected header values. The behavior change in media.py is technically observable but functionally equivalent in all real HTMX scenarios."
     },
     {
-      "decision": "HTMX-aware endpoints: check HX-Request header to return HTML partial or JSON",
-      "rationale": "Follows the existing pattern in media.py where /api/media returns HTML for HTMX requests and JSON otherwise. This enables both the interactive HTMX UI and programmatic JSON API from the same endpoints."
+      "decision": "Do not extract _format_duration despite it being duplicated in dashboard.py and media.py",
+      "rationale": "The task scope specifically targets _get_db and _is_htmx. Extracting _format_duration would expand scope beyond the task definition. It can be addressed in a follow-up task."
     },
     {
-      "decision": "Gate statuses: idle, waiting, approved, rejected, skipped (gate-specific, distinct from job execution statuses)",
-      "rationale": "The pipeline_gates.status column represents gate decision state, not job execution state. These statuses reflect the gate lifecycle: idle (no decision needed), waiting (paused for human), approved/rejected/skipped (decision made). This is consistent with the task description."
-    },
-    {
-      "decision": "approve/skip actions set decided_by='console' to distinguish from programmatic/CLI decisions",
-      "rationale": "The decided_by field tracks provenance. Web console actions are always 'console'. Future CLI or API integrations could use different identifiers."
-    },
-    {
-      "decision": "Timeout configuration uses existing timeout_hours REAL column, null means no timeout",
-      "rationale": "The DB already has timeout_hours. The UI presents it as an optional field — when set, the orchestrator can auto-approve after N hours. Null/empty = no auto-approve timeout."
-    },
-    {
-      "decision": "Single test file tests/test_gates.py covers all gate routes (API + page + partials)",
-      "rationale": "Follows project convention where test_web_app.py covers the app skeleton. Gate routes are cohesive enough for one file. Tests organized into classes by feature area: TestGateListAPI, TestGateDetailAPI, TestGateUpdateAPI, TestGateApproveAPI, TestGateSkipAPI, TestGatePresetsAPI, TestGatesPage, TestGateTogglePartial, TestGatePresetsUI, TestGateStatusDisplay, TestHtmxResponses, TestPresetHtmxResponse."
-    },
-    {
-      "decision": "Preset 'review_creative' pauses at classify→narrate, narrate→script, render→upload (gates: narrate, script, upload instead of classify, narrate, upload)",
-      "rationale": "The task says pause at CLASSIFY→NARRATE, NARRATE→SCRIPT, RENDER→UPLOAD. In our model, gates control entry into the target stage: CLASSIFY→NARRATE = gate at 'narrate', NARRATE→SCRIPT = gate at 'script', RENDER→UPLOAD = gate at 'upload'. Similarly review_before_render: EDL→SOURCE = gate at 'source', RENDER→UPLOAD = gate at 'upload'."
-    },
-    {
-      "decision": "Use stdlib html.parser for HTML assertion in test_toggle_shows_current_mode instead of string matching",
-      "rationale": "The reviewer flagged the original `'selected' in html` assertion as vacuous — it passes unconditionally since every gate dropdown has a selected option. A string pattern like `'value=\"pause\" selected'` is fragile (attribute order may vary). stdlib html.parser is zero-dependency, robust to attribute ordering, and can scope the assertion to a specific gate's div by id. This avoids adding BeautifulSoup as a test dependency."
+      "decision": "Unit-test deps.py with mock Request objects, rely on existing integration tests for regression",
+      "rationale": "The deps functions are thin wrappers. Unit tests with mocks verify the contract (correct attribute access, correct return types). The 1100+ lines of existing integration tests across test_dashboard.py, test_gates.py, and test_web_app.py already exercise these helpers through real HTTP requests, so they serve as comprehensive regression tests."
     }
   ],
   "reuse": [
     {
-      "what": "CatalogDB gate methods (get_gate, get_all_gates, update_gate, init_default_gates)",
-      "where": "autopilot/db.py lines 1109-1159",
-      "how": "All gate CRUD goes through these existing methods. No new DB methods needed — update_gate(**kwargs) already accepts arbitrary field updates including mode, status, timeout_hours, decided_at, decided_by."
+      "what": "Existing _get_db implementation from all 4 route modules",
+      "where": "autopilot/web/routes/{dashboard,media,sse,gates}.py",
+      "how": "Copy the identical one-liner `CatalogDB(request.app.state.db_path)` into deps.py as the canonical implementation"
     },
     {
-      "what": "_get_db(request) pattern for route dependencies",
-      "where": "autopilot/web/routes/dashboard.py line 38-40, media.py line 16-18",
-      "how": "Replicate the same helper in gates.py: CatalogDB(request.app.state.db_path) with try/finally db.close() in each endpoint."
+      "what": "Existing _is_htmx implementation from gates.py",
+      "where": "autopilot/web/routes/gates.py lines 62-64",
+      "how": "Copy the `request.headers.get('hx-request') == 'true'` check into deps.py as the canonical implementation"
     },
     {
-      "what": "base.html template with nav, Tailwind CSS, HTMX",
-      "where": "autopilot/web/templates/base.html",
-      "how": "gates/config.html extends base.html using {% extends 'base.html' %} and overrides title/content blocks. Nav already has /gates link (line 68)."
+      "what": "Existing integration test suites as regression tests",
+      "where": "tests/test_dashboard.py (472 lines), tests/test_gates.py (457 lines), tests/test_web_app.py (237 lines)",
+      "how": "Run after each route module update to verify no behavioral regressions. These tests exercise _get_db through create_app \u2192 TestClient \u2192 route handler \u2192 _get_db, and _is_htmx through HX-Request header tests in TestHtmxResponses."
     },
     {
-      "what": "CatalogDB._PIPELINE_STAGES constant for stage validation",
-      "where": "autopilot/db.py line 1109-1119",
-      "how": "Import and use for stage name validation in API endpoints and for building the _STAGE_TRANSITIONS list. Same pattern as dashboard.py line 26."
+      "what": "CatalogDB class from autopilot.db",
+      "where": "autopilot/db.py",
+      "how": "Import into deps.py; constructor takes a string db_path and creates an SQLite connection with WAL mode"
     },
     {
-      "what": "TestClient + app fixture pattern for web tests",
-      "where": "tests/test_web_app.py lines 14-34, tests/conftest.py catalog_db fixture",
-      "how": "Replicate the app/client fixture pattern: create_app(str(tmp_path / 'catalog.db')), TestClient(app). Use init_default_gates() in fixture setup to seed gate rows."
-    },
-    {
-      "what": "Partial template rendering pattern (stage_card.html)",
-      "where": "autopilot/web/templates/partials/stage_card.html, dashboard.py line 190-192",
-      "how": "Follow the same structure for gate_toggle.html: self-contained div with unique id for HTMX targeting, Tailwind dark theme styling, conditional rendering. Use templates.get_template().render() for partial responses."
-    },
-    {
-      "what": "Status-to-color mapping pattern",
-      "where": "autopilot/web/routes/dashboard.py _STATUS_COLORS dict lines 29-35",
-      "how": "Define analogous _GATE_STATUS_COLORS dict in gates.py for gate-specific status colors (idle=gray, waiting=amber, approved=green, rejected=red, skipped=blue)."
-    },
-    {
-      "what": "Router registration in routes/__init__.py and app.py",
-      "where": "autopilot/web/routes/__init__.py, autopilot/web/app.py lines 39-43",
-      "how": "Add 'from autopilot.web.routes.gates import router as gates_router' to __init__.py, add gates_router to __all__, and app.include_router(gates_router) in app.py."
+      "what": "Test fixture patterns (mock Request, tmp_path DB)",
+      "where": "tests/test_dashboard.py fixtures, tests/test_gates.py fixtures",
+      "how": "Follow the same patterns for test_web_deps.py: use unittest.mock to create Request objects with app.state.db_path for unit-level tests of the helper functions"
     }
   ],
-  "_session_id": "45-e66f3d99",
-  "_created_at": "2026-03-24T13:15:32.146865+00:00",
-  "_schema_version": 1
+  "_session_id": "59-ed286ca6",
+  "_created_at": "2026-03-24T15:10:21.252340+00:00"
 }
