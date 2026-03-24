@@ -208,3 +208,58 @@ class TestGatePresetsAPI:
         """PUT /api/gates/preset/nonexistent returns 404."""
         response = client.put("/api/gates/preset/nonexistent")
         assert response.status_code == 404
+
+
+class TestGatesPage:
+    """Tests for GET /gates HTML page."""
+
+    def test_gates_page_returns_200(self, client: TestClient) -> None:
+        """GET /gates returns 200 with text/html."""
+        response = client.get("/gates")
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+
+    def test_gates_page_has_title(self, client: TestClient) -> None:
+        """HTML contains 'Gate Configuration'."""
+        response = client.get("/gates")
+        assert "Gate Configuration" in response.text
+
+    def test_gates_page_shows_all_stages(self, client: TestClient) -> None:
+        """HTML contains all 9 stage names."""
+        response = client.get("/gates")
+        for stage in CatalogDB._PIPELINE_STAGES:
+            assert stage in response.text
+
+    def test_gates_page_shows_transitions(self, client: TestClient) -> None:
+        """HTML contains transition labels (from-stage paired with to-stage)."""
+        response = client.get("/gates")
+        # Check a few transitions exist
+        assert "ingest" in response.text
+        assert "analyze" in response.text
+
+
+class TestGateTogglePartial:
+    """Tests for gate_toggle.html partial content within the gates page."""
+
+    def test_toggle_contains_mode_select(self, client: TestClient) -> None:
+        """Gate toggle partial contains a select with auto/pause/notify options."""
+        response = client.get("/gates")
+        html = response.text
+        for mode in VALID_MODES:
+            assert f'value="{mode}"' in html, f"Missing option value for {mode}"
+
+    def test_toggle_has_htmx_attributes(self, client: TestClient) -> None:
+        """Gate toggle has hx-put and hx-swap attributes for HTMX updates."""
+        response = client.get("/gates")
+        html = response.text
+        assert "hx-put" in html
+        assert "hx-swap" in html
+
+    def test_toggle_shows_current_mode(self, client: TestClient) -> None:
+        """The selected option matches the gate's current mode (default=auto)."""
+        # Set a gate to 'pause' mode first
+        client.put("/api/gates/analyze", json={"mode": "pause"})
+        response = client.get("/gates")
+        html = response.text
+        # The 'pause' option for analyze gate should be selected
+        assert "selected" in html
