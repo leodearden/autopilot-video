@@ -1,135 +1,233 @@
 {
-  "task_id": "66",
-  "title": "Extract _assert_only_called helper in TestTabPerTabFetching",
+  "task_id": "50",
+  "title": "Render + upload review",
   "files": [
-    "tests/test_media_detail.py"
+    "autopilot/db.py",
+    "autopilot/web/routes/review.py",
+    "autopilot/web/templates/review/renders.html",
+    "autopilot/web/templates/review/uploads.html",
+    "tests/test_render_review.py"
   ],
   "modules": [
+    "autopilot/db",
+    "autopilot/web/routes",
+    "autopilot/web/templates/review",
     "tests"
   ],
-  "analysis": "TestTabPerTabFetching (lines 994-1107 of tests/test_media_detail.py) has 6 test methods verifying tab-specific DB isolation. Each test hits a tab endpoint then asserts various mock_db methods were not called. Currently, only the metadata test checks all 6 DB methods; the other 5 tests only check 3 of 6 \u2014 missing assert_not_called for get_audio_events_for_media, count_embeddings_for_media, and/or get_faces_for_media. Extracting _assert_only_called will (a) DRY up 21 repeated assert_not_called lines into 6 one-liner calls, (b) fix incomplete assertions in 5 tests by always checking all 6 methods, and (c) make adding new DB methods a single-line change to _DB_METHODS. The helper is a private class method accepting mock_db and *allowed method name strings. It iterates a class-level _DB_METHODS tuple and calls assert_not_called on any method not in allowed. Each test keeps its explicit assert_called_once() for positive verification. Two meta-tests validate the helper's contract directly.",
+  "analysis": "Build render review page (/review/render/{narrative_id}) with HTML5 video player and quality validation, upload status page (/review/uploads), video streaming endpoint, and supporting JSON APIs. The codebase has a mature pattern: review.py contains both /review/* page routes and /api/* JSON routes with HTMX-aware dual responses (HTML partial vs JSON). Templates extend base.html using Tailwind dark mode + HTMX. CatalogDB has edit_plans (narrative_id PK, edl_json, otio_path, validation_json, render_path) and uploads (narrative_id PK, youtube_video_id, youtube_url, uploaded_at, privacy_status) tables with single-record CRUD, but no list methods \u2014 need to add list_edit_plans() and list_uploads() with LEFT JOIN to narratives for title data. Video streaming is new to the codebase \u2014 Starlette's FileResponse supports Range headers natively for seeking. The existing gates API (/api/gates/{stage}/approve, /api/gates/{stage}/skip) handles render gate actions, so the template just wires to those endpoints. The narrative_scripts table (get_narrative_script) provides script scene data for the side-by-side view. The _REVIEW_LINKS dict in review_hub needs render/upload entries with pending counts.\n\n**Post-review fix (steps 17-18):** The upload stage pending count at review.py:68-71 has a logic error \u2014 it counts completed uploads as pending (semantically inverted). The correct logic mirrors the render stage: pending uploads = narratives that have been rendered (have a render_path in edit_plans) but lack an upload record. This is a set difference: rendered_ids - uploaded_ids.",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Verify existing tests pass: run pytest tests/test_media_detail.py::TestTabPerTabFetching to establish green baseline",
-      "status": "pending",
-      "commit": null,
-      "tests": [
-        "tests/test_media_detail.py::TestTabPerTabFetching"
-      ]
+      "description": "Create tests/test_render_review.py with shared fixtures: db fixture (tmp_path file-backed CatalogDB), app fixture (create_app with init_default_gates), client fixture (TestClient), _seed_narrative helper, _seed_edit_plan helper (inserts narrative + upserts edit_plan with render_path and validation_json), _seed_upload helper (inserts narrative + upload record)",
+      "status": "done",
+      "commit": "f7ae909",
+      "tests": []
     }
   ],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write test_assert_only_called_rejects_unexpected: create a MagicMock, call mock_db.get_transcript() on it, then invoke self._assert_only_called(mock_db) with no allowed args \u2014 expect pytest.raises(AssertionError). This fails because the helper doesn't exist yet.",
-      "status": "pending",
-      "commit": null
+      "description": "Write failing tests for CatalogDB.list_edit_plans(): returns list of all edit plans joined with narrative title; returns empty list when none exist; includes all columns (narrative_id, edl_json, otio_path, validation_json, render_path, narrative_title)",
+      "status": "done",
+      "commit": "869aa32"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Add _DB_METHODS class constant tuple: ('get_media_detail', 'get_transcript', 'get_detections_for_media', 'get_faces_for_media', 'get_audio_events_for_media', 'count_embeddings_for_media'). Implement _assert_only_called(self, mock_db, *allowed) that iterates _DB_METHODS and calls getattr(mock_db, name).assert_not_called() for each name not in the allowed set. Step-1 meta-test now passes.",
-      "status": "pending",
-      "commit": null
+      "description": "Implement list_edit_plans() in CatalogDB \u2014 SELECT e.*, n.title as narrative_title FROM edit_plans e LEFT JOIN narratives n ON e.narrative_id = n.narrative_id. Returns list[dict].",
+      "status": "done",
+      "commit": "c7ddce9"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write test_assert_only_called_permits_allowed: create a MagicMock, call mock_db.get_transcript(), invoke self._assert_only_called(mock_db, 'get_transcript') \u2014 should NOT raise. Verifies the allowed-skip logic works.",
-      "status": "pending",
-      "commit": null
+      "description": "Write failing tests for CatalogDB.list_uploads(): returns list of all uploads joined with narrative title; returns empty list when none exist; includes all columns (narrative_id, youtube_video_id, youtube_url, uploaded_at, privacy_status, narrative_title)",
+      "status": "done",
+      "commit": "5ad716e"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Refactor test_metadata_tab_does_not_call_get_transcript: replace 6 individual assert_not_called lines (lines 1031-1036) with self._assert_only_called(mock_db). Behavior is identical since metadata tab allows no DB methods.",
-      "status": "pending",
-      "commit": null
+      "description": "Implement list_uploads() in CatalogDB \u2014 SELECT u.*, n.title as narrative_title FROM uploads u LEFT JOIN narratives n ON u.narrative_id = n.narrative_id ORDER BY u.uploaded_at DESC. Returns list[dict].",
+      "status": "done",
+      "commit": "2975d21"
     },
     {
       "id": "step-5",
-      "type": "impl",
-      "description": "Refactor test_transcript_tab_calls_get_transcript_only: replace 3 assert_not_called lines with self._assert_only_called(mock_db, 'get_transcript'). This also adds previously-missing not-called checks for get_audio_events_for_media and count_embeddings_for_media.",
-      "status": "pending",
-      "commit": null
+      "type": "test",
+      "description": "Write failing tests for GET /api/renders/{narrative_id}: returns JSON with edit plan data (narrative_id, render_path, validation parsed from validation_json, narrative title); returns 404 for nonexistent narrative_id",
+      "status": "done",
+      "commit": "c365091"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Refactor test_detections_tab_calls_get_detections_only: replace 3 assert_not_called lines with self._assert_only_called(mock_db, 'get_detections_for_media'). Adds missing checks for get_faces_for_media, get_audio_events_for_media, count_embeddings_for_media.",
-      "status": "pending",
-      "commit": null
+      "description": "Implement api_get_render route in review.py \u2014 GET /api/renders/{narrative_id}. Fetches edit_plan and narrative, parses validation_json into dict, returns composite JSON response with render status. Raises 404 if no edit plan found.",
+      "status": "done",
+      "commit": "002c89c"
     },
     {
       "id": "step-7",
-      "type": "impl",
-      "description": "Refactor test_faces_tab_calls_get_faces_only: replace 3 assert_not_called lines with self._assert_only_called(mock_db, 'get_faces_for_media'). Adds missing checks for get_audio_events_for_media, count_embeddings_for_media.",
-      "status": "pending",
-      "commit": null
+      "type": "test",
+      "description": "Write failing tests for GET /api/renders/{narrative_id}/video: returns 200 with video/mp4 content-type when render file exists (use tmp_path to create a small mock .mp4 file); returns 404 when no edit plan exists; returns 404 when render_path is null or file missing",
+      "status": "done",
+      "commit": "7ac4074"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Refactor test_audio_events_tab_calls_get_audio_events_only: replace 3 assert_not_called lines with self._assert_only_called(mock_db, 'get_audio_events_for_media'). Adds missing checks for get_faces_for_media, count_embeddings_for_media.",
-      "status": "pending",
-      "commit": null
+      "description": "Implement api_stream_video route in review.py \u2014 GET /api/renders/{narrative_id}/video. Fetches edit_plan, validates render_path exists on filesystem, returns FileResponse(render_path, media_type='video/mp4'). Starlette FileResponse handles Range headers natively for seeking.",
+      "status": "done",
+      "commit": "df62afe"
     },
     {
       "id": "step-9",
-      "type": "impl",
-      "description": "Refactor test_embeddings_tab_calls_count_embeddings_only: replace 3 assert_not_called lines with self._assert_only_called(mock_db, 'count_embeddings_for_media'). Adds missing checks for get_faces_for_media, get_audio_events_for_media.",
-      "status": "pending",
-      "commit": null
+      "type": "test",
+      "description": "Write failing tests for GET /api/uploads: returns JSON list of uploads with narrative_title joined; returns empty list when no uploads exist; includes all fields (narrative_id, youtube_video_id, youtube_url, uploaded_at, privacy_status, narrative_title)",
+      "status": "done",
+      "commit": "ba0ad8b"
     },
     {
       "id": "step-10",
+      "type": "impl",
+      "description": "Implement api_list_uploads route in review.py \u2014 GET /api/uploads. Calls db.list_uploads(), returns JSON list.",
+      "status": "done",
+      "commit": "2e70397"
+    },
+    {
+      "id": "step-11",
       "type": "test",
-      "description": "Run full TestTabPerTabFetching suite (8 tests: 6 original + 2 meta-tests) to confirm all pass as final regression check.",
-      "status": "pending",
-      "commit": null
+      "description": "Write failing tests for GET /review/render/{narrative_id}: returns 200 HTML containing video player element when render_path exists and file is present; shows 'No render available' when render_path is null; shows validation results when validation_json is set; shows script scene list from narrative_scripts; returns 404 for nonexistent narrative; contains links to gate actions (approve, skip)",
+      "status": "done",
+      "commit": "5fc14ac"
+    },
+    {
+      "id": "step-12",
+      "type": "impl",
+      "description": "Implement render_review_page route (GET /review/render/{narrative_id}) in review.py and create renders.html template. Route fetches narrative, edit_plan, and narrative_script; parses validation_json and script_json; passes structured context to template. Template: extends base.html, two-column layout \u2014 left side has HTML5 <video> player pointing to /api/renders/{id}/video with controls, validation results as badges/list, and action buttons (Approve for Upload, Reject with notes textarea, Download link, Skip Upload); right side has script scene list parsed from narrative_scripts.",
+      "status": "done",
+      "commit": "85f8373"
+    },
+    {
+      "id": "step-13",
+      "type": "test",
+      "description": "Write failing tests for GET /review/uploads: returns 200 HTML with table containing upload data (narrative title, YouTube video ID, YouTube URL, privacy status, uploaded_at); shows 'No uploads yet' when no uploads exist",
+      "status": "done",
+      "commit": "cb86cc9"
+    },
+    {
+      "id": "step-14",
+      "type": "impl",
+      "description": "Implement uploads_page route (GET /review/uploads) in review.py and create uploads.html template. Route calls db.list_uploads() and passes to template. Template: extends base.html, simple table with columns for narrative title (linked to render review), YouTube video ID, YouTube URL (as clickable link), privacy status badge, uploaded_at timestamp.",
+      "status": "done",
+      "commit": "5e79f1f"
+    },
+    {
+      "id": "step-15",
+      "type": "test",
+      "description": "Write failing tests for review hub integration: when render gate is 'waiting', hub page contains 'render' card with link to /review/render and pending count of narratives with edit plans but no render_path; when upload gate is 'waiting', hub contains 'upload' card with link to /review/uploads",
+      "status": "done",
+      "commit": "61a0e7c"
+    },
+    {
+      "id": "step-16",
+      "type": "impl",
+      "description": "Update _REVIEW_LINKS dict to add 'render': '/review/render' and 'upload': '/review/uploads'. In review_hub route, add render stage pending count logic (count edit plans without render_path) and upload stage logic (count narratives in rendered status without upload record). Add simple GET /review/render index route listing narratives with edit plans and links to individual render review pages.",
+      "status": "done",
+      "commit": "7e1a74b"
+    },
+    {
+      "id": "step-17",
+      "type": "test",
+      "description": "Write failing test for upload pending count logic in review hub: seed 3 narratives with rendered edit plans (render_path set) and 1 upload record for one of them. Set upload gate to 'waiting'. Assert hub shows pending count of 2 (the 2 rendered-but-not-uploaded narratives). Also seed 1 edit plan WITHOUT render_path and verify it is NOT counted as pending upload. This test exposes the bug at review.py:68-71 where len(uploads) counts completed uploads instead of pending ones.",
+      "status": "done",
+      "commit": "40625b8"
+    },
+    {
+      "id": "step-18",
+      "type": "impl",
+      "description": "Fix upload pending count logic at review.py:68-71. Replace `uploads = db.list_uploads(); summary['pending_count'] = len(uploads)` with set-difference logic: `plans = db.list_edit_plans()` (reuse if already fetched for render stage), compute `rendered_ids = {p['narrative_id'] for p in plans if p.get('render_path')}`, compute `uploaded_ids = {u['narrative_id'] for u in db.list_uploads()}`, then `summary['pending_count'] = len(rendered_ids - uploaded_ids)`. Update pending_label to 'pending uploads'.",
+      "status": "done",
+      "commit": "d4df2d9"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Helper is a private method (_assert_only_called) on the class, not a standalone function or fixture",
-      "rationale": "Follows existing class pattern where _get_client and _MEDIA_ROW are class-level. Keeps the helper co-located with its only consumers. No need for cross-class reuse."
+      "decision": "Use Starlette FileResponse for video streaming rather than custom chunked streaming",
+      "rationale": "Starlette's FileResponse natively supports HTTP Range headers for video seeking since v0.20+. It handles Content-Range, Accept-Ranges, and 206 Partial Content responses automatically. No need to implement custom byte-range parsing. This is the standard approach for serving static files in FastAPI/Starlette apps."
     },
     {
-      "decision": "DB method names stored in a class-level _DB_METHODS tuple constant",
-      "rationale": "Single source of truth. When a new DB method is added to the isolation boundary, only this tuple needs updating. Tuple is immutable and ordered, appropriate for a fixed set."
+      "decision": "Add list_edit_plans() and list_uploads() with LEFT JOIN to narratives table for title data",
+      "rationale": "The uploads page needs narrative titles alongside upload data, and the hub needs edit plan counts. A LEFT JOIN is a single query vs N+1 individual lookups. Following the existing CatalogDB pattern of returning list[dict] from fetchall(). LEFT JOIN ensures records show even if narrative was deleted."
     },
     {
-      "decision": "Helper only performs assert_not_called; each test keeps its own assert_called_once",
-      "rationale": "Separation of concerns: the helper enforces 'nothing else was called', while each test body explicitly documents the positive expectation. This reads more clearly and matches the intent \u2014 the helper guards against over-fetching, each test verifies correct fetching."
+      "decision": "Template render actions (approve, reject, skip) wire to existing gates API \u2014 no new action endpoints",
+      "rationale": "The gates.py router already provides POST /api/gates/{stage}/approve, POST /api/gates/{stage}/skip, and PUT /api/gates/{stage} for updating status/notes. The render review template's HTMX buttons target these existing endpoints directly. This avoids duplicating gate logic and keeps the action surface consistent across all pipeline stages."
     },
     {
-      "decision": "Refactoring strengthens assertions in 5 of 6 tests as a side-effect",
-      "rationale": "Currently only the metadata test checks all 6 DB methods; the others only check 3. The helper fills these gaps automatically. For example, transcript tab was not checking get_audio_events_for_media or count_embeddings_for_media. This is a correctness improvement, not just a DRY cleanup."
+      "decision": "Create a minimal GET /review/render index page listing narratives with edit plans",
+      "rationale": "The review hub links to /review/render for the render gate, but individual render reviews are at /review/render/{id}. Without an index, the hub link would 404. A simple list page with links to individual render reviews is the minimal viable landing page. It also serves as a render queue overview."
     },
     {
-      "decision": "Two meta-tests validate the helper contract directly",
-      "rationale": "Since the helper encodes critical isolation logic used by all 6 tests, a direct positive test (allowed method not flagged) and negative test (unexpected call caught) ensures correctness before we depend on it everywhere."
+      "decision": "Parse validation_json and script_json in route handler, pass structured dicts to template",
+      "rationale": "Following the existing pattern where _parse_narrative and _parse_cluster extract JSON fields in Python rather than doing JSON parsing in Jinja2 templates. Keeps templates simple and makes the data easy to test via JSON API endpoints."
+    },
+    {
+      "decision": "Create separate test file tests/test_render_review.py",
+      "rationale": "Following the precedent set by test_cluster_review.py (task 47). Render review is a distinct feature area with its own fixtures (_seed_edit_plan, mock video files), DB method tests, and API tests. Separate files keep tests organized and allow parallel execution."
+    },
+    {
+      "decision": "Video streaming returns 404 when render_path is null or file doesn't exist on filesystem",
+      "rationale": "A render may have an edit plan but no render_path yet (render not started), or the render_path may point to a file that was moved/deleted. Both cases should return 404 rather than 500, giving the client a clear signal that the video is not available."
+    },
+    {
+      "decision": "Upload pending count uses set-difference (rendered_ids - uploaded_ids) instead of counting uploads",
+      "rationale": "The upload stage's 'pending' work is narratives that are rendered but not yet uploaded. Counting completed uploads is semantically inverted \u2014 more uploads would show higher pending count. The set-difference mirrors the render stage pattern (edit plans without render_path). This correctly answers 'how many videos still need uploading?' by finding rendered narratives missing from the uploads table."
     }
   ],
   "reuse": [
     {
-      "what": "_get_client() helper returns (client, mock_db, patch)",
-      "where": "TestTabPerTabFetching._get_client (line 1009)",
-      "how": "Meta-tests reuse this to get a properly configured MagicMock for testing the helper. No changes needed."
+      "what": "_get_db(request) and _is_htmx(request) helper functions",
+      "where": "autopilot/web/routes/review.py lines 18-25",
+      "how": "Reuse directly for all new render/upload routes. Same file, no duplication. All new routes follow the try/finally db.close() pattern."
     },
     {
-      "what": "_MEDIA_ROW class constant",
-      "where": "TestTabPerTabFetching._MEDIA_ROW (line 1001)",
-      "how": "Already used by _get_client; stays as-is."
+      "what": "Existing gates API for render actions (approve, skip, reject with notes)",
+      "where": "autopilot/web/routes/gates.py \u2014 POST /api/gates/{stage}/approve, POST /api/gates/{stage}/skip, PUT /api/gates/{stage}",
+      "how": "Render review template wires HTMX buttons directly to these existing endpoints. Approve \u2192 POST /api/gates/render/approve, Skip Upload \u2192 POST /api/gates/render/skip, Reject \u2192 PUT /api/gates/render with status='rejected' and notes from textarea."
     },
     {
-      "what": "unittest.mock.MagicMock",
-      "where": "Already imported inside _get_client",
-      "how": "Meta-tests can use MagicMock directly to construct controlled mocks for testing the helper's assertion logic without needing the full client/patch stack."
+      "what": "CatalogDB existing single-record CRUD: get_edit_plan, get_upload, get_narrative, get_narrative_script",
+      "where": "autopilot/db.py \u2014 get_edit_plan (line 881), get_upload (line 979), get_narrative (line 752), get_narrative_script (line 910)",
+      "how": "Render review route calls get_edit_plan + get_narrative + get_narrative_script to compose the full render review context. Video streaming route calls get_edit_plan to find render_path."
+    },
+    {
+      "what": "Template layout pattern: extends base.html, Tailwind dark mode, HTMX attributes",
+      "where": "autopilot/web/templates/review/narratives.html and review/clusters.html",
+      "how": "renders.html follows same structure: extends base.html, max-w-7xl container, title section, content grid. uploads.html follows the simpler table layout. Both use same Tailwind color scheme (surface-800, gray-400 text, colored badges)."
+    },
+    {
+      "what": "Test fixture pattern: file-backed DB, create_app with init_default_gates, TestClient, _seed_* helpers",
+      "where": "tests/test_review.py lines 19-41 and tests/test_cluster_review.py",
+      "how": "Create analogous fixtures in test_render_review.py: db fixture with tmp_path, app/client fixtures calling init_default_gates, _seed_edit_plan helper that inserts narrative + upserts edit plan, _seed_upload helper for upload records."
+    },
+    {
+      "what": "_parse_narrative / _parse_cluster pattern for JSON field deserialization",
+      "where": "autopilot/web/routes/review.py lines 107-112 and 218-225",
+      "how": "Create _parse_render helper that parses validation_json from edit_plan into a structured dict. Follows same pattern: pop JSON field, json.loads, add computed fields."
+    },
+    {
+      "what": "_REVIEW_LINKS dict and hub pending count pattern",
+      "where": "autopilot/web/routes/review.py lines 28-58",
+      "how": "Add 'render': '/review/render' and 'upload': '/review/uploads' entries. Add elif blocks for render/upload stages to compute pending counts: render counts edit plans without render_path, upload counts pending upload narratives."
+    },
+    {
+      "what": "list_edit_plans() already fetched for render stage in hub route",
+      "where": "autopilot/web/routes/review.py lines 62-67 (render stage elif block)",
+      "how": "For step-18, the upload stage can reuse the plans list if the render stage was also processed in the same request. Alternatively, call list_edit_plans() in the upload elif block \u2014 it's a lightweight query and keeps each stage block self-contained."
     }
   ],
-  "_session_id": "66-9595baf9",
-  "_created_at": "2026-03-24T22:58:20.497839+00:00"
+  "_session_id": "50-ca894fe6",
+  "_created_at": "2026-03-24T23:26:01.801513+00:00"
 }

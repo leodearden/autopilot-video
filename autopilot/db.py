@@ -887,6 +887,15 @@ class CatalogDB:
         row = cur.fetchone()
         return dict(row) if row else None
 
+    def list_edit_plans(self) -> list[dict[str, object]]:
+        """List all edit plans with narrative title via LEFT JOIN."""
+        cur = self.conn.execute(
+            "SELECT e.*, n.title AS narrative_title "
+            "FROM edit_plans e "
+            "LEFT JOIN narratives n ON e.narrative_id = n.narrative_id",
+        )
+        return [dict(row) for row in cur.fetchall()]
+
     # -- narrative_scripts CRUD -------------------------------------------------
 
     def upsert_narrative_script(
@@ -975,6 +984,16 @@ class CatalogDB:
                 privacy_status,
             ),
         )
+
+    def list_uploads(self) -> list[dict[str, object]]:
+        """List all uploads with narrative title via LEFT JOIN, newest first."""
+        cur = self.conn.execute(
+            "SELECT u.*, n.title AS narrative_title "
+            "FROM uploads u "
+            "LEFT JOIN narratives n ON u.narrative_id = n.narrative_id "
+            "ORDER BY u.uploaded_at DESC",
+        )
+        return [dict(row) for row in cur.fetchall()]
 
     def get_upload(self, narrative_id: str) -> dict[str, object] | None:
         """Get an upload by narrative_id, or None if not found."""

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict
-from starlette.responses import Response
+from starlette.responses import FileResponse, Response
 
 from autopilot.db import CatalogDB
 
@@ -28,6 +29,8 @@ def _is_htmx(request: Request) -> bool:
 _REVIEW_LINKS: dict[str, str] = {
     "narrate": "/review/narratives",
     "classify": "/review/clusters",
+    "render": "/review/render",
+    "upload": "/review/uploads",
 }
 
 
@@ -55,6 +58,27 @@ def review_hub(request: Request) -> HTMLResponse:
                     pending = [c for c in all_clusters if not c.get("excluded")]
                     summary["pending_count"] = len(pending)
                     summary["pending_label"] = "activity clusters"
+                elif stage == "render":
+                    plans = db.list_edit_plans()
+                    pending_renders = [
+                        p for p in plans if not p.get("render_path")
+                    ]
+                    summary["pending_count"] = len(pending_renders)
+                    summary["pending_label"] = "pending renders"
+                elif stage == "upload":
+                    plans = db.list_edit_plans()
+                    rendered_ids = {
+                        p["narrative_id"]
+                        for p in plans
+                        if p.get("render_path")
+                    }
+                    uploaded_ids = {
+                        u["narrative_id"] for u in db.list_uploads()
+                    }
+                    summary["pending_count"] = len(
+                        rendered_ids - uploaded_ids,
+                    )
+                    summary["pending_label"] = "pending uploads"
                 waiting_gates.append(summary)
     finally:
         db.close()
@@ -420,3 +444,151 @@ def api_bulk_approve(request: Request, body: BulkApproveRequest) -> dict[str, in
     finally:
         db.close()
     return {"approved": affected}
+
+
+# ---------------------------------------------------------------------------
+# Render review helpers + routes
+# ---------------------------------------------------------------------------
+
+
+def _parse_render(edit_plan: dict[str, object]) -> dict[str, object]:
+    """Parse validation_json from an edit plan into a structured dict."""
+    result = dict(edit_plan)
+    raw = result.pop("validation_json", None)
+    result["validation"] = json.loads(str(raw)) if raw else None
+    return result
+
+
+@router.get("/api/renders/{narrative_id}")
+def api_get_render(
+    request: Request, narrative_id: str,
+) -> dict[str, object]:
+    """Return render data for a narrative with parsed validation."""
+    db = _get_db(request)
+    try:
+        edit_plan = db.get_edit_plan(narrative_id)
+        if edit_plan is None:
+            raise HTTPException(status_code=404, detail="Edit plan not found")
+        narrative = db.get_narrative(narrative_id)
+    finally:
+        db.close()
+    parsed = _parse_render(edit_plan)
+    parsed["narrative_title"] = (
+        narrative["title"] if narrative else None
+    )
+    return parsed
+
+
+@router.get("/api/renders/{narrative_id}/video")
+def api_stream_video(
+    request: Request, narrative_id: str,
+) -> FileResponse:
+    """Stream the rendered video file for a narrative.
+
+    Starlette's FileResponse handles Range headers natively for seeking.
+    """
+    db = _get_db(request)
+    try:
+        edit_plan = db.get_edit_plan(narrative_id)
+    finally:
+        db.close()
+    if edit_plan is None:
+        raise HTTPException(status_code=404, detail="Edit plan not found")
+    render_path = edit_plan.get("render_path")
+    if not render_path or not Path(str(render_path)).is_file():
+        raise HTTPException(status_code=404, detail="Render file not available")
+    return FileResponse(str(render_path), media_type="video/mp4")
+
+
+@router.get("/api/uploads")
+def api_list_uploads(request: Request) -> list[dict[str, object]]:
+    """Return all uploads as a JSON list with narrative titles."""
+    db = _get_db(request)
+    try:
+        return db.list_uploads()
+    finally:
+        db.close()
+
+
+@router.get("/review/render")
+def render_index_page(request: Request) -> HTMLResponse:
+    """List narratives with edit plans and links to individual review pages."""
+    db = _get_db(request)
+    try:
+        edit_plans = db.list_edit_plans()
+    finally:
+        db.close()
+    templates = request.app.state.templates
+    context = {
+        "page_title": "Render Review",
+        "edit_plans": edit_plans,
+    }
+    return templates.TemplateResponse(
+        request, "review/render_index.html", context,
+    )
+
+
+@router.get("/review/render/{narrative_id}")
+def render_review_page(
+    request: Request, narrative_id: str,
+) -> HTMLResponse:
+    """Render the render review page for a single narrative."""
+    db = _get_db(request)
+    try:
+        narrative = db.get_narrative(narrative_id)
+        if narrative is None:
+            raise HTTPException(status_code=404, detail="Narrative not found")
+        edit_plan = db.get_edit_plan(narrative_id)
+        if edit_plan is None:
+            raise HTTPException(
+                status_code=404, detail="Edit plan not found",
+            )
+        script = db.get_narrative_script(narrative_id)
+    finally:
+        db.close()
+
+    parsed = _parse_render(edit_plan)
+    # Parse script scenes
+    scenes: list[dict[str, object]] = []
+    if script and script.get("script_json"):
+        script_data = json.loads(str(script["script_json"]))
+        if isinstance(script_data, dict):
+            scenes = script_data.get("scenes", [])
+        elif isinstance(script_data, list):
+            scenes = script_data
+
+    # Check if render file exists
+    render_path = parsed.get("render_path")
+    has_render = bool(
+        render_path and Path(str(render_path)).is_file()
+    )
+
+    templates = request.app.state.templates
+    context = {
+        "page_title": f"Render Review: {narrative['title']}",
+        "narrative": narrative,
+        "edit_plan": parsed,
+        "has_render": has_render,
+        "scenes": scenes,
+    }
+    return templates.TemplateResponse(
+        request, "review/renders.html", context,
+    )
+
+
+@router.get("/review/uploads")
+def uploads_page(request: Request) -> HTMLResponse:
+    """Render the uploads status page listing all YouTube uploads."""
+    db = _get_db(request)
+    try:
+        uploads = db.list_uploads()
+    finally:
+        db.close()
+    templates = request.app.state.templates
+    context = {
+        "page_title": "Upload Status",
+        "uploads": uploads,
+    }
+    return templates.TemplateResponse(
+        request, "review/uploads.html", context,
+    )
