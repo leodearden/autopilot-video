@@ -469,6 +469,10 @@ class TestPresetHtmxResponse:
         # Should contain all 9 gate toggle divs
         for stage in CatalogDB._PIPELINE_STAGES:
             assert f"gate-{stage}" in response.text
+        # Verify all 9 gate partials render with mode='auto' for full_auto preset
+        selected = _get_selected_modes(response.text)
+        assert len(selected) == 9
+        assert all(v == "auto" for v in selected.values())
 
     def test_preset_returns_json_without_htmx(self, client: TestClient) -> None:
         """PUT /api/gates/preset/full_auto without HX-Request returns JSON list."""
