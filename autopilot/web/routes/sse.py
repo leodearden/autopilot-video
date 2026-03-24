@@ -7,7 +7,7 @@ import json
 import logging
 
 from fastapi import APIRouter, Request
-from sse_starlette.sse import EventSourceResponse, ServerSentEvent
+from sse_starlette.sse import EventSourceResponse, ServerSentEvent  # type: ignore[attr-defined]
 
 from autopilot.db import CatalogDB
 

@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Pre-commit hook: universal guards + optional project-specific checks.
+#
+# Universal guards run in every repo.  Project-specific checks live in
+# hooks/project-checks (executable) and only run when that file exists.
+#
+# Only gates commits to the main branch — worktree branches (used by
+# orchestrator agents) are not gated.
+
+branch="$(git rev-parse --abbrev-ref HEAD)"
+if [ "$branch" != "main" ]; then
+    exit 0
+fi
+
+ROOT="$(git rev-parse --show-toplevel)"
+
+# ── Universal guards ────────────────────────────────────────────────────
+
+# Reject staged .task/ files — agent scratch dir must never be committed.
+if git diff --cached --name-only | grep -q '^\.task/'; then
+    echo "pre-commit: BLOCKED — .task/ files are staged."
+    echo "  Run:  git rm -r --cached .task/"
+    echo "  Then: ensure .task/ is in .gitignore"
+    exit 1
+fi
+
+# ── Project-specific checks ────────────────────────────────────────────
+
+if [ -x "$ROOT/hooks/project-checks" ]; then
+    exec "$ROOT/hooks/project-checks" "$ROOT"
+fi
+
+echo "pre-commit: all checks passed."

@@ -41,7 +41,7 @@ def _get_musicgen_model(name: str) -> Any:
         MusicGen model instance.
     """
     if name not in _musicgen_cache:
-        from audiocraft.models import MusicGen
+        from audiocraft.models.musicgen import MusicGen
 
         _musicgen_cache[name] = MusicGen.get_pretrained(name)
     return _musicgen_cache[name]

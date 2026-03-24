@@ -234,14 +234,14 @@ def build_search_index(
     if n_vectors < 256:
         # Small dataset: exact search with flat index
         index = faiss.IndexFlatIP(dim)
-        index.add(matrix)
+        index.add(matrix)  # type: ignore[arg-type]
     else:
         # Larger dataset: IVF for approximate search
         n_clusters = min(int(np.sqrt(n_vectors)), n_vectors)
         quantizer = faiss.IndexFlatIP(dim)
         index = faiss.IndexIVFFlat(quantizer, dim, n_clusters, faiss.METRIC_INNER_PRODUCT)
-        index.train(matrix)
-        index.add(matrix)
+        index.train(matrix)  # type: ignore[arg-type]
+        index.add(matrix)  # type: ignore[arg-type]
 
     # Write the FAISS index
     output_path.parent.mkdir(parents=True, exist_ok=True)

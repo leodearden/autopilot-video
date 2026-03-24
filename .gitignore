@@ -19,3 +19,4 @@ build/
 
 # Credentials
 *.credentials.json
+.task/

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# autopilot-video project-specific checks (called from pre-commit).
+# Receives repo root as $1.
+
+ROOT="${1:?}"
+echo "pre-commit: linting (main branch)..."
+
+# ruff check
+if ! uv run ruff check --quiet "$ROOT/autopilot" "$ROOT/tests"; then
+    echo "pre-commit: ruff check failed. Fix lint errors before committing to main."
+    exit 1
+fi
+
+# pyright (config in pyproject.toml [tool.pyright])
+echo "  pyright: autopilot"
+if ! (cd "$ROOT" && uv run pyright autopilot); then
+    echo "pre-commit: pyright failed. Fix type errors before committing to main."
+    exit 1
+fi
+
+echo "pre-commit: all checks passed."

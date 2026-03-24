@@ -140,7 +140,7 @@ def transcribe_media(
         token = hf_token or os.environ.get("HF_TOKEN")
         if token:
             try:
-                diarize_pipeline = whisperx.DiarizationPipeline(
+                diarize_pipeline = whisperx.DiarizationPipeline(  # type: ignore[attr-defined]
                     use_auth_token=token, device=device_str
                 )
                 diarize_segments = diarize_pipeline(audio)
