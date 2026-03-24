@@ -918,6 +918,16 @@ class TestAggregateDetections:
             {"number": 30, "count": 1},
         ]
 
+    def test_none_detections_json(self) -> None:
+        """None detections_json is treated as zero detections (exercises `if raw:` guard)."""
+        from autopilot.web.routes.media import _aggregate_detections
+
+        rows = [{"frame_number": 0, "detections_json": None}]
+        result = _aggregate_detections(rows)
+        assert result.total == 0
+        assert result.classes == {}
+        assert result.frame_details == [{"number": 0, "count": 0}]
+
 
 # ---------------------------------------------------------------------------
 # Unit tests for _format_seconds helper (S6+S12)
