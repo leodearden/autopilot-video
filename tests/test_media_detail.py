@@ -348,14 +348,18 @@ class TestApiMediaTranscript:
         assert len(data["segments"]) == 3
 
     def test_segment_fields(self, detail_client) -> None:
-        """Each segment has start, end, text, speaker fields."""
+        """Each segment has start, end, text, speaker fields with correct types."""
         resp = detail_client.get("/api/media/test1/transcript")
         data = resp.json()
-        seg = data["segments"][0]
-        assert "start" in seg
-        assert "end" in seg
-        assert "text" in seg
-        assert "speaker" in seg
+        assert len(data["segments"]) > 1, "Need multiple segments for thorough validation"
+        for i, seg in enumerate(data["segments"]):
+            assert "start" in seg, f"segments[{i}] missing 'start'"
+            assert "end" in seg, f"segments[{i}] missing 'end'"
+            assert "text" in seg, f"segments[{i}] missing 'text'"
+            assert "speaker" in seg, f"segments[{i}] missing 'speaker'"
+            assert isinstance(seg["start"], float), f"segments[{i}] start should be float"
+            assert isinstance(seg["end"], float), f"segments[{i}] end should be float"
+            assert isinstance(seg["text"], str), f"segments[{i}] text should be str"
 
 
 class TestApiMediaDetections:
