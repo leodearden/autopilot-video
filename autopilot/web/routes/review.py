@@ -206,12 +206,11 @@ def api_update_narrative(
 
 @router.post("/api/narratives/bulk-approve")
 def api_bulk_approve(request: Request, body: BulkApproveRequest) -> dict[str, int]:
-    """Approve multiple narratives at once, returning count."""
+    """Approve multiple narratives at once, returning actual count of rows updated."""
     db = _get_db(request)
     try:
-        for nid in body.ids:
-            db.update_narrative_status(nid, "approved")
+        affected = sum(db.update_narrative_status(nid, "approved") for nid in body.ids)
         db.conn.commit()
     finally:
         db.close()
-    return {"approved": len(body.ids)}
+    return {"approved": affected}

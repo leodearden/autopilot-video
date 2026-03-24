@@ -750,12 +750,13 @@ class CatalogDB:
         row = cur.fetchone()
         return dict(row) if row else None
 
-    def update_narrative_status(self, narrative_id: str, status: str) -> None:
-        """Update the status of a narrative."""
-        self.conn.execute(
+    def update_narrative_status(self, narrative_id: str, status: str) -> int:
+        """Update the status of a narrative. Returns number of rows affected."""
+        cur = self.conn.execute(
             "UPDATE narratives SET status = ? WHERE narrative_id = ?",
             (status, narrative_id),
         )
+        return cur.rowcount
 
     _NARRATIVE_ALLOWED_COLUMNS: frozenset[str] = frozenset({
         "title",
