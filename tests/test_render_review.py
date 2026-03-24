@@ -164,3 +164,67 @@ class TestListEditPlans:
         result = db.list_edit_plans()
         assert len(result) == 1
         assert result[0]["narrative_title"] is None
+
+
+# ---------------------------------------------------------------------------
+# TestListUploads — step-3
+# ---------------------------------------------------------------------------
+
+
+class TestListUploads:
+    """Tests for CatalogDB.list_uploads()."""
+
+    def test_returns_empty_list_when_none_exist(self, db: CatalogDB) -> None:
+        """list_uploads returns an empty list when no uploads exist."""
+        result = db.list_uploads()
+        assert result == []
+
+    def test_returns_all_uploads_with_narrative_title(
+        self, db: CatalogDB,
+    ) -> None:
+        """list_uploads returns all uploads joined with narrative title."""
+        _seed_upload(db, "n-1")
+        _seed_narrative(db, "n-2", title="Sunset Hike")
+        _seed_upload(db, "n-2", seed_narrative=False, youtube_video_id="xyz789")
+        result = db.list_uploads()
+        assert len(result) == 2
+        ids = {r["narrative_id"] for r in result}
+        assert ids == {"n-1", "n-2"}
+
+    def test_includes_all_columns(self, db: CatalogDB) -> None:
+        """list_uploads includes all upload columns plus narrative_title."""
+        _seed_upload(db, "n-1")
+        result = db.list_uploads()
+        assert len(result) == 1
+        row = result[0]
+        assert row["narrative_id"] == "n-1"
+        assert row["youtube_video_id"] == "abc123"
+        assert row["youtube_url"] == "https://youtube.com/watch?v=abc123"
+        assert row["uploaded_at"] == "2025-01-15T10:30:00"
+        assert row["privacy_status"] == "unlisted"
+        assert row["narrative_title"] == "Morning Walk"
+
+    def test_ordered_by_uploaded_at_desc(self, db: CatalogDB) -> None:
+        """list_uploads returns uploads ordered by uploaded_at descending."""
+        _seed_upload(db, "n-1", uploaded_at="2025-01-10T08:00:00")
+        _seed_narrative(db, "n-2", title="Later Upload")
+        _seed_upload(
+            db, "n-2", seed_narrative=False,
+            uploaded_at="2025-01-15T10:00:00", youtube_video_id="def456",
+        )
+        result = db.list_uploads()
+        assert result[0]["narrative_id"] == "n-2"  # later first
+        assert result[1]["narrative_id"] == "n-1"
+
+    def test_narrative_title_is_none_when_narrative_deleted(
+        self, db: CatalogDB,
+    ) -> None:
+        """narrative_title is None when narrative is missing (LEFT JOIN)."""
+        _seed_upload(db, "n-1")
+        db.conn.execute("PRAGMA foreign_keys = OFF")
+        db.conn.execute("DELETE FROM narratives WHERE narrative_id = 'n-1'")
+        db.conn.commit()
+        db.conn.execute("PRAGMA foreign_keys = ON")
+        result = db.list_uploads()
+        assert len(result) == 1
+        assert result[0]["narrative_title"] is None
