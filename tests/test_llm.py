@@ -337,3 +337,116 @@ class TestModelMapping:
         cmd = mock_run.call_args[0][0]
         idx = cmd.index("--model")
         assert cmd[idx + 1] == "opus"
+
+
+# -- Step 9: API fallback tests -----------------------------------------------
+
+
+class TestInvokeClaudeApiFallback:
+    """Verify use_api=True routes to Anthropic SDK instead of subprocess."""
+
+    def test_api_fallback_calls_anthropic(self):
+        """use_api=True calls anthropic.Anthropic().messages.create()."""
+        import sys
+
+        from autopilot.llm import invoke_claude
+
+        mock_content = MagicMock()
+        mock_content.text = "API response text"
+        mock_response = MagicMock()
+        mock_response.content = [mock_content]
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_response
+
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            result = invoke_claude(
+                prompt="test",
+                system="sys",
+                model="sonnet",
+                max_tokens=512,
+                use_api=True,
+            )
+
+        assert result == "API response text"
+        mock_client.messages.create.assert_called_once()
+
+    def test_api_fallback_passes_correct_params(self):
+        """API fallback passes model, max_tokens, system, messages correctly."""
+        import sys
+
+        from autopilot.llm import invoke_claude
+
+        mock_content = MagicMock()
+        mock_content.text = "ok"
+        mock_response = MagicMock()
+        mock_response.content = [mock_content]
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_response
+
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+
+        with patch.dict(sys.modules, {"anthropic": mock_anthropic}):
+            invoke_claude(
+                prompt="What is 2+2?",
+                system="You are a tutor.",
+                model="claude-opus-4-20250514",
+                max_tokens=1024,
+                use_api=True,
+            )
+
+        call_kwargs = mock_client.messages.create.call_args[1]
+        # API should use the FULL model name, not the CLI short name
+        assert call_kwargs["model"] == "claude-opus-4-20250514"
+        assert call_kwargs["max_tokens"] == 1024
+        assert call_kwargs["system"] == "You are a tutor."
+        assert call_kwargs["messages"] == [{"role": "user", "content": "What is 2+2?"}]
+
+    def test_api_fallback_does_not_call_subprocess(self):
+        """use_api=True should NOT call subprocess.run."""
+        import sys
+
+        from autopilot.llm import invoke_claude
+
+        mock_content = MagicMock()
+        mock_content.text = "ok"
+        mock_response = MagicMock()
+        mock_response.content = [mock_content]
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_response
+
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+
+        with (
+            patch.dict(sys.modules, {"anthropic": mock_anthropic}),
+            patch("subprocess.run") as mock_run,
+        ):
+            invoke_claude(
+                prompt="test",
+                system="sys",
+                model="sonnet",
+                max_tokens=512,
+                use_api=True,
+            )
+
+        mock_run.assert_not_called()
+
+    def test_use_api_false_does_not_import_anthropic(self):
+        """use_api=False (default) should not trigger anthropic import."""
+        from autopilot.llm import invoke_claude
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({"result": "ok"})
+        mock_result.stderr = ""
+
+        with patch("subprocess.run", return_value=mock_result):
+            # This should work without anthropic being importable
+            invoke_claude(prompt="test", system="sys", model="sonnet", max_tokens=512)
