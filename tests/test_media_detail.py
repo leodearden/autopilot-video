@@ -919,3 +919,118 @@ class TestFormatSeconds:
         from autopilot.web.routes.media import _format_seconds
 
         assert _format_seconds(seconds, pad_hours=True) == expected
+
+
+# ---------------------------------------------------------------------------
+# Per-tab data fetching tests (S1 over-fetching fix)
+# ---------------------------------------------------------------------------
+
+
+class TestTabPerTabFetching:
+    """Verify that each tab only calls the DB methods it needs.
+
+    Uses mock patching to confirm that media_tab() dispatches per-tab
+    rather than calling get_media_detail() for every tab.
+    """
+
+    _MEDIA_ROW = {
+        "id": "test1",
+        "filepath": "/video/test.mp4",
+        "fps": 30.0,
+        "duration_seconds": 120.5,
+        "metadata_json": '{"camera": "GoPro"}',
+    }
+
+    def _get_client(self):
+        """Import and create a test client with mocked DB."""
+        from unittest.mock import MagicMock, patch
+
+        from starlette.testclient import TestClient
+
+        from autopilot.web.app import create_app
+
+        app = create_app(":memory:")
+        client = TestClient(app)
+        mock_db = MagicMock()
+        mock_db.get_media.return_value = self._MEDIA_ROW
+        return client, mock_db, patch
+
+    def test_metadata_tab_does_not_call_get_transcript(self, tmp_path) -> None:
+        """Metadata tab should not call get_transcript."""
+        client, mock_db, patch = self._get_client()
+
+        with patch("autopilot.web.routes.media.get_db", return_value=mock_db):
+            resp = client.get("/media/test1/tab/metadata")
+
+        assert resp.status_code == 200
+        mock_db.get_transcript.assert_not_called()
+        mock_db.get_detections_for_media.assert_not_called()
+        mock_db.get_faces_for_media.assert_not_called()
+        mock_db.get_audio_events_for_media.assert_not_called()
+        mock_db.count_embeddings_for_media.assert_not_called()
+
+    def test_transcript_tab_calls_get_transcript_only(self, tmp_path) -> None:
+        """Transcript tab should call get_transcript but not detection/face methods."""
+        client, mock_db, patch = self._get_client()
+        mock_db.get_transcript.return_value = {"segments_json": "[]", "language": "en"}
+
+        with patch("autopilot.web.routes.media.get_db", return_value=mock_db):
+            resp = client.get("/media/test1/tab/transcript")
+
+        assert resp.status_code == 200
+        mock_db.get_transcript.assert_called_once()
+        mock_db.get_detections_for_media.assert_not_called()
+        mock_db.get_faces_for_media.assert_not_called()
+
+    def test_detections_tab_calls_get_detections_only(self, tmp_path) -> None:
+        """Detections tab should call get_detections_for_media only."""
+        client, mock_db, patch = self._get_client()
+        mock_db.get_detections_for_media.return_value = []
+
+        with patch("autopilot.web.routes.media.get_db", return_value=mock_db):
+            resp = client.get("/media/test1/tab/detections")
+
+        assert resp.status_code == 200
+        mock_db.get_detections_for_media.assert_called_once()
+        mock_db.get_transcript.assert_not_called()
+        mock_db.get_faces_for_media.assert_not_called()
+
+    def test_faces_tab_calls_get_faces_only(self, tmp_path) -> None:
+        """Faces tab should call get_faces_for_media (and face_clusters), not others."""
+        client, mock_db, patch = self._get_client()
+        mock_db.get_faces_for_media.return_value = []
+        mock_db.get_face_clusters_by_ids.return_value = {}
+
+        with patch("autopilot.web.routes.media.get_db", return_value=mock_db):
+            resp = client.get("/media/test1/tab/faces")
+
+        assert resp.status_code == 200
+        mock_db.get_faces_for_media.assert_called_once()
+        mock_db.get_transcript.assert_not_called()
+        mock_db.get_detections_for_media.assert_not_called()
+
+    def test_audio_events_tab_calls_get_audio_events_only(self, tmp_path) -> None:
+        """Audio events tab should call get_audio_events_for_media only."""
+        client, mock_db, patch = self._get_client()
+        mock_db.get_audio_events_for_media.return_value = []
+
+        with patch("autopilot.web.routes.media.get_db", return_value=mock_db):
+            resp = client.get("/media/test1/tab/audio_events")
+
+        assert resp.status_code == 200
+        mock_db.get_audio_events_for_media.assert_called_once()
+        mock_db.get_transcript.assert_not_called()
+        mock_db.get_detections_for_media.assert_not_called()
+
+    def test_embeddings_tab_calls_count_embeddings_only(self, tmp_path) -> None:
+        """Embeddings tab should call count_embeddings_for_media only."""
+        client, mock_db, patch = self._get_client()
+        mock_db.count_embeddings_for_media.return_value = 0
+
+        with patch("autopilot.web.routes.media.get_db", return_value=mock_db):
+            resp = client.get("/media/test1/tab/embeddings")
+
+        assert resp.status_code == 200
+        mock_db.count_embeddings_for_media.assert_called_once()
+        mock_db.get_transcript.assert_not_called()
+        mock_db.get_detections_for_media.assert_not_called()
