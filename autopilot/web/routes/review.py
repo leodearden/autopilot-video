@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -385,11 +386,11 @@ def api_merge_clusters(
             cid for pc in parsed_clusters for cid in pc["clip_ids"]  # type: ignore[union-attr]
         ))
 
-        # Compute time range
+        # Compute time range (chronological comparison, not lexicographic)
         time_starts = [str(c["time_start"]) for c in clusters if c.get("time_start")]
         time_ends = [str(c["time_end"]) for c in clusters if c.get("time_end")]
-        min_start = min(time_starts) if time_starts else None
-        max_end = max(time_ends) if time_ends else None
+        min_start = min(time_starts, key=datetime.fromisoformat) if time_starts else None
+        max_end = max(time_ends, key=datetime.fromisoformat) if time_ends else None
 
         # Update largest cluster with combined data
         update_kwargs: dict[str, object] = {
