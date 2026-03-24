@@ -283,3 +283,58 @@ class TestGatePresetsUI:
         html = response.text
         for preset_name in GATE_PRESETS:
             assert f"/api/gates/preset/{preset_name}" in html
+
+
+class TestGateStatusDisplay:
+    """Tests for gate status display on the gates page."""
+
+    def test_waiting_gate_shows_approve_skip_buttons(
+        self, client: TestClient, app: FastAPI
+    ) -> None:
+        """A gate with status='waiting' shows Approve and Skip buttons."""
+        # Set a gate to waiting status via direct DB
+        db = CatalogDB(app.state.db_path)
+        try:
+            db.update_gate("classify", status="waiting")
+            db.conn.commit()
+        finally:
+            db.close()
+        response = client.get("/gates")
+        html = response.text
+        assert "Approve" in html
+        assert "Skip" in html
+
+    def test_approved_gate_shows_decided_info(
+        self, client: TestClient, app: FastAPI
+    ) -> None:
+        """An approved gate with decided_at/decided_by shows that info."""
+        db = CatalogDB(app.state.db_path)
+        try:
+            db.update_gate(
+                "classify",
+                status="approved",
+                decided_at="2026-03-24T12:00:00",
+                decided_by="console",
+            )
+            db.conn.commit()
+        finally:
+            db.close()
+        response = client.get("/gates")
+        html = response.text
+        assert "2026-03-24T12:00:00" in html
+        assert "console" in html
+
+    def test_status_color_coding(self, client: TestClient, app: FastAPI) -> None:
+        """Waiting gate has amber class, approved has green, idle has gray."""
+        db = CatalogDB(app.state.db_path)
+        try:
+            db.update_gate("classify", status="waiting")
+            db.update_gate("analyze", status="approved")
+            db.conn.commit()
+        finally:
+            db.close()
+        response = client.get("/gates")
+        html = response.text
+        assert "bg-amber-900" in html  # waiting
+        assert "bg-green-900" in html  # approved
+        assert "bg-gray-900" in html  # idle (default for other gates)
