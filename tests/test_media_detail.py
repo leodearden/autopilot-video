@@ -960,6 +960,16 @@ class TestAggregateDetections:
         assert result.classes == {}
         assert result.frame_details == [{"number": 0, "count": 0}]
 
+    def test_non_string_integer_detections_json(self) -> None:
+        """Integer detections_json degrades gracefully instead of crashing."""
+        from autopilot.web.routes.media import _aggregate_detections
+
+        rows = [{"frame_number": 0, "detections_json": 42}]
+        result = _aggregate_detections(rows)
+        assert result.total == 0
+        assert result.classes == {}
+        assert result.frame_details == [{"number": 0, "count": 0}]
+
 
 # ---------------------------------------------------------------------------
 # Unit tests for _format_seconds helper (S6+S12)
