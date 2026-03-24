@@ -720,10 +720,26 @@ class CatalogDB:
         """Delete all rows from activity_clusters table."""
         self.conn.execute("DELETE FROM activity_clusters")
 
+    _CLUSTER_ALLOWED_COLUMNS: frozenset[str] = frozenset({
+        "label",
+        "description",
+        "time_start",
+        "time_end",
+        "location_label",
+        "gps_center_lat",
+        "gps_center_lon",
+        "clip_ids_json",
+        "excluded",
+    })
+
     def update_activity_cluster(self, cluster_id: str, **kwargs: object) -> None:
         """Update fields of an activity cluster by keyword arguments."""
         if not kwargs:
             return
+        bad_keys = set(kwargs) - self._CLUSTER_ALLOWED_COLUMNS
+        if bad_keys:
+            msg = f"Disallowed column(s) for cluster update: {sorted(bad_keys)}"
+            raise ValueError(msg)
         set_clause = ", ".join(f"{k} = ?" for k in kwargs)
         values = list(kwargs.values())
         values.append(cluster_id)
