@@ -111,3 +111,55 @@ def _seed_upload(
     defaults.update(overrides)
     db.insert_upload(narrative_id, **defaults)  # type: ignore[arg-type]
     db.conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# TestListEditPlans — step-1
+# ---------------------------------------------------------------------------
+
+
+class TestListEditPlans:
+    """Tests for CatalogDB.list_edit_plans()."""
+
+    def test_returns_empty_list_when_none_exist(self, db: CatalogDB) -> None:
+        """list_edit_plans returns an empty list when no edit plans exist."""
+        result = db.list_edit_plans()
+        assert result == []
+
+    def test_returns_all_edit_plans_with_narrative_title(
+        self, db: CatalogDB,
+    ) -> None:
+        """list_edit_plans returns all edit plans joined with narrative title."""
+        _seed_edit_plan(db, "n-1")
+        _seed_edit_plan(db, "n-2", title="Sunset Hike")
+        result = db.list_edit_plans()
+        assert len(result) == 2
+        ids = {r["narrative_id"] for r in result}
+        assert ids == {"n-1", "n-2"}
+
+    def test_includes_all_columns(self, db: CatalogDB) -> None:
+        """list_edit_plans includes all edit_plan columns plus narrative_title."""
+        _seed_edit_plan(db, "n-1")
+        result = db.list_edit_plans()
+        assert len(result) == 1
+        row = result[0]
+        assert row["narrative_id"] == "n-1"
+        assert row["edl_json"] == '{"cuts": []}'
+        assert row["otio_path"] == "/tmp/edit.otio"
+        assert row["validation_json"] is not None
+        assert row["render_path"] == "/tmp/render.mp4"
+        assert row["narrative_title"] == "Morning Walk"
+
+    def test_narrative_title_is_none_when_narrative_deleted(
+        self, db: CatalogDB,
+    ) -> None:
+        """narrative_title is None when narrative is missing (LEFT JOIN)."""
+        _seed_edit_plan(db, "n-1")
+        # Temporarily disable FK checks to delete the narrative
+        db.conn.execute("PRAGMA foreign_keys = OFF")
+        db.conn.execute("DELETE FROM narratives WHERE narrative_id = 'n-1'")
+        db.conn.commit()
+        db.conn.execute("PRAGMA foreign_keys = ON")
+        result = db.list_edit_plans()
+        assert len(result) == 1
+        assert result[0]["narrative_title"] is None
