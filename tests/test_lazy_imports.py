@@ -10,8 +10,6 @@ import subprocess
 import sys
 import textwrap
 
-import pytest
-
 # Stage subpackage prefixes that should NOT appear in sys.modules
 # after a bare `import autopilot.orchestrator`.
 STAGE_PREFIXES = (

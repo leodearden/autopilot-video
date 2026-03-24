@@ -11,8 +11,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from autopilot.orchestrator import PipelineOrchestrator, StageDefinition, StageStatus
-
 # Pre-import submodules of packages with empty __init__.py so that
 # @patch("autopilot.<pkg>.<sub>") can find the attribute.  Packages whose
 # __init__.py already re-exports (ingest, organize, render, upload) don't
@@ -29,6 +27,7 @@ import autopilot.plan.otio_export  # noqa: F401
 import autopilot.plan.script  # noqa: F401
 import autopilot.plan.validator  # noqa: F401
 import autopilot.source.resolve  # noqa: F401
+from autopilot.orchestrator import PipelineOrchestrator, StageDefinition, StageStatus
 
 EXPECTED_STAGES = [
     "INGEST",
