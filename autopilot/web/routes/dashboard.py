@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from autopilot.db import CatalogDB
+from autopilot.web.deps import get_db
 
 
 def _format_duration(seconds: float | int | None) -> str:
@@ -33,11 +34,6 @@ _STATUS_COLORS = {
     "done": "green",
     "error": "red",
 }
-
-
-def _get_db(request: Request) -> CatalogDB:
-    """Create a CatalogDB connection from the app's db_path."""
-    return CatalogDB(request.app.state.db_path)
 
 
 def _compute_stage_status(counts: dict[str, int]) -> str:
@@ -105,7 +101,7 @@ def root_redirect() -> RedirectResponse:
 @router.get("/dashboard", response_class=HTMLResponse)
 def dashboard_page(request: Request) -> HTMLResponse:
     """Render the pipeline dashboard page with stage cards."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         run = db.get_current_run()
         gates: dict[str, dict] = {str(g["stage"]): dict(g) for g in db.get_all_gates()}
@@ -144,7 +140,7 @@ def dashboard_page(request: Request) -> HTMLResponse:
 @router.get("/api/run")
 def api_run(request: Request) -> dict:
     """Return the current pipeline run as JSON."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         run = db.get_current_run()
         return {"run": run}
@@ -155,7 +151,7 @@ def api_run(request: Request) -> dict:
 @router.get("/api/stages")
 def api_stages(request: Request) -> list[dict]:
     """Return stage summaries as a JSON list."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         run = db.get_current_run()
         gates: dict[str, dict] = {str(g["stage"]): dict(g) for g in db.get_all_gates()}
@@ -179,7 +175,7 @@ def stage_card_partial(request: Request, stage_name: str) -> HTMLResponse:
     if stage_name not in _PIPELINE_STAGES:
         raise HTTPException(status_code=404, detail=f"Unknown stage: {stage_name}")
 
-    db = _get_db(request)
+    db = get_db(request)
     try:
         run = db.get_current_run()
         run_id = str(run["run_id"]) if run else None
