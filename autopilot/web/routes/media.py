@@ -52,6 +52,8 @@ def _aggregate_detections(det_rows: list[dict]) -> DetectionSummary:
                     dets = json.loads(str(raw))
             except (json.JSONDecodeError, TypeError):
                 pass
+        if not isinstance(dets, list):
+            dets = []
         total += len(dets)
         frame_details.append({"number": row["frame_number"], "count": len(dets)})
         for d in dets:
