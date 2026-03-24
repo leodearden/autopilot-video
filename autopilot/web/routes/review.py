@@ -66,9 +66,19 @@ def review_hub(request: Request) -> HTMLResponse:
                     summary["pending_count"] = len(pending_renders)
                     summary["pending_label"] = "pending renders"
                 elif stage == "upload":
-                    uploads = db.list_uploads()
-                    summary["pending_count"] = len(uploads)
-                    summary["pending_label"] = "uploads"
+                    plans = db.list_edit_plans()
+                    rendered_ids = {
+                        p["narrative_id"]
+                        for p in plans
+                        if p.get("render_path")
+                    }
+                    uploaded_ids = {
+                        u["narrative_id"] for u in db.list_uploads()
+                    }
+                    summary["pending_count"] = len(
+                        rendered_ids - uploaded_ids,
+                    )
+                    summary["pending_label"] = "pending uploads"
                 waiting_gates.append(summary)
     finally:
         db.close()
