@@ -792,3 +792,85 @@ class TestParseMetadataJson:
         media = {}
         result = _parse_metadata_json(media)
         assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for _aggregate_detections helper (S4)
+# ---------------------------------------------------------------------------
+
+
+class TestAggregateDetections:
+    """Tests for _aggregate_detections(det_rows) helper."""
+
+    def test_returns_named_tuple_with_correct_fields(self) -> None:
+        """Returns a DetectionSummary with total, classes, frame_details."""
+        from autopilot.web.routes.media import _aggregate_detections
+
+        rows = [
+            {"frame_number": 0, "detections_json": json.dumps([{"class": "person"}])},
+        ]
+        result = _aggregate_detections(rows)
+        assert hasattr(result, "total")
+        assert hasattr(result, "classes")
+        assert hasattr(result, "frame_details")
+
+    def test_counts_detections_across_frames(self) -> None:
+        """Total counts all detections across all frames."""
+        from autopilot.web.routes.media import _aggregate_detections
+
+        rows = [
+            {"frame_number": 0, "detections_json": json.dumps([{"class": "person"}, {"class": "car"}])},
+            {"frame_number": 30, "detections_json": json.dumps([{"class": "person"}])},
+        ]
+        result = _aggregate_detections(rows)
+        assert result.total == 3
+
+    def test_aggregates_class_counts(self) -> None:
+        """Classes dict has per-class counts."""
+        from autopilot.web.routes.media import _aggregate_detections
+
+        rows = [
+            {"frame_number": 0, "detections_json": json.dumps([{"class": "person"}, {"class": "car"}])},
+            {"frame_number": 30, "detections_json": json.dumps([{"class": "person"}, {"class": "dog"}])},
+        ]
+        result = _aggregate_detections(rows)
+        assert result.classes == {"person": 2, "car": 1, "dog": 1}
+
+    def test_frame_details_structure(self) -> None:
+        """frame_details has correct structure with number and count keys."""
+        from autopilot.web.routes.media import _aggregate_detections
+
+        rows = [
+            {"frame_number": 0, "detections_json": json.dumps([{"class": "person"}, {"class": "car"}])},
+            {"frame_number": 30, "detections_json": json.dumps([{"class": "dog"}])},
+        ]
+        result = _aggregate_detections(rows)
+        assert result.frame_details == [
+            {"number": 0, "count": 2},
+            {"number": 30, "count": 1},
+        ]
+
+    def test_handles_empty_list(self) -> None:
+        """Returns zeros and empty collections for empty input."""
+        from autopilot.web.routes.media import _aggregate_detections
+
+        result = _aggregate_detections([])
+        assert result.total == 0
+        assert result.classes == {}
+        assert result.frame_details == []
+
+    def test_handles_malformed_detections_json(self) -> None:
+        """Malformed detections_json treated as zero detections for that frame."""
+        from autopilot.web.routes.media import _aggregate_detections
+
+        rows = [
+            {"frame_number": 0, "detections_json": "{{corrupt"},
+            {"frame_number": 30, "detections_json": json.dumps([{"class": "person"}])},
+        ]
+        result = _aggregate_detections(rows)
+        assert result.total == 1
+        assert result.classes == {"person": 1}
+        assert result.frame_details == [
+            {"number": 0, "count": 0},
+            {"number": 30, "count": 1},
+        ]
