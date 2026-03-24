@@ -308,7 +308,7 @@ class TestGateTogglePartial:
         assert "hx-put" in html
         assert "hx-swap" in html
 
-    @pytest.mark.parametrize("mode", ["pause", "notify"])
+    @pytest.mark.parametrize("mode", ["auto", "pause", "notify"])
     def test_toggle_shows_current_mode(self, client: TestClient, mode: str) -> None:
         """The selected option matches the gate's current mode."""
         # Set analyze gate to given mode — leave others at default 'auto'
