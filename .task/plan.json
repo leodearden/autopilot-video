@@ -131,78 +131,92 @@
       "id": "step-14",
       "type": "impl",
       "description": "Create gates/config.html template extending base.html with title 'Gate Configuration'. Build _STAGE_TRANSITIONS in route as list of (from_stage, to_stage, gate_stage) tuples. Render vertical list of transitions, each including the gate_toggle partial. Add GET /gates route that queries all gates, builds transitions context, renders template.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "5be4ab4"
     },
     {
       "id": "step-15",
       "type": "test",
       "description": "Write TestGateTogglePartial: (1) test_toggle_contains_mode_select: gate_toggle partial HTML contains a select/dropdown with options 'auto', 'pause', 'notify'. (2) test_toggle_has_htmx_attributes: HTML contains hx-put and hx-swap attributes for HTMX gate update. (3) test_toggle_shows_current_mode: the selected option matches the gate's current mode.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "971ac4f"
     },
     {
       "id": "step-16",
       "type": "impl",
       "description": "Create partials/gate_toggle.html: a div with id='gate-{stage}' containing from\u2192to stage labels, mode select with hx-put='/api/gates/{stage}' hx-target='#gate-{stage}' hx-swap='outerHTML', timeout_hours input field, status badge with color class, and conditional approve/skip buttons when status='waiting' with hx-post targeting approve/skip endpoints.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "971ac4f"
     },
     {
       "id": "step-17",
       "type": "test",
       "description": "Write TestGatePresetsUI: (1) test_gates_page_shows_preset_buttons: GET /gates HTML contains buttons/links for all 4 presets (Full Auto, Review Creative, Review Everything, Review Before Render). (2) test_preset_buttons_have_htmx: each button has hx-put targeting /api/gates/preset/{name}.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "402070d"
     },
     {
       "id": "step-18",
       "type": "impl",
       "description": "Add presets section to gates/config.html above the gate list: a row of 4 styled buttons, each with hx-put='/api/gates/preset/{name}' hx-target='#gate-list' hx-swap='innerHTML' to replace the entire gate list after preset application.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "402070d"
     },
     {
       "id": "step-19",
       "type": "test",
       "description": "Write TestGateStatusDisplay: (1) test_waiting_gate_shows_approve_skip_buttons: set a gate to status='waiting', GET /gates HTML shows 'Approve' and 'Skip' buttons for that gate. (2) test_approved_gate_shows_decided_info: set status='approved' with decided_at and decided_by, verify these appear in HTML. (3) test_status_color_coding: waiting gate has amber class, approved has green class, idle has gray class.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "8e78770"
     },
     {
       "id": "step-20",
       "type": "impl",
       "description": "Enhance gate_toggle.html: add status badge with conditional Tailwind color classes (idle=gray, waiting=amber, approved=green, rejected=red, skipped=blue), decided_at/decided_by display when set, and prominent approve/skip buttons when status='waiting'. Add gate-specific CSS to app.css for gate row styling and status badge colors.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "8e78770"
     },
     {
       "id": "step-21",
       "type": "test",
       "description": "Write TestHtmxResponses: (1) test_put_gate_returns_html_for_htmx: PUT /api/gates/analyze with HX-Request header returns text/html containing the gate_toggle partial. (2) test_put_gate_returns_json_without_htmx: same PUT without HX-Request returns application/json. (3) test_approve_returns_html_for_htmx: POST approve with HX-Request returns HTML partial. (4) test_skip_returns_html_for_htmx similarly.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "50b9dca"
     },
     {
       "id": "step-22",
       "type": "impl",
       "description": "Add HTMX-aware response logic: in PUT /api/gates/{stage}, POST approve, POST skip, check request.headers.get('hx-request'). If present, render gate_toggle.html partial with updated gate data and return HTMLResponse. Otherwise return JSON dict. Build _render_gate_partial() helper to avoid duplication.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "50b9dca"
     },
     {
       "id": "step-23",
       "type": "test",
       "description": "Write TestPresetHtmxResponse: (1) test_preset_returns_html_for_htmx: PUT /api/gates/preset/full_auto with HX-Request header returns HTML containing all 9 gate toggle rows (one per stage). (2) test_preset_returns_json_without_htmx: same request without HX-Request returns JSON list.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "6fee53d"
     },
     {
       "id": "step-24",
       "type": "impl",
       "description": "Add HTMX-aware response to preset endpoint: when HX-Request present, render all gate_toggle partials concatenated and return as HTMLResponse for swapping the gate list container. Add refreshGateRow() JS helper to app.js for potential SSE-driven gate updates. Final polish: verify all endpoints work end-to-end, templates render correctly, HTMX interactions are wired.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "6fee53d"
+    },
+    {
+      "id": "step-25",
+      "type": "test",
+      "description": "Fix vacuous assertion in TestGateTogglePartial::test_toggle_shows_current_mode. The current test asserts only `'selected' in html` which is unconditionally true (every gate renders its current mode as selected). Replace with a stdlib html.parser-based helper that extracts the selected option value from a specific gate's select element. The rewritten test must: (1) PUT /api/gates/analyze with mode='pause', (2) GET /gates, (3) parse the HTML to find the <div id=\"gate-analyze\"> section, (4) within that section find the <select> and extract the <option> with the 'selected' attribute, (5) assert its value is 'pause'. Also add a negative-control assertion: verify that a gate NOT set to 'pause' (e.g., classify) still has 'auto' as its selected option, proving the assertion discriminates between gates.",
+      "status": "done",
+      "commit": "8a9182a"
+    },
+    {
+      "id": "step-26",
+      "type": "impl",
+      "description": "No template or route changes needed \u2014 the gate_toggle.html template already renders `selected` correctly on the matching option (line 18: `{% if gate.get('mode', 'auto') == m %}selected{% endif %}`). This step verifies the fixed test passes against the existing implementation by running pytest on TestGateTogglePartial::test_toggle_shows_current_mode. The html.parser helper added in step-25 lives entirely in the test file.",
+      "status": "done",
+      "commit": "8a9182a"
     }
   ],
   "design_decisions": [
@@ -241,6 +255,10 @@
     {
       "decision": "Preset 'review_creative' pauses at classify\u2192narrate, narrate\u2192script, render\u2192upload (gates: narrate, script, upload instead of classify, narrate, upload)",
       "rationale": "The task says pause at CLASSIFY\u2192NARRATE, NARRATE\u2192SCRIPT, RENDER\u2192UPLOAD. In our model, gates control entry into the target stage: CLASSIFY\u2192NARRATE = gate at 'narrate', NARRATE\u2192SCRIPT = gate at 'script', RENDER\u2192UPLOAD = gate at 'upload'. Similarly review_before_render: EDL\u2192SOURCE = gate at 'source', RENDER\u2192UPLOAD = gate at 'upload'."
+    },
+    {
+      "decision": "Use stdlib html.parser for HTML assertion in test_toggle_shows_current_mode instead of string matching",
+      "rationale": "The reviewer flagged the original `'selected' in html` assertion as vacuous \u2014 it passes unconditionally since every gate dropdown has a selected option. A string pattern like `'value=\"pause\" selected'` is fragile (attribute order may vary). stdlib html.parser is zero-dependency, robust to attribute ordering, and can scope the assertion to a specific gate's div by id. This avoids adding BeautifulSoup as a test dependency."
     }
   ],
   "reuse": [
@@ -286,6 +304,6 @@
     }
   ],
   "_session_id": "45-e66f3d99",
-  "_created_at": "2026-03-24T12:57:23.750436+00:00",
+  "_created_at": "2026-03-24T13:15:32.146865+00:00",
   "_schema_version": 1
 }
