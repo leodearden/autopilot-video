@@ -159,18 +159,22 @@ def detail_client(detail_app):
 
 
 class TestGetFaceClustersByIds:
-    """Tests for CatalogDB.get_face_clusters_by_ids(cluster_ids)."""
+    """Tests for CatalogDB.get_face_clusters_by_ids(cluster_ids).
 
-    def test_returns_dict_for_existing_ids(self, detail_seeded_db: CatalogDB) -> None:
-        """Returns dict mapping str(cluster_id) to cluster info."""
-        result = detail_seeded_db.get_face_clusters_by_ids([1])
-        assert "1" in result
-        assert result["1"]["label"] == "Alice"
+    These tests verify the raw-row contract: int keys and
+    representative_embedding included (no presentation transforms).
+    """
 
-    def test_strips_representative_embedding(self, detail_seeded_db: CatalogDB) -> None:
-        """Returned cluster info has representative_embedding stripped."""
+    def test_returns_dict_with_int_keys(self, detail_seeded_db: CatalogDB) -> None:
+        """Returns dict mapping int cluster_id to cluster info."""
         result = detail_seeded_db.get_face_clusters_by_ids([1])
-        assert "representative_embedding" not in result["1"]
+        assert 1 in result
+        assert result[1]["label"] == "Alice"
+
+    def test_includes_representative_embedding(self, detail_seeded_db: CatalogDB) -> None:
+        """Returned cluster info includes representative_embedding (raw row)."""
+        result = detail_seeded_db.get_face_clusters_by_ids([1])
+        assert "representative_embedding" in result[1]
 
     def test_returns_empty_dict_for_empty_input(self, detail_seeded_db: CatalogDB) -> None:
         """Returns empty dict when given empty list."""
@@ -180,8 +184,8 @@ class TestGetFaceClustersByIds:
     def test_skips_nonexistent_ids(self, detail_seeded_db: CatalogDB) -> None:
         """Silently skips IDs that don't exist in face_clusters table."""
         result = detail_seeded_db.get_face_clusters_by_ids([1, 999])
-        assert "1" in result
-        assert "999" not in result
+        assert 1 in result
+        assert 999 not in result
 
 
 # ---------------------------------------------------------------------------
