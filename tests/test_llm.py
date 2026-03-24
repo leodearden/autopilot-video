@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # -- Step 1: Basic subprocess call tests ---------------------------------------
 
 
@@ -16,7 +15,7 @@ class TestInvokeClaudeBasic:
     """Verify invoke_claude builds correct subprocess command and parses output."""
 
     def test_builds_correct_cli_args(self):
-        """invoke_claude passes correct args: claude --print --output-format json --model ... --system-prompt ... -- <prompt>."""
+        """invoke_claude passes correct args to claude CLI."""
         from autopilot.llm import invoke_claude
 
         mock_result = MagicMock()
@@ -511,8 +510,11 @@ class TestClassifyMigration:
             "split_reason": None,
         })
 
-        with patch("autopilot.organize.classify.invoke_claude", return_value=llm_response) as mock_invoke:
-            result = _call_llm(summary, config)
+        with patch(
+            "autopilot.organize.classify.invoke_claude",
+            return_value=llm_response,
+        ) as mock_invoke:
+            _call_llm(summary, config)
 
         mock_invoke.assert_called_once()
         call_kwargs = mock_invoke.call_args[1]
@@ -574,8 +576,11 @@ class TestNarrativesMigration:
             "proposed_duration_seconds": 480,
         }])
 
-        with patch("autopilot.organize.narratives.invoke_claude", return_value=llm_response) as mock_invoke:
-            result = _call_llm(storyboard, config)
+        with patch(
+            "autopilot.organize.narratives.invoke_claude",
+            return_value=llm_response,
+        ) as mock_invoke:
+            _call_llm(storyboard, config)
 
         mock_invoke.assert_called_once()
         call_kwargs = mock_invoke.call_args[1]
@@ -630,7 +635,7 @@ class TestScriptMigration:
         })
 
         with patch("autopilot.plan.script.invoke_claude", return_value=llm_response) as mock_invoke:
-            result = _call_llm(user_message, system_prompt, config)
+            _call_llm(user_message, system_prompt, config)
 
         mock_invoke.assert_called_once()
         call_kwargs = mock_invoke.call_args[1]
