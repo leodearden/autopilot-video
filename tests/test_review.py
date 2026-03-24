@@ -432,3 +432,54 @@ class TestNarrativesPage:
         response = seeded_client.get("/review/narratives")
         assert "proposed" in response.text.lower()
         assert "approved" in response.text.lower()
+
+
+# ---------------------------------------------------------------------------
+# TestNarrativePartialHTMX — step-21
+# ---------------------------------------------------------------------------
+
+class TestNarrativePartialHTMX:
+    """Tests for HTMX partial responses from approve/reject endpoints."""
+
+    def test_approve_htmx_returns_html(self, seeded_client: TestClient) -> None:
+        """POST /api/narratives/n-1/approve with HX-Request returns HTML."""
+        response = seeded_client.post(
+            "/api/narratives/n-1/approve",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        # HTML should contain the status badge, not JSON
+        assert "approved" in response.text.lower()
+        assert "narrative-n-1" in response.text
+
+    def test_approve_htmx_contains_status_badge(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """HTMX approve response contains updated status badge."""
+        response = seeded_client.post(
+            "/api/narratives/n-1/approve",
+            headers={"HX-Request": "true"},
+        )
+        # Should have green badge for approved status
+        assert "bg-green-900" in response.text
+
+    def test_reject_htmx_returns_html(self, seeded_client: TestClient) -> None:
+        """POST /api/narratives/n-1/reject with HX-Request returns HTML."""
+        response = seeded_client.post(
+            "/api/narratives/n-1/reject",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "rejected" in response.text.lower()
+
+    def test_reject_htmx_contains_red_badge(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """HTMX reject response contains red status badge."""
+        response = seeded_client.post(
+            "/api/narratives/n-1/reject",
+            headers={"HX-Request": "true"},
+        )
+        assert "bg-red-900" in response.text
