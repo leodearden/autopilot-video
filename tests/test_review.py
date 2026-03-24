@@ -5,8 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from fastapi import FastAPI
+from starlette.testclient import TestClient
 
 from autopilot.db import CatalogDB
+from autopilot.web.app import create_app
 
 
 # ---------------------------------------------------------------------------
@@ -100,3 +103,39 @@ class TestUpdateNarrative:
         assert row["title"] == "New"
         assert row["description"] == "New"
         assert row["proposed_duration_seconds"] == 90.0
+
+
+# ---------------------------------------------------------------------------
+# Web fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def app(tmp_path: Path) -> FastAPI:
+    """Create a FastAPI app with a file-backed CatalogDB via tmp_path."""
+    db_path = str(tmp_path / "catalog.db")
+    with CatalogDB(db_path) as _db:
+        _db.init_default_gates()
+    return create_app(db_path)
+
+
+@pytest.fixture
+def client(app: FastAPI) -> TestClient:
+    """Create a TestClient for the app."""
+    return TestClient(app)
+
+
+# ---------------------------------------------------------------------------
+# TestReviewRouter — step-3
+# ---------------------------------------------------------------------------
+
+class TestReviewRouter:
+    """Tests for review_router registration and GET /review."""
+
+    def test_review_router_importable(self) -> None:
+        """review_router is importable from autopilot.web.routes."""
+        from autopilot.web.routes import review_router  # noqa: F401
+
+    def test_get_review_returns_200(self, client: TestClient) -> None:
+        """GET /review returns HTTP 200."""
+        response = client.get("/review")
+        assert response.status_code == 200
