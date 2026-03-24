@@ -346,11 +346,17 @@ class CatalogDB:
         # Strip binary embedding BLOBs from face rows
         faces = [{k: v for k, v in f.items() if k != "embedding"} for f in faces]
 
-        # Build face_clusters lookup for faces that have cluster assignments
+        # Build face_clusters lookup for faces that have cluster assignments.
+        # Coerce keys to str and strip representative_embedding BLOBs here
+        # (presentation concern) so get_face_clusters_by_ids can return raw rows.
         cluster_ids: set[int] = {
             cast(int, f["cluster_id"]) for f in faces if f.get("cluster_id") is not None
         }
-        face_clusters = self.get_face_clusters_by_ids(list(cluster_ids))
+        raw_clusters = self.get_face_clusters_by_ids(list(cluster_ids))
+        face_clusters: dict[str, dict[str, object]] = {
+            str(cid): {k: v for k, v in cluster.items() if k != "representative_embedding"}
+            for cid, cluster in raw_clusters.items()
+        }
 
         return {
             "media": media,
@@ -557,26 +563,23 @@ class CatalogDB:
         cur = self.conn.execute("SELECT * FROM face_clusters")
         return [dict(row) for row in cur.fetchall()]
 
-    def get_face_clusters_by_ids(self, cluster_ids: list[int]) -> dict[str, dict[str, object]]:
+    def get_face_clusters_by_ids(
+        self, cluster_ids: list[int]
+    ) -> dict[int, dict[str, object]]:
         """Batch-fetch face clusters by IDs using a single query.
 
-        Returns a dict mapping str(cluster_id) to cluster info with
-        representative_embedding stripped. Non-existent IDs are silently
-        skipped; empty input returns an empty dict.
+        Returns a dict mapping cluster_id (int) to raw cluster row.
+        Non-existent IDs are silently skipped; empty input returns an
+        empty dict.
         """
         if not cluster_ids:
             return {}
         placeholders = ",".join("?" for _ in cluster_ids)
         cur = self.conn.execute(
             f"SELECT * FROM face_clusters WHERE cluster_id IN ({placeholders})",
-            list(cluster_ids),
+            cluster_ids,
         )
-        result: dict[str, dict[str, object]] = {}
-        for row in cur.fetchall():
-            d = dict(row)
-            d.pop("representative_embedding", None)
-            result[str(d["cluster_id"])] = d
-        return result
+        return {row["cluster_id"]: dict(row) for row in cur.fetchall()}
 
     def get_face_cluster_by_id(self, cluster_id: int) -> dict[str, object] | None:
         """Get a face cluster by id, or None if not found."""
