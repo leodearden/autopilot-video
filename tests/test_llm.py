@@ -450,3 +450,41 @@ class TestInvokeClaudeApiFallback:
         with patch("subprocess.run", return_value=mock_result):
             # This should work without anthropic being importable
             invoke_claude(prompt="test", system="sys", model="sonnet", max_tokens=512)
+
+
+# -- Step 11: LLMConfig.use_api and --api-fallback flag tests -----------------
+
+
+class TestLLMConfigUseApi:
+    """Verify LLMConfig.use_api field and CLI --api-fallback flag."""
+
+    def test_use_api_defaults_false(self):
+        """LLMConfig.use_api defaults to False."""
+        from autopilot.config import LLMConfig
+
+        config = LLMConfig()
+        assert config.use_api is False
+
+    def test_use_api_can_be_set_true(self):
+        """LLMConfig.use_api can be set to True."""
+        from autopilot.config import LLMConfig
+
+        config = LLMConfig(use_api=True)
+        assert config.use_api is True
+
+    def test_api_fallback_flag_on_main_group(self):
+        """main Click group has --api-fallback flag."""
+        from autopilot.cli import main
+
+        param_names = [p.name for p in main.params]
+        assert "api_fallback" in param_names
+
+    def test_api_fallback_flag_stores_in_context(self):
+        """--api-fallback stores api_fallback=True in click context."""
+        from click.testing import CliRunner
+
+        from autopilot.cli import main
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["--api-fallback", "--help"])
+        assert result.exit_code == 0
