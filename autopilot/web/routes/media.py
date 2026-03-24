@@ -13,6 +13,17 @@ from autopilot.web.deps import get_db, is_htmx
 router = APIRouter()
 
 
+def _parse_metadata_json(media: dict) -> dict:
+    """Parse metadata_json from a media row, returning {} on any error."""
+    raw = media.get("metadata_json")
+    if raw:
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return {}
+
+
 def _format_duration(seconds: float | None) -> str:
     """Format seconds as HH:MM:SS, or '--:--' if None."""
     if seconds is None:
@@ -128,12 +139,7 @@ def media_detail_page(request: Request, media_id: str):
         raise HTTPException(status_code=404, detail="Media not found")
 
     media = detail["media"]
-    extra_metadata = {}
-    if media.get("metadata_json"):
-        try:
-            extra_metadata = json.loads(media["metadata_json"])
-        except (json.JSONDecodeError, TypeError):
-            pass
+    extra_metadata = _parse_metadata_json(media)
 
     templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -178,12 +184,7 @@ def media_tab(request: Request, media_id: str, tab_name: str):
     templates = request.app.state.templates
 
     if tab_name == "metadata":
-        extra_metadata = {}
-        if media.get("metadata_json"):
-            try:
-                extra_metadata = json.loads(media["metadata_json"])
-            except (json.JSONDecodeError, TypeError):
-                pass
+        extra_metadata = _parse_metadata_json(media)
         html = templates.get_template("partials/tab_metadata.html").render(
             media=media,
             extra_metadata=extra_metadata,
