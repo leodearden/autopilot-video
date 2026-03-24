@@ -275,6 +275,25 @@ def api_relabel_cluster(
     return JSONResponse(content=parsed)
 
 
+@router.post("/api/clusters/{cluster_id}/exclude", response_model=None)
+def api_exclude_cluster(request: Request, cluster_id: str) -> Response:
+    """Mark a cluster as excluded."""
+    db = _get_db(request)
+    try:
+        row = db.get_activity_cluster(cluster_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Cluster not found")
+        db.update_activity_cluster(cluster_id, excluded=1)
+        db.conn.commit()
+        updated = db.get_activity_cluster(cluster_id)
+    finally:
+        db.close()
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+    parsed = _parse_cluster(dict(updated))
+    return JSONResponse(content=parsed)
+
+
 @router.post("/api/narratives/bulk-approve")
 def api_bulk_approve(request: Request, body: BulkApproveRequest) -> dict[str, int]:
     """Approve multiple narratives at once, returning actual count of rows updated."""
