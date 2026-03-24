@@ -137,3 +137,77 @@ class TestInvokeClaudeBasic:
         assert "--max-tokens" in cmd
         idx = cmd.index("--max-tokens")
         assert cmd[idx + 1] == "2048"
+
+
+# -- Step 3: Error handling tests ----------------------------------------------
+
+
+class TestInvokeClaudeErrors:
+    """Verify error handling wraps all failure modes as LlmError."""
+
+    def test_cli_not_found_raises_llm_error(self):
+        """FileNotFoundError (CLI not installed) is wrapped as LlmError."""
+        from autopilot.llm import LlmError, invoke_claude
+
+        with patch("subprocess.run", side_effect=FileNotFoundError("claude")):
+            with pytest.raises(LlmError, match="[Cc]laude CLI"):
+                invoke_claude(prompt="test", system="sys", model="sonnet", max_tokens=512)
+
+    def test_nonzero_exit_raises_llm_error(self):
+        """CalledProcessError on non-zero exit raises LlmError with stderr."""
+        from autopilot.llm import LlmError, invoke_claude
+
+        err = subprocess.CalledProcessError(1, "claude", stderr="Rate limit exceeded")
+        with patch("subprocess.run", side_effect=err):
+            with pytest.raises(LlmError, match="Rate limit"):
+                invoke_claude(prompt="test", system="sys", model="sonnet", max_tokens=512)
+
+    def test_timeout_raises_llm_error(self):
+        """TimeoutExpired raises LlmError."""
+        from autopilot.llm import LlmError, invoke_claude
+
+        err = subprocess.TimeoutExpired("claude", 30)
+        with patch("subprocess.run", side_effect=err):
+            with pytest.raises(LlmError, match="[Tt]imeout"):
+                invoke_claude(
+                    prompt="test", system="sys", model="sonnet", max_tokens=512, timeout=30
+                )
+
+    def test_invalid_json_raises_llm_error(self):
+        """Invalid JSON in stdout raises LlmError."""
+        from autopilot.llm import LlmError, invoke_claude
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "NOT JSON AT ALL"
+        mock_result.stderr = ""
+
+        with patch("subprocess.run", return_value=mock_result):
+            with pytest.raises(LlmError, match="[Jj]son|[Pp]arse"):
+                invoke_claude(prompt="test", system="sys", model="sonnet", max_tokens=512)
+
+    def test_empty_result_raises_llm_error(self):
+        """Empty 'result' field in JSON raises LlmError."""
+        from autopilot.llm import LlmError, invoke_claude
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({"result": ""})
+        mock_result.stderr = ""
+
+        with patch("subprocess.run", return_value=mock_result):
+            with pytest.raises(LlmError, match="[Ee]mpty"):
+                invoke_claude(prompt="test", system="sys", model="sonnet", max_tokens=512)
+
+    def test_missing_result_key_raises_llm_error(self):
+        """Missing 'result' key in JSON raises LlmError."""
+        from autopilot.llm import LlmError, invoke_claude
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({"output": "something"})
+        mock_result.stderr = ""
+
+        with patch("subprocess.run", return_value=mock_result):
+            with pytest.raises(LlmError, match="[Rr]esult|[Mm]issing"):
+                invoke_claude(prompt="test", system="sys", model="sonnet", max_tokens=512)
