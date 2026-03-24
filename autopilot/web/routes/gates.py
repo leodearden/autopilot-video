@@ -204,8 +204,8 @@ def api_skip_gate(request: Request, stage: str) -> Response:
     return _gate_decision(request, stage, "skipped")
 
 
-@router.put("/api/gates/preset/{preset_name}")
-def api_apply_preset(request: Request, preset_name: str) -> list[dict]:
+@router.put("/api/gates/preset/{preset_name}", response_model=None)
+def api_apply_preset(request: Request, preset_name: str) -> Response:
     """Apply a gate preset, updating all gate modes."""
     if preset_name not in GATE_PRESETS:
         raise HTTPException(status_code=404, detail=f"Unknown preset: {preset_name}")
@@ -220,4 +220,17 @@ def api_apply_preset(request: Request, preset_name: str) -> list[dict]:
     finally:
         db.close()
     gates.sort(key=lambda g: _STAGE_ORDER.get(g["stage"], 999))
-    return gates
+
+    if _is_htmx(request):
+        # Render all gate toggle partials concatenated for innerHTML swap
+        gates_by_stage = {str(g["stage"]): dict(g) for g in gates}
+        templates = request.app.state.templates
+        template = templates.get_template("partials/gate_toggle.html")
+        parts: list[str] = []
+        for from_stage, _to_stage, gate_stage in _STAGE_TRANSITIONS:
+            gate = gates_by_stage.get(gate_stage, {})
+            parts.append(template.render(
+                gate=gate, gate_stage=gate_stage, from_stage=from_stage,
+            ))
+        return HTMLResponse(content="\n".join(parts))
+    return JSONResponse(content=gates)

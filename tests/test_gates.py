@@ -381,3 +381,28 @@ class TestHtmxResponses:
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
         assert "gate-classify" in response.text
+
+
+class TestPresetHtmxResponse:
+    """Tests for HTMX-aware preset endpoint responses."""
+
+    def test_preset_returns_html_for_htmx(self, client: TestClient) -> None:
+        """PUT /api/gates/preset/full_auto with HX-Request returns HTML with all 9 gate rows."""
+        response = client.put(
+            "/api/gates/preset/full_auto",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        # Should contain all 9 gate toggle divs
+        for stage in CatalogDB._PIPELINE_STAGES:
+            assert f"gate-{stage}" in response.text
+
+    def test_preset_returns_json_without_htmx(self, client: TestClient) -> None:
+        """PUT /api/gates/preset/full_auto without HX-Request returns JSON list."""
+        response = client.put("/api/gates/preset/full_auto")
+        assert response.status_code == 200
+        assert "application/json" in response.headers["content-type"]
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) == 9
