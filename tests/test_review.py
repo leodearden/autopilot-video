@@ -188,3 +188,31 @@ class TestListNarrativesAPI:
         assert response.status_code == 200
         data = response.json()
         assert data == []
+
+
+# ---------------------------------------------------------------------------
+# TestGetNarrativeAPI — step-7
+# ---------------------------------------------------------------------------
+
+class TestGetNarrativeAPI:
+    """Tests for GET /api/narratives/{id} endpoint."""
+
+    def test_returns_narrative_dict(self, seeded_client: TestClient) -> None:
+        """GET /api/narratives/n-1 returns the narrative as a dict."""
+        response = seeded_client.get("/api/narratives/n-1")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["narrative_id"] == "n-1"
+        assert data["title"] == "Morning Walk"
+
+    def test_parses_cluster_ids(self, seeded_client: TestClient) -> None:
+        """Response includes parsed activity_cluster_ids list."""
+        response = seeded_client.get("/api/narratives/n-1")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["activity_cluster_ids"] == ["c-1", "c-2"]
+
+    def test_404_for_nonexistent(self, seeded_client: TestClient) -> None:
+        """GET /api/narratives/nonexistent returns 404."""
+        response = seeded_client.get("/api/narratives/nonexistent")
+        assert response.status_code == 404
