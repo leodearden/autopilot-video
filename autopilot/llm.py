@@ -133,7 +133,8 @@ def _invoke_via_api(
         import anthropic  # type: ignore[import-untyped]
     except ImportError as exc:
         raise LlmError(
-            "anthropic package not installed — install with: pip install 'autopilot-video[api-fallback]'"
+            "anthropic package not installed — install with: "
+            "pip install 'autopilot-video[api-fallback]'"
         ) from exc
 
     try:

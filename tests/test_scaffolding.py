@@ -105,7 +105,6 @@ def test_pyproject_toml_has_all_dependencies(project_root: pathlib.Path) -> None
         "opentimelineio",
         "scenedetect",
         "kokoro",
-        "anthropic",
         "google-api-python-client",
         "requests",
     ]
