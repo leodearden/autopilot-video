@@ -54,8 +54,12 @@ def invoke_claude(
         "--model", model,
         "--max-tokens", str(max_tokens),
         "--system-prompt", system,
-        "--", prompt,
     ]
+
+    if json_schema is not None:
+        cmd.extend(["--json-schema", json.dumps(json_schema)])
+
+    cmd.extend(["--", prompt])
 
     try:
         result = subprocess.run(
@@ -78,6 +82,16 @@ def invoke_claude(
     except json.JSONDecodeError as exc:
         raise LlmError(f"Failed to parse CLI JSON output: {exc}") from exc
 
+    # Structured output mode: return parsed dict from 'structured_output'
+    if json_schema is not None:
+        structured = data.get("structured_output")
+        if structured is None:
+            raise LlmError(
+                f"Missing structured_output in CLI output (keys: {list(data.keys())})"
+            )
+        return structured
+
+    # Simple text mode: return 'result' field
     result_text = data.get("result")
     if not result_text:
         raise LlmError(f"Empty or missing result in CLI output (keys: {list(data.keys())})")
