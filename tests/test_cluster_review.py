@@ -109,3 +109,38 @@ class TestDeleteActivityCluster:
     def test_no_error_deleting_missing_id(self, db: CatalogDB) -> None:
         """delete_activity_cluster does not raise for a non-existent id."""
         db.delete_activity_cluster("nonexistent")  # should not raise
+
+
+# ---------------------------------------------------------------------------
+# TestUpdateActivityClusterWhitelist — step-5
+# ---------------------------------------------------------------------------
+
+class TestUpdateActivityClusterWhitelist:
+    """Tests for column whitelist on update_activity_cluster."""
+
+    def test_rejects_disallowed_column(self, db: CatalogDB) -> None:
+        """update_activity_cluster raises ValueError for columns not in whitelist."""
+        _seed_cluster(db, "c-1")
+        with pytest.raises(ValueError, match="Disallowed column"):
+            db.update_activity_cluster("c-1", evil_column="hacked")
+
+    def test_accepts_all_valid_columns(self, db: CatalogDB) -> None:
+        """update_activity_cluster accepts all whitelisted columns."""
+        _seed_cluster(db, "c-1")
+        db.update_activity_cluster(
+            "c-1",
+            label="New Label",
+            description="New desc",
+            time_start="2025-02-01T08:00:00",
+            time_end="2025-02-01T09:00:00",
+            location_label="Beach",
+            gps_center_lat=34.0,
+            gps_center_lon=-118.0,
+            clip_ids_json='["clip-3"]',
+            excluded=1,
+        )
+        db.conn.commit()
+        result = db.get_activity_cluster("c-1")
+        assert result is not None
+        assert result["label"] == "New Label"
+        assert result["excluded"] == 1
