@@ -260,6 +260,25 @@ class TestGetMediaDetail:
                 f" got {type(key).__name__}"
             )
 
+    def test_media_detail_strips_cluster_embedding_independently(
+        self, detail_seeded_db: CatalogDB
+    ) -> None:
+        """get_media_detail strips representative_embedding from face_clusters.
+
+        This ensures the presentation layer (get_media_detail) handles embedding
+        stripping independently of get_face_clusters_by_ids, so the DB method
+        can return raw rows without breaking JSON-serializability.
+        """
+        result = detail_seeded_db.get_media_detail("test1")
+        assert result is not None
+        fc = result["face_clusters"]
+        assert len(fc) > 0, "Expected at least one face cluster"
+        for cid, cluster in fc.items():
+            assert "representative_embedding" not in cluster, (
+                f"face_clusters[{cid!r}] should not contain"
+                " representative_embedding"
+            )
+
     def test_empty_analysis_for_media_without_data(self, detail_seeded_db: CatalogDB) -> None:
         """get_media_detail returns empty/None for media with no analysis data."""
         result = detail_seeded_db.get_media_detail("test2")
