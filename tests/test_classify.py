@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import inspect
 import json
-import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -338,7 +337,10 @@ class TestLLMLabeling:
         config = LLMConfig()
         summary = {"time_range": "2025-01-01T10:00:00 to 2025-01-01T11:00:00"}
 
-        with patch("autopilot.organize.classify.invoke_claude", return_value=_make_llm_text()) as mock_invoke:
+        with patch(
+            "autopilot.organize.classify.invoke_claude",
+            return_value=_make_llm_text(),
+        ) as mock_invoke:
             _call_llm(summary, config)
 
         mock_invoke.assert_called_once()
@@ -354,7 +356,10 @@ class TestLLMLabeling:
         config = LLMConfig()
         summary = {"time_range": "test"}
 
-        with patch("autopilot.organize.classify.invoke_claude", return_value=_make_llm_text()) as mock_invoke:
+        with patch(
+            "autopilot.organize.classify.invoke_claude",
+            return_value=_make_llm_text(),
+        ) as mock_invoke:
             _call_llm(summary, config)
 
         call_kwargs = mock_invoke.call_args[1]
@@ -370,7 +375,10 @@ class TestLLMLabeling:
 
         with patch(
             "autopilot.organize.classify.invoke_claude",
-            return_value=_make_llm_text(label="Sunset kayaking", description="A beautiful evening on the river."),
+            return_value=_make_llm_text(
+                label="Sunset kayaking",
+                description="A beautiful evening on the river.",
+            ),
         ):
             result = _call_llm(summary, config)
 
@@ -403,7 +411,10 @@ class TestLLMLabeling:
         config = LLMConfig()
         summary = {"time_range": "test"}
 
-        with patch("autopilot.organize.classify.invoke_claude", side_effect=LlmError("CLI timeout")):
+        with patch(
+            "autopilot.organize.classify.invoke_claude",
+            side_effect=LlmError("CLI timeout"),
+        ):
             with pytest.raises(ClassifyError, match="API.*failed"):
                 _call_llm(summary, config)
 
@@ -415,7 +426,10 @@ class TestLLMLabeling:
         config = LLMConfig()
         summary = {"time_range": "test"}
 
-        with patch("autopilot.organize.classify.invoke_claude", return_value="This is not valid JSON at all"):
+        with patch(
+            "autopilot.organize.classify.invoke_claude",
+            return_value="This is not valid JSON at all",
+        ):
             with pytest.raises(ClassifyError, match="parse"):
                 _call_llm(summary, config)
 
