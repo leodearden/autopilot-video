@@ -488,3 +488,44 @@ class TestUploadsPage:
         resp = client.get("/review/uploads")
         assert resp.status_code == 200
         assert "No uploads yet" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# TestReviewHubIntegration — step-15
+# ---------------------------------------------------------------------------
+
+
+class TestReviewHubIntegration:
+    """Tests for render/upload cards in the review hub."""
+
+    def test_render_card_with_pending_count(self, tmp_path: Path) -> None:
+        """Hub shows render card with pending count when render gate waiting."""
+        db_path = str(tmp_path / "app.db")
+        with CatalogDB(db_path) as _db:
+            _db.init_default_gates()
+            # Set render gate to waiting
+            _db.update_gate("render", status="waiting")
+            _db.conn.commit()
+            # Seed an edit plan without render_path (pending render)
+            _seed_edit_plan(
+                _db, "n-1", render_path=None,
+            )
+        app = create_app(db_path=db_path)
+        client = TestClient(app)
+        resp = client.get("/review")
+        assert resp.status_code == 200
+        assert "/review/render" in resp.text
+        assert "render" in resp.text.lower()
+
+    def test_upload_card_when_waiting(self, tmp_path: Path) -> None:
+        """Hub shows upload card with link when upload gate is waiting."""
+        db_path = str(tmp_path / "app.db")
+        with CatalogDB(db_path) as _db:
+            _db.init_default_gates()
+            _db.update_gate("upload", status="waiting")
+            _db.conn.commit()
+        app = create_app(db_path=db_path)
+        client = TestClient(app)
+        resp = client.get("/review")
+        assert resp.status_code == 200
+        assert "/review/uploads" in resp.text
