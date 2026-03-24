@@ -608,3 +608,54 @@ class TestNarrativesMigration:
 
         source = inspect.getsource(narratives._call_llm)
         assert "import anthropic" not in source
+
+
+# -- Step 17: script._call_llm migration tests --------------------------------
+
+
+class TestScriptMigration:
+    """Verify script._call_llm uses invoke_claude instead of anthropic SDK."""
+
+    def test_call_llm_uses_invoke_claude(self):
+        """script._call_llm calls invoke_claude with correct params."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.script import _call_llm
+
+        config = LLMConfig()
+        user_message = "## Approved Narrative\n\nTest storyboard"
+        system_prompt = "You are a script writer."
+
+        llm_response = json.dumps({
+            "scenes": [{"scene_number": 1, "title": "Opening"}],
+        })
+
+        with patch("autopilot.plan.script.invoke_claude", return_value=llm_response) as mock_invoke:
+            result = _call_llm(user_message, system_prompt, config)
+
+        mock_invoke.assert_called_once()
+        call_kwargs = mock_invoke.call_args[1]
+        assert call_kwargs["model"] == config.planning_model
+        assert call_kwargs["max_tokens"] == 8192
+        assert call_kwargs["prompt"] == user_message
+        assert call_kwargs["system"] == system_prompt
+
+    def test_call_llm_returns_text(self):
+        """script._call_llm returns raw text from invoke_claude."""
+        from autopilot.config import LLMConfig
+        from autopilot.plan.script import _call_llm
+
+        config = LLMConfig()
+
+        with patch("autopilot.plan.script.invoke_claude", return_value="script output"):
+            result = _call_llm("msg", "sys", config)
+
+        assert result == "script output"
+
+    def test_call_llm_no_anthropic_import(self):
+        """script._call_llm should NOT import anthropic directly."""
+        import inspect
+
+        from autopilot.plan import script
+
+        source = inspect.getsource(script._call_llm)
+        assert "import anthropic" not in source
