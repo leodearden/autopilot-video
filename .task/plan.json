@@ -14,7 +14,7 @@
     "autopilot/web/templates/review",
     "tests"
   ],
-  "analysis": "Build render review page (/review/render/{narrative_id}) with HTML5 video player and quality validation, upload status page (/review/uploads), video streaming endpoint, and supporting JSON APIs. The codebase has a mature pattern: review.py contains both /review/* page routes and /api/* JSON routes with HTMX-aware dual responses (HTML partial vs JSON). Templates extend base.html using Tailwind dark mode + HTMX. CatalogDB has edit_plans (narrative_id PK, edl_json, otio_path, validation_json, render_path) and uploads (narrative_id PK, youtube_video_id, youtube_url, uploaded_at, privacy_status) tables with single-record CRUD, but no list methods — need to add list_edit_plans() and list_uploads() with LEFT JOIN to narratives for title data. Video streaming is new to the codebase — Starlette's FileResponse supports Range headers natively for seeking. The existing gates API (/api/gates/{stage}/approve, /api/gates/{stage}/skip) handles render gate actions, so the template just wires to those endpoints. The narrative_scripts table (get_narrative_script) provides script scene data for the side-by-side view. The _REVIEW_LINKS dict in review_hub needs render/upload entries with pending counts.",
+  "analysis": "Build render review page (/review/render/{narrative_id}) with HTML5 video player and quality validation, upload status page (/review/uploads), video streaming endpoint, and supporting JSON APIs. The codebase has a mature pattern: review.py contains both /review/* page routes and /api/* JSON routes with HTMX-aware dual responses (HTML partial vs JSON). Templates extend base.html using Tailwind dark mode + HTMX. CatalogDB has edit_plans (narrative_id PK, edl_json, otio_path, validation_json, render_path) and uploads (narrative_id PK, youtube_video_id, youtube_url, uploaded_at, privacy_status) tables with single-record CRUD, but no list methods \u2014 need to add list_edit_plans() and list_uploads() with LEFT JOIN to narratives for title data. Video streaming is new to the codebase \u2014 Starlette's FileResponse supports Range headers natively for seeking. The existing gates API (/api/gates/{stage}/approve, /api/gates/{stage}/skip) handles render gate actions, so the template just wires to those endpoints. The narrative_scripts table (get_narrative_script) provides script scene data for the side-by-side view. The _REVIEW_LINKS dict in review_hub needs render/upload entries with pending counts.\n\n**Post-review fix (steps 17-18):** The upload stage pending count at review.py:68-71 has a logic error \u2014 it counts completed uploads as pending (semantically inverted). The correct logic mirrors the render stage: pending uploads = narratives that have been rendered (have a render_path in edit_plans) but lack an upload record. This is a set difference: rendered_ids - uploaded_ids.",
   "prerequisites": [
     {
       "id": "pre-1",
@@ -35,7 +35,7 @@
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Implement list_edit_plans() in CatalogDB — SELECT e.*, n.title as narrative_title FROM edit_plans e LEFT JOIN narratives n ON e.narrative_id = n.narrative_id. Returns list[dict].",
+      "description": "Implement list_edit_plans() in CatalogDB \u2014 SELECT e.*, n.title as narrative_title FROM edit_plans e LEFT JOIN narratives n ON e.narrative_id = n.narrative_id. Returns list[dict].",
       "status": "done",
       "commit": "c7ddce9"
     },
@@ -49,7 +49,7 @@
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement list_uploads() in CatalogDB — SELECT u.*, n.title as narrative_title FROM uploads u LEFT JOIN narratives n ON u.narrative_id = n.narrative_id ORDER BY u.uploaded_at DESC. Returns list[dict].",
+      "description": "Implement list_uploads() in CatalogDB \u2014 SELECT u.*, n.title as narrative_title FROM uploads u LEFT JOIN narratives n ON u.narrative_id = n.narrative_id ORDER BY u.uploaded_at DESC. Returns list[dict].",
       "status": "done",
       "commit": "2975d21"
     },
@@ -63,7 +63,7 @@
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Implement api_get_render route in review.py — GET /api/renders/{narrative_id}. Fetches edit_plan and narrative, parses validation_json into dict, returns composite JSON response with render status. Raises 404 if no edit plan found.",
+      "description": "Implement api_get_render route in review.py \u2014 GET /api/renders/{narrative_id}. Fetches edit_plan and narrative, parses validation_json into dict, returns composite JSON response with render status. Raises 404 if no edit plan found.",
       "status": "done",
       "commit": "002c89c"
     },
@@ -77,7 +77,7 @@
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Implement api_stream_video route in review.py — GET /api/renders/{narrative_id}/video. Fetches edit_plan, validates render_path exists on filesystem, returns FileResponse(render_path, media_type='video/mp4'). Starlette FileResponse handles Range headers natively for seeking.",
+      "description": "Implement api_stream_video route in review.py \u2014 GET /api/renders/{narrative_id}/video. Fetches edit_plan, validates render_path exists on filesystem, returns FileResponse(render_path, media_type='video/mp4'). Starlette FileResponse handles Range headers natively for seeking.",
       "status": "done",
       "commit": "df62afe"
     },
@@ -91,7 +91,7 @@
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Implement api_list_uploads route in review.py — GET /api/uploads. Calls db.list_uploads(), returns JSON list.",
+      "description": "Implement api_list_uploads route in review.py \u2014 GET /api/uploads. Calls db.list_uploads(), returns JSON list.",
       "status": "done",
       "commit": "2e70397"
     },
@@ -105,37 +105,51 @@
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Implement render_review_page route (GET /review/render/{narrative_id}) in review.py and create renders.html template. Route fetches narrative, edit_plan, and narrative_script; parses validation_json and script_json; passes structured context to template. Template: extends base.html, two-column layout — left side has HTML5 <video> player pointing to /api/renders/{id}/video with controls, validation results as badges/list, and action buttons (Approve for Upload, Reject with notes textarea, Download link, Skip Upload); right side has script scene list parsed from narrative_scripts.",
-      "status": "pending",
-      "commit": null
+      "description": "Implement render_review_page route (GET /review/render/{narrative_id}) in review.py and create renders.html template. Route fetches narrative, edit_plan, and narrative_script; parses validation_json and script_json; passes structured context to template. Template: extends base.html, two-column layout \u2014 left side has HTML5 <video> player pointing to /api/renders/{id}/video with controls, validation results as badges/list, and action buttons (Approve for Upload, Reject with notes textarea, Download link, Skip Upload); right side has script scene list parsed from narrative_scripts.",
+      "status": "done",
+      "commit": "85f8373"
     },
     {
       "id": "step-13",
       "type": "test",
       "description": "Write failing tests for GET /review/uploads: returns 200 HTML with table containing upload data (narrative title, YouTube video ID, YouTube URL, privacy status, uploaded_at); shows 'No uploads yet' when no uploads exist",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "cb86cc9"
     },
     {
       "id": "step-14",
       "type": "impl",
       "description": "Implement uploads_page route (GET /review/uploads) in review.py and create uploads.html template. Route calls db.list_uploads() and passes to template. Template: extends base.html, simple table with columns for narrative title (linked to render review), YouTube video ID, YouTube URL (as clickable link), privacy status badge, uploaded_at timestamp.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "5e79f1f"
     },
     {
       "id": "step-15",
       "type": "test",
       "description": "Write failing tests for review hub integration: when render gate is 'waiting', hub page contains 'render' card with link to /review/render and pending count of narratives with edit plans but no render_path; when upload gate is 'waiting', hub contains 'upload' card with link to /review/uploads",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "61a0e7c"
     },
     {
       "id": "step-16",
       "type": "impl",
       "description": "Update _REVIEW_LINKS dict to add 'render': '/review/render' and 'upload': '/review/uploads'. In review_hub route, add render stage pending count logic (count edit plans without render_path) and upload stage logic (count narratives in rendered status without upload record). Add simple GET /review/render index route listing narratives with edit plans and links to individual render review pages.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "7e1a74b"
+    },
+    {
+      "id": "step-17",
+      "type": "test",
+      "description": "Write failing test for upload pending count logic in review hub: seed 3 narratives with rendered edit plans (render_path set) and 1 upload record for one of them. Set upload gate to 'waiting'. Assert hub shows pending count of 2 (the 2 rendered-but-not-uploaded narratives). Also seed 1 edit plan WITHOUT render_path and verify it is NOT counted as pending upload. This test exposes the bug at review.py:68-71 where len(uploads) counts completed uploads instead of pending ones.",
+      "status": "done",
+      "commit": "40625b8"
+    },
+    {
+      "id": "step-18",
+      "type": "impl",
+      "description": "Fix upload pending count logic at review.py:68-71. Replace `uploads = db.list_uploads(); summary['pending_count'] = len(uploads)` with set-difference logic: `plans = db.list_edit_plans()` (reuse if already fetched for render stage), compute `rendered_ids = {p['narrative_id'] for p in plans if p.get('render_path')}`, compute `uploaded_ids = {u['narrative_id'] for u in db.list_uploads()}`, then `summary['pending_count'] = len(rendered_ids - uploaded_ids)`. Update pending_label to 'pending uploads'.",
+      "status": "done",
+      "commit": "d4df2d9"
     }
   ],
   "design_decisions": [
@@ -148,7 +162,7 @@
       "rationale": "The uploads page needs narrative titles alongside upload data, and the hub needs edit plan counts. A LEFT JOIN is a single query vs N+1 individual lookups. Following the existing CatalogDB pattern of returning list[dict] from fetchall(). LEFT JOIN ensures records show even if narrative was deleted."
     },
     {
-      "decision": "Template render actions (approve, reject, skip) wire to existing gates API — no new action endpoints",
+      "decision": "Template render actions (approve, reject, skip) wire to existing gates API \u2014 no new action endpoints",
       "rationale": "The gates.py router already provides POST /api/gates/{stage}/approve, POST /api/gates/{stage}/skip, and PUT /api/gates/{stage} for updating status/notes. The render review template's HTMX buttons target these existing endpoints directly. This avoids duplicating gate logic and keeps the action surface consistent across all pipeline stages."
     },
     {
@@ -166,6 +180,10 @@
     {
       "decision": "Video streaming returns 404 when render_path is null or file doesn't exist on filesystem",
       "rationale": "A render may have an edit plan but no render_path yet (render not started), or the render_path may point to a file that was moved/deleted. Both cases should return 404 rather than 500, giving the client a clear signal that the video is not available."
+    },
+    {
+      "decision": "Upload pending count uses set-difference (rendered_ids - uploaded_ids) instead of counting uploads",
+      "rationale": "The upload stage's 'pending' work is narratives that are rendered but not yet uploaded. Counting completed uploads is semantically inverted \u2014 more uploads would show higher pending count. The set-difference mirrors the render stage pattern (edit plans without render_path). This correctly answers 'how many videos still need uploading?' by finding rendered narratives missing from the uploads table."
     }
   ],
   "reuse": [
@@ -176,12 +194,12 @@
     },
     {
       "what": "Existing gates API for render actions (approve, skip, reject with notes)",
-      "where": "autopilot/web/routes/gates.py — POST /api/gates/{stage}/approve, POST /api/gates/{stage}/skip, PUT /api/gates/{stage}",
-      "how": "Render review template wires HTMX buttons directly to these existing endpoints. Approve → POST /api/gates/render/approve, Skip Upload → POST /api/gates/render/skip, Reject → PUT /api/gates/render with status='rejected' and notes from textarea."
+      "where": "autopilot/web/routes/gates.py \u2014 POST /api/gates/{stage}/approve, POST /api/gates/{stage}/skip, PUT /api/gates/{stage}",
+      "how": "Render review template wires HTMX buttons directly to these existing endpoints. Approve \u2192 POST /api/gates/render/approve, Skip Upload \u2192 POST /api/gates/render/skip, Reject \u2192 PUT /api/gates/render with status='rejected' and notes from textarea."
     },
     {
       "what": "CatalogDB existing single-record CRUD: get_edit_plan, get_upload, get_narrative, get_narrative_script",
-      "where": "autopilot/db.py — get_edit_plan (line 881), get_upload (line 979), get_narrative (line 752), get_narrative_script (line 910)",
+      "where": "autopilot/db.py \u2014 get_edit_plan (line 881), get_upload (line 979), get_narrative (line 752), get_narrative_script (line 910)",
       "how": "Render review route calls get_edit_plan + get_narrative + get_narrative_script to compose the full render review context. Video streaming route calls get_edit_plan to find render_path."
     },
     {
@@ -203,8 +221,13 @@
       "what": "_REVIEW_LINKS dict and hub pending count pattern",
       "where": "autopilot/web/routes/review.py lines 28-58",
       "how": "Add 'render': '/review/render' and 'upload': '/review/uploads' entries. Add elif blocks for render/upload stages to compute pending counts: render counts edit plans without render_path, upload counts pending upload narratives."
+    },
+    {
+      "what": "list_edit_plans() already fetched for render stage in hub route",
+      "where": "autopilot/web/routes/review.py lines 62-67 (render stage elif block)",
+      "how": "For step-18, the upload stage can reuse the plans list if the render stage was also processed in the same request. Alternatively, call list_edit_plans() in the upload elif block \u2014 it's a lightweight query and keeps each stage block self-contained."
     }
   ],
   "_session_id": "50-ca894fe6",
-  "_created_at": "2026-03-24T22:58:29.639646+00:00"
+  "_created_at": "2026-03-24T23:26:01.801513+00:00"
 }
