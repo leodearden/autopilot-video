@@ -298,3 +298,86 @@ class TestApiExcludeCluster:
         resp = client.post("/api/clusters/c-1/exclude")
         assert resp.status_code == 200
         assert resp.json()["excluded"] == 1
+
+
+# ---------------------------------------------------------------------------
+# TestApiMergeClusters — step-15
+# ---------------------------------------------------------------------------
+
+class TestApiMergeClusters:
+    """Tests for POST /api/clusters/merge."""
+
+    def test_merges_two_clusters(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """Merge 2 clusters: combined clips, label from largest, time range merged."""
+        _seed_cluster_via_db(
+            app, "c-1",
+            label="Small",
+            clip_ids_json='["clip-1"]',
+            time_start="2025-01-01T08:00:00",
+            time_end="2025-01-01T09:00:00",
+        )
+        _seed_cluster_via_db(
+            app, "c-2",
+            label="Large",
+            clip_ids_json='["clip-2","clip-3","clip-4"]',
+            time_start="2025-01-01T10:00:00",
+            time_end="2025-01-01T12:00:00",
+        )
+        resp = client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": ["c-1", "c-2"]},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        # Largest cluster (c-2) survives
+        assert data["cluster_id"] == "c-2"
+        assert data["label"] == "Large"
+        # Combined clips
+        assert set(data["clip_ids"]) == {"clip-1", "clip-2", "clip-3", "clip-4"}
+        assert data["clip_count"] == 4
+        # Time range: min start, max end
+        assert data["time_start"] == "2025-01-01T08:00:00"
+        assert data["time_end"] == "2025-01-01T12:00:00"
+        # Other cluster deleted
+        get_resp = client.get("/api/clusters/c-1")
+        assert get_resp.status_code == 404
+
+    def test_merges_three_clusters(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """Merge 3 clusters into the largest one."""
+        _seed_cluster_via_db(app, "c-1", clip_ids_json='["a"]')
+        _seed_cluster_via_db(app, "c-2", clip_ids_json='["b","c"]')
+        _seed_cluster_via_db(app, "c-3", clip_ids_json='["d","e","f"]')
+        resp = client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": ["c-1", "c-2", "c-3"]},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["cluster_id"] == "c-3"
+        assert data["clip_count"] == 6
+        # Others deleted
+        assert client.get("/api/clusters/c-1").status_code == 404
+        assert client.get("/api/clusters/c-2").status_code == 404
+
+    def test_rejects_fewer_than_two_ids(self, client: TestClient) -> None:
+        """Merge with fewer than 2 cluster_ids returns 422."""
+        resp = client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": ["c-1"]},
+        )
+        assert resp.status_code == 422
+
+    def test_returns_404_for_missing_cluster(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """Merge returns 404 if any cluster_id not found."""
+        _seed_cluster_via_db(app, "c-1")
+        resp = client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": ["c-1", "nonexistent"]},
+        )
+        assert resp.status_code == 404
