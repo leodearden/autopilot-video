@@ -34,7 +34,8 @@ def detail_db(detail_db_path: str) -> CatalogDB:
     """Create a CatalogDB backed by a real file for web endpoint tests."""
     db = CatalogDB(detail_db_path)
     db.conn.isolation_level = None  # autocommit
-    return db
+    yield db
+    db.close()
 
 
 @pytest.fixture
