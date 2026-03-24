@@ -757,16 +757,29 @@ class CatalogDB:
             (status, narrative_id),
         )
 
+    _NARRATIVE_ALLOWED_COLUMNS: frozenset[str] = frozenset({
+        "title",
+        "description",
+        "proposed_duration_seconds",
+        "activity_cluster_ids_json",
+        "arc_notes",
+        "emotional_journey",
+        "status",
+    })
+
     def update_narrative(self, narrative_id: str, **kwargs: object) -> None:
         """Update fields of a narrative by keyword arguments."""
         if not kwargs:
             return
+        bad_keys = set(kwargs) - self._NARRATIVE_ALLOWED_COLUMNS
+        if bad_keys:
+            msg = f"Disallowed column(s) for narrative update: {sorted(bad_keys)}"
+            raise ValueError(msg)
         set_clause = ", ".join(f"{k} = ?" for k in kwargs)
         values = list(kwargs.values())
         values.append(narrative_id)
         self.conn.execute(
-            f"UPDATE narratives SET {set_clause} "  # noqa: S608
-            "WHERE narrative_id = ?",
+            f"UPDATE narratives SET {set_clause} WHERE narrative_id = ?",  # noqa: S608 — column names validated above
             values,
         )
 
