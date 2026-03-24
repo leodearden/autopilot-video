@@ -294,6 +294,77 @@ def api_exclude_cluster(request: Request, cluster_id: str) -> Response:
     return JSONResponse(content=parsed)
 
 
+class MergeRequest(BaseModel):
+    """Request body for merging clusters."""
+
+    cluster_ids: list[str]
+
+
+@router.post("/api/clusters/merge")
+def api_merge_clusters(
+    request: Request, body: MergeRequest,
+) -> dict[str, object]:
+    """Merge multiple clusters into the largest one by clip count."""
+    if len(body.cluster_ids) < 2:
+        raise HTTPException(
+            status_code=422, detail="At least 2 cluster_ids required",
+        )
+    db = _get_db(request)
+    try:
+        # Load all clusters
+        clusters: list[dict[str, object]] = []
+        for cid in body.cluster_ids:
+            row = db.get_activity_cluster(cid)
+            if row is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Cluster {cid} not found",
+                )
+            clusters.append(dict(row))
+
+        # Parse clip_ids for each cluster
+        parsed_clusters = [_parse_cluster(c) for c in clusters]
+
+        # Find largest by clip count
+        largest = max(parsed_clusters, key=lambda c: c["clip_count"])
+        largest_id = str(largest["cluster_id"])
+
+        # Combine all clip_ids
+        all_clip_ids: list[str] = []
+        for pc in parsed_clusters:
+            all_clip_ids.extend(pc["clip_ids"])  # type: ignore[arg-type]
+
+        # Compute time range
+        time_starts = [str(c["time_start"]) for c in clusters if c.get("time_start")]
+        time_ends = [str(c["time_end"]) for c in clusters if c.get("time_end")]
+        min_start = min(time_starts) if time_starts else None
+        max_end = max(time_ends) if time_ends else None
+
+        # Update largest cluster with combined data
+        update_kwargs: dict[str, object] = {
+            "clip_ids_json": json.dumps(all_clip_ids),
+        }
+        if min_start is not None:
+            update_kwargs["time_start"] = min_start
+        if max_end is not None:
+            update_kwargs["time_end"] = max_end
+        db.update_activity_cluster(largest_id, **update_kwargs)
+
+        # Delete non-largest clusters
+        for pc in parsed_clusters:
+            cid = str(pc["cluster_id"])
+            if cid != largest_id:
+                db.delete_activity_cluster(cid)
+
+        db.conn.commit()
+        merged = db.get_activity_cluster(largest_id)
+    finally:
+        db.close()
+    if merged is None:
+        raise HTTPException(status_code=500, detail="Merged cluster missing")
+    return _parse_cluster(dict(merged))
+
+
 @router.post("/api/narratives/bulk-approve")
 def api_bulk_approve(request: Request, body: BulkApproveRequest) -> dict[str, int]:
     """Approve multiple narratives at once, returning actual count of rows updated."""
