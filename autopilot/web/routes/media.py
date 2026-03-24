@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+from typing import NamedTuple
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
@@ -22,6 +23,35 @@ def _parse_metadata_json(media: dict) -> dict:
         except (json.JSONDecodeError, TypeError):
             pass
     return {}
+
+
+class DetectionSummary(NamedTuple):
+    """Aggregated detection counts from a list of detection rows."""
+
+    total: int
+    classes: dict[str, int]
+    frame_details: list[dict]
+
+
+def _aggregate_detections(det_rows: list[dict]) -> DetectionSummary:
+    """Aggregate detection rows into total count, per-class counts, and per-frame details."""
+    total = 0
+    classes: dict[str, int] = {}
+    frame_details: list[dict] = []
+    for row in det_rows:
+        dets: list = []
+        raw = row.get("detections_json")
+        if raw:
+            try:
+                dets = json.loads(raw) if isinstance(raw, str) else json.loads(str(raw))
+            except (json.JSONDecodeError, TypeError):
+                pass
+        total += len(dets)
+        frame_details.append({"number": row["frame_number"], "count": len(dets)})
+        for d in dets:
+            cls = d.get("class", "unknown")
+            classes[cls] = classes.get(cls, 0) + 1
+    return DetectionSummary(total=total, classes=classes, frame_details=frame_details)
 
 
 def _format_duration(seconds: float | None) -> str:
@@ -205,28 +235,14 @@ def media_tab(request: Request, media_id: str, tab_name: str):
         )
     elif tab_name == "detections":
         det_rows = detail["detections"]
-        total_detections = 0
-        classes: dict[str, int] = {}
-        frame_details = []
-        for row in det_rows:
-            dets: list = []
-            if row.get("detections_json"):
-                try:
-                    dets = json.loads(row["detections_json"])
-                except (json.JSONDecodeError, TypeError):
-                    pass
-            total_detections += len(dets)
-            frame_details.append({"number": row["frame_number"], "count": len(dets)})
-            for d in dets:
-                cls = d.get("class", "unknown")
-                classes[cls] = classes.get(cls, 0) + 1
-        class_counts = sorted(classes.items(), key=lambda x: x[1], reverse=True)
+        summary = _aggregate_detections(det_rows)
+        class_counts = sorted(summary.classes.items(), key=lambda x: x[1], reverse=True)
         html = templates.get_template("partials/tab_detections.html").render(
             detections=det_rows,
-            total_detections=total_detections,
+            total_detections=summary.total,
             frame_count=len(det_rows),
             class_counts=class_counts,
-            frame_details=frame_details,
+            frame_details=summary.frame_details,
         )
     elif tab_name == "faces":
         faces = detail["faces"]
@@ -333,21 +349,9 @@ def api_media_detections(request: Request, media_id: str):
         det_rows = db.get_detections_for_media(media_id)
     finally:
         db.close()
-    total = 0
-    classes: dict[str, int] = {}
-    for row in det_rows:
-        dets: list = []
-        if row["detections_json"]:
-            try:
-                dets = json.loads(str(row["detections_json"]))
-            except (json.JSONDecodeError, TypeError):
-                pass
-        total += len(dets)
-        for d in dets:
-            cls = d.get("class", "unknown")
-            classes[cls] = classes.get(cls, 0) + 1
+    summary = _aggregate_detections(det_rows)
     return {
-        "total_detections": total,
-        "classes": classes,
+        "total_detections": summary.total,
+        "classes": summary.classes,
         "frame_count": len(det_rows),
     }
