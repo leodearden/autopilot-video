@@ -998,6 +998,15 @@ class TestTabPerTabFetching:
     rather than calling get_media_detail() for every tab.
     """
 
+    _DB_METHODS = (
+        "get_media_detail",
+        "get_transcript",
+        "get_detections_for_media",
+        "get_faces_for_media",
+        "get_audio_events_for_media",
+        "count_embeddings_for_media",
+    )
+
     _MEDIA_ROW = {
         "id": "test1",
         "filepath": "/video/test.mp4",
@@ -1020,6 +1029,13 @@ class TestTabPerTabFetching:
         mock_db.get_media.return_value = self._MEDIA_ROW
         return client, mock_db, patch
 
+    def _assert_only_called(self, mock_db, *allowed: str) -> None:
+        """Assert that no DB methods outside *allowed* were called on mock_db."""
+        allowed_set = set(allowed)
+        for name in self._DB_METHODS:
+            if name not in allowed_set:
+                getattr(mock_db, name).assert_not_called()
+
     def test_metadata_tab_does_not_call_get_transcript(self, tmp_path) -> None:
         """Metadata tab should not call get_transcript."""
         client, mock_db, patch = self._get_client()
@@ -1028,12 +1044,7 @@ class TestTabPerTabFetching:
             resp = client.get("/media/test1/tab/metadata")
 
         assert resp.status_code == 200
-        mock_db.get_transcript.assert_not_called()
-        mock_db.get_detections_for_media.assert_not_called()
-        mock_db.get_faces_for_media.assert_not_called()
-        mock_db.get_audio_events_for_media.assert_not_called()
-        mock_db.count_embeddings_for_media.assert_not_called()
-        mock_db.get_media_detail.assert_not_called()
+        self._assert_only_called(mock_db)
 
     def test_transcript_tab_calls_get_transcript_only(self, tmp_path) -> None:
         """Transcript tab should call get_transcript but not detection/face methods."""
@@ -1045,9 +1056,7 @@ class TestTabPerTabFetching:
 
         assert resp.status_code == 200
         mock_db.get_transcript.assert_called_once()
-        mock_db.get_detections_for_media.assert_not_called()
-        mock_db.get_faces_for_media.assert_not_called()
-        mock_db.get_media_detail.assert_not_called()
+        self._assert_only_called(mock_db, "get_transcript")
 
     def test_detections_tab_calls_get_detections_only(self, tmp_path) -> None:
         """Detections tab should call get_detections_for_media only."""
@@ -1059,9 +1068,7 @@ class TestTabPerTabFetching:
 
         assert resp.status_code == 200
         mock_db.get_detections_for_media.assert_called_once()
-        mock_db.get_transcript.assert_not_called()
-        mock_db.get_faces_for_media.assert_not_called()
-        mock_db.get_media_detail.assert_not_called()
+        self._assert_only_called(mock_db, "get_detections_for_media")
 
     def test_faces_tab_calls_get_faces_only(self, tmp_path) -> None:
         """Faces tab should call get_faces_for_media (and face_clusters), not others."""
@@ -1074,9 +1081,7 @@ class TestTabPerTabFetching:
 
         assert resp.status_code == 200
         mock_db.get_faces_for_media.assert_called_once()
-        mock_db.get_transcript.assert_not_called()
-        mock_db.get_detections_for_media.assert_not_called()
-        mock_db.get_media_detail.assert_not_called()
+        self._assert_only_called(mock_db, "get_faces_for_media")
 
     def test_audio_events_tab_calls_get_audio_events_only(self, tmp_path) -> None:
         """Audio events tab should call get_audio_events_for_media only."""
@@ -1088,9 +1093,26 @@ class TestTabPerTabFetching:
 
         assert resp.status_code == 200
         mock_db.get_audio_events_for_media.assert_called_once()
-        mock_db.get_transcript.assert_not_called()
-        mock_db.get_detections_for_media.assert_not_called()
-        mock_db.get_media_detail.assert_not_called()
+        self._assert_only_called(mock_db, "get_audio_events_for_media")
+
+    def test_assert_only_called_rejects_unexpected(self) -> None:
+        """Meta-test: _assert_only_called raises when an un-allowed method was called."""
+        from unittest.mock import MagicMock
+
+        import pytest
+
+        mock_db = MagicMock()
+        mock_db.get_transcript()  # simulate an unexpected call
+        with pytest.raises(AssertionError):
+            self._assert_only_called(mock_db)  # no methods allowed → should raise
+
+    def test_assert_only_called_permits_allowed(self) -> None:
+        """Meta-test: _assert_only_called does not raise when the called method is allowed."""
+        from unittest.mock import MagicMock
+
+        mock_db = MagicMock()
+        mock_db.get_transcript()  # simulate an expected call
+        self._assert_only_called(mock_db, "get_transcript")  # should NOT raise
 
     def test_embeddings_tab_calls_count_embeddings_only(self, tmp_path) -> None:
         """Embeddings tab should call count_embeddings_for_media only."""
@@ -1102,6 +1124,4 @@ class TestTabPerTabFetching:
 
         assert resp.status_code == 200
         mock_db.count_embeddings_for_media.assert_called_once()
-        mock_db.get_transcript.assert_not_called()
-        mock_db.get_detections_for_media.assert_not_called()
-        mock_db.get_media_detail.assert_not_called()
+        self._assert_only_called(mock_db, "count_embeddings_for_media")
