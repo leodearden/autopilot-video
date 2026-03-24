@@ -161,7 +161,9 @@ class TestGenerateEdlLLM:
         config = LLMConfig()
         _seed_edl_narrative(catalog_db)
 
-        with patch("autopilot.plan.edl.invoke_claude", return_value=_make_edl_dict()) as mock_invoke:
+        with patch(
+            "autopilot.plan.edl.invoke_claude", return_value=_make_edl_dict(),
+        ) as mock_invoke:
             generate_edl("n1", catalog_db, config)
 
         call_kwargs = mock_invoke.call_args[1]
@@ -175,7 +177,9 @@ class TestGenerateEdlLLM:
         config = LLMConfig()
         _seed_edl_narrative(catalog_db)
 
-        with patch("autopilot.plan.edl.invoke_claude", return_value=_make_edl_dict()) as mock_invoke:
+        with patch(
+            "autopilot.plan.edl.invoke_claude", return_value=_make_edl_dict(),
+        ) as mock_invoke:
             generate_edl("n1", catalog_db, config)
 
         call_kwargs = mock_invoke.call_args[1]
@@ -189,7 +193,9 @@ class TestGenerateEdlLLM:
         config = LLMConfig()
         _seed_edl_narrative(catalog_db)
 
-        with patch("autopilot.plan.edl.invoke_claude", return_value=_make_edl_dict()) as mock_invoke:
+        with patch(
+            "autopilot.plan.edl.invoke_claude", return_value=_make_edl_dict(),
+        ) as mock_invoke:
             generate_edl("n1", catalog_db, config)
 
         call_kwargs = mock_invoke.call_args[1]
@@ -215,7 +221,9 @@ class TestGenerateEdlLLM:
         config = LLMConfig()
         _seed_edl_narrative(catalog_db)
 
-        with patch("autopilot.plan.edl.invoke_claude", return_value=_make_edl_dict()) as mock_invoke:
+        with patch(
+            "autopilot.plan.edl.invoke_claude", return_value=_make_edl_dict(),
+        ) as mock_invoke:
             generate_edl("n1", catalog_db, config)
 
         call_kwargs = mock_invoke.call_args[1]
@@ -298,14 +306,26 @@ class TestStructuredOutput:
         _seed_edl_narrative(catalog_db)
 
         full_edl = {
-            "clips": [{"clip_id": "v1", "in_timecode": "00:00:00.000", "out_timecode": "00:00:10.000", "track": 1}],
+            "clips": [
+                {
+                    "clip_id": "v1", "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000", "track": 1,
+                },
+            ],
             "transitions": [{"type": "cut", "duration": 0, "position": "00:00:10.000"}],
             "crop_modes": [{"clip_id": "v1", "mode": "center"}],
-            "titles": [{"text": "Title", "style": "lower_third", "position": "00:00:02.000", "duration": 3.0}],
+            "titles": [
+                {
+                    "text": "Title", "style": "lower_third",
+                    "position": "00:00:02.000", "duration": 3.0,
+                },
+            ],
             "audio_settings": [{"clip_id": "v1", "level_db": -6.0}],
             "music": [{"mood": "ambient", "duration": 10.0, "start_time": "00:00:00.000"}],
             "voiceovers": [{"text": "Welcome", "start_time": "00:00:00.000", "duration": 5.0}],
-            "broll_requests": [{"description": "Aerial shot", "duration": 3.0, "start_time": "00:00:05.000"}],
+            "broll_requests": [
+                {"description": "Aerial shot", "duration": 3.0, "start_time": "00:00:05.000"},
+            ],
         }
         with patch("autopilot.plan.edl.invoke_claude", return_value=full_edl):
             edl = generate_edl("n1", catalog_db, config)
@@ -390,7 +410,9 @@ class TestEdlRetryLoop:
         config = LLMConfig()
         _seed_edl_narrative(catalog_db)
 
-        with patch("autopilot.plan.edl.invoke_claude", return_value=_make_edl_dict()) as mock_invoke:
+        with patch(
+            "autopilot.plan.edl.invoke_claude", return_value=_make_edl_dict(),
+        ) as mock_invoke:
             generate_edl("n1", catalog_db, config)
 
         assert mock_invoke.call_count == 1
@@ -404,7 +426,10 @@ class TestEdlRetryLoop:
         _seed_edl_narrative(catalog_db)
 
         # First call: bad EDL (overlapping clips), second: good EDL
-        with patch("autopilot.plan.edl.invoke_claude", side_effect=[_BAD_EDL_DICT, _make_edl_dict()]) as mock_invoke:
+        with patch(
+            "autopilot.plan.edl.invoke_claude",
+            side_effect=[_BAD_EDL_DICT, _make_edl_dict()],
+        ) as mock_invoke:
             edl = generate_edl("n1", catalog_db, config)
 
         assert mock_invoke.call_count == 2
@@ -435,7 +460,10 @@ class TestEdlRetryLoop:
         _seed_edl_narrative(catalog_db)
 
         # First: bad, second: good
-        with patch("autopilot.plan.edl.invoke_claude", side_effect=[_BAD_EDL_DICT, _make_edl_dict()]) as mock_invoke:
+        with patch(
+            "autopilot.plan.edl.invoke_claude",
+            side_effect=[_BAD_EDL_DICT, _make_edl_dict()],
+        ) as mock_invoke:
             generate_edl("n1", catalog_db, config)
 
         # Second call's prompt should include error feedback
