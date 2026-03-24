@@ -533,3 +533,21 @@ def render_review_page(
     return templates.TemplateResponse(
         request, "review/renders.html", context,
     )
+
+
+@router.get("/review/uploads")
+def uploads_page(request: Request) -> HTMLResponse:
+    """Render the uploads status page listing all YouTube uploads."""
+    db = _get_db(request)
+    try:
+        uploads = db.list_uploads()
+    finally:
+        db.close()
+    templates = request.app.state.templates
+    context = {
+        "page_title": "Upload Status",
+        "uploads": uploads,
+    }
+    return templates.TemplateResponse(
+        request, "review/uploads.html", context,
+    )
