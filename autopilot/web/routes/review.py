@@ -60,6 +60,23 @@ def review_hub(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "review/hub.html", context)
 
 
+@router.get("/review/narratives")
+def narratives_page(request: Request) -> HTMLResponse:
+    """Render the narrative review page with all narratives."""
+    db = _get_db(request)
+    try:
+        narratives_raw = db.list_narratives()
+        narratives = [_parse_narrative(dict(n)) for n in narratives_raw]
+    finally:
+        db.close()
+    templates = request.app.state.templates
+    context = {
+        "page_title": "Narrative Review",
+        "narratives": narratives,
+    }
+    return templates.TemplateResponse(request, "review/narratives.html", context)
+
+
 @router.get("/api/narratives")
 def api_list_narratives(
     request: Request, status: str | None = None,
