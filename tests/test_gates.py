@@ -370,7 +370,7 @@ class TestGateStatusDisplay:
         response = client.get("/gates")
         html = response.text
         assert "2026-03-24T12:00:00" in html
-        assert "console" in html
+        assert "by console" in html
 
     def test_status_color_coding(self, client: TestClient, app: FastAPI) -> None:
         """Waiting gate has amber class, approved has green, idle has gray."""
