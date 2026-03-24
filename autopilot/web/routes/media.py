@@ -336,7 +336,7 @@ def api_media_transcript(request: Request, media_id: str):
     finally:
         db.close()
     if transcript is None:
-        raise HTTPException(status_code=404, detail="Transcript not found")
+        return {"language": None, "segments": []}
     segments: list = []
     if transcript["segments_json"]:
         try:
