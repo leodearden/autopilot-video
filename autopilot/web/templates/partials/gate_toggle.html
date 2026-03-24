@@ -1,0 +1,55 @@
+<div id="gate-{{ gate_stage }}" class="dark:bg-surface-800 border border-gray-700 rounded-lg p-4">
+    <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+            <span class="text-sm text-gray-400">{{ from_stage }}</span>
+            <span class="text-gray-500">&rarr;</span>
+            <span class="text-sm font-semibold text-white">{{ gate_stage }}</span>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <!-- Mode select -->
+            <select name="mode"
+                    hx-put="/api/gates/{{ gate_stage }}"
+                    hx-target="#gate-{{ gate_stage }}"
+                    hx-swap="outerHTML"
+                    hx-vals="js:{mode: event.target.value}"
+                    class="bg-surface-700 border border-gray-600 text-gray-200 text-sm rounded px-2 py-1">
+                {% for m in ['auto', 'pause', 'notify'] %}
+                <option value="{{ m }}" {% if gate.get('mode', 'auto') == m %}selected{% endif %}>{{ m }}</option>
+                {% endfor %}
+            </select>
+
+            <!-- Timeout input -->
+            <input type="number" name="timeout_hours"
+                   value="{{ gate.get('timeout_hours', '') or '' }}"
+                   placeholder="timeout (h)"
+                   step="0.5" min="0"
+                   class="bg-surface-700 border border-gray-600 text-gray-200 text-sm rounded px-2 py-1 w-28">
+
+            <!-- Status badge -->
+            {% set status = gate.get('status', 'idle') %}
+            {% set color = {'idle': 'gray', 'waiting': 'amber', 'approved': 'green', 'rejected': 'red', 'skipped': 'blue'}.get(status, 'gray') %}
+            <span class="gate-status text-xs px-2 py-1 rounded bg-{{ color }}-900 text-{{ color }}-300">{{ status }}</span>
+        </div>
+    </div>
+
+    <!-- Decision info and action buttons -->
+    {% if gate.get('decided_at') %}
+    <div class="mt-2 text-xs text-gray-400">
+        Decided: {{ gate.get('decided_at', '') }} by {{ gate.get('decided_by', '') }}
+    </div>
+    {% endif %}
+
+    {% if gate.get('status') == 'waiting' %}
+    <div class="mt-2 flex space-x-2">
+        <button hx-post="/api/gates/{{ gate_stage }}/approve"
+                hx-target="#gate-{{ gate_stage }}"
+                hx-swap="outerHTML"
+                class="text-xs px-3 py-1 rounded bg-green-700 hover:bg-green-600 text-white">Approve</button>
+        <button hx-post="/api/gates/{{ gate_stage }}/skip"
+                hx-target="#gate-{{ gate_stage }}"
+                hx-swap="outerHTML"
+                class="text-xs px-3 py-1 rounded bg-blue-700 hover:bg-blue-600 text-white">Skip</button>
+    </div>
+    {% endif %}
+</div>

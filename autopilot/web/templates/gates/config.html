@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Gate Configuration{% endblock %}
+
+{% block content %}
+<div id="gates-page">
+    <h1 class="text-2xl font-bold mb-6">Gate Configuration</h1>
+
+    <!-- Presets -->
+    <div class="flex flex-wrap gap-2 mb-6">
+        <button hx-put="/api/gates/preset/full_auto" hx-target="#gate-list" hx-swap="innerHTML"
+                class="text-sm px-4 py-2 rounded bg-surface-700 border border-gray-600 hover:bg-surface-800 text-gray-200">Full Auto</button>
+        <button hx-put="/api/gates/preset/review_creative" hx-target="#gate-list" hx-swap="innerHTML"
+                class="text-sm px-4 py-2 rounded bg-surface-700 border border-gray-600 hover:bg-surface-800 text-gray-200">Review Creative</button>
+        <button hx-put="/api/gates/preset/review_everything" hx-target="#gate-list" hx-swap="innerHTML"
+                class="text-sm px-4 py-2 rounded bg-surface-700 border border-gray-600 hover:bg-surface-800 text-gray-200">Review Everything</button>
+        <button hx-put="/api/gates/preset/review_before_render" hx-target="#gate-list" hx-swap="innerHTML"
+                class="text-sm px-4 py-2 rounded bg-surface-700 border border-gray-600 hover:bg-surface-800 text-gray-200">Review Before Render</button>
+    </div>
+
+    <!-- Gate list -->
+    <div id="gate-list" class="space-y-3">
+        {% for from_stage, to_stage, gate_stage in transitions %}
+        {% set gate = gates_by_stage.get(gate_stage, {}) %}
+        {% include "partials/gate_toggle.html" %}
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

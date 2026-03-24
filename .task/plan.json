@@ -1,112 +1,309 @@
 {
-  "task_id": "29",
-  "title": "Lazy-load stage modules in orchestrator",
+  "task_id": "45",
+  "title": "Gate configuration page + API",
   "files": [
-    "autopilot/orchestrator.py",
-    "tests/test_orchestrator.py",
-    "tests/test_e2e.py",
-    "tests/test_lazy_imports.py"
+    "autopilot/web/routes/gates.py",
+    "autopilot/web/routes/__init__.py",
+    "autopilot/web/app.py",
+    "autopilot/web/templates/gates/config.html",
+    "autopilot/web/templates/partials/gate_toggle.html",
+    "autopilot/web/static/app.css",
+    "autopilot/web/static/app.js",
+    "tests/test_gates.py"
   ],
   "modules": [
-    "autopilot",
+    "autopilot/web/routes",
+    "autopilot/web/templates/gates",
+    "autopilot/web/templates/partials",
+    "autopilot/web/static",
     "tests"
   ],
-  "analysis": "orchestrator.py has 10 eager import lines (18-27) pulling in every stage module: analyze (asr, audio_events, embeddings, faces, objects, scenes, GPUScheduler), ingest (dedup, normalizer, scanner), organize (classify, cluster, narratives), plan (edl, otio_export, script, validator), render (router, validate), source (resolve), upload (thumbnail, youtube). These imports transitively load the entire ML stack (WhisperX, YOLO, InsightFace, MoviePy, etc.), causing slow CLI startup. The fix moves these imports into the 9 _run_* functions that actually use them. The critical challenge is that test_orchestrator.py has 280 @patch decorators targeting 'autopilot.orchestrator.<module>' and test_e2e.py has 22 more. After moving imports to function scope, these module names are no longer attributes of the orchestrator module, so all patches must be retargeted to the source module paths (e.g., 'autopilot.ingest.scanner' instead of 'autopilot.orchestrator.scanner'). This is a mechanical find-and-replace for 22 distinct patterns across ~302 decorator occurrences. Two aliases need special attention: edl_mod (from autopilot.plan import edl as edl_mod \u2192 patch target becomes autopilot.plan.edl) and render_validate (from autopilot.render import validate as render_validate \u2192 patch target becomes autopilot.render.validate).",
+  "analysis": "This task builds the gate configuration page and API on top of the existing pipeline_gates table (stage TEXT PK, mode TEXT DEFAULT 'auto', status TEXT DEFAULT 'idle', decided_at TEXT, decided_by TEXT DEFAULT 'system', notes TEXT, timeout_hours REAL). The DB layer already has get_gate(), get_all_gates(), update_gate(**kwargs), and init_default_gates() methods in CatalogDB. The web framework (FastAPI + Jinja2 + HTMX) is established by Task 36 with clear patterns: routes use APIRouter(), _get_db(request) helper, try/finally for DB cleanup, and templates extend base.html. The nav already links to /gates. Stage transitions are derived from the ordered _PIPELINE_STAGES tuple — each gate represents the entry into that stage (e.g., the 'analyze' gate controls ingest→analyze). The task introduces three gate modes (auto/pause/notify) replacing the prior auto/manual distinction, presets for bulk mode assignment, approve/skip actions for waiting gates, and per-gate timeout configuration. All of this maps directly onto existing DB columns with no schema changes needed.",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Verify existing test suite passes before making changes (baseline green)",
+      "description": "Create tests/test_gates.py with imports (pytest, FastAPI, TestClient, create_app, CatalogDB), app/client fixtures (file-backed CatalogDB via tmp_path with init_default_gates() called), and constants mirroring VALID_MODES and GATE_PRESETS from the route module. Create the autopilot/web/templates/gates/ directory.",
       "status": "done",
-      "commit": "c781ae5",
-      "tests": [
-        "tests/test_orchestrator.py",
-        "tests/test_e2e.py"
-      ]
+      "commit": "8dd20a3",
+      "tests": []
+    },
+    {
+      "id": "pre-2",
+      "description": "Create autopilot/web/routes/gates.py skeleton with router = APIRouter(), _get_db(request) helper, VALID_MODES = ('auto', 'pause', 'notify'), _GATE_STATUS_COLORS dict, _STAGE_TRANSITIONS list (adjacent pairs from CatalogDB._PIPELINE_STAGES), and GATE_PRESETS dict with four presets: full_auto, review_creative, review_everything, review_before_render. Register gates_router in routes/__init__.py and include in app.py via app.include_router(gates_router).",
+      "status": "done",
+      "commit": "c5fa73b",
+      "tests": []
     }
   ],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write tests/test_lazy_imports.py with a subprocess-based test that imports autopilot.orchestrator in a clean Python process and asserts no stage subpackage modules (autopilot.analyze.*, autopilot.ingest.*, autopilot.organize.*, autopilot.plan.*, autopilot.render.*, autopilot.source.*, autopilot.upload.*) appear in sys.modules. Also add a test that PipelineOrchestrator can be instantiated without stage modules being loaded. Use subprocess.run([sys.executable, '-c', ...]) to avoid test-process contamination. This test should FAIL against the current code.",
+      "description": "Write TestGateListAPI::test_api_gates_returns_all_gates: GET /api/gates returns 200 with JSON list of 9 gate dicts, each containing keys 'stage', 'mode', 'status', 'timeout_hours', 'decided_at', 'decided_by'. Verify stages match _PIPELINE_STAGES order and default mode is 'auto'.",
       "status": "done",
-      "commit": "f5df213"
+      "commit": "e67cc05"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Refactor autopilot/orchestrator.py: remove all 10 stage-module import lines (lines 18-27). Add function-scope imports at the top of each _run_* function body. Mapping: _run_ingest \u2192 'from autopilot.ingest import dedup, normalizer, scanner'; _run_analyze \u2192 'from autopilot.analyze import asr, audio_events, embeddings, faces, objects, scenes' + 'from autopilot.analyze.gpu_scheduler import GPUScheduler'; _run_classify \u2192 'from autopilot.organize import classify, cluster'; _run_narrate \u2192 'from autopilot.organize import narratives'; _run_script \u2192 'from autopilot.plan import script'; _run_edl \u2192 'from autopilot.plan import edl as edl_mod' + 'from autopilot.plan import otio_export, validator'; _run_source_assets \u2192 'from autopilot.source import resolve'; _run_render \u2192 'from autopilot.render import router' + 'from autopilot.render import validate as render_validate'; _run_upload \u2192 'from autopilot.upload import thumbnail, youtube'. Keep all stdlib/non-ML imports at module level.",
+      "description": "Implement GET /api/gates endpoint in gates.py: call db.get_all_gates(), return list of gate dicts as JSON.",
       "status": "done",
-      "commit": "44e2863"
+      "commit": "e67cc05"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Verify the lazy-import test from step-1 now passes. Run: pytest tests/test_lazy_imports.py -v",
+      "description": "Write TestGateDetailAPI::test_api_gate_detail_returns_single_gate: GET /api/gates/analyze returns 200 with gate dict for 'analyze'. Write test_api_gate_detail_unknown_stage_returns_404: GET /api/gates/nonexistent returns 404.",
       "status": "done",
-      "commit": "44e2863"
+      "commit": "55b27ad"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Update all @patch targets in tests/test_orchestrator.py (280 occurrences) using mechanical find-and-replace for these 22 patterns: 'autopilot.orchestrator.scanner' \u2192 'autopilot.ingest.scanner', 'autopilot.orchestrator.normalizer' \u2192 'autopilot.ingest.normalizer', 'autopilot.orchestrator.dedup' \u2192 'autopilot.ingest.dedup', 'autopilot.orchestrator.asr' \u2192 'autopilot.analyze.asr', 'autopilot.orchestrator.scenes' \u2192 'autopilot.analyze.scenes', 'autopilot.orchestrator.objects' \u2192 'autopilot.analyze.objects', 'autopilot.orchestrator.faces' \u2192 'autopilot.analyze.faces', 'autopilot.orchestrator.embeddings' \u2192 'autopilot.analyze.embeddings', 'autopilot.orchestrator.audio_events' \u2192 'autopilot.analyze.audio_events', 'autopilot.orchestrator.GPUScheduler' \u2192 'autopilot.analyze.gpu_scheduler.GPUScheduler', 'autopilot.orchestrator.classify' \u2192 'autopilot.organize.classify', 'autopilot.orchestrator.cluster' \u2192 'autopilot.organize.cluster', 'autopilot.orchestrator.narratives' \u2192 'autopilot.organize.narratives', 'autopilot.orchestrator.script' \u2192 'autopilot.plan.script', 'autopilot.orchestrator.edl_mod' \u2192 'autopilot.plan.edl', 'autopilot.orchestrator.validator' \u2192 'autopilot.plan.validator', 'autopilot.orchestrator.otio_export' \u2192 'autopilot.plan.otio_export', 'autopilot.orchestrator.router' \u2192 'autopilot.render.router', 'autopilot.orchestrator.render_validate' \u2192 'autopilot.render.validate', 'autopilot.orchestrator.resolve' \u2192 'autopilot.source.resolve', 'autopilot.orchestrator.youtube' \u2192 'autopilot.upload.youtube', 'autopilot.orchestrator.thumbnail' \u2192 'autopilot.upload.thumbnail'. IMPORTANT: Only replace within @patch() decorator strings, not 'from autopilot.orchestrator import _run_*' which must remain unchanged.",
+      "description": "Implement GET /api/gates/{stage} endpoint: validate stage in _PIPELINE_STAGES, call db.get_gate(stage), return dict or raise HTTPException(404).",
       "status": "done",
-      "commit": "c29c92f"
+      "commit": "55b27ad"
     },
     {
       "id": "step-5",
-      "type": "impl",
-      "description": "Update all @patch targets in tests/test_e2e.py (22 occurrences at lines 48-69) using the same 22-pattern replacement mapping from step-4.",
+      "type": "test",
+      "description": "Write TestGateUpdateAPI: (1) test_update_gate_mode: PUT /api/gates/analyze with JSON {\"mode\": \"pause\"} returns 200, response shows mode='pause', re-GET confirms persistence. (2) test_update_gate_invalid_mode: PUT with {\"mode\": \"invalid\"} returns 400/422. (3) test_update_gate_timeout: PUT /api/gates/render with {\"timeout_hours\": 24.0} returns 200, timeout persisted. (4) test_update_gate_clear_timeout: PUT with {\"timeout_hours\": null} clears timeout. (5) test_update_gate_unknown_stage: PUT /api/gates/nonexistent returns 404.",
       "status": "done",
-      "commit": "726dbd7"
+      "commit": "c68f99a"
     },
     {
       "id": "step-6",
-      "type": "test",
-      "description": "Run the full orchestrator test suite to verify all tests pass: pytest tests/test_orchestrator.py tests/test_e2e.py tests/test_lazy_imports.py -v. Fix any remaining issues (e.g., mock parameter name mismatches if @patch order affects parameter binding).",
+      "type": "impl",
+      "description": "Implement PUT /api/gates/{stage} endpoint: define Pydantic GateUpdate model with optional mode (validated against VALID_MODES) and optional timeout_hours (float | None). Validate stage, call db.update_gate() with non-None fields, return updated gate dict from db.get_gate(). Use Body(...) or Pydantic model for request parsing.",
       "status": "done",
-      "commit": "726dbd7"
+      "commit": "c68f99a"
+    },
+    {
+      "id": "step-7",
+      "type": "test",
+      "description": "Write TestGateApproveAPI: (1) test_approve_gate: POST /api/gates/classify/approve returns 200, response has status='approved', decided_by='console', decided_at is non-null ISO timestamp. (2) test_approve_unknown_stage_returns_404: POST /api/gates/nonexistent/approve returns 404.",
+      "status": "done",
+      "commit": "7fce473"
+    },
+    {
+      "id": "step-8",
+      "type": "impl",
+      "description": "Implement POST /api/gates/{stage}/approve: validate stage, call db.update_gate(stage, status='approved', decided_by='console', decided_at=datetime.utcnow().isoformat()), return updated gate.",
+      "status": "done",
+      "commit": "7fce473"
+    },
+    {
+      "id": "step-9",
+      "type": "test",
+      "description": "Write TestGateSkipAPI: (1) test_skip_gate: POST /api/gates/classify/skip returns 200, response has status='skipped', decided_by='console', decided_at set. (2) test_skip_unknown_stage_returns_404.",
+      "status": "done",
+      "commit": "7fce473"
+    },
+    {
+      "id": "step-10",
+      "type": "impl",
+      "description": "Implement POST /api/gates/{stage}/skip: same pattern as approve but status='skipped'.",
+      "status": "done",
+      "commit": "7fce473"
+    },
+    {
+      "id": "step-11",
+      "type": "test",
+      "description": "Write TestGatePresetsAPI: (1) test_preset_full_auto: PUT /api/gates/preset/full_auto returns 200, response is list of 9 gates all with mode='auto'. (2) test_preset_review_creative: verify classify, narrate, upload gates are 'pause', rest 'auto'. (3) test_preset_review_everything: all 9 gates mode='pause'. (4) test_preset_review_before_render: edl and render gates 'pause', rest 'auto'. (5) test_preset_unknown_returns_404: PUT /api/gates/preset/nonexistent returns 404.",
+      "status": "done",
+      "commit": "f16d073"
+    },
+    {
+      "id": "step-12",
+      "type": "impl",
+      "description": "Implement PUT /api/gates/preset/{preset_name}: validate preset_name in GATE_PRESETS, iterate preset config (dict mapping stage→mode), call db.update_gate() for each, return db.get_all_gates() as response. Define GATE_PRESETS: full_auto (all 'auto'), review_creative (classify/narrate/upload → 'pause'), review_everything (all 'pause'), review_before_render (edl/render → 'pause').",
+      "status": "done",
+      "commit": "f16d073"
+    },
+    {
+      "id": "step-13",
+      "type": "test",
+      "description": "Write TestGatesPage: (1) test_gates_page_returns_200: GET /gates returns 200 with text/html. (2) test_gates_page_has_title: HTML contains 'Gate Configuration'. (3) test_gates_page_shows_all_stages: HTML contains all 9 stage names. (4) test_gates_page_shows_transitions: HTML contains transition labels (e.g., 'ingest' paired with 'analyze' in transition rows).",
+      "status": "done",
+      "commit": "f16d073"
+    },
+    {
+      "id": "step-14",
+      "type": "impl",
+      "description": "Create gates/config.html template extending base.html with title 'Gate Configuration'. Build _STAGE_TRANSITIONS in route as list of (from_stage, to_stage, gate_stage) tuples. Render vertical list of transitions, each including the gate_toggle partial. Add GET /gates route that queries all gates, builds transitions context, renders template.",
+      "status": "done",
+      "commit": "5be4ab4"
+    },
+    {
+      "id": "step-15",
+      "type": "test",
+      "description": "Write TestGateTogglePartial: (1) test_toggle_contains_mode_select: gate_toggle partial HTML contains a select/dropdown with options 'auto', 'pause', 'notify'. (2) test_toggle_has_htmx_attributes: HTML contains hx-put and hx-swap attributes for HTMX gate update. (3) test_toggle_shows_current_mode: the selected option matches the gate's current mode.",
+      "status": "done",
+      "commit": "971ac4f"
+    },
+    {
+      "id": "step-16",
+      "type": "impl",
+      "description": "Create partials/gate_toggle.html: a div with id='gate-{stage}' containing from→to stage labels, mode select with hx-put='/api/gates/{stage}' hx-target='#gate-{stage}' hx-swap='outerHTML', timeout_hours input field, status badge with color class, and conditional approve/skip buttons when status='waiting' with hx-post targeting approve/skip endpoints.",
+      "status": "done",
+      "commit": "971ac4f"
+    },
+    {
+      "id": "step-17",
+      "type": "test",
+      "description": "Write TestGatePresetsUI: (1) test_gates_page_shows_preset_buttons: GET /gates HTML contains buttons/links for all 4 presets (Full Auto, Review Creative, Review Everything, Review Before Render). (2) test_preset_buttons_have_htmx: each button has hx-put targeting /api/gates/preset/{name}.",
+      "status": "done",
+      "commit": "402070d"
+    },
+    {
+      "id": "step-18",
+      "type": "impl",
+      "description": "Add presets section to gates/config.html above the gate list: a row of 4 styled buttons, each with hx-put='/api/gates/preset/{name}' hx-target='#gate-list' hx-swap='innerHTML' to replace the entire gate list after preset application.",
+      "status": "done",
+      "commit": "402070d"
+    },
+    {
+      "id": "step-19",
+      "type": "test",
+      "description": "Write TestGateStatusDisplay: (1) test_waiting_gate_shows_approve_skip_buttons: set a gate to status='waiting', GET /gates HTML shows 'Approve' and 'Skip' buttons for that gate. (2) test_approved_gate_shows_decided_info: set status='approved' with decided_at and decided_by, verify these appear in HTML. (3) test_status_color_coding: waiting gate has amber class, approved has green class, idle has gray class.",
+      "status": "done",
+      "commit": "8e78770"
+    },
+    {
+      "id": "step-20",
+      "type": "impl",
+      "description": "Enhance gate_toggle.html: add status badge with conditional Tailwind color classes (idle=gray, waiting=amber, approved=green, rejected=red, skipped=blue), decided_at/decided_by display when set, and prominent approve/skip buttons when status='waiting'. Add gate-specific CSS to app.css for gate row styling and status badge colors.",
+      "status": "done",
+      "commit": "8e78770"
+    },
+    {
+      "id": "step-21",
+      "type": "test",
+      "description": "Write TestHtmxResponses: (1) test_put_gate_returns_html_for_htmx: PUT /api/gates/analyze with HX-Request header returns text/html containing the gate_toggle partial. (2) test_put_gate_returns_json_without_htmx: same PUT without HX-Request returns application/json. (3) test_approve_returns_html_for_htmx: POST approve with HX-Request returns HTML partial. (4) test_skip_returns_html_for_htmx similarly.",
+      "status": "done",
+      "commit": "50b9dca"
+    },
+    {
+      "id": "step-22",
+      "type": "impl",
+      "description": "Add HTMX-aware response logic: in PUT /api/gates/{stage}, POST approve, POST skip, check request.headers.get('hx-request'). If present, render gate_toggle.html partial with updated gate data and return HTMLResponse. Otherwise return JSON dict. Build _render_gate_partial() helper to avoid duplication.",
+      "status": "done",
+      "commit": "50b9dca"
+    },
+    {
+      "id": "step-23",
+      "type": "test",
+      "description": "Write TestPresetHtmxResponse: (1) test_preset_returns_html_for_htmx: PUT /api/gates/preset/full_auto with HX-Request header returns HTML containing all 9 gate toggle rows (one per stage). (2) test_preset_returns_json_without_htmx: same request without HX-Request returns JSON list.",
+      "status": "done",
+      "commit": "6fee53d"
+    },
+    {
+      "id": "step-24",
+      "type": "impl",
+      "description": "Add HTMX-aware response to preset endpoint: when HX-Request present, render all gate_toggle partials concatenated and return as HTMLResponse for swapping the gate list container. Add refreshGateRow() JS helper to app.js for potential SSE-driven gate updates. Final polish: verify all endpoints work end-to-end, templates render correctly, HTMX interactions are wired.",
+      "status": "done",
+      "commit": "6fee53d"
+    },
+    {
+      "id": "step-25",
+      "type": "test",
+      "description": "Fix vacuous assertion in TestGateTogglePartial::test_toggle_shows_current_mode. The current test asserts only `'selected' in html` which is unconditionally true (every gate renders its current mode as selected). Replace with a stdlib html.parser-based helper that extracts the selected option value from a specific gate's select element. The rewritten test must: (1) PUT /api/gates/analyze with mode='pause', (2) GET /gates, (3) parse the HTML to find the <div id=\"gate-analyze\"> section, (4) within that section find the <select> and extract the <option> with the 'selected' attribute, (5) assert its value is 'pause'. Also add a negative-control assertion: verify that a gate NOT set to 'pause' (e.g., classify) still has 'auto' as its selected option, proving the assertion discriminates between gates.",
+      "status": "done",
+      "commit": "8a9182a"
+    },
+    {
+      "id": "step-26",
+      "type": "impl",
+      "description": "No template or route changes needed — the gate_toggle.html template already renders `selected` correctly on the matching option (line 18: `{% if gate.get('mode', 'auto') == m %}selected{% endif %}`). This step verifies the fixed test passes against the existing implementation by running pytest on TestGateTogglePartial::test_toggle_shows_current_mode. The html.parser helper added in step-25 lives entirely in the test file.",
+      "status": "done",
+      "commit": "8a9182a"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Function-scope imports rather than module-level __getattr__ (PEP 562)",
-      "rationale": "Task explicitly requires function-scope imports. While __getattr__ would avoid test patch changes (~302 decorators), function-scope imports are more explicit and match the task spec. The import only runs once per function call (Python caches in sys.modules), so there's negligible runtime cost after first invocation."
+      "decision": "Gate modes are 'auto', 'pause', 'notify' stored as text in existing mode column",
+      "rationale": "The DB mode column is TEXT with no constraint. The prior 'manual' value maps conceptually to 'pause'. No schema migration needed — we validate in the route layer via VALID_MODES constant."
     },
     {
-      "decision": "Retarget test patches to source module paths instead of adding compatibility shims",
-      "rationale": "After moving imports to function scope, the module names (scanner, asr, etc.) are no longer attributes of autopilot.orchestrator. Rather than adding a __getattr__ compatibility layer just for tests, retargeting patches to source modules (e.g., autopilot.ingest.scanner) is cleaner and tests the real import path. The patches work because @patch sets up mocks before the test function runs, and the function-scope 'from X import Y' picks up the patched attribute."
+      "decision": "Stage transitions derived from ordered _PIPELINE_STAGES tuple as adjacent pairs",
+      "rationale": "The 9 pipeline stages form a linear sequence. Each gate controls entry into its stage, so 'analyze' gate = transition from ingest→analyze. The first stage (ingest) gate controls pipeline entry. This gives 8 transition pairs plus the ingest entry gate = 9 total gate rows."
     },
     {
-      "decision": "Use subprocess-based test for lazy-import verification",
-      "rationale": "A subprocess test avoids contamination from the test runner's own imports. The test file (test_lazy_imports.py) runs 'python -c \"import autopilot.orchestrator; ...\"' in a fresh process and checks sys.modules for stage subpackage entries. This is the only reliable way to verify import laziness since pytest's test process will have already loaded many modules."
+      "decision": "Presets defined as Python dicts in gates.py, not in the database",
+      "rationale": "Presets are fixed business logic (Full Auto, Review Creative, Review Everything, Review Before Render). Storing them in code keeps them version-controlled and avoids an extra DB table. Each preset maps stage names to modes; stages not mentioned default to 'auto'."
     },
     {
-      "decision": "Separate test file (test_lazy_imports.py) rather than adding to test_orchestrator.py",
-      "rationale": "test_orchestrator.py imports from autopilot.orchestrator at module level (line 14), which in the current code triggers all stage imports. The lazy-import test must NOT import orchestrator at file scope. A separate file keeps this isolation clean."
+      "decision": "HTMX-aware endpoints: check HX-Request header to return HTML partial or JSON",
+      "rationale": "Follows the existing pattern in media.py where /api/media returns HTML for HTMX requests and JSON otherwise. This enables both the interactive HTMX UI and programmatic JSON API from the same endpoints."
     },
     {
-      "decision": "edl_mod and render_validate aliases preserved in function-scope imports",
-      "rationale": "The orchestrator code uses 'edl_mod' (to avoid shadowing the edl variable) and 'render_validate' (to avoid shadowing validate). Function-scope imports preserve these aliases: 'from autopilot.plan import edl as edl_mod' and 'from autopilot.render import validate as render_validate'. Test patches target the source attribute name (autopilot.plan.edl, autopilot.render.validate), not the alias."
+      "decision": "Gate statuses: idle, waiting, approved, rejected, skipped (gate-specific, distinct from job execution statuses)",
+      "rationale": "The pipeline_gates.status column represents gate decision state, not job execution state. These statuses reflect the gate lifecycle: idle (no decision needed), waiting (paused for human), approved/rejected/skipped (decision made). This is consistent with the task description."
+    },
+    {
+      "decision": "approve/skip actions set decided_by='console' to distinguish from programmatic/CLI decisions",
+      "rationale": "The decided_by field tracks provenance. Web console actions are always 'console'. Future CLI or API integrations could use different identifiers."
+    },
+    {
+      "decision": "Timeout configuration uses existing timeout_hours REAL column, null means no timeout",
+      "rationale": "The DB already has timeout_hours. The UI presents it as an optional field — when set, the orchestrator can auto-approve after N hours. Null/empty = no auto-approve timeout."
+    },
+    {
+      "decision": "Single test file tests/test_gates.py covers all gate routes (API + page + partials)",
+      "rationale": "Follows project convention where test_web_app.py covers the app skeleton. Gate routes are cohesive enough for one file. Tests organized into classes by feature area: TestGateListAPI, TestGateDetailAPI, TestGateUpdateAPI, TestGateApproveAPI, TestGateSkipAPI, TestGatePresetsAPI, TestGatesPage, TestGateTogglePartial, TestGatePresetsUI, TestGateStatusDisplay, TestHtmxResponses, TestPresetHtmxResponse."
+    },
+    {
+      "decision": "Preset 'review_creative' pauses at classify→narrate, narrate→script, render→upload (gates: narrate, script, upload instead of classify, narrate, upload)",
+      "rationale": "The task says pause at CLASSIFY→NARRATE, NARRATE→SCRIPT, RENDER→UPLOAD. In our model, gates control entry into the target stage: CLASSIFY→NARRATE = gate at 'narrate', NARRATE→SCRIPT = gate at 'script', RENDER→UPLOAD = gate at 'upload'. Similarly review_before_render: EDL→SOURCE = gate at 'source', RENDER→UPLOAD = gate at 'upload'."
+    },
+    {
+      "decision": "Use stdlib html.parser for HTML assertion in test_toggle_shows_current_mode instead of string matching",
+      "rationale": "The reviewer flagged the original `'selected' in html` assertion as vacuous — it passes unconditionally since every gate dropdown has a selected option. A string pattern like `'value=\"pause\" selected'` is fragile (attribute order may vary). stdlib html.parser is zero-dependency, robust to attribute ordering, and can scope the assertion to a specific gate's div by id. This avoids adding BeautifulSoup as a test dependency."
     }
   ],
   "reuse": [
     {
-      "what": "Existing test patterns in test_orchestrator.py",
-      "where": "tests/test_orchestrator.py",
-      "how": "All 73 existing test classes and their test methods remain unchanged in logic. Only @patch decorator target strings are updated mechanically. Function imports, mock parameter names, and assertions stay the same."
+      "what": "CatalogDB gate methods (get_gate, get_all_gates, update_gate, init_default_gates)",
+      "where": "autopilot/db.py lines 1109-1159",
+      "how": "All gate CRUD goes through these existing methods. No new DB methods needed — update_gate(**kwargs) already accepts arbitrary field updates including mode, status, timeout_hours, decided_at, decided_by."
     },
     {
-      "what": "conftest.py fixtures (catalog_db, minimal_config, mock_gpu_scheduler)",
-      "where": "tests/conftest.py",
-      "how": "No changes needed. These fixtures don't reference stage module paths and are reused as-is by the updated tests."
+      "what": "_get_db(request) pattern for route dependencies",
+      "where": "autopilot/web/routes/dashboard.py line 38-40, media.py line 16-18",
+      "how": "Replicate the same helper in gates.py: CatalogDB(request.app.state.db_path) with try/finally db.close() in each endpoint."
     },
     {
-      "what": "Python's import caching (sys.modules)",
-      "where": "Python runtime",
-      "how": "Function-scope imports leverage sys.modules caching \u2014 the first call to a _run_* function triggers the actual import, subsequent calls use the cached module. No performance penalty for repeated function calls."
+      "what": "base.html template with nav, Tailwind CSS, HTMX",
+      "where": "autopilot/web/templates/base.html",
+      "how": "gates/config.html extends base.html using {% extends 'base.html' %} and overrides title/content blocks. Nav already has /gates link (line 68)."
+    },
+    {
+      "what": "CatalogDB._PIPELINE_STAGES constant for stage validation",
+      "where": "autopilot/db.py line 1109-1119",
+      "how": "Import and use for stage name validation in API endpoints and for building the _STAGE_TRANSITIONS list. Same pattern as dashboard.py line 26."
+    },
+    {
+      "what": "TestClient + app fixture pattern for web tests",
+      "where": "tests/test_web_app.py lines 14-34, tests/conftest.py catalog_db fixture",
+      "how": "Replicate the app/client fixture pattern: create_app(str(tmp_path / 'catalog.db')), TestClient(app). Use init_default_gates() in fixture setup to seed gate rows."
+    },
+    {
+      "what": "Partial template rendering pattern (stage_card.html)",
+      "where": "autopilot/web/templates/partials/stage_card.html, dashboard.py line 190-192",
+      "how": "Follow the same structure for gate_toggle.html: self-contained div with unique id for HTMX targeting, Tailwind dark theme styling, conditional rendering. Use templates.get_template().render() for partial responses."
+    },
+    {
+      "what": "Status-to-color mapping pattern",
+      "where": "autopilot/web/routes/dashboard.py _STATUS_COLORS dict lines 29-35",
+      "how": "Define analogous _GATE_STATUS_COLORS dict in gates.py for gate-specific status colors (idle=gray, waiting=amber, approved=green, rejected=red, skipped=blue)."
+    },
+    {
+      "what": "Router registration in routes/__init__.py and app.py",
+      "where": "autopilot/web/routes/__init__.py, autopilot/web/app.py lines 39-43",
+      "how": "Add 'from autopilot.web.routes.gates import router as gates_router' to __init__.py, add gates_router to __all__, and app.include_router(gates_router) in app.py."
     }
   ],
-  "_session_id": "29-21d41e77",
-  "_created_at": "2026-03-24T13:03:19.753452+00:00"
+  "_session_id": "45-e66f3d99",
+  "_created_at": "2026-03-24T13:15:32.146865+00:00",
+  "_schema_version": 1
 }
