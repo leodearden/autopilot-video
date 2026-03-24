@@ -985,6 +985,16 @@ class CatalogDB:
             ),
         )
 
+    def list_uploads(self) -> list[dict[str, object]]:
+        """List all uploads with narrative title via LEFT JOIN, newest first."""
+        cur = self.conn.execute(
+            "SELECT u.*, n.title AS narrative_title "
+            "FROM uploads u "
+            "LEFT JOIN narratives n ON u.narrative_id = n.narrative_id "
+            "ORDER BY u.uploaded_at DESC",
+        )
+        return [dict(row) for row in cur.fetchall()]
+
     def get_upload(self, narrative_id: str) -> dict[str, object] | None:
         """Get an upload by narrative_id, or None if not found."""
         cur = self.conn.execute(
