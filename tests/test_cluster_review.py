@@ -196,3 +196,29 @@ class TestApiListClusters:
         resp = client.get("/api/clusters")
         assert resp.status_code == 200
         assert resp.json() == []
+
+
+# ---------------------------------------------------------------------------
+# TestApiGetCluster — step-9
+# ---------------------------------------------------------------------------
+
+class TestApiGetCluster:
+    """Tests for GET /api/clusters/{cluster_id}."""
+
+    def test_returns_single_cluster_with_parsed_clip_ids(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """GET /api/clusters/{id} returns cluster with clip_ids and clip_count."""
+        _seed_cluster_via_db(app, "c-1", clip_ids_json='["clip-1","clip-2"]')
+        resp = client.get("/api/clusters/c-1")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["cluster_id"] == "c-1"
+        assert data["clip_ids"] == ["clip-1", "clip-2"]
+        assert data["clip_count"] == 2
+        assert "clip_ids_json" not in data
+
+    def test_returns_404_for_missing_cluster(self, client: TestClient) -> None:
+        """GET /api/clusters/{id} returns 404 for non-existent cluster."""
+        resp = client.get("/api/clusters/nonexistent")
+        assert resp.status_code == 404
