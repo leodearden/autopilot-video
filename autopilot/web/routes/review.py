@@ -29,6 +29,8 @@ def _is_htmx(request: Request) -> bool:
 _REVIEW_LINKS: dict[str, str] = {
     "narrate": "/review/narratives",
     "classify": "/review/clusters",
+    "render": "/review/render",
+    "upload": "/review/uploads",
 }
 
 
@@ -56,6 +58,17 @@ def review_hub(request: Request) -> HTMLResponse:
                     pending = [c for c in all_clusters if not c.get("excluded")]
                     summary["pending_count"] = len(pending)
                     summary["pending_label"] = "activity clusters"
+                elif stage == "render":
+                    plans = db.list_edit_plans()
+                    pending_renders = [
+                        p for p in plans if not p.get("render_path")
+                    ]
+                    summary["pending_count"] = len(pending_renders)
+                    summary["pending_label"] = "pending renders"
+                elif stage == "upload":
+                    uploads = db.list_uploads()
+                    summary["pending_count"] = len(uploads)
+                    summary["pending_label"] = "uploads"
                 waiting_gates.append(summary)
     finally:
         db.close()
@@ -485,6 +498,24 @@ def api_list_uploads(request: Request) -> list[dict[str, object]]:
         return db.list_uploads()
     finally:
         db.close()
+
+
+@router.get("/review/render")
+def render_index_page(request: Request) -> HTMLResponse:
+    """List narratives with edit plans and links to individual review pages."""
+    db = _get_db(request)
+    try:
+        edit_plans = db.list_edit_plans()
+    finally:
+        db.close()
+    templates = request.app.state.templates
+    context = {
+        "page_title": "Render Review",
+        "edit_plans": edit_plans,
+    }
+    return templates.TemplateResponse(
+        request, "review/render_index.html", context,
+    )
 
 
 @router.get("/review/render/{narrative_id}")
