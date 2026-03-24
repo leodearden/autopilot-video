@@ -1,0 +1,112 @@
+{
+  "task_id": "29",
+  "title": "Lazy-load stage modules in orchestrator",
+  "files": [
+    "autopilot/orchestrator.py",
+    "tests/test_orchestrator.py",
+    "tests/test_e2e.py",
+    "tests/test_lazy_imports.py"
+  ],
+  "modules": [
+    "autopilot",
+    "tests"
+  ],
+  "analysis": "orchestrator.py has 10 eager import lines (18-27) pulling in every stage module: analyze (asr, audio_events, embeddings, faces, objects, scenes, GPUScheduler), ingest (dedup, normalizer, scanner), organize (classify, cluster, narratives), plan (edl, otio_export, script, validator), render (router, validate), source (resolve), upload (thumbnail, youtube). These imports transitively load the entire ML stack (WhisperX, YOLO, InsightFace, MoviePy, etc.), causing slow CLI startup. The fix moves these imports into the 9 _run_* functions that actually use them. The critical challenge is that test_orchestrator.py has 280 @patch decorators targeting 'autopilot.orchestrator.<module>' and test_e2e.py has 22 more. After moving imports to function scope, these module names are no longer attributes of the orchestrator module, so all patches must be retargeted to the source module paths (e.g., 'autopilot.ingest.scanner' instead of 'autopilot.orchestrator.scanner'). This is a mechanical find-and-replace for 22 distinct patterns across ~302 decorator occurrences. Two aliases need special attention: edl_mod (from autopilot.plan import edl as edl_mod \u2192 patch target becomes autopilot.plan.edl) and render_validate (from autopilot.render import validate as render_validate \u2192 patch target becomes autopilot.render.validate).",
+  "prerequisites": [
+    {
+      "id": "pre-1",
+      "description": "Verify existing test suite passes before making changes (baseline green)",
+      "status": "done",
+      "commit": "c781ae5",
+      "tests": [
+        "tests/test_orchestrator.py",
+        "tests/test_e2e.py"
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "id": "step-1",
+      "type": "test",
+      "description": "Write tests/test_lazy_imports.py with a subprocess-based test that imports autopilot.orchestrator in a clean Python process and asserts no stage subpackage modules (autopilot.analyze.*, autopilot.ingest.*, autopilot.organize.*, autopilot.plan.*, autopilot.render.*, autopilot.source.*, autopilot.upload.*) appear in sys.modules. Also add a test that PipelineOrchestrator can be instantiated without stage modules being loaded. Use subprocess.run([sys.executable, '-c', ...]) to avoid test-process contamination. This test should FAIL against the current code.",
+      "status": "done",
+      "commit": "f5df213"
+    },
+    {
+      "id": "step-2",
+      "type": "impl",
+      "description": "Refactor autopilot/orchestrator.py: remove all 10 stage-module import lines (lines 18-27). Add function-scope imports at the top of each _run_* function body. Mapping: _run_ingest \u2192 'from autopilot.ingest import dedup, normalizer, scanner'; _run_analyze \u2192 'from autopilot.analyze import asr, audio_events, embeddings, faces, objects, scenes' + 'from autopilot.analyze.gpu_scheduler import GPUScheduler'; _run_classify \u2192 'from autopilot.organize import classify, cluster'; _run_narrate \u2192 'from autopilot.organize import narratives'; _run_script \u2192 'from autopilot.plan import script'; _run_edl \u2192 'from autopilot.plan import edl as edl_mod' + 'from autopilot.plan import otio_export, validator'; _run_source_assets \u2192 'from autopilot.source import resolve'; _run_render \u2192 'from autopilot.render import router' + 'from autopilot.render import validate as render_validate'; _run_upload \u2192 'from autopilot.upload import thumbnail, youtube'. Keep all stdlib/non-ML imports at module level.",
+      "status": "done",
+      "commit": "44e2863"
+    },
+    {
+      "id": "step-3",
+      "type": "test",
+      "description": "Verify the lazy-import test from step-1 now passes. Run: pytest tests/test_lazy_imports.py -v",
+      "status": "done",
+      "commit": "44e2863"
+    },
+    {
+      "id": "step-4",
+      "type": "impl",
+      "description": "Update all @patch targets in tests/test_orchestrator.py (280 occurrences) using mechanical find-and-replace for these 22 patterns: 'autopilot.orchestrator.scanner' \u2192 'autopilot.ingest.scanner', 'autopilot.orchestrator.normalizer' \u2192 'autopilot.ingest.normalizer', 'autopilot.orchestrator.dedup' \u2192 'autopilot.ingest.dedup', 'autopilot.orchestrator.asr' \u2192 'autopilot.analyze.asr', 'autopilot.orchestrator.scenes' \u2192 'autopilot.analyze.scenes', 'autopilot.orchestrator.objects' \u2192 'autopilot.analyze.objects', 'autopilot.orchestrator.faces' \u2192 'autopilot.analyze.faces', 'autopilot.orchestrator.embeddings' \u2192 'autopilot.analyze.embeddings', 'autopilot.orchestrator.audio_events' \u2192 'autopilot.analyze.audio_events', 'autopilot.orchestrator.GPUScheduler' \u2192 'autopilot.analyze.gpu_scheduler.GPUScheduler', 'autopilot.orchestrator.classify' \u2192 'autopilot.organize.classify', 'autopilot.orchestrator.cluster' \u2192 'autopilot.organize.cluster', 'autopilot.orchestrator.narratives' \u2192 'autopilot.organize.narratives', 'autopilot.orchestrator.script' \u2192 'autopilot.plan.script', 'autopilot.orchestrator.edl_mod' \u2192 'autopilot.plan.edl', 'autopilot.orchestrator.validator' \u2192 'autopilot.plan.validator', 'autopilot.orchestrator.otio_export' \u2192 'autopilot.plan.otio_export', 'autopilot.orchestrator.router' \u2192 'autopilot.render.router', 'autopilot.orchestrator.render_validate' \u2192 'autopilot.render.validate', 'autopilot.orchestrator.resolve' \u2192 'autopilot.source.resolve', 'autopilot.orchestrator.youtube' \u2192 'autopilot.upload.youtube', 'autopilot.orchestrator.thumbnail' \u2192 'autopilot.upload.thumbnail'. IMPORTANT: Only replace within @patch() decorator strings, not 'from autopilot.orchestrator import _run_*' which must remain unchanged.",
+      "status": "done",
+      "commit": "c29c92f"
+    },
+    {
+      "id": "step-5",
+      "type": "impl",
+      "description": "Update all @patch targets in tests/test_e2e.py (22 occurrences at lines 48-69) using the same 22-pattern replacement mapping from step-4.",
+      "status": "done",
+      "commit": "726dbd7"
+    },
+    {
+      "id": "step-6",
+      "type": "test",
+      "description": "Run the full orchestrator test suite to verify all tests pass: pytest tests/test_orchestrator.py tests/test_e2e.py tests/test_lazy_imports.py -v. Fix any remaining issues (e.g., mock parameter name mismatches if @patch order affects parameter binding).",
+      "status": "done",
+      "commit": "726dbd7"
+    }
+  ],
+  "design_decisions": [
+    {
+      "decision": "Function-scope imports rather than module-level __getattr__ (PEP 562)",
+      "rationale": "Task explicitly requires function-scope imports. While __getattr__ would avoid test patch changes (~302 decorators), function-scope imports are more explicit and match the task spec. The import only runs once per function call (Python caches in sys.modules), so there's negligible runtime cost after first invocation."
+    },
+    {
+      "decision": "Retarget test patches to source module paths instead of adding compatibility shims",
+      "rationale": "After moving imports to function scope, the module names (scanner, asr, etc.) are no longer attributes of autopilot.orchestrator. Rather than adding a __getattr__ compatibility layer just for tests, retargeting patches to source modules (e.g., autopilot.ingest.scanner) is cleaner and tests the real import path. The patches work because @patch sets up mocks before the test function runs, and the function-scope 'from X import Y' picks up the patched attribute."
+    },
+    {
+      "decision": "Use subprocess-based test for lazy-import verification",
+      "rationale": "A subprocess test avoids contamination from the test runner's own imports. The test file (test_lazy_imports.py) runs 'python -c \"import autopilot.orchestrator; ...\"' in a fresh process and checks sys.modules for stage subpackage entries. This is the only reliable way to verify import laziness since pytest's test process will have already loaded many modules."
+    },
+    {
+      "decision": "Separate test file (test_lazy_imports.py) rather than adding to test_orchestrator.py",
+      "rationale": "test_orchestrator.py imports from autopilot.orchestrator at module level (line 14), which in the current code triggers all stage imports. The lazy-import test must NOT import orchestrator at file scope. A separate file keeps this isolation clean."
+    },
+    {
+      "decision": "edl_mod and render_validate aliases preserved in function-scope imports",
+      "rationale": "The orchestrator code uses 'edl_mod' (to avoid shadowing the edl variable) and 'render_validate' (to avoid shadowing validate). Function-scope imports preserve these aliases: 'from autopilot.plan import edl as edl_mod' and 'from autopilot.render import validate as render_validate'. Test patches target the source attribute name (autopilot.plan.edl, autopilot.render.validate), not the alias."
+    }
+  ],
+  "reuse": [
+    {
+      "what": "Existing test patterns in test_orchestrator.py",
+      "where": "tests/test_orchestrator.py",
+      "how": "All 73 existing test classes and their test methods remain unchanged in logic. Only @patch decorator target strings are updated mechanically. Function imports, mock parameter names, and assertions stay the same."
+    },
+    {
+      "what": "conftest.py fixtures (catalog_db, minimal_config, mock_gpu_scheduler)",
+      "where": "tests/conftest.py",
+      "how": "No changes needed. These fixtures don't reference stage module paths and are reused as-is by the updated tests."
+    },
+    {
+      "what": "Python's import caching (sys.modules)",
+      "where": "Python runtime",
+      "how": "Function-scope imports leverage sys.modules caching \u2014 the first call to a _run_* function triggers the actual import, subsequent calls use the cached module. No performance penalty for repeated function calls."
+    }
+  ],
+  "_session_id": "29-21d41e77",
+  "_created_at": "2026-03-24T13:03:19.753452+00:00"
+}
