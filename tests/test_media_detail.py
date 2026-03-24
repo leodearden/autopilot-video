@@ -1033,6 +1033,7 @@ class TestTabPerTabFetching:
         mock_db.get_faces_for_media.assert_not_called()
         mock_db.get_audio_events_for_media.assert_not_called()
         mock_db.count_embeddings_for_media.assert_not_called()
+        mock_db.get_media_detail.assert_not_called()
 
     def test_transcript_tab_calls_get_transcript_only(self, tmp_path) -> None:
         """Transcript tab should call get_transcript but not detection/face methods."""
@@ -1046,6 +1047,7 @@ class TestTabPerTabFetching:
         mock_db.get_transcript.assert_called_once()
         mock_db.get_detections_for_media.assert_not_called()
         mock_db.get_faces_for_media.assert_not_called()
+        mock_db.get_media_detail.assert_not_called()
 
     def test_detections_tab_calls_get_detections_only(self, tmp_path) -> None:
         """Detections tab should call get_detections_for_media only."""
@@ -1059,6 +1061,7 @@ class TestTabPerTabFetching:
         mock_db.get_detections_for_media.assert_called_once()
         mock_db.get_transcript.assert_not_called()
         mock_db.get_faces_for_media.assert_not_called()
+        mock_db.get_media_detail.assert_not_called()
 
     def test_faces_tab_calls_get_faces_only(self, tmp_path) -> None:
         """Faces tab should call get_faces_for_media (and face_clusters), not others."""
@@ -1073,6 +1076,7 @@ class TestTabPerTabFetching:
         mock_db.get_faces_for_media.assert_called_once()
         mock_db.get_transcript.assert_not_called()
         mock_db.get_detections_for_media.assert_not_called()
+        mock_db.get_media_detail.assert_not_called()
 
     def test_audio_events_tab_calls_get_audio_events_only(self, tmp_path) -> None:
         """Audio events tab should call get_audio_events_for_media only."""
@@ -1086,6 +1090,7 @@ class TestTabPerTabFetching:
         mock_db.get_audio_events_for_media.assert_called_once()
         mock_db.get_transcript.assert_not_called()
         mock_db.get_detections_for_media.assert_not_called()
+        mock_db.get_media_detail.assert_not_called()
 
     def test_embeddings_tab_calls_count_embeddings_only(self, tmp_path) -> None:
         """Embeddings tab should call count_embeddings_for_media only."""
@@ -1099,3 +1104,4 @@ class TestTabPerTabFetching:
         mock_db.count_embeddings_for_media.assert_called_once()
         mock_db.get_transcript.assert_not_called()
         mock_db.get_detections_for_media.assert_not_called()
+        mock_db.get_media_detail.assert_not_called()
