@@ -940,6 +940,16 @@ class TestAggregateDetections:
         assert result.classes == {"unknown": 1}
         assert result.frame_details == [{"number": 0, "count": 1}]
 
+    def test_non_string_list_detections_json(self) -> None:
+        """Raw Python list used directly without broken str-to-json round-trip."""
+        from autopilot.web.routes.media import _aggregate_detections
+
+        rows = [{"frame_number": 0, "detections_json": [{"class": "cat"}]}]
+        result = _aggregate_detections(rows)
+        assert result.total == 1
+        assert result.classes == {"cat": 1}
+        assert result.frame_details == [{"number": 0, "count": 1}]
+
 
 # ---------------------------------------------------------------------------
 # Unit tests for _format_seconds helper (S6+S12)
