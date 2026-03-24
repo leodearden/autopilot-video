@@ -230,6 +230,19 @@ def api_list_clusters(request: Request) -> list[dict[str, object]]:
         db.close()
 
 
+@router.get("/api/clusters/{cluster_id}")
+def api_get_cluster(request: Request, cluster_id: str) -> dict[str, object]:
+    """Return a single cluster by ID with parsed clip_ids."""
+    db = _get_db(request)
+    try:
+        row = db.get_activity_cluster(cluster_id)
+    finally:
+        db.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+    return _parse_cluster(dict(row))
+
+
 @router.post("/api/narratives/bulk-approve")
 def api_bulk_approve(request: Request, body: BulkApproveRequest) -> dict[str, int]:
     """Approve multiple narratives at once, returning actual count of rows updated."""
