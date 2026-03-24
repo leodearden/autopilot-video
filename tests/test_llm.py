@@ -284,3 +284,56 @@ class TestInvokeClaudeJsonSchema:
 
         cmd = mock_run.call_args[0][0]
         assert "--json-schema" not in cmd
+
+
+# -- Step 7: Model name mapping tests -----------------------------------------
+
+
+class TestModelMapping:
+    """Verify _resolve_model maps full Anthropic IDs to CLI short names."""
+
+    def test_opus_full_to_short(self):
+        """claude-opus-4-20250514 maps to 'opus'."""
+        from autopilot.llm import _resolve_model
+
+        assert _resolve_model("claude-opus-4-20250514") == "opus"
+
+    def test_sonnet_full_to_short(self):
+        """claude-sonnet-4-20250514 maps to 'sonnet'."""
+        from autopilot.llm import _resolve_model
+
+        assert _resolve_model("claude-sonnet-4-20250514") == "sonnet"
+
+    def test_short_name_passthrough(self):
+        """Already-short names like 'opus' pass through unchanged."""
+        from autopilot.llm import _resolve_model
+
+        assert _resolve_model("opus") == "opus"
+        assert _resolve_model("sonnet") == "sonnet"
+
+    def test_unknown_model_passthrough(self):
+        """Unknown model IDs pass through unchanged."""
+        from autopilot.llm import _resolve_model
+
+        assert _resolve_model("unknown-model-v3") == "unknown-model-v3"
+
+    def test_invoke_claude_applies_mapping(self):
+        """invoke_claude applies model mapping before building the CLI command."""
+        from autopilot.llm import invoke_claude
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({"result": "ok"})
+        mock_result.stderr = ""
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            invoke_claude(
+                prompt="test",
+                system="sys",
+                model="claude-opus-4-20250514",
+                max_tokens=512,
+            )
+
+        cmd = mock_run.call_args[0][0]
+        idx = cmd.index("--model")
+        assert cmd[idx + 1] == "opus"
