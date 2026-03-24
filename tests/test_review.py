@@ -331,3 +331,65 @@ class TestBulkApproveAPI:
         assert response.status_code == 200
         data = response.json()
         assert data["approved"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Review Hub page fixtures — step-17
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def waiting_gate_app(tmp_path: Path) -> FastAPI:
+    """App with narrate gate set to 'waiting' and proposed narratives."""
+    db_path = str(tmp_path / "catalog.db")
+    with CatalogDB(db_path) as _db:
+        _db.init_default_gates()
+        _db.update_gate("narrate", status="waiting")
+        _db.conn.commit()
+        _seed_narrative(_db, "n-1", title="Morning Walk", status="proposed")
+        _seed_narrative(_db, "n-2", title="Sunset Hike", status="proposed")
+    return create_app(db_path)
+
+
+@pytest.fixture
+def waiting_gate_client(waiting_gate_app: FastAPI) -> TestClient:
+    return TestClient(waiting_gate_app)
+
+
+# ---------------------------------------------------------------------------
+# TestReviewHub — step-17
+# ---------------------------------------------------------------------------
+
+class TestReviewHub:
+    """Tests for GET /review hub page showing pending gates."""
+
+    def test_hub_returns_200_html(self, client: TestClient) -> None:
+        """GET /review returns 200 with HTML content."""
+        response = client.get("/review")
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+
+    def test_hub_empty_state(self, client: TestClient) -> None:
+        """Hub shows 'No pending reviews' when no gates are waiting."""
+        response = client.get("/review")
+        assert "No pending reviews" in response.text
+
+    def test_hub_shows_waiting_gate(self, waiting_gate_client: TestClient) -> None:
+        """Hub shows gate card when narrate gate is waiting."""
+        response = waiting_gate_client.get("/review")
+        assert response.status_code == 200
+        assert "narrate" in response.text.lower()
+
+    def test_hub_links_to_narrative_review(
+        self, waiting_gate_client: TestClient,
+    ) -> None:
+        """Hub has link to /review/narratives when narrate gate waiting."""
+        response = waiting_gate_client.get("/review")
+        assert "/review/narratives" in response.text
+
+    def test_hub_shows_proposed_count(
+        self, waiting_gate_client: TestClient,
+    ) -> None:
+        """Hub shows count of proposed narratives for narrate gate."""
+        response = waiting_gate_client.get("/review")
+        # Should show "2" somewhere for the 2 proposed narratives
+        assert "2" in response.text
