@@ -268,6 +268,16 @@ def api_get_cluster(request: Request, cluster_id: str) -> dict[str, object]:
     return _parse_cluster(dict(row))
 
 
+def _render_cluster_partial(
+    request: Request, cluster: dict[str, object],
+) -> HTMLResponse:
+    """Render a single cluster card partial as HTML."""
+    templates = request.app.state.templates
+    template = templates.get_template("partials/cluster_card.html")
+    html = template.render(cluster=cluster)
+    return HTMLResponse(content=html)
+
+
 class ClusterRelabel(BaseModel):
     """Request body for relabelling a cluster."""
 
@@ -297,6 +307,8 @@ def api_relabel_cluster(
     if updated is None:
         raise HTTPException(status_code=404, detail="Cluster not found")
     parsed = _parse_cluster(dict(updated))
+    if _is_htmx(request):
+        return _render_cluster_partial(request, parsed)
     return JSONResponse(content=parsed)
 
 
@@ -316,6 +328,8 @@ def api_exclude_cluster(request: Request, cluster_id: str) -> Response:
     if updated is None:
         raise HTTPException(status_code=404, detail="Cluster not found")
     parsed = _parse_cluster(dict(updated))
+    if _is_htmx(request):
+        return _render_cluster_partial(request, parsed)
     return JSONResponse(content=parsed)
 
 
