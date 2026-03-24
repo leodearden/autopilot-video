@@ -534,3 +534,55 @@ class TestGateApprovalIntegration:
         """Approve Gate button targets POST /api/gates/narrate/approve."""
         response = all_decided_client.get("/review/narratives")
         assert "/api/gates/narrate/approve" in response.text
+
+
+# ---------------------------------------------------------------------------
+# TestUpdateNarrativeHTMX — step-25
+# ---------------------------------------------------------------------------
+
+class TestUpdateNarrativeHTMX:
+    """Tests for PUT /api/narratives/{id} with HTMX returning HTML partial."""
+
+    def test_put_htmx_returns_html(self, seeded_client: TestClient) -> None:
+        """PUT /api/narratives/n-1 with HX-Request returns HTML partial."""
+        response = seeded_client.put(
+            "/api/narratives/n-1",
+            json={"title": "Updated Title"},
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+
+    def test_put_htmx_contains_updated_title(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """HTMX PUT response contains the updated title in HTML."""
+        response = seeded_client.put(
+            "/api/narratives/n-1",
+            json={"title": "Updated Title"},
+            headers={"HX-Request": "true"},
+        )
+        assert "Updated Title" in response.text
+
+    def test_put_htmx_contains_narrative_id(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """HTMX PUT response contains the narrative div ID for swap."""
+        response = seeded_client.put(
+            "/api/narratives/n-1",
+            json={"title": "Updated Title"},
+            headers={"HX-Request": "true"},
+        )
+        assert "narrative-n-1" in response.text
+
+    def test_put_without_htmx_returns_json(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """PUT /api/narratives/n-1 without HX-Request returns JSON."""
+        response = seeded_client.put(
+            "/api/narratives/n-1",
+            json={"title": "Updated Title"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["title"] == "Updated Title"
