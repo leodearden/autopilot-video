@@ -42,10 +42,12 @@ class TestGetDb:
         db_file = str(tmp_path / "test.db")
         request = _make_request(db_path=db_file)
         result = get_db(request)
-        # Verify connection is functional by executing a trivial query
-        cursor = result.conn.execute("SELECT 1")
-        assert cursor.fetchone()[0] == 1
-        result.close()
+        try:
+            # Verify connection is functional by executing a trivial query
+            cursor = result.conn.execute("SELECT 1")
+            assert cursor.fetchone()[0] == 1
+        finally:
+            result.close()
 
 
 # --- is_htmx tests ---
