@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
+from starlette.responses import Response
 
 from autopilot.db import CatalogDB
 
@@ -61,3 +62,41 @@ def api_get_narrative(request: Request, narrative_id: str) -> dict[str, object]:
     if row is None:
         raise HTTPException(status_code=404, detail="Narrative not found")
     return _parse_narrative(row)
+
+
+def _narrative_status_action(
+    request: Request, narrative_id: str, status: str,
+) -> Response:
+    """Set a narrative's status and return updated narrative or HTML partial."""
+    db = _get_db(request)
+    try:
+        row = db.get_narrative(narrative_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Narrative not found")
+        db.update_narrative_status(narrative_id, status)
+        db.conn.commit()
+        updated = db.get_narrative(narrative_id)
+    finally:
+        db.close()
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Narrative not found")
+    parsed = _parse_narrative(updated)
+    if _is_htmx(request):
+        return _render_narrative_partial(request, parsed)
+    return JSONResponse(content=parsed)
+
+
+def _render_narrative_partial(
+    request: Request, narrative: dict[str, object],
+) -> HTMLResponse:
+    """Render a single narrative card partial as HTML."""
+    templates = request.app.state.templates
+    template = templates.get_template("partials/narrative_card.html")
+    html = template.render(narrative=narrative)
+    return HTMLResponse(content=html)
+
+
+@router.post("/api/narratives/{narrative_id}/approve", response_model=None)
+def api_approve_narrative(request: Request, narrative_id: str) -> Response:
+    """Approve a narrative."""
+    return _narrative_status_action(request, narrative_id, "approved")
