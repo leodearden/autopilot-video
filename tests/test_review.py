@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -11,13 +12,12 @@ from starlette.testclient import TestClient
 from autopilot.db import CatalogDB
 from autopilot.web.app import create_app
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def db(tmp_path: Path) -> CatalogDB:
+def db(tmp_path: Path) -> Iterator[CatalogDB]:
     """Create a CatalogDB with a temp file-backed database."""
     db_path = str(tmp_path / "catalog.db")
     _db = CatalogDB(db_path)
