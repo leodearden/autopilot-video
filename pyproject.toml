@@ -38,7 +38,6 @@ dependencies = [
     "opentimelineio>=0.17,<1.0",
     "scenedetect>=0.6,<1.0",
     # APIs
-    "anthropic",
     "google-api-python-client",
     # Web
     "fastapi",
@@ -58,6 +57,9 @@ dev = [
     "ruff",
     "pyright",
     "httpx",
+]
+api-fallback = [
+    "anthropic",
 ]
 vllm = [
     "vllm",
