@@ -188,7 +188,6 @@ def media_detail_page(request: Request, media_id: str):
         "media/detail.html",
         {
             "media": media,
-            "detail": detail,
             "extra_metadata": extra_metadata,
             "format_duration": _format_duration,
         },
