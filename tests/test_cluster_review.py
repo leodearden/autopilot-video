@@ -419,3 +419,40 @@ class TestClustersPage:
         resp = client.get("/review/clusters")
         assert resp.status_code == 200
         assert "excluded" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# TestHtmxClusterResponses — step-19
+# ---------------------------------------------------------------------------
+
+class TestHtmxClusterResponses:
+    """Tests for HTMX partial responses on cluster routes."""
+
+    def test_relabel_htmx_returns_html_partial(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """POST relabel with HX-Request returns HTML with cluster div and updated label."""
+        _seed_cluster_via_db(app, "c-1", label="Old Label")
+        resp = client.post(
+            "/api/clusters/c-1/relabel",
+            json={"label": "New Label"},
+            headers={"HX-Request": "true"},
+        )
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        body = resp.text
+        assert 'id="cluster-c-1"' in body
+        assert "New Label" in body
+
+    def test_exclude_htmx_returns_html_partial(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """POST exclude with HX-Request returns HTML partial with 'excluded' badge."""
+        _seed_cluster_via_db(app, "c-1")
+        resp = client.post(
+            "/api/clusters/c-1/exclude",
+            headers={"HX-Request": "true"},
+        )
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "excluded" in resp.text
