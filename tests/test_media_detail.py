@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -30,7 +31,7 @@ def detail_db_path(tmp_path: Path) -> str:
 
 
 @pytest.fixture
-def detail_db(detail_db_path: str) -> CatalogDB:
+def detail_db(detail_db_path: str) -> Iterator[CatalogDB]:
     """Create a CatalogDB backed by a real file for web endpoint tests."""
     db = CatalogDB(detail_db_path)
     db.conn.isolation_level = None  # autocommit
@@ -254,7 +255,10 @@ class TestGetMediaDetail:
         fc = result["face_clusters"]
         assert len(fc) > 0, "Expected at least one face cluster"
         for key in fc:
-            assert isinstance(key, str), f"face_clusters key {key!r} should be str, got {type(key).__name__}"
+            assert isinstance(key, str), (
+                f"face_clusters key {key!r} should be str,"
+                f" got {type(key).__name__}"
+            )
 
     def test_empty_analysis_for_media_without_data(self, detail_seeded_db: CatalogDB) -> None:
         """get_media_detail returns empty/None for media with no analysis data."""
