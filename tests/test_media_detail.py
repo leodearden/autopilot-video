@@ -874,3 +874,48 @@ class TestAggregateDetections:
             {"number": 0, "count": 0},
             {"number": 30, "count": 1},
         ]
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for _format_seconds helper (S6+S12)
+# ---------------------------------------------------------------------------
+
+
+class TestFormatSeconds:
+    """Tests for _format_seconds(seconds, pad_hours=False) unified formatter."""
+
+    @pytest.mark.parametrize(
+        ("seconds", "expected"),
+        [
+            (0, "0:00"),
+            (59, "0:59"),
+            (60, "1:00"),
+            (119, "1:59"),
+            (3600, "1:00:00"),
+            (3661, "1:01:01"),
+            (None, "--:--"),
+        ],
+    )
+    def test_pad_hours_false(self, seconds, expected) -> None:
+        """pad_hours=False: M:SS for <1hr, H:MM:SS for >=1hr, None->'--:--'."""
+        from autopilot.web.routes.media import _format_seconds
+
+        assert _format_seconds(seconds, pad_hours=False) == expected
+
+    @pytest.mark.parametrize(
+        ("seconds", "expected"),
+        [
+            (0, "00:00:00"),
+            (59, "00:00:59"),
+            (60, "00:01:00"),
+            (119, "00:01:59"),
+            (3600, "01:00:00"),
+            (3661, "01:01:01"),
+            (None, "--:--:--"),
+        ],
+    )
+    def test_pad_hours_true(self, seconds, expected) -> None:
+        """pad_hours=True: always 00:MM:SS, None->'--:--:--'."""
+        from autopilot.web.routes.media import _format_seconds
+
+        assert _format_seconds(seconds, pad_hours=True) == expected
