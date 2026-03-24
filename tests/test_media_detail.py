@@ -153,6 +153,37 @@ def detail_client(detail_app):
 
 
 # ---------------------------------------------------------------------------
+# CatalogDB.get_face_clusters_by_ids() tests
+# ---------------------------------------------------------------------------
+
+
+class TestGetFaceClustersByIds:
+    """Tests for CatalogDB.get_face_clusters_by_ids(cluster_ids)."""
+
+    def test_returns_dict_for_existing_ids(self, detail_seeded_db: CatalogDB) -> None:
+        """Returns dict mapping str(cluster_id) to cluster info."""
+        result = detail_seeded_db.get_face_clusters_by_ids([1])
+        assert "1" in result
+        assert result["1"]["label"] == "Alice"
+
+    def test_strips_representative_embedding(self, detail_seeded_db: CatalogDB) -> None:
+        """Returned cluster info has representative_embedding stripped."""
+        result = detail_seeded_db.get_face_clusters_by_ids([1])
+        assert "representative_embedding" not in result["1"]
+
+    def test_returns_empty_dict_for_empty_input(self, detail_seeded_db: CatalogDB) -> None:
+        """Returns empty dict when given empty list."""
+        result = detail_seeded_db.get_face_clusters_by_ids([])
+        assert result == {}
+
+    def test_skips_nonexistent_ids(self, detail_seeded_db: CatalogDB) -> None:
+        """Silently skips IDs that don't exist in face_clusters table."""
+        result = detail_seeded_db.get_face_clusters_by_ids([1, 999])
+        assert "1" in result
+        assert "999" not in result
+
+
+# ---------------------------------------------------------------------------
 # CatalogDB.get_media_detail() tests
 # ---------------------------------------------------------------------------
 
