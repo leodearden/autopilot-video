@@ -709,6 +709,13 @@ class CatalogDB:
         cur = self.conn.execute("SELECT * FROM activity_clusters")
         return [dict(row) for row in cur.fetchall()]
 
+    def delete_activity_cluster(self, cluster_id: str) -> None:
+        """Delete a single activity cluster by ID. No-op if not found."""
+        self.conn.execute(
+            "DELETE FROM activity_clusters WHERE cluster_id = ?",
+            (cluster_id,),
+        )
+
     def clear_activity_clusters(self) -> None:
         """Delete all rows from activity_clusters table."""
         self.conn.execute("DELETE FROM activity_clusters")
