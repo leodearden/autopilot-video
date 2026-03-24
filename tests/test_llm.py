@@ -550,3 +550,61 @@ class TestClassifyMigration:
 
         source = inspect.getsource(classify._call_llm)
         assert "import anthropic" not in source
+
+
+# -- Step 15: narratives._call_llm migration tests ----------------------------
+
+
+class TestNarrativesMigration:
+    """Verify narratives._call_llm uses invoke_claude instead of anthropic SDK."""
+
+    def test_call_llm_uses_invoke_claude(self):
+        """narratives._call_llm calls invoke_claude with correct params."""
+        from pathlib import Path
+
+        from autopilot.config import AutopilotConfig
+        from autopilot.organize.narratives import _call_llm
+
+        config = AutopilotConfig(input_dir=Path("."), output_dir=Path("."))
+        storyboard = "# Master Storyboard\n\nCluster c1: Temple visit"
+
+        llm_response = json.dumps([{
+            "title": "Thailand Day",
+            "activity_cluster_ids": ["c1"],
+            "proposed_duration_seconds": 480,
+        }])
+
+        with patch("autopilot.organize.narratives.invoke_claude", return_value=llm_response) as mock_invoke:
+            result = _call_llm(storyboard, config)
+
+        mock_invoke.assert_called_once()
+        call_kwargs = mock_invoke.call_args[1]
+        assert call_kwargs["model"] == config.llm.planning_model
+        assert call_kwargs["max_tokens"] == 4096
+        assert call_kwargs["prompt"] == storyboard
+        assert "system" in call_kwargs
+
+    def test_call_llm_returns_text(self):
+        """narratives._call_llm returns raw text from invoke_claude."""
+        from pathlib import Path
+
+        from autopilot.config import AutopilotConfig
+        from autopilot.organize.narratives import _call_llm
+
+        config = AutopilotConfig(input_dir=Path("."), output_dir=Path("."))
+
+        llm_response = "some response text"
+
+        with patch("autopilot.organize.narratives.invoke_claude", return_value=llm_response):
+            result = _call_llm("storyboard", config)
+
+        assert result == "some response text"
+
+    def test_call_llm_no_anthropic_import(self):
+        """narratives._call_llm should NOT import anthropic directly."""
+        import inspect
+
+        from autopilot.organize import narratives
+
+        source = inspect.getsource(narratives._call_llm)
+        assert "import anthropic" not in source
