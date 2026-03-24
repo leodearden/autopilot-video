@@ -266,6 +266,7 @@ class TestGetMediaDetail:
         assert result["faces"] == []
         assert result["audio_events"] == []
         assert result["embedding_count"] == 0
+        assert result["face_clusters"] == {}
 
 
 # ---------------------------------------------------------------------------
@@ -602,6 +603,7 @@ class TestMediaDetailIntegration:
         assert data["faces"] == []
         assert data["audio_events"] == []
         assert data["embedding_count"] == 0
+        assert data["face_clusters"] == {}
 
     def test_no_analysis_media_detail_page_loads(self, detail_client) -> None:
         """GET /media/test2 returns 200 even with no analysis data."""
