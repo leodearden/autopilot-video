@@ -418,6 +418,27 @@ class TestApiMergeClusters:
         )
         assert resp.status_code == 404
 
+    def test_merge_deduplicates_clip_ids(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """Merge deduplicates shared clip_ids across clusters."""
+        _seed_cluster_via_db(
+            app, "c-1", clip_ids_json='["a","b"]',
+        )
+        _seed_cluster_via_db(
+            app, "c-2", clip_ids_json='["b","c","d"]',
+        )
+        resp = client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": ["c-1", "c-2"]},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        # 4 unique clips, not 5 (b is shared)
+        assert len(data["clip_ids"]) == 4
+        assert len(data["clip_ids"]) == len(set(data["clip_ids"]))
+        assert set(data["clip_ids"]) == {"a", "b", "c", "d"}
+
 
 # ---------------------------------------------------------------------------
 # TestClustersPage — step-17
