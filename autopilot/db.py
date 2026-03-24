@@ -350,13 +350,7 @@ class CatalogDB:
         cluster_ids: set[int] = {
             cast(int, f["cluster_id"]) for f in faces if f.get("cluster_id") is not None
         }
-        face_clusters = {}
-        for cid in cluster_ids:
-            cluster = self.get_face_cluster_by_id(cid)
-            if cluster is not None:
-                face_clusters[str(cid)] = {
-                    k: v for k, v in cluster.items() if k != "representative_embedding"
-                }
+        face_clusters = self.get_face_clusters_by_ids(list(cluster_ids))
 
         return {
             "media": media,
@@ -562,6 +556,27 @@ class CatalogDB:
         """List all face clusters."""
         cur = self.conn.execute("SELECT * FROM face_clusters")
         return [dict(row) for row in cur.fetchall()]
+
+    def get_face_clusters_by_ids(self, cluster_ids: list[int]) -> dict[str, dict[str, object]]:
+        """Batch-fetch face clusters by IDs using a single query.
+
+        Returns a dict mapping str(cluster_id) to cluster info with
+        representative_embedding stripped. Non-existent IDs are silently
+        skipped; empty input returns an empty dict.
+        """
+        if not cluster_ids:
+            return {}
+        placeholders = ",".join("?" for _ in cluster_ids)
+        cur = self.conn.execute(
+            f"SELECT * FROM face_clusters WHERE cluster_id IN ({placeholders})",
+            list(cluster_ids),
+        )
+        result: dict[str, dict[str, object]] = {}
+        for row in cur.fetchall():
+            d = dict(row)
+            d.pop("representative_embedding", None)
+            result[str(d["cluster_id"])] = d
+        return result
 
     def get_face_cluster_by_id(self, cluster_id: int) -> dict[str, object] | None:
         """Get a face cluster by id, or None if not found."""
