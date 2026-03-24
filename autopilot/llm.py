@@ -59,6 +59,11 @@ def invoke_claude(
     Raises:
         LlmError: On any invocation failure.
     """
+    if use_api:
+        return _invoke_via_api(
+            prompt=prompt, system=system, model=model, max_tokens=max_tokens,
+        )
+
     resolved_model = _resolve_model(model)
 
     cmd = [
@@ -111,3 +116,38 @@ def invoke_claude(
         raise LlmError(f"Empty or missing result in CLI output (keys: {list(data.keys())})")
 
     return result_text
+
+
+def _invoke_via_api(
+    *,
+    prompt: str,
+    system: str,
+    model: str,
+    max_tokens: int,
+) -> str:
+    """Fallback: invoke via Anthropic SDK (lazy import).
+
+    Uses the full model ID (not CLI short name) for API compatibility.
+    """
+    try:
+        import anthropic  # type: ignore[import-untyped]
+    except ImportError as exc:
+        raise LlmError(
+            "anthropic package not installed — install with: pip install 'autopilot-video[api-fallback]'"
+        ) from exc
+
+    try:
+        client = anthropic.Anthropic()
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except Exception as exc:
+        raise LlmError(f"Anthropic API call failed: {exc}") from exc
+
+    if not response.content:
+        raise LlmError("Empty response from Anthropic API")
+
+    return response.content[0].text  # type: ignore[union-attr]
