@@ -55,7 +55,7 @@ class _SelectedOptionParser(HTMLParser):
             if tag == "select":
                 self._in_select = True
             elif tag == "option" and self._in_select and "selected" in attr_dict:
-                self.selected[self._gate_id] = attr_dict.get("value", "")
+                self.selected[self._gate_id] = attr_dict.get("value") or ""
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "select":
