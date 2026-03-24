@@ -475,3 +475,13 @@ def api_stream_video(
     if not render_path or not Path(str(render_path)).is_file():
         raise HTTPException(status_code=404, detail="Render file not available")
     return FileResponse(str(render_path), media_type="video/mp4")
+
+
+@router.get("/api/uploads")
+def api_list_uploads(request: Request) -> list[dict[str, object]]:
+    """Return all uploads as a JSON list with narrative titles."""
+    db = _get_db(request)
+    try:
+        return db.list_uploads()
+    finally:
+        db.close()
