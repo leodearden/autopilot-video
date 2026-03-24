@@ -144,3 +144,55 @@ class TestUpdateActivityClusterWhitelist:
         assert result is not None
         assert result["label"] == "New Label"
         assert result["excluded"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Helpers — seed clusters via HTTP test client
+# ---------------------------------------------------------------------------
+
+def _seed_cluster_via_db(app: FastAPI, cluster_id: str = "c-1", **overrides: object) -> None:
+    """Insert a cluster directly into the app's database."""
+    db = CatalogDB(app.state.db_path)
+    try:
+        defaults: dict[str, object] = {
+            "label": "Morning Activity",
+            "description": "Walking the dog",
+            "time_start": "2025-01-01T08:00:00",
+            "time_end": "2025-01-01T09:00:00",
+            "location_label": "Park",
+            "gps_center_lat": 37.7749,
+            "gps_center_lon": -122.4194,
+            "clip_ids_json": '["clip-1","clip-2"]',
+        }
+        defaults.update(overrides)
+        db.insert_activity_cluster(cluster_id, **defaults)  # type: ignore[arg-type]
+        db.conn.commit()
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# TestApiListClusters — step-7
+# ---------------------------------------------------------------------------
+
+class TestApiListClusters:
+    """Tests for GET /api/clusters."""
+
+    def test_returns_list_with_parsed_clip_ids(self, app: FastAPI, client: TestClient) -> None:
+        """GET /api/clusters returns clusters with clip_ids list and clip_count."""
+        _seed_cluster_via_db(app, "c-1", clip_ids_json='["clip-1","clip-2","clip-3"]')
+        resp = client.get("/api/clusters")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        cluster = data[0]
+        assert cluster["cluster_id"] == "c-1"
+        assert cluster["clip_ids"] == ["clip-1", "clip-2", "clip-3"]
+        assert cluster["clip_count"] == 3
+        assert "clip_ids_json" not in cluster
+
+    def test_returns_empty_list_when_no_clusters(self, client: TestClient) -> None:
+        """GET /api/clusters returns empty list with no data."""
+        resp = client.get("/api/clusters")
+        assert resp.status_code == 200
+        assert resp.json() == []
