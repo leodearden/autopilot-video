@@ -354,7 +354,7 @@ class CatalogDB:
         for cid in cluster_ids:
             cluster = self.get_face_cluster_by_id(cid)
             if cluster is not None:
-                face_clusters[cid] = {
+                face_clusters[str(cid)] = {
                     k: v for k, v in cluster.items() if k != "representative_embedding"
                 }
 

@@ -242,7 +242,7 @@ def media_tab(request: Request, media_id: str, tab_name: str):
             cluster_groups[cid] = cluster_groups.get(cid, 0) + 1
         clusters = []
         for cid, count in sorted(cluster_groups.items(), key=lambda x: x[1], reverse=True):
-            cluster_info = face_clusters.get(cid, {}) if cid is not None else {}
+            cluster_info = face_clusters.get(str(cid), {}) if cid is not None else {}
             clusters.append(
                 {
                     "cluster_id": cid,
