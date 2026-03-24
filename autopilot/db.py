@@ -346,11 +346,17 @@ class CatalogDB:
         # Strip binary embedding BLOBs from face rows
         faces = [{k: v for k, v in f.items() if k != "embedding"} for f in faces]
 
-        # Build face_clusters lookup for faces that have cluster assignments
+        # Build face_clusters lookup for faces that have cluster assignments.
+        # Coerce keys to str and strip representative_embedding BLOBs here
+        # (presentation concern) so get_face_clusters_by_ids can return raw rows.
         cluster_ids: set[int] = {
             cast(int, f["cluster_id"]) for f in faces if f.get("cluster_id") is not None
         }
-        face_clusters = self.get_face_clusters_by_ids(list(cluster_ids))
+        raw_clusters = self.get_face_clusters_by_ids(list(cluster_ids))
+        face_clusters: dict[str, dict[str, object]] = {
+            str(cid): {k: v for k, v in cluster.items() if k != "representative_embedding"}
+            for cid, cluster in raw_clusters.items()
+        }
 
         return {
             "media": media,
