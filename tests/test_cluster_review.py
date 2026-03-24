@@ -381,3 +381,41 @@ class TestApiMergeClusters:
             json={"cluster_ids": ["c-1", "nonexistent"]},
         )
         assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# TestClustersPage — step-17
+# ---------------------------------------------------------------------------
+
+class TestClustersPage:
+    """Tests for GET /review/clusters HTML page."""
+
+    def test_renders_cluster_cards(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """Page shows cluster card labels and clip counts."""
+        _seed_cluster_via_db(
+            app, "c-1", label="Morning Walk", clip_ids_json='["a","b","c"]',
+        )
+        resp = client.get("/review/clusters")
+        assert resp.status_code == 200
+        body = resp.text
+        assert "Morning Walk" in body
+        assert "3 clips" in body
+
+    def test_empty_state(self, client: TestClient) -> None:
+        """Page shows 'No clusters' message when empty."""
+        resp = client.get("/review/clusters")
+        assert resp.status_code == 200
+        assert "No clusters" in resp.text
+
+    def test_excluded_badge(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """Excluded clusters show 'excluded' badge."""
+        _seed_cluster_via_db(app, "c-1", label="Hidden")
+        # Exclude via API
+        client.post("/api/clusters/c-1/exclude")
+        resp = client.get("/review/clusters")
+        assert resp.status_code == 200
+        assert "excluded" in resp.text
