@@ -400,16 +400,19 @@ def api_merge_clusters(
             update_kwargs["time_start"] = min_start
         if max_end is not None:
             update_kwargs["time_end"] = max_end
-        db.update_activity_cluster(largest_id, **update_kwargs)
 
-        # Delete non-largest clusters
-        for pc in parsed_clusters:
-            cid = str(pc["cluster_id"])
-            if cid != largest_id:
-                db.delete_activity_cluster(cid)
+        # Wrap mutations in context manager for explicit transaction safety:
+        # __exit__ commits on success, rolls back on exception.
+        with db:
+            db.update_activity_cluster(largest_id, **update_kwargs)
 
-        db.conn.commit()
-        merged = db.get_activity_cluster(largest_id)
+            # Delete non-largest clusters
+            for pc in parsed_clusters:
+                cid = str(pc["cluster_id"])
+                if cid != largest_id:
+                    db.delete_activity_cluster(cid)
+
+            merged = db.get_activity_cluster(largest_id)
     finally:
         db.close()
     if merged is None:
