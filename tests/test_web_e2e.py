@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Generator
 from unittest.mock import patch
 
 import pytest
@@ -35,11 +36,14 @@ def e2e_db_path(tmp_path: Path) -> str:
 
 
 @pytest.fixture
-def e2e_db(e2e_db_path: str) -> CatalogDB:
+def e2e_db(e2e_db_path: str) -> Generator:
     """Create a CatalogDB backed by a real file for E2E tests."""
     db = CatalogDB(e2e_db_path)
     db.conn.isolation_level = None  # autocommit
-    return db
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 @pytest.fixture
@@ -310,11 +314,14 @@ class TestDashboardRendering:
 
 
 @pytest.fixture
-def sse_db(e2e_db_path: str) -> CatalogDB:
+def sse_db(e2e_db_path: str) -> Generator:
     """CatalogDB for SSE tests (separate from e2e_db to avoid fixture reuse)."""
     db = CatalogDB(e2e_db_path)
     db.conn.isolation_level = None
-    return db
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 @pytest.fixture
