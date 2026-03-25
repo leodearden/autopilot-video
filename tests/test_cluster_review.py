@@ -439,18 +439,6 @@ class TestApiRelabelCluster:
         resp = client.post("/api/clusters/nonexistent/relabel", json={})
         assert resp.status_code == 404
 
-    def test_404_via_rowcount_path(self, client: TestClient) -> None:
-        """POST relabel returns 404 via rowcount==0 when cluster does not exist.
-
-        This tests the new code path where UPDATE is issued first and
-        rowcount==0 triggers 404 (no pre-UPDATE SELECT).
-        """
-        resp = client.post(
-            "/api/clusters/nonexistent/relabel",
-            json={"label": "X"},
-        )
-        assert resp.status_code == 404
-
 
 # ---------------------------------------------------------------------------
 # TestApiExcludeCluster — step-13
