@@ -957,12 +957,12 @@ class TestApiMergeClustersUseBatchFetch:
 
         monkeypatch.setattr(CatalogDB, "get_activity_cluster", _n1_trap)
 
-        # Positive spy: verify batch path IS called
-        batch_calls: list[int] = [0]
+        # Positive spy: record each batch-fetch call's arguments
+        batch_args: list[list[str]] = []
         _original_batch = CatalogDB.get_activity_clusters_by_ids
 
         def _batch_spy(self: object, cluster_ids: list[str]) -> dict:  # type: ignore[type-arg]
-            batch_calls[0] += 1
+            batch_args.append(list(cluster_ids))
             return _original_batch(self, cluster_ids)  # type: ignore[arg-type]
 
         monkeypatch.setattr(CatalogDB, "get_activity_clusters_by_ids", _batch_spy)
@@ -975,7 +975,12 @@ class TestApiMergeClustersUseBatchFetch:
         data = resp.json()
         assert data["cluster_id"] == "c-2"
         assert sorted(data["clip_ids"]) == ["clip-1", "clip-2", "clip-3"]
-        assert batch_calls[0] >= 1, "Expected get_activity_clusters_by_ids to be called"
+        # Exact call count: initial fetch + post-merge re-fetch
+        assert len(batch_args) == 2, f"Expected 2 batch calls, got {len(batch_args)}"
+        # First call: fetch all requested cluster IDs
+        assert batch_args[0] == ["c-1", "c-2"]
+        # Second call: post-merge re-fetch of the surviving (largest) cluster
+        assert batch_args[1] == ["c-2"]
 
 
 class TestReviewHubClassifyGate:
