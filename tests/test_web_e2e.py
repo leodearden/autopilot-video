@@ -576,7 +576,7 @@ def media_seeded_app(tmp_path: Path) -> FastAPI:
         db.batch_insert_detections(dets)
 
         # Faces for m-0
-        faces = [
+        faces: list[tuple[str, int, int, str, bytes | None, int | None]] = [
             ("m-0", 0, 0, json.dumps([10, 20, 100, 200]), None, None),
         ]
         db.batch_insert_faces(faces)
