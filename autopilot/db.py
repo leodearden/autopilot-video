@@ -716,6 +716,21 @@ class CatalogDB:
             (cluster_id,),
         )
 
+    def batch_delete_activity_clusters(self, cluster_ids: list[str]) -> int:
+        """Delete multiple activity clusters in one query.
+
+        Returns number of rows actually deleted. Empty input returns 0.
+        Non-existent IDs are silently skipped.
+        """
+        if not cluster_ids:
+            return 0
+        placeholders = ",".join("?" for _ in cluster_ids)
+        cur = self.conn.execute(
+            f"DELETE FROM activity_clusters WHERE cluster_id IN ({placeholders})",
+            cluster_ids,
+        )
+        return cur.rowcount
+
     def clear_activity_clusters(self) -> None:
         """Delete all rows from activity_clusters table."""
         self.conn.execute("DELETE FROM activity_clusters")
