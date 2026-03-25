@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Generator
 from unittest.mock import patch
 
 import pytest
@@ -22,11 +23,14 @@ def _sse_db_path(tmp_path: Path) -> str:
 
 
 @pytest.fixture
-def sse_db(_sse_db_path: str) -> CatalogDB:
+def sse_db(_sse_db_path: str) -> Generator:
     """Create a CatalogDB backed by a real file so the app can connect to it."""
     db = CatalogDB(_sse_db_path)
     db.conn.isolation_level = None  # autocommit for test convenience
-    return db
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 @pytest.fixture

@@ -24,8 +24,8 @@
       "id": "step-1",
       "type": "test",
       "description": "Write a test in TestSSEFixtureTeardown that verifies the sse_db fixture properly closes its DB connection after teardown. The test should capture a reference to the db, then after the fixture scope ends, check that operating on the connection raises an error. This test should FAIL with the current bare-return fixture since no close() is called.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "b6027e7"
     },
     {
       "id": "step-2",
