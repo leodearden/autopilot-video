@@ -919,6 +919,11 @@ class TestGetActivityClustersByIds:
         assert result["c-1"]["label"] == "Alpha"
         assert result["c-3"]["label"] == "Gamma"
 
+    def test_returns_empty_dict_for_empty_input(self, db: CatalogDB) -> None:
+        """Calling with [] returns {}."""
+        result = db.get_activity_clusters_by_ids([])
+        assert result == {}
+
 
 class TestReviewHubClassifyGate:
     """Tests for review hub integration with classify gate."""
