@@ -992,20 +992,7 @@ class TestApiMergeClustersUseBatchFetch:
             app, "c-2", label="Large", clip_ids_json='["clip-2","clip-3"]',
         )
 
-        def _n1_trap(self: object, cluster_id: str) -> None:
-            raise AssertionError(f"N+1 detected: get_activity_cluster({cluster_id!r})")
-
-        monkeypatch.setattr(CatalogDB, "get_activity_cluster", _n1_trap)
-
-        # Positive spy: record each batch-fetch call's arguments
-        batch_args: list[list[str]] = []
-        _original_batch = CatalogDB.get_activity_clusters_by_ids
-
-        def _batch_spy(self: object, cluster_ids: list[str]) -> dict:  # type: ignore[type-arg]
-            batch_args.append(list(cluster_ids))
-            return _original_batch(self, cluster_ids)  # type: ignore[arg-type]
-
-        monkeypatch.setattr(CatalogDB, "get_activity_clusters_by_ids", _batch_spy)
+        batch_args = self._install_batch_spy(monkeypatch)
 
         resp = client.post(
             "/api/clusters/merge",
