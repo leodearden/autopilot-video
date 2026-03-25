@@ -1,4 +1,4 @@
-"""Review hub and narrative review routes."""
+"""Review hub, narrative review, and cluster review routes."""
 
 from __future__ import annotations
 
@@ -55,9 +55,7 @@ def review_hub(request: Request) -> HTMLResponse:
                     summary["pending_count"] = len(proposed)
                     summary["pending_label"] = "proposed narratives"
                 elif stage == "classify":
-                    all_clusters = db.get_activity_clusters()
-                    pending = [c for c in all_clusters if not c.get("excluded")]
-                    summary["pending_count"] = len(pending)
+                    summary["pending_count"] = db.count_non_excluded_clusters()
                     summary["pending_label"] = "activity clusters"
                 elif stage == "render":
                     plans = db.list_edit_plans()
@@ -273,7 +271,7 @@ def clusters_page(request: Request) -> HTMLResponse:
     db = _get_db(request)
     try:
         rows = db.get_activity_clusters()
-        clusters = [_parse_cluster(dict(r)) for r in rows]
+        clusters = [_parse_cluster(r) for r in rows]
         classify_gate = db.get_gate("classify")
     finally:
         db.close()
@@ -298,7 +296,7 @@ def api_list_clusters(request: Request) -> list[dict[str, object]]:
     db = _get_db(request)
     try:
         rows = db.get_activity_clusters()
-        return [_parse_cluster(dict(r)) for r in rows]
+        return [_parse_cluster(r) for r in rows]
     finally:
         db.close()
 
@@ -313,7 +311,7 @@ def api_get_cluster(request: Request, cluster_id: str) -> dict[str, object]:
         db.close()
     if row is None:
         raise HTTPException(status_code=404, detail="Cluster not found")
-    return _parse_cluster(dict(row))
+    return _parse_cluster(row)
 
 
 def _render_cluster_partial(
@@ -324,6 +322,23 @@ def _render_cluster_partial(
     template = templates.get_template("partials/cluster_card.html")
     html = template.render(cluster=cluster)
     return HTMLResponse(content=html)
+
+
+def _update_and_respond_cluster(
+    request: Request, db: CatalogDB, cluster_id: str,
+) -> Response:
+    """Fetch cluster, parse, and return HTMX partial or JSON response.
+
+    Shared post-update logic for relabel and exclude routes.
+    Raises 404 if the cluster doesn't exist.
+    """
+    updated = db.get_activity_cluster(cluster_id)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+    parsed = _parse_cluster(updated)
+    if _is_htmx(request):
+        return _render_cluster_partial(request, parsed)
+    return JSONResponse(content=parsed)
 
 
 class ClusterRelabel(BaseModel):
@@ -342,22 +357,15 @@ def api_relabel_cluster(
     """Update label/description of a cluster."""
     db = _get_db(request)
     try:
-        row = db.get_activity_cluster(cluster_id)
-        if row is None:
-            raise HTTPException(status_code=404, detail="Cluster not found")
         updates = body.model_dump(exclude_unset=True)
         if updates:
-            db.update_activity_cluster(cluster_id, **updates)
+            affected = db.update_activity_cluster(cluster_id, **updates)
+            if affected == 0:
+                raise HTTPException(status_code=404, detail="Cluster not found")
             db.conn.commit()
-        updated = db.get_activity_cluster(cluster_id)
+        return _update_and_respond_cluster(request, db, cluster_id)
     finally:
         db.close()
-    if updated is None:
-        raise HTTPException(status_code=404, detail="Cluster not found")
-    parsed = _parse_cluster(dict(updated))
-    if _is_htmx(request):
-        return _render_cluster_partial(request, parsed)
-    return JSONResponse(content=parsed)
 
 
 @router.post("/api/clusters/{cluster_id}/exclude", response_model=None)
@@ -365,20 +373,13 @@ def api_exclude_cluster(request: Request, cluster_id: str) -> Response:
     """Mark a cluster as excluded."""
     db = _get_db(request)
     try:
-        row = db.get_activity_cluster(cluster_id)
-        if row is None:
+        affected = db.update_activity_cluster(cluster_id, excluded=1)
+        if affected == 0:
             raise HTTPException(status_code=404, detail="Cluster not found")
-        db.update_activity_cluster(cluster_id, excluded=1)
         db.conn.commit()
-        updated = db.get_activity_cluster(cluster_id)
+        return _update_and_respond_cluster(request, db, cluster_id)
     finally:
         db.close()
-    if updated is None:
-        raise HTTPException(status_code=404, detail="Cluster not found")
-    parsed = _parse_cluster(dict(updated))
-    if _is_htmx(request):
-        return _render_cluster_partial(request, parsed)
-    return JSONResponse(content=parsed)
 
 
 class MergeRequest(BaseModel):
@@ -400,7 +401,7 @@ def api_merge_clusters(
         )
     db = _get_db(request)
     try:
-        # Load all clusters
+        # Load and parse all clusters
         clusters: list[dict[str, object]] = []
         for cid in body.cluster_ids:
             row = db.get_activity_cluster(cid)
@@ -409,14 +410,13 @@ def api_merge_clusters(
                     status_code=404,
                     detail=f"Cluster {cid} not found",
                 )
-            clusters.append(dict(row))
+            clusters.append(row)
 
-        # Parse clip_ids for each cluster
         parsed_clusters = [_parse_cluster(c) for c in clusters]
 
         # Find largest by clip count
-        largest = max(parsed_clusters, key=lambda c: int(str(c["clip_count"])))
-        largest_id = str(largest["cluster_id"])
+        largest = max(parsed_clusters, key=lambda c: c["clip_count"])  # type: ignore[arg-type]
+        largest_id = largest["cluster_id"]
 
         # Combine all clip_ids (deduplicated, preserving order)
         all_clip_ids: list[str] = list(dict.fromkeys(
@@ -441,20 +441,21 @@ def api_merge_clusters(
         # Wrap mutations in context manager for explicit transaction safety:
         # __exit__ commits on success, rolls back on exception.
         with db:
-            db.update_activity_cluster(largest_id, **update_kwargs)
+            db.update_activity_cluster(str(largest_id), **update_kwargs)
 
-            # Delete non-largest clusters
-            for pc in parsed_clusters:
-                cid = str(pc["cluster_id"])
-                if cid != largest_id:
-                    db.delete_activity_cluster(cid)
+            # Batch-delete non-surviving clusters
+            non_surviving = [
+                pc["cluster_id"] for pc in parsed_clusters
+                if pc["cluster_id"] != largest_id
+            ]
+            db.batch_delete_activity_clusters([str(cid) for cid in non_surviving])
 
-            merged = db.get_activity_cluster(largest_id)
+            merged = db.get_activity_cluster(str(largest_id))
     finally:
         db.close()
     if merged is None:
         raise HTTPException(status_code=500, detail="Merged cluster missing")
-    return _parse_cluster(dict(merged))
+    return _parse_cluster(merged)
 
 
 @router.post("/api/narratives/bulk-approve")

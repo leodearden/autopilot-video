@@ -183,6 +183,96 @@ class TestUpdateActivityClusterWhitelist:
 
 
 # ---------------------------------------------------------------------------
+# TestCountNonExcludedClusters — task-65 step-5
+# ---------------------------------------------------------------------------
+
+class TestCountNonExcludedClusters:
+    """Tests for CatalogDB.count_non_excluded_clusters()."""
+
+    def test_counts_non_excluded_with_mixed_rows(self, db: CatalogDB) -> None:
+        """Returns count of non-excluded clusters when mix of excluded/non-excluded."""
+        _seed_cluster(db, "c-1")
+        _seed_cluster(db, "c-2")
+        _seed_cluster(db, "c-3")
+        db.update_activity_cluster("c-2", excluded=1)
+        db.conn.commit()
+        assert db.count_non_excluded_clusters() == 2
+
+    def test_returns_0_when_all_excluded(self, db: CatalogDB) -> None:
+        """Returns 0 when every cluster is excluded."""
+        _seed_cluster(db, "c-1")
+        _seed_cluster(db, "c-2")
+        db.update_activity_cluster("c-1", excluded=1)
+        db.update_activity_cluster("c-2", excluded=1)
+        db.conn.commit()
+        assert db.count_non_excluded_clusters() == 0
+
+    def test_returns_0_when_table_empty(self, db: CatalogDB) -> None:
+        """Returns 0 when activity_clusters table has no rows."""
+        assert db.count_non_excluded_clusters() == 0
+
+
+# ---------------------------------------------------------------------------
+# TestBatchDeleteActivityClusters — task-65 step-3
+# ---------------------------------------------------------------------------
+
+class TestBatchDeleteActivityClusters:
+    """Tests for CatalogDB.batch_delete_activity_clusters(cluster_ids)."""
+
+    def test_deletes_multiple_clusters(self, db: CatalogDB) -> None:
+        """batch_delete_activity_clusters removes all specified clusters."""
+        _seed_cluster(db, "c-1")
+        _seed_cluster(db, "c-2")
+        _seed_cluster(db, "c-3")
+        result = db.batch_delete_activity_clusters(["c-1", "c-2"])
+        db.conn.commit()
+        assert result == 2
+        assert db.get_activity_cluster("c-1") is None
+        assert db.get_activity_cluster("c-2") is None
+        assert db.get_activity_cluster("c-3") is not None
+
+    def test_returns_0_on_empty_list(self, db: CatalogDB) -> None:
+        """batch_delete_activity_clusters returns 0 for empty input."""
+        _seed_cluster(db, "c-1")
+        result = db.batch_delete_activity_clusters([])
+        assert result == 0
+        assert db.get_activity_cluster("c-1") is not None
+
+    def test_skips_nonexistent_ids(self, db: CatalogDB) -> None:
+        """batch_delete_activity_clusters silently skips non-existent IDs."""
+        _seed_cluster(db, "c-1")
+        result = db.batch_delete_activity_clusters(["c-1", "nonexistent"])
+        db.conn.commit()
+        assert result == 1
+        assert db.get_activity_cluster("c-1") is None
+
+
+# ---------------------------------------------------------------------------
+# TestUpdateActivityClusterRowcount — task-65 step-1
+# ---------------------------------------------------------------------------
+
+class TestUpdateActivityClusterRowcount:
+    """Tests that update_activity_cluster returns int rowcount."""
+
+    def test_returns_1_for_existing_cluster(self, db: CatalogDB) -> None:
+        """update_activity_cluster returns 1 when updating an existing row."""
+        _seed_cluster(db, "c-1", label="Old")
+        result = db.update_activity_cluster("c-1", label="New")
+        assert result == 1
+
+    def test_returns_0_for_nonexistent_cluster(self, db: CatalogDB) -> None:
+        """update_activity_cluster returns 0 for a non-existent cluster_id."""
+        result = db.update_activity_cluster("nonexistent", label="X")
+        assert result == 0
+
+    def test_returns_0_for_empty_kwargs(self, db: CatalogDB) -> None:
+        """update_activity_cluster returns 0 for empty kwargs (early return)."""
+        _seed_cluster(db, "c-1")
+        result = db.update_activity_cluster("c-1")
+        assert result == 0
+
+
+# ---------------------------------------------------------------------------
 # Helpers — seed clusters via HTTP test client
 # ---------------------------------------------------------------------------
 
@@ -337,6 +427,18 @@ class TestApiRelabelCluster:
         persisted = get_resp.json()
         assert persisted["label"] == "Keep"
         assert persisted["description"] == "Same"
+
+    def test_404_via_rowcount_path(self, client: TestClient) -> None:
+        """POST relabel returns 404 via rowcount==0 when cluster does not exist.
+
+        This tests the new code path where UPDATE is issued first and
+        rowcount==0 triggers 404 (no pre-UPDATE SELECT).
+        """
+        resp = client.post(
+            "/api/clusters/nonexistent/relabel",
+            json={"label": "X"},
+        )
+        assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -493,19 +595,23 @@ class TestApiMergeClusters:
     def test_merge_rolls_back_on_failure(
         self, app: FastAPI, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Merge rolls back all changes if delete_activity_cluster fails mid-operation."""
+        """Merge rolls back all changes if batch_delete_activity_clusters fails."""
         _seed_cluster_via_db(app, "c-1", clip_ids_json='["a"]', label="Original-1")
         _seed_cluster_via_db(
             app, "c-2", clip_ids_json='["b","c"]', label="Original-2",
         )
 
-        # Make delete_activity_cluster fail after update has been applied
-        original_delete = CatalogDB.delete_activity_cluster
+        # Make batch_delete_activity_clusters fail after update has been applied
+        original_batch_delete = CatalogDB.batch_delete_activity_clusters
 
-        def _exploding_delete(self: CatalogDB, cluster_id: str) -> None:
+        def _exploding_batch_delete(
+            self: CatalogDB, cluster_ids: list[str],
+        ) -> None:
             raise RuntimeError("simulated DB failure")
 
-        monkeypatch.setattr(CatalogDB, "delete_activity_cluster", _exploding_delete)
+        monkeypatch.setattr(
+            CatalogDB, "batch_delete_activity_clusters", _exploding_batch_delete,
+        )
 
         err_client = TestClient(app, raise_server_exceptions=False)
         resp = err_client.post(
@@ -514,8 +620,10 @@ class TestApiMergeClusters:
         )
         assert resp.status_code == 500
 
-        # Restore original delete so we can read
-        monkeypatch.setattr(CatalogDB, "delete_activity_cluster", original_delete)
+        # Restore original batch delete so we can read
+        monkeypatch.setattr(
+            CatalogDB, "batch_delete_activity_clusters", original_batch_delete,
+        )
 
         # Both clusters should still exist with original data (rolled back)
         read_client = TestClient(app)

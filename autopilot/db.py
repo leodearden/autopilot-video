@@ -716,6 +716,28 @@ class CatalogDB:
             (cluster_id,),
         )
 
+    def batch_delete_activity_clusters(self, cluster_ids: list[str]) -> int:
+        """Delete multiple activity clusters in one query.
+
+        Returns number of rows actually deleted. Empty input returns 0.
+        Non-existent IDs are silently skipped.
+        """
+        if not cluster_ids:
+            return 0
+        placeholders = ",".join("?" for _ in cluster_ids)
+        cur = self.conn.execute(
+            f"DELETE FROM activity_clusters WHERE cluster_id IN ({placeholders})",
+            cluster_ids,
+        )
+        return cur.rowcount
+
+    def count_non_excluded_clusters(self) -> int:
+        """Return the number of non-excluded activity clusters."""
+        cur = self.conn.execute(
+            "SELECT COUNT(*) FROM activity_clusters WHERE excluded = 0",
+        )
+        return cur.fetchone()[0]  # type: ignore[index]
+
     def clear_activity_clusters(self) -> None:
         """Delete all rows from activity_clusters table."""
         self.conn.execute("DELETE FROM activity_clusters")
@@ -732,10 +754,13 @@ class CatalogDB:
         "excluded",
     })
 
-    def update_activity_cluster(self, cluster_id: str, **kwargs: object) -> None:
-        """Update fields of an activity cluster by keyword arguments."""
+    def update_activity_cluster(self, cluster_id: str, **kwargs: object) -> int:
+        """Update fields of an activity cluster by keyword arguments.
+
+        Returns number of rows affected (0 if not found or no kwargs).
+        """
         if not kwargs:
-            return
+            return 0
         bad_keys = set(kwargs) - self._CLUSTER_ALLOWED_COLUMNS
         if bad_keys:
             msg = f"Disallowed column(s) for cluster update: {sorted(bad_keys)}"
@@ -743,11 +768,12 @@ class CatalogDB:
         set_clause = ", ".join(f"{k} = ?" for k in kwargs)
         values = list(kwargs.values())
         values.append(cluster_id)
-        self.conn.execute(
+        cur = self.conn.execute(
             f"UPDATE activity_clusters SET {set_clause} "  # noqa: S608
             "WHERE cluster_id = ?",
             values,
         )
+        return cur.rowcount
 
     # -- narratives CRUD --------------------------------------------------------
 
