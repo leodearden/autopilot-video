@@ -941,6 +941,27 @@ class TestGetActivityClustersByIds:
 class TestApiMergeClustersUseBatchFetch:
     """Verify merge route uses batch fetch instead of per-cluster N+1 queries."""
 
+    def test_install_batch_spy_returns_list_and_traps_n1(
+        self, app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """_install_batch_spy returns empty list, traps N+1, and records batch calls."""
+        batch_args = self._install_batch_spy(monkeypatch)
+
+        # (a) Returns an empty list initially
+        assert batch_args == []
+
+        # (b) Single-cluster fetch raises AssertionError with 'N+1 detected'
+        db: CatalogDB = app.state.db
+        with pytest.raises(AssertionError, match="N\\+1 detected"):
+            db.get_activity_cluster("any-id")
+
+        # (c) Batch fetch records call args and delegates to original
+        _seed_cluster_via_db(app, "c-spy", label="Spy")
+        result = db.get_activity_clusters_by_ids(["c-spy"])
+        assert len(batch_args) == 1
+        assert batch_args[0] == ["c-spy"]
+        assert "c-spy" in result
+
     def test_merge_uses_batch_fetch(
         self, app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
