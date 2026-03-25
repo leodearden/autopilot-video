@@ -284,6 +284,23 @@ def _render_cluster_partial(
     return HTMLResponse(content=html)
 
 
+def _update_and_respond_cluster(
+    request: Request, db: CatalogDB, cluster_id: str,
+) -> Response:
+    """Fetch cluster, parse, and return HTMX partial or JSON response.
+
+    Shared post-update logic for relabel and exclude routes.
+    Raises 404 if the cluster doesn't exist.
+    """
+    updated = db.get_activity_cluster(cluster_id)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+    parsed = _parse_cluster(updated)
+    if _is_htmx(request):
+        return _render_cluster_partial(request, parsed)
+    return JSONResponse(content=parsed)
+
+
 class ClusterRelabel(BaseModel):
     """Request body for relabelling a cluster."""
 
@@ -300,22 +317,15 @@ def api_relabel_cluster(
     """Update label/description of a cluster."""
     db = _get_db(request)
     try:
-        row = db.get_activity_cluster(cluster_id)
-        if row is None:
-            raise HTTPException(status_code=404, detail="Cluster not found")
         updates = body.model_dump(exclude_unset=True)
         if updates:
-            db.update_activity_cluster(cluster_id, **updates)
+            affected = db.update_activity_cluster(cluster_id, **updates)
+            if affected == 0:
+                raise HTTPException(status_code=404, detail="Cluster not found")
             db.conn.commit()
-        updated = db.get_activity_cluster(cluster_id)
+        return _update_and_respond_cluster(request, db, cluster_id)
     finally:
         db.close()
-    if updated is None:
-        raise HTTPException(status_code=404, detail="Cluster not found")
-    parsed = _parse_cluster(dict(updated))
-    if _is_htmx(request):
-        return _render_cluster_partial(request, parsed)
-    return JSONResponse(content=parsed)
 
 
 @router.post("/api/clusters/{cluster_id}/exclude", response_model=None)
@@ -323,20 +333,13 @@ def api_exclude_cluster(request: Request, cluster_id: str) -> Response:
     """Mark a cluster as excluded."""
     db = _get_db(request)
     try:
-        row = db.get_activity_cluster(cluster_id)
-        if row is None:
+        affected = db.update_activity_cluster(cluster_id, excluded=1)
+        if affected == 0:
             raise HTTPException(status_code=404, detail="Cluster not found")
-        db.update_activity_cluster(cluster_id, excluded=1)
         db.conn.commit()
-        updated = db.get_activity_cluster(cluster_id)
+        return _update_and_respond_cluster(request, db, cluster_id)
     finally:
         db.close()
-    if updated is None:
-        raise HTTPException(status_code=404, detail="Cluster not found")
-    parsed = _parse_cluster(dict(updated))
-    if _is_htmx(request):
-        return _render_cluster_partial(request, parsed)
-    return JSONResponse(content=parsed)
 
 
 class MergeRequest(BaseModel):
