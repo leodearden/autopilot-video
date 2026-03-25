@@ -709,6 +709,22 @@ class CatalogDB:
         cur = self.conn.execute("SELECT * FROM activity_clusters")
         return [dict(row) for row in cur.fetchall()]
 
+    def get_activity_clusters_by_ids(
+        self, cluster_ids: list[str],
+    ) -> dict[str, dict[str, object]]:
+        """Return activity clusters for the given IDs as a dict keyed by cluster_id.
+
+        Non-existent IDs are silently omitted. Empty input returns {}.
+        """
+        if not cluster_ids:
+            return {}
+        placeholders = ",".join("?" for _ in cluster_ids)
+        cur = self.conn.execute(
+            f"SELECT * FROM activity_clusters WHERE cluster_id IN ({placeholders})",
+            cluster_ids,
+        )
+        return {row["cluster_id"]: dict(row) for row in cur.fetchall()}
+
     def batch_delete_activity_clusters(self, cluster_ids: list[str]) -> int:
         """Delete multiple activity clusters in one query.
 
