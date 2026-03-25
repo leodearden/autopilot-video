@@ -550,6 +550,7 @@ class TestApiMergeClusters:
             json={"cluster_ids": ["c-1", "nonexistent"]},
         )
         assert resp.status_code == 404
+        assert "nonexistent" in resp.json()["detail"]
 
     def test_merge_deduplicates_clip_ids(
         self, app: FastAPI, client: TestClient,
@@ -956,6 +957,16 @@ class TestApiMergeClustersUseBatchFetch:
 
         monkeypatch.setattr(CatalogDB, "get_activity_cluster", _n1_trap)
 
+        # Positive spy: verify batch path IS called
+        batch_calls: list[int] = [0]
+        _original_batch = CatalogDB.get_activity_clusters_by_ids
+
+        def _batch_spy(self: object, cluster_ids: list[str]) -> dict:  # type: ignore[type-arg]
+            batch_calls[0] += 1
+            return _original_batch(self, cluster_ids)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(CatalogDB, "get_activity_clusters_by_ids", _batch_spy)
+
         resp = client.post(
             "/api/clusters/merge",
             json={"cluster_ids": ["c-1", "c-2"]},
@@ -964,6 +975,7 @@ class TestApiMergeClustersUseBatchFetch:
         data = resp.json()
         assert data["cluster_id"] == "c-2"
         assert sorted(data["clip_ids"]) == ["clip-1", "clip-2", "clip-3"]
+        assert batch_calls[0] >= 1, "Expected get_activity_clusters_by_ids to be called"
 
 
 class TestReviewHubClassifyGate:
