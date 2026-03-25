@@ -347,8 +347,6 @@ class TestParseSSEBodyFromConftest:
 
     def test_parses_multi_event_body(self) -> None:
         """Parses SSE text with multiple events separated by blank lines."""
-        from tests.conftest import _parse_sse_body
-
         text = "id:1\nevent:ping\ndata:hello\n\nid:2\nevent:pong\ndata:world\n\n"
         events = _parse_sse_body(text)
         assert len(events) == 2
@@ -357,8 +355,6 @@ class TestParseSSEBodyFromConftest:
 
     def test_trailing_event_without_blank_line(self) -> None:
         """Parses trailing event that lacks a blank-line terminator."""
-        from tests.conftest import _parse_sse_body
-
         text = "id:1\nevent:ping\ndata:hello"
         events = _parse_sse_body(text)
         assert len(events) == 1
@@ -366,8 +362,6 @@ class TestParseSSEBodyFromConftest:
 
     def test_extracts_id_event_data_fields(self) -> None:
         """Correctly extracts id, event, and data fields with whitespace stripping."""
-        from tests.conftest import _parse_sse_body
-
         text = 'id: 42\nevent: update\ndata: {"key": "val"}\n\n'
         events = _parse_sse_body(text)
         assert len(events) == 1

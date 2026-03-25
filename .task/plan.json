@@ -31,15 +31,15 @@
       "id": "step-2",
       "type": "impl",
       "description": "Convert sse_db fixture from `return db` to `try: yield db / finally: db.close()`. Add `Generator` return type hint (from typing import Generator). This matches the e2e_db pattern in test_web_e2e.py lines 40-47. The teardown test from step-1 should now pass.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "0094f22"
     },
     {
       "id": "step-3",
       "type": "test",
       "description": "Run pytest tests/test_sse.py::TestParseSSEBodyFromConftest -v to confirm the 3 existing tests pass as baseline before removing redundant imports. These tests currently use per-method imports but the module-level import on line 15 will take over.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "0094f22"
     },
     {
       "id": "step-4",
