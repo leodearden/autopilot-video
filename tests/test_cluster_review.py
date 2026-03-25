@@ -93,6 +93,42 @@ class TestGetActivityCluster:
 
 
 # ---------------------------------------------------------------------------
+# TestParseClusterMalformedJson — task-63 step-1
+# ---------------------------------------------------------------------------
+
+
+class TestParseClusterMalformedJson:
+    """Tests for _parse_cluster handling of malformed JSON in clip_ids_json."""
+
+    def test_malformed_json_returns_empty_clip_ids(self) -> None:
+        """_parse_cluster returns empty clip_ids and clip_count=0 for invalid JSON."""
+        from autopilot.web.routes.review import _parse_cluster
+
+        row: dict[str, object] = {"clip_ids_json": "{bad json"}
+        result = _parse_cluster(row)
+        assert result["clip_ids"] == []
+        assert result["clip_count"] == 0
+
+    def test_none_clip_ids_json_returns_empty_list(self) -> None:
+        """_parse_cluster returns empty clip_ids when clip_ids_json is None."""
+        from autopilot.web.routes.review import _parse_cluster
+
+        row: dict[str, object] = {"clip_ids_json": None}
+        result = _parse_cluster(row)
+        assert result["clip_ids"] == []
+        assert result["clip_count"] == 0
+
+    def test_valid_json_still_works(self) -> None:
+        """_parse_cluster still parses valid JSON correctly."""
+        from autopilot.web.routes.review import _parse_cluster
+
+        row: dict[str, object] = {"clip_ids_json": '["a","b"]'}
+        result = _parse_cluster(row)
+        assert result["clip_ids"] == ["a", "b"]
+        assert result["clip_count"] == 2
+
+
+# ---------------------------------------------------------------------------
 # TestDeleteActivityCluster — step-3
 # ---------------------------------------------------------------------------
 
@@ -382,6 +418,147 @@ class TestApiMergeClusters:
         )
         assert resp.status_code == 404
 
+    def test_merge_deduplicates_clip_ids(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """Merge deduplicates shared clip_ids across clusters."""
+        _seed_cluster_via_db(
+            app, "c-1", clip_ids_json='["a","b"]',
+        )
+        _seed_cluster_via_db(
+            app, "c-2", clip_ids_json='["b","c","d"]',
+        )
+        resp = client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": ["c-1", "c-2"]},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        # 4 unique clips, not 5 (b is shared)
+        assert len(data["clip_ids"]) == 4
+        assert len(data["clip_ids"]) == len(set(data["clip_ids"]))
+        assert set(data["clip_ids"]) == {"a", "b", "c", "d"}
+
+    def test_merge_rolls_back_on_failure(
+        self, app: FastAPI, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Merge rolls back all changes if delete_activity_cluster fails mid-operation."""
+        _seed_cluster_via_db(app, "c-1", clip_ids_json='["a"]', label="Original-1")
+        _seed_cluster_via_db(
+            app, "c-2", clip_ids_json='["b","c"]', label="Original-2",
+        )
+
+        # Make delete_activity_cluster fail after update has been applied
+        original_delete = CatalogDB.delete_activity_cluster
+
+        def _exploding_delete(self: CatalogDB, cluster_id: str) -> None:
+            raise RuntimeError("simulated DB failure")
+
+        monkeypatch.setattr(CatalogDB, "delete_activity_cluster", _exploding_delete)
+
+        err_client = TestClient(app, raise_server_exceptions=False)
+        resp = err_client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": ["c-1", "c-2"]},
+        )
+        assert resp.status_code == 500
+
+        # Restore original delete so we can read
+        monkeypatch.setattr(CatalogDB, "delete_activity_cluster", original_delete)
+
+        # Both clusters should still exist with original data (rolled back)
+        read_client = TestClient(app)
+        r1 = read_client.get("/api/clusters/c-1")
+        assert r1.status_code == 200
+        assert r1.json()["label"] == "Original-1"
+
+        r2 = read_client.get("/api/clusters/c-2")
+        assert r2.status_code == 200
+        assert r2.json()["label"] == "Original-2"
+        # c-2 clip_ids should be unchanged (update was rolled back)
+        assert r2.json()["clip_ids"] == ["b", "c"]
+
+    def test_merge_malformed_timestamp_returns_422(
+        self, app: FastAPI,
+    ) -> None:
+        """Merge returns 422 with actionable detail for malformed time_start."""
+        _seed_cluster_via_db(
+            app, "c-1",
+            clip_ids_json='["a"]',
+            time_start="2025-06-15T22:00:00+10:00",
+            time_end="2025-06-15T23:00:00+10:00",
+        )
+        _seed_cluster_via_db(
+            app, "c-2",
+            clip_ids_json='["b","c"]',
+            time_start="not-a-timestamp",
+            time_end="2025-06-16T02:00:00+00:00",
+        )
+        err_client = TestClient(app, raise_server_exceptions=False)
+        resp = err_client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": ["c-1", "c-2"]},
+        )
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert "Invalid timestamp format" in detail
+        assert "not-a-timestamp" in detail
+
+    def test_merge_malformed_time_end_returns_422(
+        self, app: FastAPI,
+    ) -> None:
+        """Merge returns 422 with actionable detail for malformed time_end."""
+        _seed_cluster_via_db(
+            app, "c-1",
+            clip_ids_json='["a"]',
+            time_start="2025-06-15T08:00:00",
+            time_end="2025-06-15T09:00:00",
+        )
+        _seed_cluster_via_db(
+            app, "c-2",
+            clip_ids_json='["b","c"]',
+            time_start="2025-06-15T10:00:00",
+            time_end="2025/13/45",
+        )
+        err_client = TestClient(app, raise_server_exceptions=False)
+        resp = err_client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": ["c-1", "c-2"]},
+        )
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert "Invalid timestamp format" in detail
+        assert "2025/13/45" in detail
+
+    def test_merge_timestamp_comparison_chronological(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """Merge uses chronological (not lexicographic) timestamp comparison."""
+        # c-1: starts at 12:00 UTC (22:00+10:00), ends 13:00 UTC
+        _seed_cluster_via_db(
+            app, "c-1",
+            clip_ids_json='["a"]',
+            time_start="2025-06-15T22:00:00+10:00",
+            time_end="2025-06-15T23:00:00+10:00",
+        )
+        # c-2: starts at 14:00 UTC, ends 02:00 UTC next day
+        _seed_cluster_via_db(
+            app, "c-2",
+            clip_ids_json='["b","c"]',
+            time_start="2025-06-15T14:00:00+00:00",
+            time_end="2025-06-16T02:00:00+00:00",
+        )
+        resp = client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": ["c-1", "c-2"]},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        # c-1 starts earlier chronologically (12:00 UTC < 14:00 UTC)
+        assert data["time_start"] == "2025-06-15T22:00:00+10:00"
+        # c-2 ends later chronologically (02:00 UTC next day > 13:00 UTC)
+        assert data["time_end"] == "2025-06-16T02:00:00+00:00"
+
 
 # ---------------------------------------------------------------------------
 # TestClustersPage — step-17
@@ -422,6 +599,35 @@ class TestClustersPage:
 
 
 # ---------------------------------------------------------------------------
+# TestClassifyGateApproveCondition — task-63 step-3
+# ---------------------------------------------------------------------------
+
+
+class TestClassifyGateApproveCondition:
+    """Tests for show_approve_gate logic on /review/clusters."""
+
+    def test_shows_approve_when_non_excluded_clusters_exist(
+        self, tmp_path: Path,
+    ) -> None:
+        """Approve gate button shows when reviewed (non-excluded) clusters exist."""
+        app = _setup_classify_gate_app(tmp_path, clusters=2, excluded=0)
+        client = TestClient(app)
+        resp = client.get("/review/clusters")
+        assert resp.status_code == 200
+        assert "Approve Gate" in resp.text
+
+    def test_hides_approve_when_all_clusters_excluded(
+        self, tmp_path: Path,
+    ) -> None:
+        """Approve gate button hidden when ALL clusters are excluded."""
+        app = _setup_classify_gate_app(tmp_path, clusters=2, excluded=2)
+        client = TestClient(app)
+        resp = client.get("/review/clusters")
+        assert resp.status_code == 200
+        assert "Approve Gate" not in resp.text
+
+
+# ---------------------------------------------------------------------------
 # TestHtmxClusterResponses — step-19
 # ---------------------------------------------------------------------------
 
@@ -456,6 +662,61 @@ class TestHtmxClusterResponses:
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
         assert "excluded" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# TestClusterCardRelabelInputs — task-63 step-11
+# ---------------------------------------------------------------------------
+
+
+class TestClusterCardRelabelInputs:
+    """Tests for cluster_card.html relabel input fields."""
+
+    def test_non_excluded_card_has_label_input(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """Non-excluded cluster card contains an input with name='label' and current value."""
+        _seed_cluster_via_db(app, "c-1", label="Morning Walk", description="Walk in the park")
+        resp = client.post(
+            "/api/clusters/c-1/relabel",
+            json={"label": "Morning Walk"},
+            headers={"HX-Request": "true"},
+        )
+        assert resp.status_code == 200
+        body = resp.text
+        assert 'name="label"' in body
+        assert 'value="Morning Walk"' in body
+
+    def test_non_excluded_card_has_description_input(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """Non-excluded cluster card contains a textarea with name='description'."""
+        _seed_cluster_via_db(app, "c-1", label="Morning Walk", description="Walk in the park")
+        resp = client.post(
+            "/api/clusters/c-1/relabel",
+            json={"label": "Morning Walk"},
+            headers={"HX-Request": "true"},
+        )
+        assert resp.status_code == 200
+        body = resp.text
+        assert 'name="description"' in body
+        assert "Walk in the park" in body
+
+    def test_relabel_button_sends_json_body(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """Relabel button has hx-vals with js: prefix to send JSON."""
+        _seed_cluster_via_db(app, "c-1", label="Test", description="Desc")
+        resp = client.post(
+            "/api/clusters/c-1/relabel",
+            json={"label": "Test"},
+            headers={"HX-Request": "true"},
+        )
+        assert resp.status_code == 200
+        body = resp.text
+        # Button should have hx-vals='js:...' to gather input values as JSON
+        assert "hx-vals" in body
+        assert "js:" in body
 
 
 # ---------------------------------------------------------------------------

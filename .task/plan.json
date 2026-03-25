@@ -1,233 +1,185 @@
 {
-  "task_id": "50",
-  "title": "Render + upload review",
+  "task_id": "63",
+  "title": "Fix bugs in cluster merge/review: timestamp comparison, UI interaction, error handling",
   "files": [
-    "autopilot/db.py",
     "autopilot/web/routes/review.py",
-    "autopilot/web/templates/review/renders.html",
-    "autopilot/web/templates/review/uploads.html",
-    "tests/test_render_review.py"
+    "autopilot/web/templates/partials/cluster_card.html",
+    "tests/test_cluster_review.py"
   ],
   "modules": [
-    "autopilot/db",
     "autopilot/web/routes",
-    "autopilot/web/templates/review",
+    "autopilot/web/templates",
     "tests"
   ],
-  "analysis": "Build render review page (/review/render/{narrative_id}) with HTML5 video player and quality validation, upload status page (/review/uploads), video streaming endpoint, and supporting JSON APIs. The codebase has a mature pattern: review.py contains both /review/* page routes and /api/* JSON routes with HTMX-aware dual responses (HTML partial vs JSON). Templates extend base.html using Tailwind dark mode + HTMX. CatalogDB has edit_plans (narrative_id PK, edl_json, otio_path, validation_json, render_path) and uploads (narrative_id PK, youtube_video_id, youtube_url, uploaded_at, privacy_status) tables with single-record CRUD, but no list methods \u2014 need to add list_edit_plans() and list_uploads() with LEFT JOIN to narratives for title data. Video streaming is new to the codebase \u2014 Starlette's FileResponse supports Range headers natively for seeking. The existing gates API (/api/gates/{stage}/approve, /api/gates/{stage}/skip) handles render gate actions, so the template just wires to those endpoints. The narrative_scripts table (get_narrative_script) provides script scene data for the side-by-side view. The _REVIEW_LINKS dict in review_hub needs render/upload entries with pending counts.\n\n**Post-review fix (steps 17-18):** The upload stage pending count at review.py:68-71 has a logic error \u2014 it counts completed uploads as pending (semantically inverted). The correct logic mirrors the render stage: pending uploads = narratives that have been rendered (have a render_path in edit_plans) but lack an upload record. This is a set difference: rendered_ids - uploaded_ids.",
-  "prerequisites": [
-    {
-      "id": "pre-1",
-      "description": "Create tests/test_render_review.py with shared fixtures: db fixture (tmp_path file-backed CatalogDB), app fixture (create_app with init_default_gates), client fixture (TestClient), _seed_narrative helper, _seed_edit_plan helper (inserts narrative + upserts edit_plan with render_path and validation_json), _seed_upload helper (inserts narrative + upload record)",
-      "status": "done",
-      "commit": "f7ae909",
-      "tests": []
-    }
-  ],
+  "analysis": "Six bugs in the cluster review subsystem discovered during task 47 review. The bugs span three areas: (1) data processing in review.py \u2014 _parse_cluster crashes on malformed JSON (line 222), timestamp comparison uses lexicographic min/max on raw strings (lines 383-386), merge builds clip_ids without deduplication (lines 378-380); (2) transaction safety \u2014 merge endpoint mutates DB without explicit transaction wrapping, relying on implicit sqlite3 behavior (lines 388-404); (3) UI/logic \u2014 cluster_card.html relabel button sends empty POST body (lines 19-24), and classify gate condition is semantically inverted showing approve only when ALL clusters are excluded (line 243). Existing test file test_cluster_review.py has thorough coverage patterns: TestApiMergeClusters for merge operations, _seed_cluster_via_db helper for seeding test data, _setup_classify_gate_app for gate condition tests, and TestHtmxClusterResponses for HTML partial testing. CatalogDB provides __enter__/__exit__ context manager with commit-on-success / rollback-on-exception semantics (db.py:41-53) that should be used for explicit transaction safety in the merge endpoint. The relabel endpoint (api_relabel_cluster) accepts a ClusterRelabel Pydantic model as JSON body \u2014 the template fix must send JSON, following the hx-vals='js:...' pattern already used by the merge button in clusters.html.\n\nPost-review addition: datetime.fromisoformat() introduced in step-8 as the key function in min()/max() for chronological timestamp comparison has no error handling. A malformed timestamp in the DB (truncated, wrong separator, legacy format) causes ValueError that propagates uncaught as an unhandled 500. Steps 13-14 add a _parse_ts helper with explicit error handling to surface actionable 422 errors.",
+  "prerequisites": [],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing tests for CatalogDB.list_edit_plans(): returns list of all edit plans joined with narrative title; returns empty list when none exist; includes all columns (narrative_id, edl_json, otio_path, validation_json, render_path, narrative_title)",
+      "description": "Write failing test for _parse_cluster malformed JSON handling: import _parse_cluster from review module, call with {'clip_ids_json': '{bad json'}, verify it returns empty clip_ids list and clip_count=0 instead of raising json.JSONDecodeError. Also test with clip_ids_json=None still returns empty list (preserves existing behavior).",
       "status": "done",
-      "commit": "869aa32"
+      "commit": "2275ff4282bcf0b90b841c5ff103e58a7a2b6fad"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Implement list_edit_plans() in CatalogDB \u2014 SELECT e.*, n.title as narrative_title FROM edit_plans e LEFT JOIN narratives n ON e.narrative_id = n.narrative_id. Returns list[dict].",
+      "description": "In _parse_cluster (review.py:222), wrap the json.loads(str(raw)) call in try/except json.JSONDecodeError, defaulting to empty list on failure \u2014 matching the existing 'if raw else []' fallback pattern.",
       "status": "done",
-      "commit": "c7ddce9"
+      "commit": "bccfc5d3e783d6cceb9a92075b4e894812f03883"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write failing tests for CatalogDB.list_uploads(): returns list of all uploads joined with narrative title; returns empty list when none exist; includes all columns (narrative_id, youtube_video_id, youtube_url, uploaded_at, privacy_status, narrative_title)",
+      "description": "Write failing tests for classify gate approve condition on /review/clusters page: (a) setup classify gate='waiting' with 2 clusters, 0 excluded \u2014 page SHOULD contain 'Approve Gate' button; (b) setup classify gate='waiting' with 2 clusters, all 2 excluded \u2014 page should NOT contain 'Approve Gate'. Use _setup_classify_gate_app helper. Currently test (a) fails because the inverted condition requires len(non_excluded)==0.",
       "status": "done",
-      "commit": "5ad716e"
+      "commit": "6caeac8844818e8a8e3718c4f880e57d2f051ace"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement list_uploads() in CatalogDB \u2014 SELECT u.*, n.title as narrative_title FROM uploads u LEFT JOIN narratives n ON u.narrative_id = n.narrative_id ORDER BY u.uploaded_at DESC. Returns list[dict].",
+      "description": "In clusters_page (review.py:243), change show_approve_gate condition from 'len(non_excluded) == 0' to 'len(non_excluded) > 0'. Approve gate shows when reviewed clusters exist to proceed with, not when all are excluded.",
       "status": "done",
-      "commit": "2975d21"
+      "commit": "22b3440218af5ba091d7944fc3d5f3460cb81b7d"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write failing tests for GET /api/renders/{narrative_id}: returns JSON with edit plan data (narrative_id, render_path, validation parsed from validation_json, narrative title); returns 404 for nonexistent narrative_id",
+      "description": "Write failing test for merge clip_id deduplication: seed c-1 with clip_ids_json='[\"a\",\"b\"]' and c-2 with clip_ids_json='[\"b\",\"c\",\"d\"]' (note 'b' is shared). Merge them and assert clip_ids has no duplicates \u2014 exactly 4 unique clips, not 5. Assert len(data['clip_ids']) == len(set(data['clip_ids'])).",
       "status": "done",
-      "commit": "c365091"
+      "commit": "6ca6bdbf47138e617befa655584bfb805c99b86c"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Implement api_get_render route in review.py \u2014 GET /api/renders/{narrative_id}. Fetches edit_plan and narrative, parses validation_json into dict, returns composite JSON response with render status. Raises 404 if no edit plan found.",
+      "description": "In api_merge_clusters (review.py:378-380), replace the simple extend() loop with deduplication using dict.fromkeys(): 'all_clip_ids = list(dict.fromkeys(cid for pc in parsed_clusters for cid in pc[\"clip_ids\"]))'.",
       "status": "done",
-      "commit": "002c89c"
+      "commit": "cf7a0d5880c6f4f42507368c8494b501c58dab41"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write failing tests for GET /api/renders/{narrative_id}/video: returns 200 with video/mp4 content-type when render file exists (use tmp_path to create a small mock .mp4 file); returns 404 when no edit plan exists; returns 404 when render_path is null or file missing",
+      "description": "Write failing test for timestamp comparison in merge: seed c-1 with time_start='2025-06-15T22:00:00+10:00' and time_end='2025-06-15T23:00:00+10:00', seed c-2 with time_start='2025-06-15T14:00:00+00:00' and time_end='2025-06-16T02:00:00+00:00'. Chronologically c-1 starts earlier (12:00 UTC) but sorts later lexicographically. Assert merged time_start matches c-1's value. Test currently fails because lexicographic min picks c-2.",
       "status": "done",
-      "commit": "7ac4074"
+      "commit": "bf84283b573d59dcdb49a93c141d40012847bba71"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Implement api_stream_video route in review.py \u2014 GET /api/renders/{narrative_id}/video. Fetches edit_plan, validates render_path exists on filesystem, returns FileResponse(render_path, media_type='video/mp4'). Starlette FileResponse handles Range headers natively for seeking.",
+      "description": "In api_merge_clusters (review.py:383-386), replace lexicographic min/max with datetime-aware comparison. Add 'from datetime import datetime' import. Use 'min(time_starts, key=datetime.fromisoformat)' and 'max(time_ends, key=datetime.fromisoformat)'. This preserves original string format while comparing chronologically.",
       "status": "done",
-      "commit": "df62afe"
+      "commit": "84c476b7e33ae119f451da325aa24fc4c8836fb9"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write failing tests for GET /api/uploads: returns JSON list of uploads with narrative_title joined; returns empty list when no uploads exist; includes all fields (narrative_id, youtube_video_id, youtube_url, uploaded_at, privacy_status, narrative_title)",
+      "description": "Write test for merge transaction safety: seed 2 clusters, use monkeypatch to make db.delete_activity_cluster raise RuntimeError after update has been applied. Call merge endpoint \u2014 expect error response. Then read both clusters directly from DB and verify they still exist with original data unchanged (the update was rolled back along with the failed delete).",
       "status": "done",
-      "commit": "ba0ad8b"
+      "commit": "77ca8c8ea128ccb4a77eb83b013499652c42a4e3"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Implement api_list_uploads route in review.py \u2014 GET /api/uploads. Calls db.list_uploads(), returns JSON list.",
+      "description": "In api_merge_clusters (review.py:388-404), wrap the mutation block (update_activity_cluster + delete loop) in 'with db:' context manager. Remove the explicit db.conn.commit() call \u2014 CatalogDB.__exit__ handles commit-on-success and rollback-on-exception. Keep the post-merge read (get_activity_cluster) inside the with block before __exit__ commits.",
       "status": "done",
-      "commit": "2e70397"
+      "commit": "09f85797f71a4bf424fd8df1c6f13df0937c7a4e"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write failing tests for GET /review/render/{narrative_id}: returns 200 HTML containing video player element when render_path exists and file is present; shows 'No render available' when render_path is null; shows validation results when validation_json is set; shows script scene list from narrative_scripts; returns 404 for nonexistent narrative; contains links to gate actions (approve, skip)",
+      "description": "Write failing test for cluster_card template relabel inputs: render the cluster card partial for a non-excluded cluster (via HTMX relabel or exclude returning HTML, or direct template rendering) and verify HTML contains: (a) an input element with name='label' and the cluster's current label as value, (b) a textarea/input with name='description' and the cluster's current description as value. These must be associated with the relabel button so values are submitted.",
       "status": "done",
-      "commit": "5fc14ac"
+      "commit": "09c84ef"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Implement render_review_page route (GET /review/render/{narrative_id}) in review.py and create renders.html template. Route fetches narrative, edit_plan, and narrative_script; parses validation_json and script_json; passes structured context to template. Template: extends base.html, two-column layout \u2014 left side has HTML5 <video> player pointing to /api/renders/{id}/video with controls, validation results as badges/list, and action buttons (Approve for Upload, Reject with notes textarea, Download link, Skip Upload); right side has script scene list parsed from narrative_scripts.",
+      "description": "Update cluster_card.html: for non-excluded clusters, replace static h3 label display with <input type='text' name='label' value='...'> and replace static p description with <textarea name='description'>...</textarea>, styled as inline-editable text. Wire the relabel button using hx-vals='js:{...}' to read values from sibling inputs and hx-headers='{\"Content-Type\":\"application/json\"}' pattern, or an onclick handler that POSTs JSON and swaps outerHTML \u2014 following the JS hx-vals approach used by the merge button in clusters.html.",
       "status": "done",
-      "commit": "85f8373"
+      "commit": "0cb6890"
     },
     {
       "id": "step-13",
       "type": "test",
-      "description": "Write failing tests for GET /review/uploads: returns 200 HTML with table containing upload data (narrative title, YouTube video ID, YouTube URL, privacy status, uploaded_at); shows 'No uploads yet' when no uploads exist",
+      "description": "Write failing test for malformed timestamp handling during merge (review feedback: unhandled_exception_at_data_boundary). In TestApiMergeClusters, add test_merge_malformed_timestamp_returns_422: seed c-1 with time_start='2025-06-15T22:00:00+10:00' (valid) and c-2 with time_start='not-a-timestamp' (malformed). POST merge and assert response is 422 with detail containing 'Invalid timestamp format' and the offending value 'not-a-timestamp'. Also add test_merge_malformed_time_end_returns_422: seed c-1 with valid time_end and c-2 with time_end='2025/13/45' (wrong separators). Assert 422 with actionable detail. Both tests currently fail because datetime.fromisoformat() raises uncaught ValueError \u2192 500.",
       "status": "done",
-      "commit": "cb86cc9"
+      "commit": "8b3100d"
     },
     {
       "id": "step-14",
       "type": "impl",
-      "description": "Implement uploads_page route (GET /review/uploads) in review.py and create uploads.html template. Route calls db.list_uploads() and passes to template. Template: extends base.html, simple table with columns for narrative title (linked to render review), YouTube video ID, YouTube URL (as clickable link), privacy status badge, uploaded_at timestamp.",
+      "description": "In review.py, define a module-level helper '_parse_ts(s: str) -> datetime' that wraps datetime.fromisoformat(s) in try/except ValueError and raises HTTPException(422, detail=f\"Invalid timestamp format: {s!r}\") on failure. Replace the bare 'datetime.fromisoformat' key references in min(time_starts, key=...) and max(time_ends, key=...) on lines 392-393 with '_parse_ts'. This converts the uncaught ValueError into an actionable 422 response that identifies the offending value, instead of an opaque 500.",
       "status": "done",
-      "commit": "5e79f1f"
-    },
-    {
-      "id": "step-15",
-      "type": "test",
-      "description": "Write failing tests for review hub integration: when render gate is 'waiting', hub page contains 'render' card with link to /review/render and pending count of narratives with edit plans but no render_path; when upload gate is 'waiting', hub contains 'upload' card with link to /review/uploads",
-      "status": "done",
-      "commit": "61a0e7c"
-    },
-    {
-      "id": "step-16",
-      "type": "impl",
-      "description": "Update _REVIEW_LINKS dict to add 'render': '/review/render' and 'upload': '/review/uploads'. In review_hub route, add render stage pending count logic (count edit plans without render_path) and upload stage logic (count narratives in rendered status without upload record). Add simple GET /review/render index route listing narratives with edit plans and links to individual render review pages.",
-      "status": "done",
-      "commit": "7e1a74b"
-    },
-    {
-      "id": "step-17",
-      "type": "test",
-      "description": "Write failing test for upload pending count logic in review hub: seed 3 narratives with rendered edit plans (render_path set) and 1 upload record for one of them. Set upload gate to 'waiting'. Assert hub shows pending count of 2 (the 2 rendered-but-not-uploaded narratives). Also seed 1 edit plan WITHOUT render_path and verify it is NOT counted as pending upload. This test exposes the bug at review.py:68-71 where len(uploads) counts completed uploads instead of pending ones.",
-      "status": "done",
-      "commit": "40625b8"
-    },
-    {
-      "id": "step-18",
-      "type": "impl",
-      "description": "Fix upload pending count logic at review.py:68-71. Replace `uploads = db.list_uploads(); summary['pending_count'] = len(uploads)` with set-difference logic: `plans = db.list_edit_plans()` (reuse if already fetched for render stage), compute `rendered_ids = {p['narrative_id'] for p in plans if p.get('render_path')}`, compute `uploaded_ids = {u['narrative_id'] for u in db.list_uploads()}`, then `summary['pending_count'] = len(rendered_ids - uploaded_ids)`. Update pending_label to 'pending uploads'.",
-      "status": "done",
-      "commit": "d4df2d9"
+      "commit": "75c8a99"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use Starlette FileResponse for video streaming rather than custom chunked streaming",
-      "rationale": "Starlette's FileResponse natively supports HTTP Range headers for video seeking since v0.20+. It handles Content-Range, Accept-Ranges, and 206 Partial Content responses automatically. No need to implement custom byte-range parsing. This is the standard approach for serving static files in FastAPI/Starlette apps."
+      "decision": "Use datetime.fromisoformat() as key function in min/max for timestamp comparison, preserving original string",
+      "rationale": "The DB stores timestamps as ISO strings that may vary in format (timezone-aware vs naive, varying precision). Parsing to datetime for comparison is correct; returning the original string preserves the stored format. fromisoformat() handles both naive and tz-aware formats in Python 3.11+."
     },
     {
-      "decision": "Add list_edit_plans() and list_uploads() with LEFT JOIN to narratives table for title data",
-      "rationale": "The uploads page needs narrative titles alongside upload data, and the hub needs edit plan counts. A LEFT JOIN is a single query vs N+1 individual lookups. Following the existing CatalogDB pattern of returning list[dict] from fetchall(). LEFT JOIN ensures records show even if narrative was deleted."
+      "decision": "Use dict.fromkeys() for clip_id deduplication instead of set()",
+      "rationale": "dict.fromkeys() preserves insertion order (first occurrence wins) while set() gives non-deterministic order. Preserving order ensures stable JSON output and deterministic test assertions."
     },
     {
-      "decision": "Template render actions (approve, reject, skip) wire to existing gates API \u2014 no new action endpoints",
-      "rationale": "The gates.py router already provides POST /api/gates/{stage}/approve, POST /api/gates/{stage}/skip, and PUT /api/gates/{stage} for updating status/notes. The render review template's HTMX buttons target these existing endpoints directly. This avoids duplicating gate logic and keeps the action surface consistent across all pipeline stages."
+      "decision": "Wrap merge writes in 'with db:' context manager rather than relying on close()-rollback",
+      "rationale": "CatalogDB's __exit__ provides explicit commit-on-success and rollback-on-error (db.py:44-53). Using 'with db:' makes transactional intent clear, matches the class's documented usage pattern (seen in _setup_classify_gate_app), and is resilient to future refactoring like connection pooling."
     },
     {
-      "decision": "Create a minimal GET /review/render index page listing narratives with edit plans",
-      "rationale": "The review hub links to /review/render for the render gate, but individual render reviews are at /review/render/{id}. Without an index, the hub link would 404. A simple list page with links to individual render reviews is the minimal viable landing page. It also serves as a render queue overview."
+      "decision": "Invert classify gate condition from len(non_excluded) == 0 to > 0",
+      "rationale": "The narrative gate shows approve when proposed_count == 0 (nothing pending review). For clusters there's no 'pending' status \u2014 the condition should reflect 'reviewed clusters exist to proceed with'. Showing approve when ALL clusters are excluded (nothing to proceed with) is semantically wrong. The template text 'All clusters have been reviewed' confirms the intent is non-empty reviewed clusters."
     },
     {
-      "decision": "Parse validation_json and script_json in route handler, pass structured dicts to template",
-      "rationale": "Following the existing pattern where _parse_narrative and _parse_cluster extract JSON fields in Python rather than doing JSON parsing in Jinja2 templates. Keeps templates simple and makes the data easy to test via JSON API endpoints."
+      "decision": "Add inline editable inputs to cluster_card.html with JS-based JSON encoding for relabel",
+      "rationale": "The endpoint expects JSON body (Pydantic ClusterRelabel model). Rather than changing the endpoint contract to accept form data (breaking existing tests), we keep the JSON API and use JS to construct the request body \u2014 the same pattern used by the merge button's hx-vals='js:...' in clusters.html."
     },
     {
-      "decision": "Create separate test file tests/test_render_review.py",
-      "rationale": "Following the precedent set by test_cluster_review.py (task 47). Render review is a distinct feature area with its own fixtures (_seed_edit_plan, mock video files), DB method tests, and API tests. Separate files keep tests organized and allow parallel execution."
+      "decision": "Catch json.JSONDecodeError specifically in _parse_cluster, not broad Exception",
+      "rationale": "Only JSON parsing can fail on clip_ids_json. Catching broadly would mask programming errors. The empty list fallback is safe \u2014 the cluster card still renders, showing 0 clips. Note: _parse_narrative has the same vulnerability but is out of scope for this task."
     },
     {
-      "decision": "Video streaming returns 404 when render_path is null or file doesn't exist on filesystem",
-      "rationale": "A render may have an edit plan but no render_path yet (render not started), or the render_path may point to a file that was moved/deleted. Both cases should return 404 rather than 500, giving the client a clear signal that the video is not available."
-    },
-    {
-      "decision": "Upload pending count uses set-difference (rendered_ids - uploaded_ids) instead of counting uploads",
-      "rationale": "The upload stage's 'pending' work is narratives that are rendered but not yet uploaded. Counting completed uploads is semantically inverted \u2014 more uploads would show higher pending count. The set-difference mirrors the render stage pattern (edit plans without render_path). This correctly answers 'how many videos still need uploading?' by finding rendered narratives missing from the uploads table."
+      "decision": "Raise HTTPException(422) for malformed timestamps rather than falling back to lexicographic comparison",
+      "rationale": "Option (b) from reviewer feedback. A malformed timestamp in the DB indicates data corruption that should be surfaced, not silently masked. A 422 with the offending value in the detail message gives the caller an actionable error. Falling back to lexicographic comparison (option a) would silently produce incorrect merge results \u2014 the merge would succeed but time_start/time_end could be wrong, which is worse than a clear error. The _parse_ts helper keeps the fix localized and reusable."
     }
   ],
   "reuse": [
     {
-      "what": "_get_db(request) and _is_htmx(request) helper functions",
-      "where": "autopilot/web/routes/review.py lines 18-25",
-      "how": "Reuse directly for all new render/upload routes. Same file, no duplication. All new routes follow the try/finally db.close() pattern."
+      "what": "CatalogDB context manager (__enter__/__exit__) for transaction safety",
+      "where": "autopilot/db.py lines 41-53",
+      "how": "Wrap merge writes in 'with db:' \u2014 __exit__ auto-commits on success, auto-rolls back on exception. Eliminates the explicit db.conn.commit() call."
     },
     {
-      "what": "Existing gates API for render actions (approve, skip, reject with notes)",
-      "where": "autopilot/web/routes/gates.py \u2014 POST /api/gates/{stage}/approve, POST /api/gates/{stage}/skip, PUT /api/gates/{stage}",
-      "how": "Render review template wires HTMX buttons directly to these existing endpoints. Approve \u2192 POST /api/gates/render/approve, Skip Upload \u2192 POST /api/gates/render/skip, Reject \u2192 PUT /api/gates/render with status='rejected' and notes from textarea."
+      "what": "_setup_classify_gate_app helper for gate condition tests",
+      "where": "tests/test_cluster_review.py lines 465-488",
+      "how": "Reuse this helper (creates app with classify gate='waiting' and configurable cluster/excluded counts) to set up test scenarios for the approve gate condition fix."
     },
     {
-      "what": "CatalogDB existing single-record CRUD: get_edit_plan, get_upload, get_narrative, get_narrative_script",
-      "where": "autopilot/db.py \u2014 get_edit_plan (line 881), get_upload (line 979), get_narrative (line 752), get_narrative_script (line 910)",
-      "how": "Render review route calls get_edit_plan + get_narrative + get_narrative_script to compose the full render review context. Video streaming route calls get_edit_plan to find render_path."
+      "what": "_seed_cluster_via_db helper for merge bug tests",
+      "where": "tests/test_cluster_review.py lines 153-171",
+      "how": "Use this existing helper to seed clusters with specific clip_ids_json, time_start, and time_end values for deduplication and timestamp comparison tests."
     },
     {
-      "what": "Template layout pattern: extends base.html, Tailwind dark mode, HTMX attributes",
-      "where": "autopilot/web/templates/review/narratives.html and review/clusters.html",
-      "how": "renders.html follows same structure: extends base.html, max-w-7xl container, title section, content grid. uploads.html follows the simpler table layout. Both use same Tailwind color scheme (surface-800, gray-400 text, colored badges)."
+      "what": "Existing TestApiMergeClusters test patterns",
+      "where": "tests/test_cluster_review.py lines 307-383",
+      "how": "Follow the same setup/assert pattern for new merge tests: seed clusters via _seed_cluster_via_db, POST to /api/clusters/merge, assert on response JSON fields."
     },
     {
-      "what": "Test fixture pattern: file-backed DB, create_app with init_default_gates, TestClient, _seed_* helpers",
-      "where": "tests/test_review.py lines 19-41 and tests/test_cluster_review.py",
-      "how": "Create analogous fixtures in test_render_review.py: db fixture with tmp_path, app/client fixtures calling init_default_gates, _seed_edit_plan helper that inserts narrative + upserts edit plan, _seed_upload helper for upload records."
+      "what": "hx-vals='js:...' pattern from merge button",
+      "where": "autopilot/web/templates/review/clusters.html line 13",
+      "how": "Apply the same JS-based hx-vals approach for the relabel button to gather input field values and send as JSON body."
     },
     {
-      "what": "_parse_narrative / _parse_cluster pattern for JSON field deserialization",
-      "where": "autopilot/web/routes/review.py lines 107-112 and 218-225",
-      "how": "Create _parse_render helper that parses validation_json from edit_plan into a structured dict. Follows same pattern: pop JSON field, json.loads, add computed fields."
+      "what": "_render_cluster_partial for HTMX responses",
+      "where": "autopilot/web/routes/review.py lines 277-284",
+      "how": "Already wired \u2014 the relabel endpoint returns HTML partials for HTMX requests. Template input fix automatically works with existing route code, no route changes needed for Bug 2."
     },
     {
-      "what": "_REVIEW_LINKS dict and hub pending count pattern",
-      "where": "autopilot/web/routes/review.py lines 28-58",
-      "how": "Add 'render': '/review/render' and 'upload': '/review/uploads' entries. Add elif blocks for render/upload stages to compute pending counts: render counts edit plans without render_path, upload counts pending upload narratives."
-    },
-    {
-      "what": "list_edit_plans() already fetched for render stage in hub route",
-      "where": "autopilot/web/routes/review.py lines 62-67 (render stage elif block)",
-      "how": "For step-18, the upload stage can reuse the plans list if the render stage was also processed in the same request. Alternatively, call list_edit_plans() in the upload elif block \u2014 it's a lightweight query and keeps each stage block self-contained."
+      "what": "HTTPException pattern from existing endpoint validation",
+      "where": "autopilot/web/routes/review.py (merge endpoint 404/422 checks)",
+      "how": "The merge endpoint already raises HTTPException(404) and HTTPException(422) for validation failures. The _parse_ts helper follows the same pattern \u2014 raise HTTPException(422) with descriptive detail for malformed input at the data boundary."
     }
   ],
-  "_session_id": "50-ca894fe6",
-  "_created_at": "2026-03-24T23:26:01.801513+00:00"
+  "_session_id": "63-6eb7edb1",
+  "_created_at": "2026-03-25T01:08:39.360622+00:00"
 }

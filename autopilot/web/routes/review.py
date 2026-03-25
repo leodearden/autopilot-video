@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -239,11 +240,28 @@ def api_update_narrative(
 # ---------------------------------------------------------------------------
 
 
+def _parse_ts(s: str) -> datetime:
+    """Parse an ISO timestamp, raising HTTP 422 with the offending value on failure."""
+    try:
+        return datetime.fromisoformat(s)
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid timestamp format: {s!r}",
+        )
+
+
 def _parse_cluster(row: dict[str, object]) -> dict[str, object]:
     """Enrich a cluster row with parsed clip_ids and clip_count."""
     result = dict(row)
     raw = result.pop("clip_ids_json", None)
-    clip_ids: list[str] = json.loads(str(raw)) if raw else []
+    if raw:
+        try:
+            clip_ids: list[str] = json.loads(str(raw))
+        except json.JSONDecodeError:
+            clip_ids = []
+    else:
+        clip_ids = []
     result["clip_ids"] = clip_ids
     result["clip_count"] = len(clip_ids)
     return result
@@ -264,7 +282,7 @@ def clusters_page(request: Request) -> HTMLResponse:
         and classify_gate.get("status") == "waiting"
     )
     non_excluded = [c for c in clusters if not c.get("excluded")]
-    show_approve_gate = gate_waiting and len(non_excluded) == 0
+    show_approve_gate = gate_waiting and len(non_excluded) > 0
     templates = request.app.state.templates
     context = {
         "page_title": "Cluster Review",
@@ -398,16 +416,16 @@ def api_merge_clusters(
         largest = max(parsed_clusters, key=lambda c: int(str(c["clip_count"])))
         largest_id = str(largest["cluster_id"])
 
-        # Combine all clip_ids
-        all_clip_ids: list[str] = []
-        for pc in parsed_clusters:
-            all_clip_ids.extend(pc["clip_ids"])  # type: ignore[arg-type]
+        # Combine all clip_ids (deduplicated, preserving order)
+        all_clip_ids: list[str] = list(dict.fromkeys(
+            cid for pc in parsed_clusters for cid in pc["clip_ids"]  # type: ignore[union-attr]
+        ))
 
-        # Compute time range
+        # Compute time range (chronological comparison, not lexicographic)
         time_starts = [str(c["time_start"]) for c in clusters if c.get("time_start")]
         time_ends = [str(c["time_end"]) for c in clusters if c.get("time_end")]
-        min_start = min(time_starts) if time_starts else None
-        max_end = max(time_ends) if time_ends else None
+        min_start = min(time_starts, key=_parse_ts) if time_starts else None
+        max_end = max(time_ends, key=_parse_ts) if time_ends else None
 
         # Update largest cluster with combined data
         update_kwargs: dict[str, object] = {
@@ -417,16 +435,19 @@ def api_merge_clusters(
             update_kwargs["time_start"] = min_start
         if max_end is not None:
             update_kwargs["time_end"] = max_end
-        db.update_activity_cluster(largest_id, **update_kwargs)
 
-        # Delete non-largest clusters
-        for pc in parsed_clusters:
-            cid = str(pc["cluster_id"])
-            if cid != largest_id:
-                db.delete_activity_cluster(cid)
+        # Wrap mutations in context manager for explicit transaction safety:
+        # __exit__ commits on success, rolls back on exception.
+        with db:
+            db.update_activity_cluster(largest_id, **update_kwargs)
 
-        db.conn.commit()
-        merged = db.get_activity_cluster(largest_id)
+            # Delete non-largest clusters
+            for pc in parsed_clusters:
+                cid = str(pc["cluster_id"])
+                if cid != largest_id:
+                    db.delete_activity_cluster(cid)
+
+            merged = db.get_activity_cluster(largest_id)
     finally:
         db.close()
     if merged is None:

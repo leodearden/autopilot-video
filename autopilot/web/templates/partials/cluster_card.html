@@ -1,11 +1,20 @@
 <div id="cluster-{{ cluster.cluster_id }}" class="bg-surface-800 rounded-lg p-4 border border-gray-700">
     <div class="flex justify-between items-start mb-2">
+        {% if not cluster.excluded %}
+        <input type="text" name="label" value="{{ cluster.label or 'Unlabeled' }}"
+               class="text-lg font-semibold text-white bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none w-full">
+        {% else %}
         <h3 class="text-lg font-semibold text-white">{{ cluster.label or 'Unlabeled' }}</h3>
+        {% endif %}
         {% if cluster.excluded %}
         <span class="px-2 py-1 rounded text-xs font-medium bg-red-900 text-red-300">excluded</span>
         {% endif %}
     </div>
+    {% if not cluster.excluded %}
+    <textarea name="description" class="text-gray-400 text-sm mb-2 bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none w-full resize-none" rows="1">{{ cluster.description or '' }}</textarea>
+    {% else %}
     <p class="text-gray-400 text-sm mb-2">{{ cluster.description or '' }}</p>
+    {% endif %}
     <p class="text-gray-500 text-xs mb-1">{{ cluster.clip_count }} clips</p>
     {% if cluster.time_start and cluster.time_end %}
     <p class="text-gray-500 text-xs mb-1">{{ cluster.time_start }} &ndash; {{ cluster.time_end }}</p>
@@ -19,7 +28,9 @@
         <button class="bg-blue-700 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs font-medium"
                 hx-post="/api/clusters/{{ cluster.cluster_id }}/relabel"
                 hx-target="#cluster-{{ cluster.cluster_id }}"
-                hx-swap="outerHTML">
+                hx-swap="outerHTML"
+                hx-vals='js:{"label": this.closest("[id^=cluster-]").querySelector("[name=label]").value, "description": this.closest("[id^=cluster-]").querySelector("[name=description]").value}'
+                hx-headers='{"Content-Type": "application/json"}'>
             Relabel
         </button>
         <button class="bg-red-700 hover:bg-red-600 text-white px-3 py-1 rounded text-xs font-medium"
