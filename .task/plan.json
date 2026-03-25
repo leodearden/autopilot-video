@@ -1,155 +1,124 @@
 {
-  "task_id": "82",
-  "title": "Fix test fixture resource leaks and strengthen E2E assertions",
+  "task_id": "80",
+  "title": "Add batch get_activity_clusters_by_ids to eliminate N+1 in merge route",
   "files": [
-    "tests/test_web_e2e.py"
+    "autopilot/db.py",
+    "autopilot/web/routes/review.py",
+    "tests/test_cluster_review.py"
   ],
   "modules": [
+    "autopilot",
+    "autopilot/web/routes",
     "tests"
   ],
-  "analysis": "All 7 issues are confined to tests/test_web_e2e.py. Two fixtures (e2e_db at line 37-42, sse_db at line 312-317) create CatalogDB instances but never close them \u2014 conftest.py's catalog_db fixture (line 76-89) shows the correct yield+close pattern using Generator return type with yield/finally/db.close(). Five test assertions need strengthening: (3) test_stage_cards_show_progress uses brittle HTML offset slicing with html.find('</div>') that will break on template changes \u2014 the /api/stages JSON endpoint already exists and returns structured status_counts per stage; (4) test_render_detail_shows_script_scenes has a disjunctive assertion ('Opening' in text or 'scenes' in text.lower()) that always passes \u2014 the render_seeded_app fixture seeds scenes titled 'Opening' and 'Main' at lines 909-910, so assert on both directly; (5) test_last_event_id_resumes only checks len(events)==2 but doesn't verify the events are actually #4 and #5 \u2014 add checks on event type and/or id fields; (6) test_exclude_cluster checks POST response but doesn't verify persistence via GET, inconsistent with test_relabel_cluster at lines 841-843 which does verify persistence; (7) SSE tests at lines 405-407 and 431-433 use synthetic event types 'event_0' etc. not in VALID_EVENT_TYPES \u2014 use real types from autopilot/web/routes/sse.py lines 18-31. The insert_event DB method does not validate event types, so synthetic types work mechanically but produce unrealistic test data.",
-  "prerequisites": [
-    {
-      "id": "pre-1",
-      "description": "Convert e2e_db fixture (line 37-42) to yield fixture with db.close() in finally block, matching the conftest.py catalog_db pattern: change return type to Generator, use yield instead of return, add finally block calling db.close()",
-      "status": "done",
-      "commit": "0598405",
-      "tests": [
-        "tests/test_web_e2e.py::TestAppStartup",
-        "tests/test_web_e2e.py::TestDashboardRendering"
-      ]
-    },
-    {
-      "id": "pre-2",
-      "description": "Convert sse_db fixture (line 312-317) to yield fixture with db.close() in finally block, matching the same pattern as pre-1",
-      "status": "done",
-      "commit": "0598405",
-      "tests": [
-        "tests/test_web_e2e.py::TestSSEEventFlow"
-      ]
-    }
-  ],
+  "analysis": "The N+1 problem: `api_merge_clusters` (review.py:406-413) loops through `body.cluster_ids`, calling `db.get_activity_cluster(cid)` per iteration \u2014 one SELECT per cluster. The fix is a batch `SELECT * FROM activity_clusters WHERE cluster_id IN (?,?...)` method returning a dict keyed by cluster_id, mirroring the existing `batch_delete_activity_clusters` (db.py:712-725) which uses the same placeholder pattern. The new method `get_activity_clusters_by_ids` goes at db.py ~line 711 (after `get_activity_clusters`, before `batch_delete_activity_clusters`). The route refactor replaces lines 404-413 with a single call plus a dict-diff check for 404s. Existing merge tests (TestApiMergeClusters) serve as regression coverage \u2014 behavior is identical, only query count changes.",
+  "prerequisites": [],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Replace synthetic event types in test_last_event_id_resumes (line 405: for i in range(5): sse_db.insert_event(f'event_{i}', stage='INGEST')) with 5 distinct valid event types from VALID_EVENT_TYPES: 'stage_started', 'job_started', 'job_progress', 'job_completed', 'stage_completed'. Same fix for test_invalid_last_event_id_gets_all (line 431: for i in range(3)) \u2014 use 'stage_started', 'job_started', 'job_completed'.",
+      "description": "Write TestGetActivityClustersByIds.test_returns_dict_keyed_by_cluster_id \u2014 seed 3 clusters, fetch 2 by ID, assert dict has exactly 2 keys with correct data",
       "status": "done",
-      "commit": "49789b9"
+      "commit": "7c4337b"
     },
     {
       "id": "step-2",
-      "type": "impl",
-      "description": "Run the modified SSE tests (test_last_event_id_resumes, test_invalid_last_event_id_gets_all) to verify they pass with valid event types. No production code changes expected.",
+      "type": "test",
+      "description": "Write TestGetActivityClustersByIds.test_returns_empty_dict_for_empty_input \u2014 call with [] and assert result is {}",
       "status": "done",
-      "commit": "49789b9"
+      "commit": "36d6f30"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Strengthen test_last_event_id_resumes (line 423): after the existing assert len(events)==2, add assertions that events[0]['event'] matches the 4th inserted event type ('job_completed') and events[1]['event'] matches the 5th ('stage_completed'). These are events #4 and #5 (the ones after Last-Event-ID:3).",
+      "description": "Write TestGetActivityClustersByIds.test_omits_nonexistent_ids \u2014 seed c-1, fetch [c-1, nonexistent], assert dict has only c-1 key",
       "status": "done",
-      "commit": "ef5dbde"
+      "commit": "e0c4190"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Run test_last_event_id_resumes to verify the identity assertions pass. The SSE _format_event uses event['event_type'] as the SSE event field, so events[N]['event'] should match the inserted event_type strings.",
+      "description": "Implement get_activity_clusters_by_ids in db.py after get_activity_clusters (~line 711). Mirror batch_delete pattern: early return {} for empty input, build placeholders, SELECT * WHERE cluster_id IN (...), return {row['cluster_id']: dict(row)} dict comprehension",
       "status": "done",
-      "commit": "ef5dbde"
+      "commit": "b29e688"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Replace brittle HTML parsing in test_stage_cards_show_progress (lines 286-291): instead of html.find('id=\"stage-ingest\"') + manual </div> offset slicing, query GET /api/stages and find the ingest stage in the JSON response. Assert that ingest stage's status_counts shows done=5 and the total (done+running) equals 7, matching _seed_pipeline's 5 done + 2 running ingest jobs.",
+      "description": "Write TestApiMergeClustersUseBatchFetch.test_merge_uses_batch_fetch \u2014 monkeypatch db.get_activity_cluster to raise AssertionError('N+1 detected'), verify merge still succeeds (proving it uses the batch path, not the per-cluster path). Seeds 2 clusters via _seed_cluster_via_db, calls POST /api/clusters/merge",
       "status": "done",
-      "commit": "ad55be8"
+      "commit": "ced1595"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Run test_stage_cards_show_progress to verify the JSON-based assertion passes. May need to adjust field names based on actual /api/stages response structure (name, status_counts dict with done/running/pending/error keys, gate_mode).",
+      "description": "Refactor api_merge_clusters in review.py: replace lines 404-413 (per-cluster for loop) with a single call to db.get_activity_clusters_by_ids(body.cluster_ids), then check for missing IDs via set difference and raise 404 for the first missing ID. Convert dict values to list for the existing `clusters` variable",
       "status": "done",
-      "commit": "ad55be8"
+      "commit": "c4516cb"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Strengthen test_render_detail_shows_script_scenes (line 961): replace the disjunctive assertion 'assert \"Opening\" in resp.text or \"scenes\" in resp.text.lower()' with two direct assertions: 'assert \"Opening\" in resp.text' and 'assert \"Main\" in resp.text'. These match the exact scene titles seeded by render_seeded_app at lines 909-910.",
+      "description": "Run pyright on autopilot/web/routes/review.py and confirm it reports 'possibly unbound' for `merged_map` at line 458. This is the failing static-analysis check that step-8 will fix.",
       "status": "done",
-      "commit": "c2cdea8"
+      "commit": "90fee35"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Run test_render_detail_shows_script_scenes to verify both scene titles appear in the rendered HTML. If the template doesn't render individual scene titles, this test will correctly fail \u2014 exposing the bug the weak assertion was masking.",
+      "description": "Fix possibly-unbound `merged_map` in review.py: move the `merged = merged_map.get(largest_id)` lookup and the 500-check (lines 458-460) inside the try body, before the `finally` clause. The return statement stays after finally. This keeps variable scope tight and mirrors the original code where the post-merge fetch was inside try.",
       "status": "done",
-      "commit": "c2cdea8"
-    },
-    {
-      "id": "step-9",
-      "type": "test",
-      "description": "Add persistence check to test_exclude_cluster (after line 851): after asserting resp.json()['excluded']==1, add GET /api/clusters/c-3 and assert check.json()['excluded']==1. This mirrors the pattern in test_relabel_cluster (lines 842-843) which does GET after POST to verify persistence.",
-      "status": "done",
-      "commit": "f72a65d"
-    },
-    {
-      "id": "step-10",
-      "type": "impl",
-      "description": "Run test_exclude_cluster to verify the persistence GET returns excluded==1. The exclude endpoint should persist to DB, and the GET /api/clusters/{id} endpoint should return the updated value.",
-      "status": "done",
-      "commit": "f72a65d"
+      "commit": "90fee35"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use /api/stages JSON endpoint instead of HTML parsing for progress assertion",
-      "rationale": "The /api/stages endpoint already exists (dashboard.py:151) and returns structured status_counts per stage. This is more robust than parsing HTML with offset arithmetic, which breaks on any template change. The HTML rendering test (test_dashboard_contains_all_9_stages) already covers that stage names appear in HTML."
+      "decision": "Return dict[str, dict[str, object]] keyed by cluster_id, not a list",
+      "rationale": "O(1) lookup for missing-ID detection in the merge route. The caller can detect missing IDs via set(requested_ids) - set(result.keys()) without scanning a list. This is specified in the task description."
     },
     {
-      "decision": "Use literal valid event types rather than importing VALID_EVENT_TYPES constant",
-      "rationale": "Using literals like 'stage_started', 'job_started' etc. is clearer in test code and avoids coupling tests to the production constant. The existing test_events_delivered_in_order (line 348-350) already uses valid literal types as a pattern to follow."
+      "decision": "Place the new method between get_activity_clusters and batch_delete_activity_clusters in db.py",
+      "rationale": "Groups all cluster-read methods together, and positions the batch-read next to the batch-delete it mirrors, maintaining logical ordering."
     },
     {
-      "decision": "Assert both 'Opening' and 'Main' scene titles without fallback",
-      "rationale": "The render_seeded_app fixture explicitly seeds two scenes with these exact titles (line 909-910). The disjunctive assertion ('Opening' or 'scenes') masks failures \u2014 if the template stops rendering scene data, 'scenes' as a generic word could still match template chrome text, making the test meaningless."
+      "decision": "Silently omit non-existent IDs from the result dict rather than raising",
+      "rationale": "Mirrors batch_delete_activity_clusters which silently skips non-existent IDs. The caller (merge route) handles missing IDs by comparing requested vs returned keys."
     },
     {
-      "decision": "Fixture teardown uses yield+finally+close pattern, not context manager",
-      "rationale": "The e2e_db and sse_db fixtures set isolation_level=None (autocommit) after creation, which is incompatible with the with-statement pattern (CatalogDB.__exit__ calls commit/rollback). The yield+finally pattern from conftest.py's catalog_db fixture (line 76-89) is the correct approach \u2014 it lets the fixture remain as autocommit during the test and only closes in teardown."
+      "decision": "Monkeypatch test to prove batch path is used",
+      "rationale": "Existing TestApiMergeClusters tests cover merge behavior end-to-end. A monkeypatch test that blocks the old per-cluster get_activity_cluster path proves the route was actually refactored to use the batch method, catching regression if someone reverts."
     },
     {
-      "decision": "Address SSE event types before strengthening identity assertions",
-      "rationale": "Steps 1-2 fix the event types first, then steps 3-4 add identity assertions. This ordering ensures the identity assertions reference valid, realistic event types rather than the synthetic 'event_N' strings."
+      "decision": "Keep 404 detail reporting the first missing cluster_id specifically",
+      "rationale": "Preserves the existing API contract where the 404 detail says which cluster_id was not found. Use set difference to find missing IDs, then report the first one."
+    },
+    {
+      "decision": "Move post-finally code inside try body rather than pre-initializing merged_map",
+      "rationale": "Reviewer suggested either pre-initializing `merged_map = {}` before try, or moving the consumption inside try. Moving inside try is cleaner: it keeps variable scope tight, avoids a misleading empty-dict default that would never be intentionally used, and mirrors the original code where the post-merge fetch lived inside the try block."
     }
   ],
   "reuse": [
     {
-      "what": "catalog_db fixture pattern (yield + finally + close)",
-      "where": "tests/conftest.py lines 76-89",
-      "how": "Copy the yield/finally/close pattern for both e2e_db and sse_db fixtures. Use Generator return type annotation. Pattern: db = CatalogDB(...); db.conn.isolation_level = None; yield db; db.close() (with try/finally)."
+      "what": "batch_delete_activity_clusters placeholder pattern",
+      "where": "autopilot/db.py:718-724",
+      "how": "Mirror the empty-check, placeholder generation, and parameterized IN clause pattern for the new SELECT query"
     },
     {
-      "what": "test_relabel_cluster persistence check pattern",
-      "where": "tests/test_web_e2e.py lines 841-843",
-      "how": "Follow the same GET-after-POST pattern in test_exclude_cluster: add check = cluster_client.get('/api/clusters/c-3'); assert check.json()['excluded'] == 1."
+      "what": "_seed_cluster helper and db fixture",
+      "where": "tests/test_cluster_review.py:20-44",
+      "how": "Reuse existing db fixture and _seed_cluster helper for DB-level tests of the new method"
     },
     {
-      "what": "test_events_delivered_in_order valid event type usage",
-      "where": "tests/test_web_e2e.py lines 348-350",
-      "how": "This test already uses valid event types (stage_started, job_started, stage_completed). Use similar valid types in test_last_event_id_resumes and test_invalid_last_event_id_gets_all instead of synthetic 'event_N' types."
+      "what": "_seed_cluster_via_db helper and app fixture",
+      "where": "tests/test_cluster_review.py:260-275",
+      "how": "Reuse for the monkeypatch integration test that proves the merge route uses batch fetch"
     },
     {
-      "what": "VALID_EVENT_TYPES production allowlist",
-      "where": "autopilot/web/routes/sse.py lines 18-31",
-      "how": "Reference this 12-element tuple when choosing realistic event types for SSE tests. Use a diverse 5-type subset (stage_started, job_started, job_progress, job_completed, stage_completed) for the 5-event test and a 3-type subset for the 3-event test."
-    },
-    {
-      "what": "_seed_pipeline seeded data counts",
-      "where": "tests/test_web_e2e.py lines 143-203",
-      "how": "Reference the exact counts seeded for ingest stage (5 done + 2 running = 7 total) when writing the /api/stages JSON assertion to replace HTML parsing."
+      "what": "Existing TestApiMergeClusters tests",
+      "where": "tests/test_cluster_review.py:468-573",
+      "how": "Serve as regression suite \u2014 all existing merge tests must still pass after the refactor"
     }
   ],
-  "_session_id": "82-b4cd24db",
-  "_created_at": "2026-03-25T02:18:08.431162+00:00"
+  "_session_id": "80-b82183d3",
+  "_created_at": "2026-03-25T02:21:52.031482+00:00"
 }

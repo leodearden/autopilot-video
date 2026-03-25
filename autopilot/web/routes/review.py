@@ -401,16 +401,18 @@ def api_merge_clusters(
         )
     db = _get_db(request)
     try:
-        # Load and parse all clusters
-        clusters: list[dict[str, object]] = []
-        for cid in body.cluster_ids:
-            row = db.get_activity_cluster(cid)
-            if row is None:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Cluster {cid} not found",
-                )
-            clusters.append(row)
+        # Batch-load all clusters (eliminates N+1 per-cluster queries)
+        clusters_by_id = db.get_activity_clusters_by_ids(body.cluster_ids)
+        missing = set(body.cluster_ids) - set(clusters_by_id)
+        if missing:
+            first_missing = next(m for m in body.cluster_ids if m in missing)
+            raise HTTPException(
+                status_code=404,
+                detail=f"Cluster {first_missing} not found",
+            )
+        clusters: list[dict[str, object]] = [
+            clusters_by_id[cid] for cid in body.cluster_ids
+        ]
 
         parsed_clusters = [_parse_cluster(c) for c in clusters]
 
@@ -450,11 +452,12 @@ def api_merge_clusters(
             ]
             db.batch_delete_activity_clusters(non_surviving)
 
-            merged = db.get_activity_cluster(largest_id)
+            merged_map = db.get_activity_clusters_by_ids([largest_id])
+        merged = merged_map.get(largest_id)
+        if merged is None:
+            raise HTTPException(status_code=500, detail="Merged cluster missing")
     finally:
         db.close()
-    if merged is None:
-        raise HTTPException(status_code=500, detail="Merged cluster missing")
     return _parse_cluster(merged)
 
 

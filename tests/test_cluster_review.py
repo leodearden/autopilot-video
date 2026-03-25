@@ -900,6 +900,72 @@ def _setup_classify_gate_app(tmp_path: Path, clusters: int = 2, excluded: int = 
     return create_app(db_path=db_path)
 
 
+# ---------------------------------------------------------------------------
+# TestGetActivityClustersByIds — task 80, steps 1-3
+# ---------------------------------------------------------------------------
+
+
+class TestGetActivityClustersByIds:
+    """Tests for CatalogDB.get_activity_clusters_by_ids(cluster_ids)."""
+
+    def test_returns_dict_keyed_by_cluster_id(self, db: CatalogDB) -> None:
+        """Seed 3 clusters, fetch 2 by ID, assert dict has exactly 2 keys."""
+        _seed_cluster(db, "c-1", label="Alpha")
+        _seed_cluster(db, "c-2", label="Beta")
+        _seed_cluster(db, "c-3", label="Gamma")
+        result = db.get_activity_clusters_by_ids(["c-1", "c-3"])
+        assert isinstance(result, dict)
+        assert set(result.keys()) == {"c-1", "c-3"}
+        assert result["c-1"]["label"] == "Alpha"
+        assert result["c-3"]["label"] == "Gamma"
+
+    def test_returns_empty_dict_for_empty_input(self, db: CatalogDB) -> None:
+        """Calling with [] returns {}."""
+        result = db.get_activity_clusters_by_ids([])
+        assert result == {}
+
+    def test_omits_nonexistent_ids(self, db: CatalogDB) -> None:
+        """Fetch [c-1, nonexistent] when only c-1 exists; dict has only c-1."""
+        _seed_cluster(db, "c-1", label="Only")
+        result = db.get_activity_clusters_by_ids(["c-1", "nonexistent"])
+        assert set(result.keys()) == {"c-1"}
+        assert result["c-1"]["label"] == "Only"
+
+
+# ---------------------------------------------------------------------------
+# TestApiMergeClustersUseBatchFetch — task 80, step-5
+# ---------------------------------------------------------------------------
+
+
+class TestApiMergeClustersUseBatchFetch:
+    """Verify merge route uses batch fetch instead of per-cluster N+1 queries."""
+
+    def test_merge_uses_batch_fetch(
+        self, app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Monkeypatch get_activity_cluster to raise; merge still succeeds via batch path."""
+        _seed_cluster_via_db(
+            app, "c-1", label="Small", clip_ids_json='["clip-1"]',
+        )
+        _seed_cluster_via_db(
+            app, "c-2", label="Large", clip_ids_json='["clip-2","clip-3"]',
+        )
+
+        def _n1_trap(self: object, cluster_id: str) -> None:
+            raise AssertionError(f"N+1 detected: get_activity_cluster({cluster_id!r})")
+
+        monkeypatch.setattr(CatalogDB, "get_activity_cluster", _n1_trap)
+
+        resp = client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": ["c-1", "c-2"]},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["cluster_id"] == "c-2"
+        assert sorted(data["clip_ids"]) == ["clip-1", "clip-2", "clip-3"]
+
+
 class TestReviewHubClassifyGate:
     """Tests for review hub integration with classify gate."""
 
