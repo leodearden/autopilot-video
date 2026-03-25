@@ -51,9 +51,7 @@ def review_hub(request: Request) -> HTMLResponse:
                     summary["pending_count"] = len(proposed)
                     summary["pending_label"] = "proposed narratives"
                 elif stage == "classify":
-                    all_clusters = db.get_activity_clusters()
-                    pending = [c for c in all_clusters if not c.get("excluded")]
-                    summary["pending_count"] = len(pending)
+                    summary["pending_count"] = db.count_non_excluded_clusters()
                     summary["pending_label"] = "activity clusters"
                 waiting_gates.append(summary)
     finally:
@@ -231,7 +229,7 @@ def clusters_page(request: Request) -> HTMLResponse:
     db = _get_db(request)
     try:
         rows = db.get_activity_clusters()
-        clusters = [_parse_cluster(dict(r)) for r in rows]
+        clusters = [_parse_cluster(r) for r in rows]
         classify_gate = db.get_gate("classify")
     finally:
         db.close()
@@ -256,7 +254,7 @@ def api_list_clusters(request: Request) -> list[dict[str, object]]:
     db = _get_db(request)
     try:
         rows = db.get_activity_clusters()
-        return [_parse_cluster(dict(r)) for r in rows]
+        return [_parse_cluster(r) for r in rows]
     finally:
         db.close()
 
@@ -271,7 +269,7 @@ def api_get_cluster(request: Request, cluster_id: str) -> dict[str, object]:
         db.close()
     if row is None:
         raise HTTPException(status_code=404, detail="Cluster not found")
-    return _parse_cluster(dict(row))
+    return _parse_cluster(row)
 
 
 def _render_cluster_partial(
