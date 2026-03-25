@@ -1,4 +1,4 @@
-"""Review hub and narrative review routes."""
+"""Review hub, narrative review, and cluster review routes."""
 
 from __future__ import annotations
 
