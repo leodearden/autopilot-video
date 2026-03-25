@@ -348,7 +348,7 @@ class TestApiMergeClusters:
         assert data["cluster_id"] == "c-2"
         assert data["label"] == "Large"
         # Combined clips
-        assert set(data["clip_ids"]) == {"clip-1", "clip-2", "clip-3", "clip-4"}
+        assert sorted(data["clip_ids"]) == ["clip-1", "clip-2", "clip-3", "clip-4"]
         assert data["clip_count"] == 4
         # Time range: min start, max end
         assert data["time_start"] == "2025-01-01T08:00:00"
