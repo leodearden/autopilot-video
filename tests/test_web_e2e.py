@@ -973,8 +973,9 @@ class TestRenderScriptReview:
         """Render detail page contains scene data from narrative_scripts."""
         resp = render_client.get("/review/render/n-1")
         assert resp.status_code == 200
-        # Script scenes should be visible
-        assert "Opening" in resp.text or "scenes" in resp.text.lower()
+        # Both seeded scene titles must appear in the rendered detail page
+        assert "Opening" in resp.text
+        assert "Main" in resp.text
 
     def test_render_api_returns_json(
         self, render_client: TestClient,
