@@ -147,6 +147,36 @@ class TestUpdateActivityClusterWhitelist:
 
 
 # ---------------------------------------------------------------------------
+# TestCountNonExcludedClusters — task-65 step-5
+# ---------------------------------------------------------------------------
+
+class TestCountNonExcludedClusters:
+    """Tests for CatalogDB.count_non_excluded_clusters()."""
+
+    def test_counts_non_excluded_with_mixed_rows(self, db: CatalogDB) -> None:
+        """Returns count of non-excluded clusters when mix of excluded/non-excluded."""
+        _seed_cluster(db, "c-1")
+        _seed_cluster(db, "c-2")
+        _seed_cluster(db, "c-3")
+        db.update_activity_cluster("c-2", excluded=1)
+        db.conn.commit()
+        assert db.count_non_excluded_clusters() == 2
+
+    def test_returns_0_when_all_excluded(self, db: CatalogDB) -> None:
+        """Returns 0 when every cluster is excluded."""
+        _seed_cluster(db, "c-1")
+        _seed_cluster(db, "c-2")
+        db.update_activity_cluster("c-1", excluded=1)
+        db.update_activity_cluster("c-2", excluded=1)
+        db.conn.commit()
+        assert db.count_non_excluded_clusters() == 0
+
+    def test_returns_0_when_table_empty(self, db: CatalogDB) -> None:
+        """Returns 0 when activity_clusters table has no rows."""
+        assert db.count_non_excluded_clusters() == 0
+
+
+# ---------------------------------------------------------------------------
 # TestBatchDeleteActivityClusters — task-65 step-3
 # ---------------------------------------------------------------------------
 
