@@ -1,185 +1,106 @@
 {
-  "task_id": "63",
-  "title": "Fix bugs in cluster merge/review: timestamp comparison, UI interaction, error handling",
+  "task_id": "80",
+  "title": "Add batch get_activity_clusters_by_ids to eliminate N+1 in merge route",
   "files": [
+    "autopilot/db.py",
     "autopilot/web/routes/review.py",
-    "autopilot/web/templates/partials/cluster_card.html",
     "tests/test_cluster_review.py"
   ],
   "modules": [
+    "autopilot",
     "autopilot/web/routes",
-    "autopilot/web/templates",
     "tests"
   ],
-  "analysis": "Six bugs in the cluster review subsystem discovered during task 47 review. The bugs span three areas: (1) data processing in review.py \u2014 _parse_cluster crashes on malformed JSON (line 222), timestamp comparison uses lexicographic min/max on raw strings (lines 383-386), merge builds clip_ids without deduplication (lines 378-380); (2) transaction safety \u2014 merge endpoint mutates DB without explicit transaction wrapping, relying on implicit sqlite3 behavior (lines 388-404); (3) UI/logic \u2014 cluster_card.html relabel button sends empty POST body (lines 19-24), and classify gate condition is semantically inverted showing approve only when ALL clusters are excluded (line 243). Existing test file test_cluster_review.py has thorough coverage patterns: TestApiMergeClusters for merge operations, _seed_cluster_via_db helper for seeding test data, _setup_classify_gate_app for gate condition tests, and TestHtmxClusterResponses for HTML partial testing. CatalogDB provides __enter__/__exit__ context manager with commit-on-success / rollback-on-exception semantics (db.py:41-53) that should be used for explicit transaction safety in the merge endpoint. The relabel endpoint (api_relabel_cluster) accepts a ClusterRelabel Pydantic model as JSON body \u2014 the template fix must send JSON, following the hx-vals='js:...' pattern already used by the merge button in clusters.html.\n\nPost-review addition: datetime.fromisoformat() introduced in step-8 as the key function in min()/max() for chronological timestamp comparison has no error handling. A malformed timestamp in the DB (truncated, wrong separator, legacy format) causes ValueError that propagates uncaught as an unhandled 500. Steps 13-14 add a _parse_ts helper with explicit error handling to surface actionable 422 errors.",
+  "analysis": "The N+1 problem: `api_merge_clusters` (review.py:406-413) loops through `body.cluster_ids`, calling `db.get_activity_cluster(cid)` per iteration \u2014 one SELECT per cluster. The fix is a batch `SELECT * FROM activity_clusters WHERE cluster_id IN (?,?...)` method returning a dict keyed by cluster_id, mirroring the existing `batch_delete_activity_clusters` (db.py:712-725) which uses the same placeholder pattern. The new method `get_activity_clusters_by_ids` goes at db.py ~line 711 (after `get_activity_clusters`, before `batch_delete_activity_clusters`). The route refactor replaces lines 404-413 with a single call plus a dict-diff check for 404s. Existing merge tests (TestApiMergeClusters) serve as regression coverage \u2014 behavior is identical, only query count changes.",
   "prerequisites": [],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing test for _parse_cluster malformed JSON handling: import _parse_cluster from review module, call with {'clip_ids_json': '{bad json'}, verify it returns empty clip_ids list and clip_count=0 instead of raising json.JSONDecodeError. Also test with clip_ids_json=None still returns empty list (preserves existing behavior).",
+      "description": "Write TestGetActivityClustersByIds.test_returns_dict_keyed_by_cluster_id \u2014 seed 3 clusters, fetch 2 by ID, assert dict has exactly 2 keys with correct data",
       "status": "done",
-      "commit": "2275ff4282bcf0b90b841c5ff103e58a7a2b6fad"
+      "commit": "7c4337b"
     },
     {
       "id": "step-2",
-      "type": "impl",
-      "description": "In _parse_cluster (review.py:222), wrap the json.loads(str(raw)) call in try/except json.JSONDecodeError, defaulting to empty list on failure \u2014 matching the existing 'if raw else []' fallback pattern.",
+      "type": "test",
+      "description": "Write TestGetActivityClustersByIds.test_returns_empty_dict_for_empty_input \u2014 call with [] and assert result is {}",
       "status": "done",
-      "commit": "bccfc5d3e783d6cceb9a92075b4e894812f03883"
+      "commit": "36d6f30"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write failing tests for classify gate approve condition on /review/clusters page: (a) setup classify gate='waiting' with 2 clusters, 0 excluded \u2014 page SHOULD contain 'Approve Gate' button; (b) setup classify gate='waiting' with 2 clusters, all 2 excluded \u2014 page should NOT contain 'Approve Gate'. Use _setup_classify_gate_app helper. Currently test (a) fails because the inverted condition requires len(non_excluded)==0.",
+      "description": "Write TestGetActivityClustersByIds.test_omits_nonexistent_ids \u2014 seed c-1, fetch [c-1, nonexistent], assert dict has only c-1 key",
       "status": "done",
-      "commit": "6caeac8844818e8a8e3718c4f880e57d2f051ace"
+      "commit": "e0c4190"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "In clusters_page (review.py:243), change show_approve_gate condition from 'len(non_excluded) == 0' to 'len(non_excluded) > 0'. Approve gate shows when reviewed clusters exist to proceed with, not when all are excluded.",
+      "description": "Implement get_activity_clusters_by_ids in db.py after get_activity_clusters (~line 711). Mirror batch_delete pattern: early return {} for empty input, build placeholders, SELECT * WHERE cluster_id IN (...), return {row['cluster_id']: dict(row)} dict comprehension",
       "status": "done",
-      "commit": "22b3440218af5ba091d7944fc3d5f3460cb81b7d"
+      "commit": "b29e688"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write failing test for merge clip_id deduplication: seed c-1 with clip_ids_json='[\"a\",\"b\"]' and c-2 with clip_ids_json='[\"b\",\"c\",\"d\"]' (note 'b' is shared). Merge them and assert clip_ids has no duplicates \u2014 exactly 4 unique clips, not 5. Assert len(data['clip_ids']) == len(set(data['clip_ids'])).",
+      "description": "Write TestApiMergeClustersUseBatchFetch.test_merge_uses_batch_fetch \u2014 monkeypatch db.get_activity_cluster to raise AssertionError('N+1 detected'), verify merge still succeeds (proving it uses the batch path, not the per-cluster path). Seeds 2 clusters via _seed_cluster_via_db, calls POST /api/clusters/merge",
       "status": "done",
-      "commit": "6ca6bdbf47138e617befa655584bfb805c99b86c"
+      "commit": "ced1595"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "In api_merge_clusters (review.py:378-380), replace the simple extend() loop with deduplication using dict.fromkeys(): 'all_clip_ids = list(dict.fromkeys(cid for pc in parsed_clusters for cid in pc[\"clip_ids\"]))'.",
+      "description": "Refactor api_merge_clusters in review.py: replace lines 404-413 (per-cluster for loop) with a single call to db.get_activity_clusters_by_ids(body.cluster_ids), then check for missing IDs via set difference and raise 404 for the first missing ID. Convert dict values to list for the existing `clusters` variable",
       "status": "done",
-      "commit": "cf7a0d5880c6f4f42507368c8494b501c58dab41"
-    },
-    {
-      "id": "step-7",
-      "type": "test",
-      "description": "Write failing test for timestamp comparison in merge: seed c-1 with time_start='2025-06-15T22:00:00+10:00' and time_end='2025-06-15T23:00:00+10:00', seed c-2 with time_start='2025-06-15T14:00:00+00:00' and time_end='2025-06-16T02:00:00+00:00'. Chronologically c-1 starts earlier (12:00 UTC) but sorts later lexicographically. Assert merged time_start matches c-1's value. Test currently fails because lexicographic min picks c-2.",
-      "status": "done",
-      "commit": "bf84283b573d59dcdb49a93c141d40012847bba71"
-    },
-    {
-      "id": "step-8",
-      "type": "impl",
-      "description": "In api_merge_clusters (review.py:383-386), replace lexicographic min/max with datetime-aware comparison. Add 'from datetime import datetime' import. Use 'min(time_starts, key=datetime.fromisoformat)' and 'max(time_ends, key=datetime.fromisoformat)'. This preserves original string format while comparing chronologically.",
-      "status": "done",
-      "commit": "84c476b7e33ae119f451da325aa24fc4c8836fb9"
-    },
-    {
-      "id": "step-9",
-      "type": "test",
-      "description": "Write test for merge transaction safety: seed 2 clusters, use monkeypatch to make db.delete_activity_cluster raise RuntimeError after update has been applied. Call merge endpoint \u2014 expect error response. Then read both clusters directly from DB and verify they still exist with original data unchanged (the update was rolled back along with the failed delete).",
-      "status": "done",
-      "commit": "77ca8c8ea128ccb4a77eb83b013499652c42a4e3"
-    },
-    {
-      "id": "step-10",
-      "type": "impl",
-      "description": "In api_merge_clusters (review.py:388-404), wrap the mutation block (update_activity_cluster + delete loop) in 'with db:' context manager. Remove the explicit db.conn.commit() call \u2014 CatalogDB.__exit__ handles commit-on-success and rollback-on-exception. Keep the post-merge read (get_activity_cluster) inside the with block before __exit__ commits.",
-      "status": "done",
-      "commit": "09f85797f71a4bf424fd8df1c6f13df0937c7a4e"
-    },
-    {
-      "id": "step-11",
-      "type": "test",
-      "description": "Write failing test for cluster_card template relabel inputs: render the cluster card partial for a non-excluded cluster (via HTMX relabel or exclude returning HTML, or direct template rendering) and verify HTML contains: (a) an input element with name='label' and the cluster's current label as value, (b) a textarea/input with name='description' and the cluster's current description as value. These must be associated with the relabel button so values are submitted.",
-      "status": "done",
-      "commit": "09c84ef"
-    },
-    {
-      "id": "step-12",
-      "type": "impl",
-      "description": "Update cluster_card.html: for non-excluded clusters, replace static h3 label display with <input type='text' name='label' value='...'> and replace static p description with <textarea name='description'>...</textarea>, styled as inline-editable text. Wire the relabel button using hx-vals='js:{...}' to read values from sibling inputs and hx-headers='{\"Content-Type\":\"application/json\"}' pattern, or an onclick handler that POSTs JSON and swaps outerHTML \u2014 following the JS hx-vals approach used by the merge button in clusters.html.",
-      "status": "done",
-      "commit": "0cb6890"
-    },
-    {
-      "id": "step-13",
-      "type": "test",
-      "description": "Write failing test for malformed timestamp handling during merge (review feedback: unhandled_exception_at_data_boundary). In TestApiMergeClusters, add test_merge_malformed_timestamp_returns_422: seed c-1 with time_start='2025-06-15T22:00:00+10:00' (valid) and c-2 with time_start='not-a-timestamp' (malformed). POST merge and assert response is 422 with detail containing 'Invalid timestamp format' and the offending value 'not-a-timestamp'. Also add test_merge_malformed_time_end_returns_422: seed c-1 with valid time_end and c-2 with time_end='2025/13/45' (wrong separators). Assert 422 with actionable detail. Both tests currently fail because datetime.fromisoformat() raises uncaught ValueError \u2192 500.",
-      "status": "done",
-      "commit": "8b3100d"
-    },
-    {
-      "id": "step-14",
-      "type": "impl",
-      "description": "In review.py, define a module-level helper '_parse_ts(s: str) -> datetime' that wraps datetime.fromisoformat(s) in try/except ValueError and raises HTTPException(422, detail=f\"Invalid timestamp format: {s!r}\") on failure. Replace the bare 'datetime.fromisoformat' key references in min(time_starts, key=...) and max(time_ends, key=...) on lines 392-393 with '_parse_ts'. This converts the uncaught ValueError into an actionable 422 response that identifies the offending value, instead of an opaque 500.",
-      "status": "done",
-      "commit": "75c8a99"
+      "commit": "c4516cb"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use datetime.fromisoformat() as key function in min/max for timestamp comparison, preserving original string",
-      "rationale": "The DB stores timestamps as ISO strings that may vary in format (timezone-aware vs naive, varying precision). Parsing to datetime for comparison is correct; returning the original string preserves the stored format. fromisoformat() handles both naive and tz-aware formats in Python 3.11+."
+      "decision": "Return dict[str, dict[str, object]] keyed by cluster_id, not a list",
+      "rationale": "O(1) lookup for missing-ID detection in the merge route. The caller can detect missing IDs via set(requested_ids) - set(result.keys()) without scanning a list. This is specified in the task description."
     },
     {
-      "decision": "Use dict.fromkeys() for clip_id deduplication instead of set()",
-      "rationale": "dict.fromkeys() preserves insertion order (first occurrence wins) while set() gives non-deterministic order. Preserving order ensures stable JSON output and deterministic test assertions."
+      "decision": "Place the new method between get_activity_clusters and batch_delete_activity_clusters in db.py",
+      "rationale": "Groups all cluster-read methods together, and positions the batch-read next to the batch-delete it mirrors, maintaining logical ordering."
     },
     {
-      "decision": "Wrap merge writes in 'with db:' context manager rather than relying on close()-rollback",
-      "rationale": "CatalogDB's __exit__ provides explicit commit-on-success and rollback-on-error (db.py:44-53). Using 'with db:' makes transactional intent clear, matches the class's documented usage pattern (seen in _setup_classify_gate_app), and is resilient to future refactoring like connection pooling."
+      "decision": "Silently omit non-existent IDs from the result dict rather than raising",
+      "rationale": "Mirrors batch_delete_activity_clusters which silently skips non-existent IDs. The caller (merge route) handles missing IDs by comparing requested vs returned keys."
     },
     {
-      "decision": "Invert classify gate condition from len(non_excluded) == 0 to > 0",
-      "rationale": "The narrative gate shows approve when proposed_count == 0 (nothing pending review). For clusters there's no 'pending' status \u2014 the condition should reflect 'reviewed clusters exist to proceed with'. Showing approve when ALL clusters are excluded (nothing to proceed with) is semantically wrong. The template text 'All clusters have been reviewed' confirms the intent is non-empty reviewed clusters."
+      "decision": "Monkeypatch test to prove batch path is used",
+      "rationale": "Existing TestApiMergeClusters tests cover merge behavior end-to-end. A monkeypatch test that blocks the old per-cluster get_activity_cluster path proves the route was actually refactored to use the batch method, catching regression if someone reverts."
     },
     {
-      "decision": "Add inline editable inputs to cluster_card.html with JS-based JSON encoding for relabel",
-      "rationale": "The endpoint expects JSON body (Pydantic ClusterRelabel model). Rather than changing the endpoint contract to accept form data (breaking existing tests), we keep the JSON API and use JS to construct the request body \u2014 the same pattern used by the merge button's hx-vals='js:...' in clusters.html."
-    },
-    {
-      "decision": "Catch json.JSONDecodeError specifically in _parse_cluster, not broad Exception",
-      "rationale": "Only JSON parsing can fail on clip_ids_json. Catching broadly would mask programming errors. The empty list fallback is safe \u2014 the cluster card still renders, showing 0 clips. Note: _parse_narrative has the same vulnerability but is out of scope for this task."
-    },
-    {
-      "decision": "Raise HTTPException(422) for malformed timestamps rather than falling back to lexicographic comparison",
-      "rationale": "Option (b) from reviewer feedback. A malformed timestamp in the DB indicates data corruption that should be surfaced, not silently masked. A 422 with the offending value in the detail message gives the caller an actionable error. Falling back to lexicographic comparison (option a) would silently produce incorrect merge results \u2014 the merge would succeed but time_start/time_end could be wrong, which is worse than a clear error. The _parse_ts helper keeps the fix localized and reusable."
+      "decision": "Keep 404 detail reporting the first missing cluster_id specifically",
+      "rationale": "Preserves the existing API contract where the 404 detail says which cluster_id was not found. Use set difference to find missing IDs, then report the first one."
     }
   ],
   "reuse": [
     {
-      "what": "CatalogDB context manager (__enter__/__exit__) for transaction safety",
-      "where": "autopilot/db.py lines 41-53",
-      "how": "Wrap merge writes in 'with db:' \u2014 __exit__ auto-commits on success, auto-rolls back on exception. Eliminates the explicit db.conn.commit() call."
+      "what": "batch_delete_activity_clusters placeholder pattern",
+      "where": "autopilot/db.py:718-724",
+      "how": "Mirror the empty-check, placeholder generation, and parameterized IN clause pattern for the new SELECT query"
     },
     {
-      "what": "_setup_classify_gate_app helper for gate condition tests",
-      "where": "tests/test_cluster_review.py lines 465-488",
-      "how": "Reuse this helper (creates app with classify gate='waiting' and configurable cluster/excluded counts) to set up test scenarios for the approve gate condition fix."
+      "what": "_seed_cluster helper and db fixture",
+      "where": "tests/test_cluster_review.py:20-44",
+      "how": "Reuse existing db fixture and _seed_cluster helper for DB-level tests of the new method"
     },
     {
-      "what": "_seed_cluster_via_db helper for merge bug tests",
-      "where": "tests/test_cluster_review.py lines 153-171",
-      "how": "Use this existing helper to seed clusters with specific clip_ids_json, time_start, and time_end values for deduplication and timestamp comparison tests."
+      "what": "_seed_cluster_via_db helper and app fixture",
+      "where": "tests/test_cluster_review.py:260-275",
+      "how": "Reuse for the monkeypatch integration test that proves the merge route uses batch fetch"
     },
     {
-      "what": "Existing TestApiMergeClusters test patterns",
-      "where": "tests/test_cluster_review.py lines 307-383",
-      "how": "Follow the same setup/assert pattern for new merge tests: seed clusters via _seed_cluster_via_db, POST to /api/clusters/merge, assert on response JSON fields."
-    },
-    {
-      "what": "hx-vals='js:...' pattern from merge button",
-      "where": "autopilot/web/templates/review/clusters.html line 13",
-      "how": "Apply the same JS-based hx-vals approach for the relabel button to gather input field values and send as JSON body."
-    },
-    {
-      "what": "_render_cluster_partial for HTMX responses",
-      "where": "autopilot/web/routes/review.py lines 277-284",
-      "how": "Already wired \u2014 the relabel endpoint returns HTML partials for HTMX requests. Template input fix automatically works with existing route code, no route changes needed for Bug 2."
-    },
-    {
-      "what": "HTTPException pattern from existing endpoint validation",
-      "where": "autopilot/web/routes/review.py (merge endpoint 404/422 checks)",
-      "how": "The merge endpoint already raises HTTPException(404) and HTTPException(422) for validation failures. The _parse_ts helper follows the same pattern \u2014 raise HTTPException(422) with descriptive detail for malformed input at the data boundary."
+      "what": "Existing TestApiMergeClusters tests",
+      "where": "tests/test_cluster_review.py:468-573",
+      "how": "Serve as regression suite \u2014 all existing merge tests must still pass after the refactor"
     }
   ],
-  "_session_id": "63-6eb7edb1",
-  "_created_at": "2026-03-25T01:08:39.360622+00:00"
+  "_session_id": "80-b82183d3",
+  "_created_at": "2026-03-25T02:13:54.518676+00:00"
 }

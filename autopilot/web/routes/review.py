@@ -453,11 +453,11 @@ def api_merge_clusters(
             db.batch_delete_activity_clusters(non_surviving)
 
             merged_map = db.get_activity_clusters_by_ids([largest_id])
+        merged = merged_map.get(largest_id)
+        if merged is None:
+            raise HTTPException(status_code=500, detail="Merged cluster missing")
     finally:
         db.close()
-    merged = merged_map.get(largest_id)
-    if merged is None:
-        raise HTTPException(status_code=500, detail="Merged cluster missing")
     return _parse_cluster(merged)
 
 
