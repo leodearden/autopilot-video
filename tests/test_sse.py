@@ -335,3 +335,37 @@ class TestSSEEventTypes:
 
         for etype in self.ALL_EVENT_TYPES:
             assert etype in VALID_EVENT_TYPES, f"'{etype}' missing from VALID_EVENT_TYPES"
+
+
+class TestParseSSEBodyFromConftest:
+    """Verify _parse_sse_body shared helper is importable from conftest."""
+
+    def test_parses_multi_event_body(self) -> None:
+        """Parses SSE text with multiple events separated by blank lines."""
+        from tests.conftest import _parse_sse_body
+
+        text = "id:1\nevent:ping\ndata:hello\n\nid:2\nevent:pong\ndata:world\n\n"
+        events = _parse_sse_body(text)
+        assert len(events) == 2
+        assert events[0] == {"id": "1", "event": "ping", "data": "hello"}
+        assert events[1] == {"id": "2", "event": "pong", "data": "world"}
+
+    def test_trailing_event_without_blank_line(self) -> None:
+        """Parses trailing event that lacks a blank-line terminator."""
+        from tests.conftest import _parse_sse_body
+
+        text = "id:1\nevent:ping\ndata:hello"
+        events = _parse_sse_body(text)
+        assert len(events) == 1
+        assert events[0] == {"id": "1", "event": "ping", "data": "hello"}
+
+    def test_extracts_id_event_data_fields(self) -> None:
+        """Correctly extracts id, event, and data fields with whitespace stripping."""
+        from tests.conftest import _parse_sse_body
+
+        text = 'id: 42\nevent: update\ndata: {"key": "val"}\n\n'
+        events = _parse_sse_body(text)
+        assert len(events) == 1
+        assert events[0]["id"] == "42"
+        assert events[0]["event"] == "update"
+        assert events[0]["data"] == '{"key": "val"}'
