@@ -941,6 +941,25 @@ class TestGetActivityClustersByIds:
 class TestApiMergeClustersUseBatchFetch:
     """Verify merge route uses batch fetch instead of per-cluster N+1 queries."""
 
+    def _install_batch_spy(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> list[list[str]]:
+        """Install N+1 trap and batch-fetch spy, return mutable args list."""
+        def _n1_trap(self: object, cluster_id: str) -> None:
+            raise AssertionError(f"N+1 detected: get_activity_cluster({cluster_id!r})")
+
+        monkeypatch.setattr(CatalogDB, "get_activity_cluster", _n1_trap)
+
+        batch_args: list[list[str]] = []
+        _original_batch = CatalogDB.get_activity_clusters_by_ids
+
+        def _batch_spy(self: object, cluster_ids: list[str]) -> dict:  # type: ignore[type-arg]
+            batch_args.append(list(cluster_ids))
+            return _original_batch(self, cluster_ids)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(CatalogDB, "get_activity_clusters_by_ids", _batch_spy)
+        return batch_args
+
     def test_install_batch_spy_returns_list_and_traps_n1(
         self, app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -951,7 +970,7 @@ class TestApiMergeClustersUseBatchFetch:
         assert batch_args == []
 
         # (b) Single-cluster fetch raises AssertionError with 'N+1 detected'
-        db: CatalogDB = app.state.db
+        db = CatalogDB(app.state.db_path)
         with pytest.raises(AssertionError, match="N\\+1 detected"):
             db.get_activity_cluster("any-id")
 
