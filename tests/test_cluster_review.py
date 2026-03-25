@@ -433,6 +433,18 @@ class TestApiMergeClusters:
         )
         assert resp.status_code == 404
 
+    def test_rejects_extra_fields(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """Merge with extra fields returns 422 (extra='forbid')."""
+        _seed_cluster_via_db(app, "c-1")
+        _seed_cluster_via_db(app, "c-2")
+        resp = client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": ["c-1", "c-2"], "evil": "field"},
+        )
+        assert resp.status_code == 422
+
 
 # ---------------------------------------------------------------------------
 # TestClustersPage — step-17
