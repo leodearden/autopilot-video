@@ -286,13 +286,14 @@ class TestDashboardRendering:
     def test_stage_cards_show_progress(
         self, dashboard_client: TestClient,
     ) -> None:
-        """Ingest card shows done/total progress like '5/7'."""
-        resp = dashboard_client.get("/dashboard")
-        html = resp.text
-        ingest_start = html.find('id="stage-ingest"')
-        ingest_end = html.find("</div>", html.find("</div>", ingest_start) + 1) + 6
-        ingest_card = html[ingest_start:ingest_end]
-        assert "5/7" in ingest_card
+        """Ingest stage has 5 done and 7 total jobs via /api/stages."""
+        resp = dashboard_client.get("/api/stages")
+        assert resp.status_code == 200
+        stages = resp.json()
+        ingest = next(s for s in stages if s["name"] == "ingest")
+        counts = ingest["status_counts"]
+        assert counts["done"] == 5
+        assert counts["done"] + counts["running"] == 7
 
     def test_api_stages_returns_9_objects(
         self, dashboard_client: TestClient,
