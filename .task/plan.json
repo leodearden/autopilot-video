@@ -1,241 +1,155 @@
 {
-  "task_id": "53",
-  "title": "E2E integration tests for the full web console",
+  "task_id": "82",
+  "title": "Fix test fixture resource leaks and strengthen E2E assertions",
   "files": [
     "tests/test_web_e2e.py"
   ],
   "modules": [
     "tests"
   ],
-  "analysis": "This task creates tests/test_web_e2e.py with comprehensive integration tests verifying end-to-end web console workflows. All tested routes and implementations already exist \u2014 this is a test-only task. No production code changes are needed.\n\nKey codebase observations:\n- App factory: create_app(db_path) in autopilot/web/app.py registers 5 routers (dashboard, gates, media, review, sse) + /api/health\n- Test pattern: file-backed DB via tmp_path, CatalogDB(db_path), create_app(db_path), TestClient(app)\n- Seeding: CatalogDB provides insert_media, insert_run, insert_job, insert_event, init_default_gates, update_gate, insert_narrative, insert_activity_cluster, upsert_edit_plan, upsert_narrative_script, insert_upload\n- SSE tests use _event_generator patching pattern with finite generators (see test_sse.py)\n- HTMX-aware routes return HTML partials when HX-Request header is present\n- 9 pipeline stages: ingest, analyze, classify, narrate, script, edl, source, render, upload\n\nRoute availability vs task description:\n- Items 1-7 (startup, dashboard, SSE, gates, media, narratives, clusters): All routes exist\n- Item 8 (script review): No /review/scripts/{id} \u2014 scripts shown via /review/render/{id} which loads narrative_scripts\n- Item 9 (EDL + timeline): No /review/edl/{id} \u2014 EDL validation shown via /review/render/{id}\n- Item 10 (job management): No /api/jobs/{id}/retry or /skip routes exist \u2014 test job status via /api/stages\n- Item 11 (full simulation): Achievable through gate workflow across all stages\n\nThe plan adapts items 8-10 to match actual routes while preserving coverage intent.",
+  "analysis": "All 7 issues are confined to tests/test_web_e2e.py. Two fixtures (e2e_db at line 37-42, sse_db at line 312-317) create CatalogDB instances but never close them \u2014 conftest.py's catalog_db fixture (line 76-89) shows the correct yield+close pattern using Generator return type with yield/finally/db.close(). Five test assertions need strengthening: (3) test_stage_cards_show_progress uses brittle HTML offset slicing with html.find('</div>') that will break on template changes \u2014 the /api/stages JSON endpoint already exists and returns structured status_counts per stage; (4) test_render_detail_shows_script_scenes has a disjunctive assertion ('Opening' in text or 'scenes' in text.lower()) that always passes \u2014 the render_seeded_app fixture seeds scenes titled 'Opening' and 'Main' at lines 909-910, so assert on both directly; (5) test_last_event_id_resumes only checks len(events)==2 but doesn't verify the events are actually #4 and #5 \u2014 add checks on event type and/or id fields; (6) test_exclude_cluster checks POST response but doesn't verify persistence via GET, inconsistent with test_relabel_cluster at lines 841-843 which does verify persistence; (7) SSE tests at lines 405-407 and 431-433 use synthetic event types 'event_0' etc. not in VALID_EVENT_TYPES \u2014 use real types from autopilot/web/routes/sse.py lines 18-31. The insert_event DB method does not validate event types, so synthetic types work mechanically but produce unrealistic test data.",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Create tests/test_web_e2e.py with file skeleton: imports (pytest, json, Path, FastAPI, TestClient, CatalogDB, create_app), module docstring, and PIPELINE_STAGES constant tuple.",
+      "description": "Convert e2e_db fixture (line 37-42) to yield fixture with db.close() in finally block, matching the conftest.py catalog_db pattern: change return type to Generator, use yield instead of return, add finally block calling db.close()",
       "status": "done",
-      "commit": "3ccb9f9",
-      "tests": []
+      "commit": "0598405",
+      "tests": [
+        "tests/test_web_e2e.py::TestAppStartup",
+        "tests/test_web_e2e.py::TestDashboardRendering"
+      ]
     },
     {
       "id": "pre-2",
-      "description": "Write shared fixture functions: e2e_db_path(tmp_path) returning str path, e2e_db(e2e_db_path) creating CatalogDB with autocommit, e2e_app(e2e_db_path) calling create_app, e2e_client(e2e_app) returning TestClient. Also write _parse_sse_body(text) helper to parse SSE wire format into list of dicts with id/event/data keys.",
+      "description": "Convert sse_db fixture (line 312-317) to yield fixture with db.close() in finally block, matching the same pattern as pre-1",
       "status": "done",
-      "commit": "ac7706b",
-      "tests": []
-    },
-    {
-      "id": "pre-3",
-      "description": "Write DB seeding helper functions: _seed_media(db, media_id, **overrides) with sensible defaults for file_path/codec/resolution/fps/duration/status; _seed_narrative(db, narrative_id, **overrides) with title/description/duration/cluster_ids/arc/journey/status defaults; _seed_cluster(db, cluster_id, **overrides) with label/description/time/location/clip_ids defaults; _seed_pipeline(db) that calls init_default_gates, inserts a running pipeline_run, and populates jobs across multiple stages with mixed statuses.",
-      "status": "done",
-      "commit": "d5bb7da",
-      "tests": []
+      "commit": "0598405",
+      "tests": [
+        "tests/test_web_e2e.py::TestSSEEventFlow"
+      ]
     }
   ],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write TestAppStartup class: test_health_returns_200_ok (GET /api/health returns 200 with {status: ok}), test_root_redirects_to_dashboard (GET / returns 302/307 to /dashboard), test_static_files_mounted (GET /static/app.css returns 200).",
+      "description": "Replace synthetic event types in test_last_event_id_resumes (line 405: for i in range(5): sse_db.insert_event(f'event_{i}', stage='INGEST')) with 5 distinct valid event types from VALID_EVENT_TYPES: 'stage_started', 'job_started', 'job_progress', 'job_completed', 'stage_completed'. Same fix for test_invalid_last_event_id_gets_all (line 431: for i in range(3)) \u2014 use 'stage_started', 'job_started', 'job_completed'.",
       "status": "done",
-      "commit": "e4012b1"
+      "commit": "49789b9"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Verify TestAppStartup passes against base e2e_client fixture with no seeding needed. These tests only need the app to be created, not seeded.",
+      "description": "Run the modified SSE tests (test_last_event_id_resumes, test_invalid_last_event_id_gets_all) to verify they pass with valid event types. No production code changes expected.",
       "status": "done",
-      "commit": "e4012b1"
+      "commit": "49789b9"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write TestDashboardRendering class: test_dashboard_returns_html (GET /dashboard returns 200 text/html), test_dashboard_contains_all_9_stages (HTML contains all stage names from PIPELINE_STAGES), test_stage_cards_show_status (seeded DB with jobs shows running/error/done status in cards), test_stage_cards_show_progress (ingest card shows done/total like '5/7'), test_api_stages_returns_9_objects (GET /api/stages returns list of 9 with name/status_counts/gate_mode).",
+      "description": "Strengthen test_last_event_id_resumes (line 423): after the existing assert len(events)==2, add assertions that events[0]['event'] matches the 4th inserted event type ('job_completed') and events[1]['event'] matches the 5th ('stage_completed'). These are events #4 and #5 (the ones after Last-Event-ID:3).",
       "status": "done",
-      "commit": "381dcd2"
+      "commit": "ef5dbde"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Write dashboard_seeded_db fixture that calls _seed_pipeline(db) to populate a running pipeline run with jobs in multiple stages (5 done + 2 running ingest, 1 running + 2 pending analyze, 1 error classify), default gates with analyze set to 'pause', and error events. Create dashboard_app and dashboard_client fixtures chained from it.",
+      "description": "Run test_last_event_id_resumes to verify the identity assertions pass. The SSE _format_event uses event['event_type'] as the SSE event field, so events[N]['event'] should match the inserted event_type strings.",
       "status": "done",
-      "commit": "381dcd2"
+      "commit": "ef5dbde"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write TestSSEEventFlow class: test_sse_endpoint_returns_event_stream (GET /api/events returns 200 with text/event-stream content-type, using _event_generator patch to yield finite events), test_events_delivered_in_order (insert 3 events, verify delivery order matches), test_event_has_id_event_data_fields (each SSE event has id/event/data), test_last_event_id_resumes (connect with Last-Event-ID:3 header, verify only events after ID 3 arrive), test_invalid_last_event_id_gets_all (non-numeric ID falls back to 0).",
+      "description": "Replace brittle HTML parsing in test_stage_cards_show_progress (lines 286-291): instead of html.find('id=\"stage-ingest\"') + manual </div> offset slicing, query GET /api/stages and find the ingest stage in the JSON response. Assert that ingest stage's status_counts shows done=5 and the total (done+running) equals 7, matching _seed_pipeline's 5 done + 2 running ingest jobs.",
       "status": "done",
-      "commit": "4638279"
+      "commit": "ad55be8"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Write _finite_sse_generator(request) helper that patches autopilot.web.routes.sse._event_generator with a generator yielding DB events then stopping. Add SSE-specific fixtures: sse_db(e2e_db_path) and sse_app(sse_db) for SSE tests needing direct DB access for event insertion before stream read.",
+      "description": "Run test_stage_cards_show_progress to verify the JSON-based assertion passes. May need to adjust field names based on actual /api/stages response structure (name, status_counts dict with done/running/pending/error keys, gate_mode).",
       "status": "done",
-      "commit": "4638279"
+      "commit": "ad55be8"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write TestGateWorkflow class: test_get_gates_returns_9_gates (GET /api/gates returns list of 9 gates with default modes), test_get_single_gate (GET /api/gates/narrate returns gate dict), test_update_gate_mode (PUT /api/gates/narrate with mode='pause' persists), test_approve_gate (POST /api/gates/narrate/approve sets status to 'approved'), test_skip_gate (POST /api/gates/narrate/skip sets status to 'skipped'), test_apply_preset_review_creative (PUT /api/gates/preset/review_creative sets narrate+script+upload to pause), test_apply_preset_full_auto (all gates auto after preset).",
+      "description": "Strengthen test_render_detail_shows_script_scenes (line 961): replace the disjunctive assertion 'assert \"Opening\" in resp.text or \"scenes\" in resp.text.lower()' with two direct assertions: 'assert \"Opening\" in resp.text' and 'assert \"Main\" in resp.text'. These match the exact scene titles seeded by render_seeded_app at lines 909-910.",
       "status": "done",
-      "commit": "bfe2702"
+      "commit": "c2cdea8"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Write gates_app and gates_client fixtures that create app with init_default_gates() called. Ensure gate tests set up waiting status where needed before approve/skip. Verify all 7 gate workflow tests pass.",
+      "description": "Run test_render_detail_shows_script_scenes to verify both scene titles appear in the rendered HTML. If the template doesn't render individual scene titles, this test will correctly fail \u2014 exposing the bug the weak assertion was masking.",
       "status": "done",
-      "commit": "bfe2702"
+      "commit": "c2cdea8"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write TestMediaBrowsing class: test_media_list_page_returns_html (GET /media returns 200 HTML), test_media_api_returns_paginated (GET /api/media returns items+total), test_media_filter_by_status (GET /api/media?status=analyzed returns only matching), test_media_search_by_name (GET /api/media?q=video_3 returns matching), test_media_detail_page (GET /media/{id} returns 200 HTML with media info), test_media_detail_api (GET /api/media/{id} returns JSON with media/transcript/detections/faces/audio_events/embedding_count keys), test_media_tab_transcript (GET /media/{id}/tab/transcript returns HTML with segment times).",
+      "description": "Add persistence check to test_exclude_cluster (after line 851): after asserting resp.json()['excluded']==1, add GET /api/clusters/c-3 and assert check.json()['excluded']==1. This mirrors the pattern in test_relabel_cluster (lines 842-843) which does GET after POST to verify persistence.",
       "status": "done",
-      "commit": "8e6b7df"
+      "commit": "f72a65d"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Write media_seeded_app fixture: seed 12 media files with varying statuses (pending/analyzed/ingested), insert transcripts for 3 media, batch_insert_detections for 2, batch_insert_faces for 1, batch_insert_embeddings for 2, batch_insert_audio_events for 1. Create media_client from it. Verify all 7 media browsing tests pass.",
+      "description": "Run test_exclude_cluster to verify the persistence GET returns excluded==1. The exclude endpoint should persist to DB, and the GET /api/clusters/{id} endpoint should return the updated value.",
       "status": "done",
-      "commit": "8e6b7df"
-    },
-    {
-      "id": "step-11",
-      "type": "test",
-      "description": "Write TestNarrativeReview class: test_review_hub_returns_html (GET /review returns 200 HTML), test_review_hub_shows_waiting_gate (with narrate gate waiting, page shows 'narrate'), test_list_narratives_api (GET /api/narratives returns list), test_filter_narratives_by_status (GET /api/narratives?status=proposed returns only proposed), test_approve_narrative (POST /api/narratives/{id}/approve sets status=approved), test_reject_narrative (POST /api/narratives/{id}/reject sets status=rejected), test_narratives_page_shows_titles (GET /review/narratives shows all narrative titles).",
-      "status": "done",
-      "commit": "5881cd8"
-    },
-    {
-      "id": "step-12",
-      "type": "impl",
-      "description": "Write narrative_seeded_app fixture: init_default_gates, update_gate('narrate', status='waiting'), seed 3 narratives (2 proposed, 1 approved). Create narrative_client. Verify all 7 narrative review tests pass.",
-      "status": "done",
-      "commit": "5881cd8"
-    },
-    {
-      "id": "step-13",
-      "type": "test",
-      "description": "Write TestClusterReview class: test_clusters_page_shows_cards (GET /review/clusters shows cluster labels), test_list_clusters_api (GET /api/clusters returns list with clip_ids+clip_count), test_relabel_cluster (POST /api/clusters/{id}/relabel with label+description updates and persists), test_exclude_cluster (POST /api/clusters/{id}/exclude sets excluded=1), test_merge_clusters (POST /api/clusters/merge with 2 cluster_ids combines clips, extends time range, deletes smaller cluster).",
-      "status": "done",
-      "commit": "d165ea1"
-    },
-    {
-      "id": "step-14",
-      "type": "impl",
-      "description": "Write cluster_seeded_app fixture: seed 3 activity clusters with different labels, clip_ids, and time ranges. Create cluster_client. Verify all 5 cluster review tests pass.",
-      "status": "done",
-      "commit": "d165ea1"
-    },
-    {
-      "id": "step-15",
-      "type": "test",
-      "description": "Write TestRenderScriptReview class: test_render_review_index (GET /review/render returns 200 HTML listing narratives with edit plans), test_render_detail_shows_validation (GET /review/render/{id} shows validation results like resolution/codec), test_render_detail_shows_script_scenes (page contains scene data from narrative_scripts), test_render_api_returns_json (GET /api/renders/{id} returns narrative_id + validation dict + render_path), test_render_video_returns_mp4 (GET /api/renders/{id}/video returns video/mp4 when file exists), test_uploads_page (GET /review/uploads shows upload data with YouTube URL).",
-      "status": "done",
-      "commit": "876b63f"
-    },
-    {
-      "id": "step-16",
-      "type": "impl",
-      "description": "Write render_seeded_app fixture: seed narrative, upsert_edit_plan with edl_json+validation_json+render_path pointing to a tmp_path file, upsert_narrative_script with script_json containing scenes, insert_upload with youtube_url. Create actual mp4 file at render_path. Create render_client. Verify all 6 render/script review tests pass.",
-      "status": "done",
-      "commit": "876b63f"
-    },
-    {
-      "id": "step-17",
-      "type": "test",
-      "description": "Write TestJobStatus class: test_stages_api_shows_job_counts (GET /api/stages includes status_counts for stages with jobs), test_stage_card_reflects_error_jobs (stage with error jobs shows error status), test_stage_card_reflects_running_jobs (stage with running jobs shows running status). These verify job management visibility through the dashboard API.",
-      "status": "done",
-      "commit": "7677f1e"
-    },
-    {
-      "id": "step-18",
-      "type": "impl",
-      "description": "Reuse dashboard_client fixture (which has mixed job statuses across stages). Verify all 3 job status tests pass by asserting on /api/stages response data.",
-      "status": "done",
-      "commit": "7677f1e"
-    },
-    {
-      "id": "step-19",
-      "type": "test",
-      "description": "Write TestFullPipelineSimulation class: test_complete_gate_workflow \u2014 seed a minimal pipeline run with all stages, set all gates to 'pause' via PUT /api/gates/preset/review_everything, update gates to 'waiting' in DB, walk through approving each of the 9 gates via POST /api/gates/{stage}/approve, verify each gate status becomes 'approved' via GET /api/gates/{stage}, and at the end verify all 9 gates show 'approved' via GET /api/gates.",
-      "status": "done",
-      "commit": "0626d90"
-    },
-    {
-      "id": "step-20",
-      "type": "impl",
-      "description": "Write pipeline_simulation_app fixture: init_default_gates, insert pipeline run, insert at least one job per stage. Create pipeline_client. Verify the full pipeline simulation test passes end-to-end \u2014 the test exercises the complete gate approval workflow across all 9 stages in sequence.",
-      "status": "done",
-      "commit": "aece986"
+      "commit": "f72a65d"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Create a single test_web_e2e.py file rather than adding to existing per-route test files",
-      "rationale": "The task explicitly asks for E2E integration tests that verify cross-cutting workflows. Existing test files (test_dashboard.py, test_gates.py, etc.) have thorough unit-level coverage of individual endpoints. The E2E file focuses on multi-step workflows and data consistency across views, avoiding duplication."
+      "decision": "Use /api/stages JSON endpoint instead of HTML parsing for progress assertion",
+      "rationale": "The /api/stages endpoint already exists (dashboard.py:151) and returns structured status_counts per stage. This is more robust than parsing HTML with offset arithmetic, which breaks on any template change. The HTML rendering test (test_dashboard_contains_all_9_stages) already covers that stage names appear in HTML."
     },
     {
-      "decision": "Use separate fixture chains per test class rather than one massive shared fixture",
-      "rationale": "Each test class needs different data combinations. A single fixture seeding everything would be fragile and hard to maintain. Separate fixtures (dashboard_seeded_app, media_seeded_app, etc.) keep seeding isolated and test failures localized."
+      "decision": "Use literal valid event types rather than importing VALID_EVENT_TYPES constant",
+      "rationale": "Using literals like 'stage_started', 'job_started' etc. is clearer in test code and avoids coupling tests to the production constant. The existing test_events_delivered_in_order (line 348-350) already uses valid literal types as a pattern to follow."
     },
     {
-      "decision": "Adapt task items 8-10 to match actual routes instead of testing nonexistent endpoints",
-      "rationale": "The task description mentions /review/scripts/{id}, /review/edl/{id}, /api/jobs/{id}/retry, and /api/jobs/{id}/skip \u2014 none of which exist. Script/EDL content is viewable via /review/render/{id}. Job status is visible via /api/stages. Testing phantom routes would require new implementation, which is out of scope for a test-only task."
+      "decision": "Assert both 'Opening' and 'Main' scene titles without fallback",
+      "rationale": "The render_seeded_app fixture explicitly seeds two scenes with these exact titles (line 909-910). The disjunctive assertion ('Opening' or 'scenes') masks failures \u2014 if the template stops rendering scene data, 'scenes' as a generic word could still match template chrome text, making the test meaningless."
     },
     {
-      "decision": "Use file-backed DB (tmp_path) rather than in-memory DB for all E2E tests",
-      "rationale": "The create_app(db_path) factory stores db_path in app.state and routes create fresh CatalogDB connections per request. With :memory: DB, each route handler would get an empty DB. File-backed DBs ensure seeded data is visible to route handlers \u2014 matching the pattern in all existing web test files."
+      "decision": "Fixture teardown uses yield+finally+close pattern, not context manager",
+      "rationale": "The e2e_db and sse_db fixtures set isolation_level=None (autocommit) after creation, which is incompatible with the with-statement pattern (CatalogDB.__exit__ calls commit/rollback). The yield+finally pattern from conftest.py's catalog_db fixture (line 76-89) is the correct approach \u2014 it lets the fixture remain as autocommit during the test and only closes in teardown."
     },
     {
-      "decision": "Patch _event_generator for SSE tests rather than using async test client",
-      "rationale": "The SSE endpoint uses an infinite async generator (1s poll loop). TestClient is synchronous. The established pattern in test_sse.py patches _event_generator with a finite generator that yields DB events then stops, avoiding hangs. This pattern is proven and consistent with existing tests."
-    },
-    {
-      "decision": "Test gate workflow as sequential approve operations rather than simulating pipeline runner",
-      "rationale": "The full pipeline simulation test verifies the web console's gate workflow, not the orchestrator. Setting gates to 'waiting' via DB and approving via API exercises the same path a user would take. The orchestrator E2E test already exists in test_e2e.py."
+      "decision": "Address SSE event types before strengthening identity assertions",
+      "rationale": "Steps 1-2 fix the event types first, then steps 3-4 add identity assertions. This ordering ensures the identity assertions reference valid, realistic event types rather than the synthetic 'event_N' strings."
     }
   ],
   "reuse": [
     {
-      "what": "create_app(db_path) factory function",
-      "where": "autopilot/web/app.py",
-      "how": "Standard app creation for all test classes \u2014 pass tmp_path-based db_path string, returns configured FastAPI instance with all routers registered."
+      "what": "catalog_db fixture pattern (yield + finally + close)",
+      "where": "tests/conftest.py lines 76-89",
+      "how": "Copy the yield/finally/close pattern for both e2e_db and sse_db fixtures. Use Generator return type annotation. Pattern: db = CatalogDB(...); db.conn.isolation_level = None; yield db; db.close() (with try/finally)."
     },
     {
-      "what": "TestClient pattern from existing web tests",
-      "where": "tests/test_dashboard.py, tests/test_gates.py, tests/test_review.py, etc.",
-      "how": "All existing web tests use starlette.testclient.TestClient with file-backed CatalogDB. Follow the same db_path\u2192CatalogDB\u2192create_app\u2192TestClient fixture chain."
+      "what": "test_relabel_cluster persistence check pattern",
+      "where": "tests/test_web_e2e.py lines 841-843",
+      "how": "Follow the same GET-after-POST pattern in test_exclude_cluster: add check = cluster_client.get('/api/clusters/c-3'); assert check.json()['excluded'] == 1."
     },
     {
-      "what": "SSE _parse_sse_body helper and _event_generator patching",
-      "where": "tests/test_sse.py lines 39-59, 72-78",
-      "how": "Reuse the exact SSE parsing logic and finite generator pattern. Patch sse_module._event_generator with a function that yields DB events then stops."
+      "what": "test_events_delivered_in_order valid event type usage",
+      "where": "tests/test_web_e2e.py lines 348-350",
+      "how": "This test already uses valid event types (stage_started, job_started, stage_completed). Use similar valid types in test_last_event_id_resumes and test_invalid_last_event_id_gets_all instead of synthetic 'event_N' types."
     },
     {
-      "what": "CatalogDB seeding methods",
-      "where": "autopilot/db.py \u2014 insert_media, insert_run, insert_job, insert_event, init_default_gates, update_gate, insert_narrative, insert_activity_cluster, upsert_edit_plan, upsert_narrative_script, insert_upload",
-      "how": "All seeding uses existing CatalogDB CRUD methods. No raw SQL needed. Wrap in helper functions with sensible defaults following _seed_narrative pattern from test_review.py."
+      "what": "VALID_EVENT_TYPES production allowlist",
+      "where": "autopilot/web/routes/sse.py lines 18-31",
+      "how": "Reference this 12-element tuple when choosing realistic event types for SSE tests. Use a diverse 5-type subset (stage_started, job_started, job_progress, job_completed, stage_completed) for the 5-event test and a 3-type subset for the 3-event test."
     },
     {
-      "what": "Seeding helper patterns from test_review.py and test_cluster_review.py",
-      "where": "tests/test_review.py:28-41 (_seed_narrative), tests/test_cluster_review.py:28-44 (_seed_cluster), tests/test_render_review.py:63-89 (_seed_edit_plan)",
-      "how": "Follow the defaults-with-overrides pattern: define sensible defaults dict, update with **overrides kwargs, call db.insert_X(id, **defaults). Commit after insert."
-    },
-    {
-      "what": "PIPELINE_STAGES constant",
-      "where": "tests/test_dashboard.py line 166",
-      "how": "Copy the 9-element tuple constant for stage iteration in dashboard and gate tests."
-    },
-    {
-      "what": "conftest.py catalog_db fixture pattern",
-      "where": "tests/conftest.py lines 24-29",
-      "how": "Base pattern for CatalogDB creation with autocommit. E2E fixtures extend this with file-backed DB and explicit seeding."
+      "what": "_seed_pipeline seeded data counts",
+      "where": "tests/test_web_e2e.py lines 143-203",
+      "how": "Reference the exact counts seeded for ingest stage (5 done + 2 running = 7 total) when writing the /api/stages JSON assertion to replace HTML parsing."
     }
   ],
-  "_session_id": "53-d714333c",
-  "_created_at": "2026-03-25T01:48:04.398730+00:00"
+  "_session_id": "82-b4cd24db",
+  "_created_at": "2026-03-25T02:18:08.431162+00:00"
 }
