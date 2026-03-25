@@ -290,6 +290,12 @@ class TestApiExcludeCluster:
         data = resp.json()
         assert data["excluded"] == 1
         assert data["cluster_id"] == "c-1"
+        # Verify persistence via follow-up GET
+        get_resp = client.get("/api/clusters/c-1")
+        assert get_resp.status_code == 200
+        persisted = get_resp.json()
+        assert persisted["excluded"] == 1
+        assert persisted["cluster_id"] == "c-1"
 
     def test_returns_404_for_missing_cluster(self, client: TestClient) -> None:
         """POST exclude returns 404 for non-existent cluster."""
