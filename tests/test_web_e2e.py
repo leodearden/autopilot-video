@@ -869,3 +869,122 @@ class TestClusterReview:
         # c-1 deleted
         check = cluster_client.get("/api/clusters/c-1")
         assert check.status_code == 404
+
+
+# ===========================================================================
+# 8. Render / Script Review Tests
+# ===========================================================================
+
+
+@pytest.fixture
+def render_seeded_app(tmp_path: Path) -> FastAPI:
+    """App seeded with narrative, edit plan, script, upload, and render file."""
+    db_path = str(tmp_path / "render.db")
+    video_file = tmp_path / "render.mp4"
+    video_file.write_bytes(b"\x00" * 512)
+
+    with CatalogDB(db_path) as db:
+        db.init_default_gates()
+        _seed_narrative(db, "n-1", title="Morning Walk", status="approved")
+
+        # Edit plan with validation and render path
+        db.upsert_edit_plan(
+            "n-1",
+            edl_json='{"cuts": [{"in": 0, "out": 10}]}',
+            otio_path=str(tmp_path / "edit.otio"),
+            validation_json=json.dumps({
+                "resolution": "1920x1080",
+                "duration_seconds": 120.5,
+                "codec": "h264",
+                "passes": True,
+            }),
+            render_path=str(video_file),
+        )
+
+        # Narrative script with scenes
+        db.upsert_narrative_script(
+            "n-1",
+            script_json=json.dumps({
+                "scenes": [
+                    {"title": "Opening", "duration": 15, "voiceover": "Welcome"},
+                    {"title": "Main", "duration": 90, "voiceover": "The story"},
+                ],
+            }),
+        )
+
+        # Upload record
+        db.insert_upload(
+            "n-1",
+            youtube_video_id="abc123",
+            youtube_url="https://youtube.com/watch?v=abc123",
+            uploaded_at="2025-01-15T10:30:00",
+            privacy_status="unlisted",
+        )
+        db.conn.commit()
+
+    return create_app(db_path)
+
+
+@pytest.fixture
+def render_client(render_seeded_app: FastAPI) -> TestClient:
+    """TestClient for render/script review tests."""
+    return TestClient(render_seeded_app)
+
+
+class TestRenderScriptReview:
+    """Verify render review index, detail, video stream, and uploads."""
+
+    def test_render_review_index(
+        self, render_client: TestClient,
+    ) -> None:
+        """GET /review/render returns 200 HTML listing narratives."""
+        resp = render_client.get("/review/render")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_render_detail_shows_validation(
+        self, render_client: TestClient,
+    ) -> None:
+        """GET /review/render/n-1 shows validation results."""
+        resp = render_client.get("/review/render/n-1")
+        assert resp.status_code == 200
+        assert "1920x1080" in resp.text
+        assert "h264" in resp.text
+
+    def test_render_detail_shows_script_scenes(
+        self, render_client: TestClient,
+    ) -> None:
+        """Render detail page contains scene data from narrative_scripts."""
+        resp = render_client.get("/review/render/n-1")
+        assert resp.status_code == 200
+        # Script scenes should be visible
+        assert "Opening" in resp.text or "scenes" in resp.text.lower()
+
+    def test_render_api_returns_json(
+        self, render_client: TestClient,
+    ) -> None:
+        """GET /api/renders/n-1 returns narrative_id + validation dict."""
+        resp = render_client.get("/api/renders/n-1")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["narrative_id"] == "n-1"
+        assert isinstance(data["validation"], dict)
+        assert data["validation"]["passes"] is True
+        assert data["render_path"] is not None
+
+    def test_render_video_returns_mp4(
+        self, render_client: TestClient,
+    ) -> None:
+        """GET /api/renders/n-1/video returns video/mp4 when file exists."""
+        resp = render_client.get("/api/renders/n-1/video")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "video/mp4"
+
+    def test_uploads_page(
+        self, render_client: TestClient,
+    ) -> None:
+        """GET /review/uploads shows upload data with YouTube URL."""
+        resp = render_client.get("/review/uploads")
+        assert resp.status_code == 200
+        assert "abc123" in resp.text
+        assert "youtube.com" in resp.text
