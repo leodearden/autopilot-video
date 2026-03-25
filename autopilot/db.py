@@ -731,6 +731,13 @@ class CatalogDB:
         )
         return cur.rowcount
 
+    def count_non_excluded_clusters(self) -> int:
+        """Return the number of non-excluded activity clusters."""
+        cur = self.conn.execute(
+            "SELECT COUNT(*) FROM activity_clusters WHERE excluded = 0",
+        )
+        return cur.fetchone()[0]  # type: ignore[index]
+
     def clear_activity_clusters(self) -> None:
         """Delete all rows from activity_clusters table."""
         self.conn.execute("DELETE FROM activity_clusters")
