@@ -216,6 +216,17 @@ def api_update_narrative(
 # ---------------------------------------------------------------------------
 
 
+def _parse_ts(s: str) -> datetime:
+    """Parse an ISO timestamp, raising HTTP 422 with the offending value on failure."""
+    try:
+        return datetime.fromisoformat(s)
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid timestamp format: {s!r}",
+        )
+
+
 def _parse_cluster(row: dict[str, object]) -> dict[str, object]:
     """Enrich a cluster row with parsed clip_ids and clip_count."""
     result = dict(row)
@@ -389,8 +400,8 @@ def api_merge_clusters(
         # Compute time range (chronological comparison, not lexicographic)
         time_starts = [str(c["time_start"]) for c in clusters if c.get("time_start")]
         time_ends = [str(c["time_end"]) for c in clusters if c.get("time_end")]
-        min_start = min(time_starts, key=datetime.fromisoformat) if time_starts else None
-        max_end = max(time_ends, key=datetime.fromisoformat) if time_ends else None
+        min_start = min(time_starts, key=_parse_ts) if time_starts else None
+        max_end = max(time_ends, key=_parse_ts) if time_ends else None
 
         # Update largest cluster with combined data
         update_kwargs: dict[str, object] = {
