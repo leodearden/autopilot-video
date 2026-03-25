@@ -302,3 +302,148 @@ class TestDashboardRendering:
             assert "name" in stage
             assert "status_counts" in stage
             assert "gate_mode" in stage
+
+
+# ===========================================================================
+# 3. SSE Event Flow Tests
+# ===========================================================================
+
+
+@pytest.fixture
+def sse_db(e2e_db_path: str) -> CatalogDB:
+    """CatalogDB for SSE tests (separate from e2e_db to avoid fixture reuse)."""
+    db = CatalogDB(e2e_db_path)
+    db.conn.isolation_level = None
+    return db
+
+
+@pytest.fixture
+def sse_app(sse_db: CatalogDB, e2e_db_path: str) -> FastAPI:
+    """App for SSE tests with direct DB access for event insertion."""
+    return create_app(e2e_db_path)
+
+
+class TestSSEEventFlow:
+    """Verify SSE endpoint content-type, event delivery, and reconnection."""
+
+    def test_sse_endpoint_returns_event_stream(self, sse_app: FastAPI) -> None:
+        """GET /api/events returns 200 with text/event-stream content-type."""
+        from autopilot.web.routes import sse as sse_module
+
+        async def _finite_gen(request):
+            yield {"data": "hello"}
+
+        with patch.object(sse_module, "_event_generator", _finite_gen):
+            client = TestClient(sse_app)
+            resp = client.get("/api/events")
+            assert resp.status_code == 200
+            assert "text/event-stream" in resp.headers["content-type"]
+
+    def test_events_delivered_in_order(
+        self, sse_db: CatalogDB, sse_app: FastAPI,
+    ) -> None:
+        """Insert 3 events, verify delivery order matches insertion order."""
+        from autopilot.web.routes import sse as sse_module
+
+        sse_db.insert_event("stage_started", stage="INGEST")
+        sse_db.insert_event("job_started", stage="INGEST", job_id="job-1")
+        sse_db.insert_event("stage_completed", stage="INGEST")
+
+        async def _finite_gen(request):
+            db = sse_module._get_db(request)
+            try:
+                events = db.get_events_since(0)
+                for ev in events:
+                    yield sse_module._format_event(ev)
+            finally:
+                db.close()
+
+        with patch.object(sse_module, "_event_generator", _finite_gen):
+            client = TestClient(sse_app)
+            resp = client.get("/api/events")
+            events = _parse_sse_body(resp.text)
+
+        assert len(events) == 3
+        assert events[0]["event"] == "stage_started"
+        assert events[1]["event"] == "job_started"
+        assert events[2]["event"] == "stage_completed"
+
+    def test_event_has_id_event_data_fields(
+        self, sse_db: CatalogDB, sse_app: FastAPI,
+    ) -> None:
+        """Each SSE event has id, event, and data fields."""
+        from autopilot.web.routes import sse as sse_module
+
+        sse_db.insert_event("stage_started", stage="ANALYZE", job_id="j1")
+
+        async def _finite_gen(request):
+            db = sse_module._get_db(request)
+            try:
+                events = db.get_events_since(0)
+                for ev in events:
+                    yield sse_module._format_event(ev)
+            finally:
+                db.close()
+
+        with patch.object(sse_module, "_event_generator", _finite_gen):
+            client = TestClient(sse_app)
+            resp = client.get("/api/events")
+            events = _parse_sse_body(resp.text)
+
+        assert len(events) == 1
+        ev = events[0]
+        assert "id" in ev
+        assert "event" in ev
+        assert "data" in ev
+
+    def test_last_event_id_resumes(
+        self, sse_db: CatalogDB, sse_app: FastAPI,
+    ) -> None:
+        """Connect with Last-Event-ID:3, verify only events after ID 3 arrive."""
+        from autopilot.web.routes import sse as sse_module
+
+        for i in range(5):
+            sse_db.insert_event(f"event_{i}", stage="INGEST")
+
+        async def _finite_gen(request):
+            db = sse_module._get_db(request)
+            last_id = sse_module._get_last_event_id(request)
+            try:
+                events = db.get_events_since(last_id)
+                for ev in events:
+                    yield sse_module._format_event(ev)
+            finally:
+                db.close()
+
+        with patch.object(sse_module, "_event_generator", _finite_gen):
+            client = TestClient(sse_app)
+            resp = client.get("/api/events", headers={"Last-Event-ID": "3"})
+            events = _parse_sse_body(resp.text)
+
+        assert len(events) == 2
+
+    def test_invalid_last_event_id_gets_all(
+        self, sse_db: CatalogDB, sse_app: FastAPI,
+    ) -> None:
+        """Non-numeric Last-Event-ID falls back to 0 (all events)."""
+        from autopilot.web.routes import sse as sse_module
+
+        for i in range(3):
+            sse_db.insert_event(f"event_{i}", stage="INGEST")
+
+        async def _finite_gen(request):
+            db = sse_module._get_db(request)
+            last_id = sse_module._get_last_event_id(request)
+            try:
+                events = db.get_events_since(last_id)
+                for ev in events:
+                    yield sse_module._format_event(ev)
+            finally:
+                db.close()
+
+        with patch.object(sse_module, "_event_generator", _finite_gen):
+            client = TestClient(sse_app)
+            resp = client.get("/api/events", headers={"Last-Event-ID": "abc"})
+            events = _parse_sse_body(resp.text)
+
+        assert len(events) == 3
