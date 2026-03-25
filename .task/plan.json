@@ -1,75 +1,65 @@
 {
-  "task_id": "87",
-  "title": "Harden merge route test assertions: detail message + positive batch spy",
+  "task_id": "93",
+  "title": "Add tie-breaking edge case test for cluster merge",
   "files": [
     "tests/test_cluster_review.py"
   ],
   "modules": [
     "tests"
   ],
-  "analysis": "Two test gaps in test_cluster_review.py need hardening, both in the merge route test classes. (1) test_returns_404_for_missing_cluster (line 543) asserts status_code==404 but never checks resp.json()['detail']. The route at review.py:408-412 already returns `f\"Cluster {first_missing} not found\"` so the string 'nonexistent' will appear in the detail when cluster_ids=['c-1','nonexistent']. Adding the assertion is a one-liner. (2) test_merge_uses_batch_fetch (line 943) monkeypatches get_activity_cluster to raise (proving the old N+1 path is NOT taken) but never positively asserts get_activity_clusters_by_ids IS called. The fix is to wrap the real method with a call-counting spy via monkeypatch and assert call_count >= 1 after the request. Both are test-only changes to a single file; no implementation code needs modification.",
+  "analysis": "The api_merge_clusters route (review.py:394-461) selects the survivor via `max(parsed_clusters, key=lambda c: c['clip_count'])`. Python's max() returns the first element with the maximum value when ties occur. Since parsed_clusters preserves the request's cluster_ids order (body.cluster_ids -> clusters_by_id lookup -> list comprehension at line 413-415), the first cluster ID in the request survives a tie. The existing test_merge_uses_batch_fetch seeds c-1 (1 clip) vs c-2 (2 clips), always selecting c-2 unambiguously. This task adds a test variant where both clusters have equal clip counts (2 each) to document and verify the tie-breaking behavior. No production code changes are needed -- this is a test-only task that pins the existing implicit contract.",
   "prerequisites": [],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Add detail message assertion to test_returns_404_for_missing_cluster: after `assert resp.status_code == 404`, add `assert 'nonexistent' in resp.json()['detail']` to verify the 404 error identifies the specific missing cluster ID.",
+      "description": "Write test_merge_equal_size_clusters_first_in_request_wins in TestApiMergeClustersUseBatchFetch. Seed c-1 and c-2 each with 2 clips (c-1: [clip-a, clip-b], c-2: [clip-c, clip-d]). Request merge with cluster_ids=['c-1','c-2']. Assert: survivor is c-1 (first in request order), merged clip_ids contain all 4 clips sorted == ['clip-a','clip-b','clip-c','clip-d'], batch_args has 2 calls, batch_args[0]==['c-1','c-2'], batch_args[1]==['c-1'] (re-fetch of survivor). Reuse the same N+1 trap + batch spy monkeypatch pattern from test_merge_uses_batch_fetch.",
       "status": "done",
-      "commit": "665da08"
+      "commit": "33beec5"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Run tests to confirm step-1 assertion passes (implementation already returns 'Cluster nonexistent not found' at review.py:409). No code change needed \u2014 this step verifies green.",
+      "description": "Verify the test passes against existing production code (no production changes needed). Run pytest tests/test_cluster_review.py::TestApiMergeClustersUseBatchFetch to confirm both the new tie-breaking test and the existing test are green. If the test fails, investigate whether max() tie-breaking differs from expectation and adjust the test assertion to match actual deterministic behavior.",
       "status": "done",
-      "commit": "665da08"
-    },
-    {
-      "id": "step-3",
-      "type": "test",
-      "description": "Add positive batch spy to test_merge_uses_batch_fetch: use monkeypatch to wrap CatalogDB.get_activity_clusters_by_ids with a call-counting spy (save original method, replace with wrapper that increments a counter list then delegates to original). After the POST request, assert the spy's call count >= 1.",
-      "status": "done",
-      "commit": "4cda354"
-    },
-    {
-      "id": "step-4",
-      "type": "impl",
-      "description": "Run tests to confirm step-3 spy assertion passes (merge route already calls db.get_activity_clusters_by_ids at review.py:405). No code change needed \u2014 this step verifies green.",
-      "status": "done",
-      "commit": "4cda354"
+      "commit": "33beec5"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use substring check `'nonexistent' in resp.json()['detail']` rather than exact string match",
-      "rationale": "Task description specifies this form. It's resilient to minor wording changes in the error message while still verifying the missing ID is surfaced."
+      "decision": "Assert first-in-request-order wins ties",
+      "rationale": "Python's max() returns the first element with the maximum key value. Since parsed_clusters is built preserving body.cluster_ids order (review.py:413-415), the first cluster ID in the request is the deterministic survivor. This is a stable behavior worth pinning via test."
     },
     {
-      "decision": "Implement batch spy via a closure counter + monkeypatch wrapping the real method, not unittest.mock",
-      "rationale": "The existing test already uses pytest monkeypatch (line 957). A closure-based counter (`calls = [0]`, wrapper increments then delegates) keeps the pattern consistent with the file's style and avoids adding unittest.mock as a new import."
+      "decision": "Use distinct clip IDs (clip-a/b/c/d) instead of overlapping with existing test",
+      "rationale": "Avoids confusion with the existing test's clip-1/2/3 IDs and makes it obvious which clips came from which cluster in the merged result."
     },
     {
-      "decision": "Spy wraps the real method (delegates to original) rather than replacing it",
-      "rationale": "The test already asserts on the merge result (status 200, correct cluster_id, correct clip_ids). The spy must delegate so those downstream assertions continue to pass."
+      "decision": "Reuse the same monkeypatch pattern (N+1 trap + batch spy) from the existing test",
+      "rationale": "Keeps the test class consistent and verifies the batch-fetch path is also used for the equal-size case. Both assertions (no N+1, correct batch calls) remain valuable."
+    },
+    {
+      "decision": "Test-only task, no production code changes",
+      "rationale": "The tie-breaking behavior is already correct and deterministic via max() semantics. The task is to document this contract via test, not to change behavior."
     }
   ],
   "reuse": [
     {
-      "what": "monkeypatch.setattr(CatalogDB, ...) pattern",
-      "where": "tests/test_cluster_review.py line 957",
-      "how": "Same pattern used for the N+1 trap; reuse for the batch spy wrapper on get_activity_clusters_by_ids"
-    },
-    {
       "what": "_seed_cluster_via_db helper",
-      "where": "tests/test_cluster_review.py line 260",
-      "how": "Already used by both tests for seeding clusters; no new helper needed"
+      "where": "tests/test_cluster_review.py:260",
+      "how": "Call with custom cluster_id and clip_ids_json to seed equal-size clusters"
     },
     {
-      "what": "resp.json() pattern for detail assertions",
-      "where": "Common FastAPI test pattern, not yet used in this file for 404 detail checks",
-      "how": "Simple dict access on the JSON response body"
+      "what": "N+1 trap + batch spy monkeypatch pattern",
+      "where": "tests/test_cluster_review.py:955-968",
+      "how": "Replicate the same _n1_trap / _batch_spy closures and monkeypatch.setattr calls into the new test method"
+    },
+    {
+      "what": "app and client fixtures",
+      "where": "tests/test_cluster_review.py:47-57",
+      "how": "Same pytest fixtures as the existing test method (already available via class method signature)"
     }
   ],
-  "_session_id": "87-41a924bb",
-  "_created_at": "2026-03-25T02:34:18.830425+00:00"
+  "_session_id": "93-734a7949",
+  "_created_at": "2026-03-25T02:48:39.368053+00:00"
 }
