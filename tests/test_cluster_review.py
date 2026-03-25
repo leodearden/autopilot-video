@@ -478,6 +478,58 @@ class TestApiMergeClusters:
         # c-2 clip_ids should be unchanged (update was rolled back)
         assert r2.json()["clip_ids"] == ["b", "c"]
 
+    def test_merge_malformed_timestamp_returns_422(
+        self, app: FastAPI,
+    ) -> None:
+        """Merge returns 422 with actionable detail for malformed time_start."""
+        _seed_cluster_via_db(
+            app, "c-1",
+            clip_ids_json='["a"]',
+            time_start="2025-06-15T22:00:00+10:00",
+            time_end="2025-06-15T23:00:00+10:00",
+        )
+        _seed_cluster_via_db(
+            app, "c-2",
+            clip_ids_json='["b","c"]',
+            time_start="not-a-timestamp",
+            time_end="2025-06-16T02:00:00+00:00",
+        )
+        err_client = TestClient(app, raise_server_exceptions=False)
+        resp = err_client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": ["c-1", "c-2"]},
+        )
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert "Invalid timestamp format" in detail
+        assert "not-a-timestamp" in detail
+
+    def test_merge_malformed_time_end_returns_422(
+        self, app: FastAPI,
+    ) -> None:
+        """Merge returns 422 with actionable detail for malformed time_end."""
+        _seed_cluster_via_db(
+            app, "c-1",
+            clip_ids_json='["a"]',
+            time_start="2025-06-15T08:00:00",
+            time_end="2025-06-15T09:00:00",
+        )
+        _seed_cluster_via_db(
+            app, "c-2",
+            clip_ids_json='["b","c"]',
+            time_start="2025-06-15T10:00:00",
+            time_end="2025/13/45",
+        )
+        err_client = TestClient(app, raise_server_exceptions=False)
+        resp = err_client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": ["c-1", "c-2"]},
+        )
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert "Invalid timestamp format" in detail
+        assert "2025/13/45" in detail
+
     def test_merge_timestamp_comparison_chronological(
         self, app: FastAPI, client: TestClient,
     ) -> None:
