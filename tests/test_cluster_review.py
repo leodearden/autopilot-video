@@ -982,6 +982,54 @@ class TestApiMergeClustersUseBatchFetch:
         # Second call: post-merge re-fetch of the surviving (largest) cluster
         assert batch_args[1] == ["c-2"]
 
+    def test_merge_equal_size_clusters_first_in_request_wins(
+        self, app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When clusters tie on clip_count, the first in request order survives.
+
+        Python's max() returns the first element with the maximum key value.
+        Since parsed_clusters preserves body.cluster_ids order, the first
+        cluster_id in the request is the deterministic tie-breaking survivor.
+        """
+        _seed_cluster_via_db(
+            app, "c-1", label="Alpha", clip_ids_json='["clip-a","clip-b"]',
+        )
+        _seed_cluster_via_db(
+            app, "c-2", label="Beta", clip_ids_json='["clip-c","clip-d"]',
+        )
+
+        # N+1 trap: ensure single-cluster fetch is never called
+        def _n1_trap(self: object, cluster_id: str) -> None:
+            raise AssertionError(f"N+1 detected: get_activity_cluster({cluster_id!r})")
+
+        monkeypatch.setattr(CatalogDB, "get_activity_cluster", _n1_trap)
+
+        # Positive spy: record batch-fetch calls
+        batch_args: list[list[str]] = []
+        _original_batch = CatalogDB.get_activity_clusters_by_ids
+
+        def _batch_spy(self: object, cluster_ids: list[str]) -> dict:  # type: ignore[type-arg]
+            batch_args.append(list(cluster_ids))
+            return _original_batch(self, cluster_ids)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(CatalogDB, "get_activity_clusters_by_ids", _batch_spy)
+
+        resp = client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": ["c-1", "c-2"]},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        # Tie-breaking: first in request order (c-1) survives
+        assert data["cluster_id"] == "c-1"
+        # All 4 clips from both clusters are merged
+        assert sorted(data["clip_ids"]) == ["clip-a", "clip-b", "clip-c", "clip-d"]
+        # Exact batch call count: initial fetch + post-merge re-fetch
+        assert len(batch_args) == 2, f"Expected 2 batch calls, got {len(batch_args)}"
+        assert batch_args[0] == ["c-1", "c-2"]
+        # Second call: re-fetch of the survivor (c-1, first in request)
+        assert batch_args[1] == ["c-1"]
+
 
 class TestReviewHubClassifyGate:
     """Tests for review hub integration with classify gate."""
