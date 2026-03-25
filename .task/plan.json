@@ -59,8 +59,8 @@
       "id": "step-6",
       "type": "impl",
       "description": "Rename _sse_db_path fixture to sse_db_path (remove leading underscore). Update all 4 references: (1) fixture def name on line 19, (2) sse_db fixture parameter on line 25, (3) CatalogDB() call on line 27, (4) sse_app fixture parameter on line 33. Matches e2e_db_path naming convention.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "9129c5b"
     },
     {
       "id": "step-7",

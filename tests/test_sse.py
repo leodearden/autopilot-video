@@ -35,7 +35,13 @@ def sse_db(sse_db_path: str) -> Generator:
 
 @pytest.fixture
 def sse_app(sse_db: CatalogDB, sse_db_path: str) -> FastAPI:
-    """Create a FastAPI app pointing at the same DB as sse_db."""
+    """Create a FastAPI app pointing at the same DB as sse_db.
+
+    The ``sse_db`` parameter is not used directly — it is declared so that
+    pytest evaluates the ``sse_db`` fixture first, ensuring the DB schema
+    is created before ``create_app`` opens its own connection to the same
+    DB file.
+    """
     return create_app(sse_db_path)
 
 
