@@ -233,6 +233,22 @@ class TestApiListClusters:
         assert resp.status_code == 200
         assert resp.json() == []
 
+    def test_excluded_clusters_still_listed(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """GET /api/clusters includes excluded clusters with excluded==1."""
+        _seed_cluster_via_db(app, "c-1", label="Visible")
+        _seed_cluster_via_db(app, "c-2", label="Hidden")
+        # Exclude c-1
+        client.post("/api/clusters/c-1/exclude")
+        resp = client.get("/api/clusters")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 2
+        by_id = {c["cluster_id"]: c for c in data}
+        assert by_id["c-1"]["excluded"] == 1
+        assert by_id["c-2"]["excluded"] == 0
+
 
 # ---------------------------------------------------------------------------
 # TestApiGetCluster — step-9
@@ -281,6 +297,13 @@ class TestApiRelabelCluster:
         assert data["label"] == "New Label"
         assert data["description"] == "New desc"
         assert data["cluster_id"] == "c-1"
+        # Verify persistence via follow-up GET
+        get_resp = client.get("/api/clusters/c-1")
+        assert get_resp.status_code == 200
+        persisted = get_resp.json()
+        assert persisted["label"] == "New Label"
+        assert persisted["description"] == "New desc"
+        assert persisted["cluster_id"] == "c-1"
 
     def test_returns_404_for_missing_cluster(self, client: TestClient) -> None:
         """POST relabel returns 404 for non-existent cluster."""
@@ -301,6 +324,20 @@ class TestApiRelabelCluster:
         )
         assert resp.status_code == 422
 
+    def test_relabel_noop_empty_body(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """POST relabel with empty body {} is a valid no-op returning 200."""
+        _seed_cluster_via_db(app, "c-1", label="Keep", description="Same")
+        resp = client.post("/api/clusters/c-1/relabel", json={})
+        assert resp.status_code == 200
+        # Verify original values are unchanged via GET
+        get_resp = client.get("/api/clusters/c-1")
+        assert get_resp.status_code == 200
+        persisted = get_resp.json()
+        assert persisted["label"] == "Keep"
+        assert persisted["description"] == "Same"
+
 
 # ---------------------------------------------------------------------------
 # TestApiExcludeCluster — step-13
@@ -319,6 +356,12 @@ class TestApiExcludeCluster:
         data = resp.json()
         assert data["excluded"] == 1
         assert data["cluster_id"] == "c-1"
+        # Verify persistence via follow-up GET
+        get_resp = client.get("/api/clusters/c-1")
+        assert get_resp.status_code == 200
+        persisted = get_resp.json()
+        assert persisted["excluded"] == 1
+        assert persisted["cluster_id"] == "c-1"
 
     def test_returns_404_for_missing_cluster(self, client: TestClient) -> None:
         """POST exclude returns 404 for non-existent cluster."""
@@ -371,7 +414,7 @@ class TestApiMergeClusters:
         assert data["cluster_id"] == "c-2"
         assert data["label"] == "Large"
         # Combined clips
-        assert set(data["clip_ids"]) == {"clip-1", "clip-2", "clip-3", "clip-4"}
+        assert sorted(data["clip_ids"]) == ["clip-1", "clip-2", "clip-3", "clip-4"]
         assert data["clip_count"] == 4
         # Time range: min start, max end
         assert data["time_start"] == "2025-01-01T08:00:00"
@@ -404,6 +447,14 @@ class TestApiMergeClusters:
         resp = client.post(
             "/api/clusters/merge",
             json={"cluster_ids": ["c-1"]},
+        )
+        assert resp.status_code == 422
+
+    def test_rejects_empty_cluster_ids_list(self, client: TestClient) -> None:
+        """Merge with empty cluster_ids list returns 422."""
+        resp = client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": []},
         )
         assert resp.status_code == 422
 
@@ -558,6 +609,18 @@ class TestApiMergeClusters:
         assert data["time_start"] == "2025-06-15T22:00:00+10:00"
         # c-2 ends later chronologically (02:00 UTC next day > 13:00 UTC)
         assert data["time_end"] == "2025-06-16T02:00:00+00:00"
+
+    def test_rejects_extra_fields(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """Merge with extra fields returns 422 (extra='forbid')."""
+        _seed_cluster_via_db(app, "c-1")
+        _seed_cluster_via_db(app, "c-2")
+        resp = client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": ["c-1", "c-2"], "evil": "field"},
+        )
+        assert resp.status_code == 422
 
 
 # ---------------------------------------------------------------------------
@@ -764,5 +827,4 @@ class TestReviewHubClassifyGate:
         # Link to cluster review page
         assert "/review/clusters" in body
         # Pending count: 3 clusters - 1 excluded = 2
-        assert "2" in body
-        assert "activity clusters" in body
+        assert "2 activity clusters" in body

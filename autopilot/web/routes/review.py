@@ -386,6 +386,8 @@ class MergeRequest(BaseModel):
 
     cluster_ids: list[str]
 
+    model_config = ConfigDict(extra="forbid")
+
 
 @router.post("/api/clusters/merge")
 def api_merge_clusters(
