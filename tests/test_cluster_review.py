@@ -197,6 +197,22 @@ class TestApiListClusters:
         assert resp.status_code == 200
         assert resp.json() == []
 
+    def test_excluded_clusters_still_listed(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """GET /api/clusters includes excluded clusters with excluded==1."""
+        _seed_cluster_via_db(app, "c-1", label="Visible")
+        _seed_cluster_via_db(app, "c-2", label="Hidden")
+        # Exclude c-1
+        client.post("/api/clusters/c-1/exclude")
+        resp = client.get("/api/clusters")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 2
+        by_id = {c["cluster_id"]: c for c in data}
+        assert by_id["c-1"]["excluded"] == 1
+        assert by_id["c-2"]["excluded"] == 0
+
 
 # ---------------------------------------------------------------------------
 # TestApiGetCluster — step-9
