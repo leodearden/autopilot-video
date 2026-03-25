@@ -550,6 +550,7 @@ class TestApiMergeClusters:
             json={"cluster_ids": ["c-1", "nonexistent"]},
         )
         assert resp.status_code == 404
+        assert "nonexistent" in resp.json()["detail"]
 
     def test_merge_deduplicates_clip_ids(
         self, app: FastAPI, client: TestClient,
