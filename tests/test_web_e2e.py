@@ -676,3 +676,98 @@ class TestMediaBrowsing:
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
         assert "Hello" in resp.text
+
+
+# ===========================================================================
+# 6. Narrative Review Tests
+# ===========================================================================
+
+
+@pytest.fixture
+def narrative_seeded_app(tmp_path: Path) -> FastAPI:
+    """App with narrate gate waiting and 3 seeded narratives."""
+    db_path = str(tmp_path / "narrative.db")
+    with CatalogDB(db_path) as db:
+        db.init_default_gates()
+        db.update_gate("narrate", status="waiting")
+        db.conn.commit()
+        _seed_narrative(db, "n-1", title="Morning Walk", status="proposed")
+        _seed_narrative(db, "n-2", title="Sunset Hike", status="proposed")
+        _seed_narrative(db, "n-3", title="Beach Day", status="approved")
+    return create_app(db_path)
+
+
+@pytest.fixture
+def narrative_client(narrative_seeded_app: FastAPI) -> TestClient:
+    """TestClient for narrative review tests."""
+    return TestClient(narrative_seeded_app)
+
+
+class TestNarrativeReview:
+    """Verify review hub, narrative listing, approve, reject."""
+
+    def test_review_hub_returns_html(
+        self, narrative_client: TestClient,
+    ) -> None:
+        """GET /review returns 200 HTML."""
+        resp = narrative_client.get("/review")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_review_hub_shows_waiting_gate(
+        self, narrative_client: TestClient,
+    ) -> None:
+        """With narrate gate waiting, hub page shows 'narrate'."""
+        resp = narrative_client.get("/review")
+        assert "narrate" in resp.text.lower()
+
+    def test_list_narratives_api(
+        self, narrative_client: TestClient,
+    ) -> None:
+        """GET /api/narratives returns list of 3."""
+        resp = narrative_client.get("/api/narratives")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 3
+
+    def test_filter_narratives_by_status(
+        self, narrative_client: TestClient,
+    ) -> None:
+        """GET /api/narratives?status=proposed returns only proposed."""
+        resp = narrative_client.get(
+            "/api/narratives", params={"status": "proposed"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 2
+        assert all(n["status"] == "proposed" for n in data)
+
+    def test_approve_narrative(
+        self, narrative_client: TestClient,
+    ) -> None:
+        """POST /api/narratives/n-1/approve sets status=approved."""
+        resp = narrative_client.post("/api/narratives/n-1/approve")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "approved"
+        assert data["narrative_id"] == "n-1"
+
+    def test_reject_narrative(
+        self, narrative_client: TestClient,
+    ) -> None:
+        """POST /api/narratives/n-1/reject sets status=rejected."""
+        resp = narrative_client.post("/api/narratives/n-1/reject")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "rejected"
+        assert data["narrative_id"] == "n-1"
+
+    def test_narratives_page_shows_titles(
+        self, narrative_client: TestClient,
+    ) -> None:
+        """GET /review/narratives shows all narrative titles."""
+        resp = narrative_client.get("/review/narratives")
+        assert resp.status_code == 200
+        assert "Morning Walk" in resp.text
+        assert "Sunset Hike" in resp.text
+        assert "Beach Day" in resp.text
