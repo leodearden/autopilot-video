@@ -66,15 +66,15 @@
       "id": "step-7",
       "type": "impl",
       "description": "Update sse_app fixture docstring to explain that the sse_db parameter is injected for fixture ordering \u2014 it ensures CatalogDB creates the schema before create_app opens its own connection to the same DB file. The parameter is not used directly in the fixture body.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "b766d36"
     },
     {
       "id": "step-8",
       "type": "test",
       "description": "Run full test_sse.py suite to confirm all changes work together: teardown test passes, import cleanup didn't break anything, fixture rename is consistent, and all 13+ tests are green.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "b766d36"
     }
   ],
   "design_decisions": [
