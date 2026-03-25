@@ -147,6 +147,31 @@ class TestUpdateActivityClusterWhitelist:
 
 
 # ---------------------------------------------------------------------------
+# TestUpdateActivityClusterRowcount — task-65 step-1
+# ---------------------------------------------------------------------------
+
+class TestUpdateActivityClusterRowcount:
+    """Tests that update_activity_cluster returns int rowcount."""
+
+    def test_returns_1_for_existing_cluster(self, db: CatalogDB) -> None:
+        """update_activity_cluster returns 1 when updating an existing row."""
+        _seed_cluster(db, "c-1", label="Old")
+        result = db.update_activity_cluster("c-1", label="New")
+        assert result == 1
+
+    def test_returns_0_for_nonexistent_cluster(self, db: CatalogDB) -> None:
+        """update_activity_cluster returns 0 for a non-existent cluster_id."""
+        result = db.update_activity_cluster("nonexistent", label="X")
+        assert result == 0
+
+    def test_returns_0_for_empty_kwargs(self, db: CatalogDB) -> None:
+        """update_activity_cluster returns 0 for empty kwargs (early return)."""
+        _seed_cluster(db, "c-1")
+        result = db.update_activity_cluster("c-1")
+        assert result == 0
+
+
+# ---------------------------------------------------------------------------
 # Helpers — seed clusters via HTTP test client
 # ---------------------------------------------------------------------------
 
