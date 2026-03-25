@@ -771,3 +771,101 @@ class TestNarrativeReview:
         assert "Morning Walk" in resp.text
         assert "Sunset Hike" in resp.text
         assert "Beach Day" in resp.text
+
+
+# ===========================================================================
+# 7. Cluster Review Tests
+# ===========================================================================
+
+
+@pytest.fixture
+def cluster_seeded_app(tmp_path: Path) -> FastAPI:
+    """App seeded with 3 activity clusters."""
+    db_path = str(tmp_path / "cluster.db")
+    with CatalogDB(db_path) as db:
+        _seed_cluster(db, "c-1", label="Morning Walk",
+                      clip_ids_json='["clip-1","clip-2"]',
+                      time_start="2025-01-01T08:00:00",
+                      time_end="2025-01-01T09:00:00")
+        _seed_cluster(db, "c-2", label="Lunch Break",
+                      clip_ids_json='["clip-3","clip-4","clip-5"]',
+                      time_start="2025-01-01T12:00:00",
+                      time_end="2025-01-01T13:00:00")
+        _seed_cluster(db, "c-3", label="Evening Run",
+                      clip_ids_json='["clip-6"]',
+                      time_start="2025-01-01T18:00:00",
+                      time_end="2025-01-01T19:00:00")
+    return create_app(db_path)
+
+
+@pytest.fixture
+def cluster_client(cluster_seeded_app: FastAPI) -> TestClient:
+    """TestClient for cluster review tests."""
+    return TestClient(cluster_seeded_app)
+
+
+class TestClusterReview:
+    """Verify cluster pages, list, relabel, exclude, merge."""
+
+    def test_clusters_page_shows_cards(
+        self, cluster_client: TestClient,
+    ) -> None:
+        """GET /review/clusters shows cluster labels."""
+        resp = cluster_client.get("/review/clusters")
+        assert resp.status_code == 200
+        assert "Morning Walk" in resp.text
+        assert "Lunch Break" in resp.text
+
+    def test_list_clusters_api(
+        self, cluster_client: TestClient,
+    ) -> None:
+        """GET /api/clusters returns list with clip_ids + clip_count."""
+        resp = cluster_client.get("/api/clusters")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 3
+        for c in data:
+            assert "clip_ids" in c
+            assert "clip_count" in c
+
+    def test_relabel_cluster(
+        self, cluster_client: TestClient,
+    ) -> None:
+        """POST /api/clusters/c-1/relabel updates and persists."""
+        resp = cluster_client.post(
+            "/api/clusters/c-1/relabel",
+            json={"label": "Dawn Walk", "description": "Early morning"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["label"] == "Dawn Walk"
+        # Verify persistence
+        check = cluster_client.get("/api/clusters/c-1")
+        assert check.json()["label"] == "Dawn Walk"
+
+    def test_exclude_cluster(
+        self, cluster_client: TestClient,
+    ) -> None:
+        """POST /api/clusters/c-3/exclude sets excluded=1."""
+        resp = cluster_client.post("/api/clusters/c-3/exclude")
+        assert resp.status_code == 200
+        assert resp.json()["excluded"] == 1
+
+    def test_merge_clusters(
+        self, cluster_client: TestClient,
+    ) -> None:
+        """POST /api/clusters/merge combines clips and extends time range."""
+        resp = cluster_client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": ["c-1", "c-2"]},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        # c-2 has more clips so it survives
+        assert data["cluster_id"] == "c-2"
+        assert data["clip_count"] == 5
+        # Time range: min start, max end
+        assert data["time_start"] == "2025-01-01T08:00:00"
+        assert data["time_end"] == "2025-01-01T13:00:00"
+        # c-1 deleted
+        check = cluster_client.get("/api/clusters/c-1")
+        assert check.status_code == 404
