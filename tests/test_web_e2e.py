@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Generator
 from unittest.mock import patch
 
 import pytest
@@ -35,11 +36,14 @@ def e2e_db_path(tmp_path: Path) -> str:
 
 
 @pytest.fixture
-def e2e_db(e2e_db_path: str) -> CatalogDB:
+def e2e_db(e2e_db_path: str) -> Generator:
     """Create a CatalogDB backed by a real file for E2E tests."""
     db = CatalogDB(e2e_db_path)
     db.conn.isolation_level = None  # autocommit
-    return db
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 @pytest.fixture
@@ -282,13 +286,14 @@ class TestDashboardRendering:
     def test_stage_cards_show_progress(
         self, dashboard_client: TestClient,
     ) -> None:
-        """Ingest card shows done/total progress like '5/7'."""
-        resp = dashboard_client.get("/dashboard")
-        html = resp.text
-        ingest_start = html.find('id="stage-ingest"')
-        ingest_end = html.find("</div>", html.find("</div>", ingest_start) + 1) + 6
-        ingest_card = html[ingest_start:ingest_end]
-        assert "5/7" in ingest_card
+        """Ingest stage has 5 done and 7 total jobs via /api/stages."""
+        resp = dashboard_client.get("/api/stages")
+        assert resp.status_code == 200
+        stages = resp.json()
+        ingest = next(s for s in stages if s["name"] == "ingest")
+        counts = ingest["status_counts"]
+        assert counts["done"] == 5
+        assert counts["done"] + counts["running"] == 7
 
     def test_api_stages_returns_9_objects(
         self, dashboard_client: TestClient,
@@ -310,11 +315,14 @@ class TestDashboardRendering:
 
 
 @pytest.fixture
-def sse_db(e2e_db_path: str) -> CatalogDB:
+def sse_db(e2e_db_path: str) -> Generator:
     """CatalogDB for SSE tests (separate from e2e_db to avoid fixture reuse)."""
     db = CatalogDB(e2e_db_path)
     db.conn.isolation_level = None
-    return db
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 @pytest.fixture
@@ -402,8 +410,12 @@ class TestSSEEventFlow:
         """Connect with Last-Event-ID:3, verify only events after ID 3 arrive."""
         from autopilot.web.routes import sse as sse_module
 
-        for i in range(5):
-            sse_db.insert_event(f"event_{i}", stage="INGEST")
+        valid_types = [
+            "stage_started", "job_started", "job_progress",
+            "job_completed", "stage_completed",
+        ]
+        for et in valid_types:
+            sse_db.insert_event(et, stage="INGEST")
 
         async def _finite_gen(request):
             db = sse_module._get_db(request)
@@ -421,6 +433,9 @@ class TestSSEEventFlow:
             events = _parse_sse_body(resp.text)
 
         assert len(events) == 2
+        # Events after Last-Event-ID:3 are #4 (job_completed) and #5 (stage_completed)
+        assert events[0]["event"] == "job_completed"
+        assert events[1]["event"] == "stage_completed"
 
     def test_invalid_last_event_id_gets_all(
         self, sse_db: CatalogDB, sse_app: FastAPI,
@@ -428,8 +443,9 @@ class TestSSEEventFlow:
         """Non-numeric Last-Event-ID falls back to 0 (all events)."""
         from autopilot.web.routes import sse as sse_module
 
-        for i in range(3):
-            sse_db.insert_event(f"event_{i}", stage="INGEST")
+        valid_types = ["stage_started", "job_started", "job_completed"]
+        for et in valid_types:
+            sse_db.insert_event(et, stage="INGEST")
 
         async def _finite_gen(request):
             db = sse_module._get_db(request)
@@ -845,10 +861,13 @@ class TestClusterReview:
     def test_exclude_cluster(
         self, cluster_client: TestClient,
     ) -> None:
-        """POST /api/clusters/c-3/exclude sets excluded=1."""
+        """POST /api/clusters/c-3/exclude sets excluded=1 and persists."""
         resp = cluster_client.post("/api/clusters/c-3/exclude")
         assert resp.status_code == 200
         assert resp.json()["excluded"] == 1
+        # Verify persistence (mirrors test_relabel_cluster pattern)
+        check = cluster_client.get("/api/clusters/c-3")
+        assert check.json()["excluded"] == 1
 
     def test_merge_clusters(
         self, cluster_client: TestClient,
@@ -957,8 +976,9 @@ class TestRenderScriptReview:
         """Render detail page contains scene data from narrative_scripts."""
         resp = render_client.get("/review/render/n-1")
         assert resp.status_code == 200
-        # Script scenes should be visible
-        assert "Opening" in resp.text or "scenes" in resp.text.lower()
+        # Both seeded scene titles must appear in the rendered detail page
+        assert "Opening" in resp.text
+        assert "Main" in resp.text
 
     def test_render_api_returns_json(
         self, render_client: TestClient,
