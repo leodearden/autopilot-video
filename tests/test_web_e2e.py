@@ -988,3 +988,44 @@ class TestRenderScriptReview:
         assert resp.status_code == 200
         assert "abc123" in resp.text
         assert "youtube.com" in resp.text
+
+
+# ===========================================================================
+# 9. Job Status Tests (reuse dashboard_client with mixed jobs)
+# ===========================================================================
+
+
+class TestJobStatus:
+    """Verify job management visibility through the dashboard API."""
+
+    def test_stages_api_shows_job_counts(
+        self, dashboard_client: TestClient,
+    ) -> None:
+        """GET /api/stages includes status_counts for stages with jobs."""
+        resp = dashboard_client.get("/api/stages")
+        assert resp.status_code == 200
+        data = resp.json()
+        by_name = {s["name"]: s for s in data}
+        # Ingest: 5 done + 2 running = 7 total
+        ingest = by_name["ingest"]["status_counts"]
+        assert ingest.get("done", 0) == 5
+        assert ingest.get("running", 0) == 2
+
+    def test_stage_card_reflects_error_jobs(
+        self, dashboard_client: TestClient,
+    ) -> None:
+        """Stage with error jobs shows error status."""
+        resp = dashboard_client.get("/api/stages")
+        by_name = {s["name"]: s for s in resp.json()}
+        classify = by_name["classify"]["status_counts"]
+        assert classify.get("error", 0) == 1
+
+    def test_stage_card_reflects_running_jobs(
+        self, dashboard_client: TestClient,
+    ) -> None:
+        """Stage with running jobs shows running status."""
+        resp = dashboard_client.get("/api/stages")
+        by_name = {s["name"]: s for s in resp.json()}
+        analyze = by_name["analyze"]["status_counts"]
+        assert analyze.get("running", 0) == 1
+        assert analyze.get("pending", 0) == 2
