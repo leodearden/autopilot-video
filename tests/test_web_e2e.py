@@ -432,6 +432,9 @@ class TestSSEEventFlow:
             events = _parse_sse_body(resp.text)
 
         assert len(events) == 2
+        # Events after Last-Event-ID:3 are #4 (job_completed) and #5 (stage_completed)
+        assert events[0]["event"] == "job_completed"
+        assert events[1]["event"] == "stage_completed"
 
     def test_invalid_last_event_id_gets_all(
         self, sse_db: CatalogDB, sse_app: FastAPI,
