@@ -398,6 +398,14 @@ class TestApiMergeClusters:
         )
         assert resp.status_code == 422
 
+    def test_rejects_empty_cluster_ids_list(self, client: TestClient) -> None:
+        """Merge with empty cluster_ids list returns 422."""
+        resp = client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": []},
+        )
+        assert resp.status_code == 422
+
     def test_returns_404_for_missing_cluster(
         self, app: FastAPI, client: TestClient,
     ) -> None:
