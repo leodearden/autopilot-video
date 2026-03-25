@@ -11,7 +11,7 @@
     "autopilot/web/templates",
     "tests"
   ],
-  "analysis": "Six bugs in the cluster review subsystem discovered during task 47 review. The bugs span three areas: (1) data processing in review.py \u2014 _parse_cluster crashes on malformed JSON (line 222), timestamp comparison uses lexicographic min/max on raw strings (lines 383-386), merge builds clip_ids without deduplication (lines 378-380); (2) transaction safety \u2014 merge endpoint mutates DB without explicit transaction wrapping, relying on implicit sqlite3 behavior (lines 388-404); (3) UI/logic \u2014 cluster_card.html relabel button sends empty POST body (lines 19-24), and classify gate condition is semantically inverted showing approve only when ALL clusters are excluded (line 243). Existing test file test_cluster_review.py has thorough coverage patterns: TestApiMergeClusters for merge operations, _seed_cluster_via_db helper for seeding test data, _setup_classify_gate_app for gate condition tests, and TestHtmxClusterResponses for HTML partial testing. CatalogDB provides __enter__/__exit__ context manager with commit-on-success / rollback-on-exception semantics (db.py:41-53) that should be used for explicit transaction safety in the merge endpoint. The relabel endpoint (api_relabel_cluster) accepts a ClusterRelabel Pydantic model as JSON body \u2014 the template fix must send JSON, following the hx-vals='js:...' pattern already used by the merge button in clusters.html.",
+  "analysis": "Six bugs in the cluster review subsystem discovered during task 47 review. The bugs span three areas: (1) data processing in review.py \u2014 _parse_cluster crashes on malformed JSON (line 222), timestamp comparison uses lexicographic min/max on raw strings (lines 383-386), merge builds clip_ids without deduplication (lines 378-380); (2) transaction safety \u2014 merge endpoint mutates DB without explicit transaction wrapping, relying on implicit sqlite3 behavior (lines 388-404); (3) UI/logic \u2014 cluster_card.html relabel button sends empty POST body (lines 19-24), and classify gate condition is semantically inverted showing approve only when ALL clusters are excluded (line 243). Existing test file test_cluster_review.py has thorough coverage patterns: TestApiMergeClusters for merge operations, _seed_cluster_via_db helper for seeding test data, _setup_classify_gate_app for gate condition tests, and TestHtmxClusterResponses for HTML partial testing. CatalogDB provides __enter__/__exit__ context manager with commit-on-success / rollback-on-exception semantics (db.py:41-53) that should be used for explicit transaction safety in the merge endpoint. The relabel endpoint (api_relabel_cluster) accepts a ClusterRelabel Pydantic model as JSON body \u2014 the template fix must send JSON, following the hx-vals='js:...' pattern already used by the merge button in clusters.html.\n\nPost-review addition: datetime.fromisoformat() introduced in step-8 as the key function in min()/max() for chronological timestamp comparison has no error handling. A malformed timestamp in the DB (truncated, wrong separator, legacy format) causes ValueError that propagates uncaught as an unhandled 500. Steps 13-14 add a _parse_ts helper with explicit error handling to surface actionable 422 errors.",
   "prerequisites": [],
   "steps": [
     {
@@ -61,7 +61,7 @@
       "type": "test",
       "description": "Write failing test for timestamp comparison in merge: seed c-1 with time_start='2025-06-15T22:00:00+10:00' and time_end='2025-06-15T23:00:00+10:00', seed c-2 with time_start='2025-06-15T14:00:00+00:00' and time_end='2025-06-16T02:00:00+00:00'. Chronologically c-1 starts earlier (12:00 UTC) but sorts later lexicographically. Assert merged time_start matches c-1's value. Test currently fails because lexicographic min picks c-2.",
       "status": "done",
-      "commit": "bf84283b573d59dcb49a93c141d40012847bba71"
+      "commit": "bf84283b573d59dcdb49a93c141d40012847bba71"
     },
     {
       "id": "step-8",
@@ -97,6 +97,20 @@
       "description": "Update cluster_card.html: for non-excluded clusters, replace static h3 label display with <input type='text' name='label' value='...'> and replace static p description with <textarea name='description'>...</textarea>, styled as inline-editable text. Wire the relabel button using hx-vals='js:{...}' to read values from sibling inputs and hx-headers='{\"Content-Type\":\"application/json\"}' pattern, or an onclick handler that POSTs JSON and swaps outerHTML \u2014 following the JS hx-vals approach used by the merge button in clusters.html.",
       "status": "done",
       "commit": "0cb6890"
+    },
+    {
+      "id": "step-13",
+      "type": "test",
+      "description": "Write failing test for malformed timestamp handling during merge (review feedback: unhandled_exception_at_data_boundary). In TestApiMergeClusters, add test_merge_malformed_timestamp_returns_422: seed c-1 with time_start='2025-06-15T22:00:00+10:00' (valid) and c-2 with time_start='not-a-timestamp' (malformed). POST merge and assert response is 422 with detail containing 'Invalid timestamp format' and the offending value 'not-a-timestamp'. Also add test_merge_malformed_time_end_returns_422: seed c-1 with valid time_end and c-2 with time_end='2025/13/45' (wrong separators). Assert 422 with actionable detail. Both tests currently fail because datetime.fromisoformat() raises uncaught ValueError \u2192 500.",
+      "status": "done",
+      "commit": "8b3100d"
+    },
+    {
+      "id": "step-14",
+      "type": "impl",
+      "description": "In review.py, define a module-level helper '_parse_ts(s: str) -> datetime' that wraps datetime.fromisoformat(s) in try/except ValueError and raises HTTPException(422, detail=f\"Invalid timestamp format: {s!r}\") on failure. Replace the bare 'datetime.fromisoformat' key references in min(time_starts, key=...) and max(time_ends, key=...) on lines 392-393 with '_parse_ts'. This converts the uncaught ValueError into an actionable 422 response that identifies the offending value, instead of an opaque 500.",
+      "status": "done",
+      "commit": "75c8a99"
     }
   ],
   "design_decisions": [
@@ -123,6 +137,10 @@
     {
       "decision": "Catch json.JSONDecodeError specifically in _parse_cluster, not broad Exception",
       "rationale": "Only JSON parsing can fail on clip_ids_json. Catching broadly would mask programming errors. The empty list fallback is safe \u2014 the cluster card still renders, showing 0 clips. Note: _parse_narrative has the same vulnerability but is out of scope for this task."
+    },
+    {
+      "decision": "Raise HTTPException(422) for malformed timestamps rather than falling back to lexicographic comparison",
+      "rationale": "Option (b) from reviewer feedback. A malformed timestamp in the DB indicates data corruption that should be surfaced, not silently masked. A 422 with the offending value in the detail message gives the caller an actionable error. Falling back to lexicographic comparison (option a) would silently produce incorrect merge results \u2014 the merge would succeed but time_start/time_end could be wrong, which is worse than a clear error. The _parse_ts helper keeps the fix localized and reusable."
     }
   ],
   "reuse": [
@@ -155,8 +173,13 @@
       "what": "_render_cluster_partial for HTMX responses",
       "where": "autopilot/web/routes/review.py lines 277-284",
       "how": "Already wired \u2014 the relabel endpoint returns HTML partials for HTMX requests. Template input fix automatically works with existing route code, no route changes needed for Bug 2."
+    },
+    {
+      "what": "HTTPException pattern from existing endpoint validation",
+      "where": "autopilot/web/routes/review.py (merge endpoint 404/422 checks)",
+      "how": "The merge endpoint already raises HTTPException(404) and HTTPException(422) for validation failures. The _parse_ts helper follows the same pattern \u2014 raise HTTPException(422) with descriptive detail for malformed input at the data boundary."
     }
   ],
   "_session_id": "63-6eb7edb1",
-  "_created_at": "2026-03-24T23:41:03.682926+00:00"
+  "_created_at": "2026-03-25T01:08:39.360622+00:00"
 }
