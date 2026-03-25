@@ -428,6 +428,17 @@ class TestApiRelabelCluster:
         assert persisted["label"] == "Keep"
         assert persisted["description"] == "Same"
 
+    def test_empty_body_nonexistent_cluster_returns_404(
+        self, client: TestClient,
+    ) -> None:
+        """POST relabel with empty body {} on nonexistent cluster returns 404.
+
+        When no fields are set, the UPDATE is skipped and _update_and_respond_cluster's
+        SELECT finds nothing, yielding 404.
+        """
+        resp = client.post("/api/clusters/nonexistent/relabel", json={})
+        assert resp.status_code == 404
+
     def test_404_via_rowcount_path(self, client: TestClient) -> None:
         """POST relabel returns 404 via rowcount==0 when cluster does not exist.
 
