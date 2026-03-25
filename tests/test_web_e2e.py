@@ -200,3 +200,29 @@ def _seed_pipeline(db: CatalogDB) -> None:
     # events
     db.insert_event("stage_error", stage="classify",
                      payload_json=json.dumps({"error": "OOM"}))
+
+
+# ===========================================================================
+# 1. App Startup Tests
+# ===========================================================================
+
+
+class TestAppStartup:
+    """Verify basic app startup: health, root redirect, static files."""
+
+    def test_health_returns_200_ok(self, e2e_client: TestClient) -> None:
+        """GET /api/health returns 200 with {status: ok}."""
+        resp = e2e_client.get("/api/health")
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+
+    def test_root_redirects_to_dashboard(self, e2e_client: TestClient) -> None:
+        """GET / returns 302/307 redirect to /dashboard."""
+        resp = e2e_client.get("/", follow_redirects=False)
+        assert resp.status_code in (302, 307)
+        assert "/dashboard" in resp.headers["location"]
+
+    def test_static_files_mounted(self, e2e_client: TestClient) -> None:
+        """GET /static/app.css returns 200 (static mount is working)."""
+        resp = e2e_client.get("/static/app.css")
+        assert resp.status_code == 200
