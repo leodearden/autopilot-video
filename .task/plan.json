@@ -1,21 +1,22 @@
 {
-  "task_id": "94",
-  "title": "Clean up test_sse.py: redundant imports, fixture naming, teardown",
+  "task_id": "97",
+  "title": "Extract shared batch-spy fixture in TestApiMergeClustersUseBatchFetch",
   "files": [
-    "tests/test_sse.py"
+    "tests/test_cluster_review.py"
   ],
   "modules": [
     "tests"
   ],
-  "analysis": "This is a post-review cleanup task for tests/test_sse.py after task 89 consolidated _parse_sse_body. Four changes needed, all confined to a single file:\n\n1. REDUNDANT IMPORTS: TestParseSSEBodyFromConftest (lines 327, 337, 346) has per-method `from tests.conftest import _parse_sse_body` imports that shadow the module-level import on line 15. These are dead code \u2014 removing them is safe since all other test methods in the file already use the module-level import successfully.\n\n2. FIXTURE RENAME: `_sse_db_path` (line 19) uses a leading underscore, inconsistent with `e2e_db_path` in test_web_e2e.py and standard pytest conventions (leading underscore implies private/non-fixture). Referenced in 4 places within test_sse.py: fixture def name (line 19), sse_db parameter (line 25), sse_db body (line 27), and sse_app parameter (line 33).\n\n3. TEARDOWN: `sse_db` fixture (lines 24-29) uses bare `return db` with no teardown. The project convention (see `e2e_db` in test_web_e2e.py lines 40-47 and `catalog_db` in conftest.py lines 76-89) is try/yield/finally with db.close(). CatalogDB.close() calls self.conn.close().\n\n4. DOCSTRING: `sse_app` fixture takes `sse_db` as a parameter but never uses it \u2014 it's injected purely for ordering so the DB schema exists before create_app runs, not for direct use. Unlike `e2e_app` which only takes `e2e_db_path`, `sse_app` needs this ordering hint because create_app opens its own connection. The docstring should explain this.",
+  "analysis": "The TestApiMergeClustersUseBatchFetch class (line 941) has two test methods — test_merge_uses_batch_fetch (line 944) and test_merge_equal_size_clusters_first_in_request_wins (line 985) — that each contain ~10 identical lines: (1) a _n1_trap function that raises AssertionError if get_activity_cluster is called, (2) monkeypatch.setattr for the N+1 trap, (3) a batch_args list, (4) capture of _original_batch, (5) a _batch_spy closure that records calls, and (6) monkeypatch.setattr for the batch spy. The only differences between the tests are the seed data and the final assertions. Extracting into a private _install_batch_spy method that returns batch_args eliminates the duplication while keeping each test's scenario-specific setup and assertions in place. This is a pure refactoring — no behavior changes, so existing tests serve as the regression safety net.",
   "prerequisites": [
     {
       "id": "pre-1",
-      "description": "Verify all existing test_sse.py tests pass before making changes (baseline confirmation)",
+      "description": "Verify existing tests in TestApiMergeClustersUseBatchFetch pass before refactoring: run pytest tests/test_cluster_review.py::TestApiMergeClustersUseBatchFetch -v",
       "status": "done",
-      "commit": null,
+      "commit": "7a1491c",
       "tests": [
-        "tests/test_sse.py"
+        "tests/test_cluster_review.py::TestApiMergeClustersUseBatchFetch::test_merge_uses_batch_fetch",
+        "tests/test_cluster_review.py::TestApiMergeClustersUseBatchFetch::test_merge_equal_size_clusters_first_in_request_wins"
       ]
     }
   ],
@@ -23,100 +24,74 @@
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write a test in TestSSEFixtureTeardown that verifies the sse_db fixture properly closes its DB connection after teardown. The test should capture a reference to the db, then after the fixture scope ends, check that operating on the connection raises an error. This test should FAIL with the current bare-return fixture since no close() is called.",
+      "description": "Add a focused unit test test_install_batch_spy_returns_list_and_traps_n1 to TestApiMergeClustersUseBatchFetch that calls self._install_batch_spy(monkeypatch) and asserts: (a) it returns an empty list, (b) calling CatalogDB.get_activity_cluster raises AssertionError containing 'N+1 detected', (c) after calling get_activity_clusters_by_ids via the app's DB, the returned list has one entry recording the call args. This test will fail because _install_batch_spy does not exist yet.",
       "status": "done",
-      "commit": "b6027e7"
+      "commit": "daced66"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Convert sse_db fixture from `return db` to `try: yield db / finally: db.close()`. Add `Generator` return type hint (from typing import Generator). This matches the e2e_db pattern in test_web_e2e.py lines 40-47. The teardown test from step-1 should now pass.",
+      "description": "Implement _install_batch_spy(self, monkeypatch: pytest.MonkeyPatch) -> list[list[str]] on TestApiMergeClustersUseBatchFetch. The method defines _n1_trap (raises AssertionError on single-cluster fetch), patches CatalogDB.get_activity_cluster, creates batch_args list, captures _original_batch = CatalogDB.get_activity_clusters_by_ids, defines _batch_spy closure that appends to batch_args and delegates to original, patches CatalogDB.get_activity_clusters_by_ids, and returns batch_args. Verify step-1 test passes.",
       "status": "done",
-      "commit": "0094f22"
+      "commit": "8261b43"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Run pytest tests/test_sse.py::TestParseSSEBodyFromConftest -v to confirm the 3 existing tests pass as baseline before removing redundant imports. These tests currently use per-method imports but the module-level import on line 15 will take over.",
+      "description": "Refactor test_merge_uses_batch_fetch to replace the inline _n1_trap/_batch_spy setup (lines 955-968) with a single call: batch_args = self._install_batch_spy(monkeypatch). Keep seed data (_seed_cluster_via_db calls) and all assertions unchanged. Run to confirm it passes — this validates the helper produces identical behavior to the inline code.",
       "status": "done",
-      "commit": "0094f22"
+      "commit": "9f06d9e"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Remove the 3 redundant `from tests.conftest import _parse_sse_body` imports from TestParseSSEBodyFromConftest methods (lines 327, 337, 346). The module-level import on line 15 already provides the name in module scope.",
+      "description": "Refactor test_merge_equal_size_clusters_first_in_request_wins to replace the inline _n1_trap/_batch_spy setup (lines 1002-1015) with a single call: batch_args = self._install_batch_spy(monkeypatch). Keep seed data and assertions unchanged. Run full TestApiMergeClustersUseBatchFetch suite (all 3 tests) to confirm all pass.",
       "status": "done",
-      "commit": "849e603"
+      "commit": "128217f"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Run full test_sse.py to confirm all fixture-dependent tests pass before the rename. This is the green baseline for the _sse_db_path -> sse_db_path rename.",
-      "status": "done",
-      "commit": "849e603"
-    },
-    {
-      "id": "step-6",
-      "type": "impl",
-      "description": "Rename _sse_db_path fixture to sse_db_path (remove leading underscore). Update all 4 references: (1) fixture def name on line 19, (2) sse_db fixture parameter on line 25, (3) CatalogDB() call on line 27, (4) sse_app fixture parameter on line 33. Matches e2e_db_path naming convention.",
-      "status": "done",
-      "commit": "9129c5b"
-    },
-    {
-      "id": "step-7",
-      "type": "impl",
-      "description": "Update sse_app fixture docstring to explain that the sse_db parameter is injected for fixture ordering \u2014 it ensures CatalogDB creates the schema before create_app opens its own connection to the same DB file. The parameter is not used directly in the fixture body.",
-      "status": "done",
-      "commit": "b766d36"
-    },
-    {
-      "id": "step-8",
-      "type": "test",
-      "description": "Run full test_sse.py suite to confirm all changes work together: teardown test passes, import cleanup didn't break anything, fixture rename is consistent, and all 13+ tests are green.",
-      "status": "done",
-      "commit": "b766d36"
+      "description": "Run the full test_cluster_review.py test suite to confirm no regressions from the refactoring. All existing tests must pass unchanged.",
+      "status": "pending",
+      "commit": null
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use db.close() in teardown rather than db.conn.close()",
-      "rationale": "The task description mentions db.conn.close() but the project convention in conftest.py catalog_db fixture (line 89) and e2e_db in test_web_e2e.py (line 47) both use db.close(). CatalogDB.close() delegates to self.conn.close() internally. Using the public API is more robust and consistent."
+      "decision": "Use a private method _install_batch_spy on the class rather than a module-level pytest fixture",
+      "rationale": "The batch spy is tightly coupled to the TestApiMergeClustersUseBatchFetch class and its monkeypatch of CatalogDB. A class method keeps scope narrow, avoids polluting the module-level fixture namespace, and matches the task description's suggested approach."
     },
     {
-      "decision": "Add Generator return type hint to sse_db fixture",
-      "rationale": "Converting from return to yield changes the fixture into a generator. Both e2e_db (test_web_e2e.py line 40) and catalog_db (conftest.py line 76) use the Generator type hint for yield-based fixtures. Consistency requires adding it here too."
+      "decision": "Return batch_args (the mutable list) from the helper rather than a more complex object",
+      "rationale": "Both tests only need the batch_args list to make assertions. Returning the bare list keeps the API minimal. Since Python lists are mutable, the spy closure will continue appending to the returned list as calls happen."
     },
     {
-      "decision": "Keep sse_db parameter on sse_app fixture and document it rather than removing it",
-      "rationale": "The parameter serves as an implicit ordering dependency \u2014 pytest evaluates sse_db (creating the DB schema) before sse_app (calling create_app which opens its own connection). Removing it would break test setup. A docstring explaining the ordering intent is the correct fix."
+      "decision": "Add a dedicated test for _install_batch_spy itself before refactoring existing tests",
+      "rationale": "While existing tests serve as regression safety, a focused test for the helper validates it installs both the N+1 trap and the batch spy correctly in isolation. This gives confidence before swapping out the inline code in the two existing tests."
     },
     {
-      "decision": "Order changes as: teardown first, then imports, then rename, then docstring",
-      "rationale": "Teardown is the only change with a meaningful new test (TDD). Import cleanup and rename are mechanical refactors validated by existing tests. Docstring is pure documentation. This ordering minimizes merge conflicts between steps."
+      "decision": "Steps 3 and 4 are split (refactor one test at a time) rather than changing both at once",
+      "rationale": "Atomic changes — if a refactored test fails, we know exactly which test's conversion caused the issue. Each step can be independently verified and committed."
     }
   ],
   "reuse": [
     {
-      "what": "e2e_db fixture pattern (try/yield/finally with db.close())",
-      "where": "tests/test_web_e2e.py lines 40-47",
-      "how": "Copy the exact try/yield/finally structure for sse_db, replacing e2e_db_path with sse_db_path"
+      "what": "Existing _n1_trap pattern (raise AssertionError on single-cluster fetch)",
+      "where": "tests/test_cluster_review.py lines 955-956 and 1002-1003",
+      "how": "Move verbatim into the _install_batch_spy helper — no changes to the trap logic"
     },
     {
-      "what": "catalog_db fixture pattern (Generator type hint, yield, close)",
-      "where": "tests/conftest.py lines 76-89",
-      "how": "Reference for the Generator type hint import and fixture typing convention"
+      "what": "Existing _batch_spy closure pattern (capture original, wrap with recording)",
+      "where": "tests/test_cluster_review.py lines 961-968 and 1008-1015",
+      "how": "Move verbatim into the _install_batch_spy helper — the closure, original capture, and monkeypatch calls are identical"
     },
     {
-      "what": "e2e_db_path naming convention (no leading underscore)",
-      "where": "tests/test_web_e2e.py line 34",
-      "how": "The target naming pattern for the _sse_db_path rename \u2014 public fixture names should not have leading underscores"
-    },
-    {
-      "what": "Module-level _parse_sse_body import",
-      "where": "tests/test_sse.py line 15",
-      "how": "Already exists and provides _parse_sse_body to the entire module scope \u2014 the redundant per-method imports in TestParseSSEBodyFromConftest are unnecessary"
+      "what": "Existing _seed_cluster_via_db helper",
+      "where": "tests/test_cluster_review.py line 260",
+      "how": "Tests continue using this to set up scenario-specific seed data before calling _install_batch_spy"
     }
   ],
-  "_session_id": "94-85772dc2",
-  "_created_at": "2026-03-25T02:53:43.965664+00:00"
+  "_session_id": "97-6ac5692f",
+  "_created_at": "2026-03-25T02:59:27.041178+00:00"
 }
