@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Generator
 from unittest.mock import patch
 
 import pytest
@@ -16,23 +17,32 @@ from tests.conftest import _parse_sse_body
 
 
 @pytest.fixture
-def _sse_db_path(tmp_path: Path) -> str:
+def sse_db_path(tmp_path: Path) -> str:
     """Return the path string for the test catalog DB."""
     return str(tmp_path / "catalog.db")
 
 
 @pytest.fixture
-def sse_db(_sse_db_path: str) -> CatalogDB:
+def sse_db(sse_db_path: str) -> Generator:
     """Create a CatalogDB backed by a real file so the app can connect to it."""
-    db = CatalogDB(_sse_db_path)
+    db = CatalogDB(sse_db_path)
     db.conn.isolation_level = None  # autocommit for test convenience
-    return db
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 @pytest.fixture
-def sse_app(sse_db: CatalogDB, _sse_db_path: str) -> FastAPI:
-    """Create a FastAPI app pointing at the same DB as sse_db."""
-    return create_app(_sse_db_path)
+def sse_app(sse_db: CatalogDB, sse_db_path: str) -> FastAPI:
+    """Create a FastAPI app pointing at the same DB as sse_db.
+
+    The ``sse_db`` parameter is not used directly — it is declared so that
+    pytest evaluates the ``sse_db`` fixture first, ensuring the DB schema
+    is created before ``create_app`` opens its own connection to the same
+    DB file.
+    """
+    return create_app(sse_db_path)
 
 
 @pytest.fixture
@@ -319,13 +329,30 @@ class TestSSEEventTypes:
             assert etype in VALID_EVENT_TYPES, f"'{etype}' missing from VALID_EVENT_TYPES"
 
 
+class TestSSEFixtureTeardown:
+    """Verify the sse_db fixture properly tears down its DB connection."""
+
+    def test_sse_db_fixture_uses_generator_teardown(self) -> None:
+        """sse_db fixture should use yield (generator) for proper teardown.
+
+        A return-based fixture has no teardown — the DB connection leaks.
+        Converting to yield + finally: db.close() ensures cleanup, matching
+        the e2e_db pattern in test_web_e2e.py.
+        """
+        import inspect
+
+        # Unwrap @pytest.fixture decorator to inspect the raw function
+        fn = getattr(sse_db, "__wrapped__", sse_db)
+        assert inspect.isgeneratorfunction(fn), (
+            "sse_db should use yield (not return) to enable teardown"
+        )
+
+
 class TestParseSSEBodyFromConftest:
     """Verify _parse_sse_body shared helper is importable from conftest."""
 
     def test_parses_multi_event_body(self) -> None:
         """Parses SSE text with multiple events separated by blank lines."""
-        from tests.conftest import _parse_sse_body
-
         text = "id:1\nevent:ping\ndata:hello\n\nid:2\nevent:pong\ndata:world\n\n"
         events = _parse_sse_body(text)
         assert len(events) == 2
@@ -334,8 +361,6 @@ class TestParseSSEBodyFromConftest:
 
     def test_trailing_event_without_blank_line(self) -> None:
         """Parses trailing event that lacks a blank-line terminator."""
-        from tests.conftest import _parse_sse_body
-
         text = "id:1\nevent:ping\ndata:hello"
         events = _parse_sse_body(text)
         assert len(events) == 1
@@ -343,8 +368,6 @@ class TestParseSSEBodyFromConftest:
 
     def test_extracts_id_event_data_fields(self) -> None:
         """Correctly extracts id, event, and data fields with whitespace stripping."""
-        from tests.conftest import _parse_sse_body
-
         text = 'id: 42\nevent: update\ndata: {"key": "val"}\n\n'
         events = _parse_sse_body(text)
         assert len(events) == 1
