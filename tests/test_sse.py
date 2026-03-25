@@ -319,6 +319,25 @@ class TestSSEEventTypes:
             assert etype in VALID_EVENT_TYPES, f"'{etype}' missing from VALID_EVENT_TYPES"
 
 
+class TestSSEFixtureTeardown:
+    """Verify the sse_db fixture properly tears down its DB connection."""
+
+    def test_sse_db_fixture_uses_generator_teardown(self) -> None:
+        """sse_db fixture should use yield (generator) for proper teardown.
+
+        A return-based fixture has no teardown — the DB connection leaks.
+        Converting to yield + finally: db.close() ensures cleanup, matching
+        the e2e_db pattern in test_web_e2e.py.
+        """
+        import inspect
+
+        # Unwrap @pytest.fixture decorator to inspect the raw function
+        fn = getattr(sse_db, "__wrapped__", sse_db)
+        assert inspect.isgeneratorfunction(fn), (
+            "sse_db should use yield (not return) to enable teardown"
+        )
+
+
 class TestParseSSEBodyFromConftest:
     """Verify _parse_sse_body shared helper is importable from conftest."""
 
