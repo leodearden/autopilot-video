@@ -12,51 +12,33 @@ from starlette.testclient import TestClient
 
 from autopilot.db import CatalogDB
 from autopilot.web.app import create_app
+from tests.conftest import _parse_sse_body
 
 
 @pytest.fixture
-def sse_db(tmp_path: Path) -> CatalogDB:
+def _sse_db_path(tmp_path: Path) -> str:
+    """Return the path string for the test catalog DB."""
+    return str(tmp_path / "catalog.db")
+
+
+@pytest.fixture
+def sse_db(_sse_db_path: str) -> CatalogDB:
     """Create a CatalogDB backed by a real file so the app can connect to it."""
-    db_path = str(tmp_path / "catalog.db")
-    db = CatalogDB(db_path)
+    db = CatalogDB(_sse_db_path)
     db.conn.isolation_level = None  # autocommit for test convenience
-    db._test_path = db_path  # stash for fixture use
     return db
 
 
 @pytest.fixture
-def sse_app(sse_db: CatalogDB) -> FastAPI:
+def sse_app(sse_db: CatalogDB, _sse_db_path: str) -> FastAPI:
     """Create a FastAPI app pointing at the same DB as sse_db."""
-    return create_app(sse_db._test_path)
+    return create_app(_sse_db_path)
 
 
 @pytest.fixture
 def sse_client(sse_app: FastAPI):
     """Create a TestClient for SSE tests."""
     return TestClient(sse_app)
-
-
-def _parse_sse_body(text: str) -> list[dict]:
-    """Parse SSE response text into a list of event dicts.
-
-    Each event has 'id', 'event', and 'data' keys extracted from
-    the SSE wire format.
-    """
-    events = []
-    current: dict = {}
-    for line in text.splitlines():
-        if line.startswith("id:"):
-            current["id"] = line[3:].strip()
-        elif line.startswith("event:"):
-            current["event"] = line[6:].strip()
-        elif line.startswith("data:"):
-            current["data"] = line[5:].strip()
-        elif line == "" and current:
-            events.append(current)
-            current = {}
-    if current:
-        events.append(current)
-    return events
 
 
 class TestSSEEndpointBasic:
@@ -335,3 +317,37 @@ class TestSSEEventTypes:
 
         for etype in self.ALL_EVENT_TYPES:
             assert etype in VALID_EVENT_TYPES, f"'{etype}' missing from VALID_EVENT_TYPES"
+
+
+class TestParseSSEBodyFromConftest:
+    """Verify _parse_sse_body shared helper is importable from conftest."""
+
+    def test_parses_multi_event_body(self) -> None:
+        """Parses SSE text with multiple events separated by blank lines."""
+        from tests.conftest import _parse_sse_body
+
+        text = "id:1\nevent:ping\ndata:hello\n\nid:2\nevent:pong\ndata:world\n\n"
+        events = _parse_sse_body(text)
+        assert len(events) == 2
+        assert events[0] == {"id": "1", "event": "ping", "data": "hello"}
+        assert events[1] == {"id": "2", "event": "pong", "data": "world"}
+
+    def test_trailing_event_without_blank_line(self) -> None:
+        """Parses trailing event that lacks a blank-line terminator."""
+        from tests.conftest import _parse_sse_body
+
+        text = "id:1\nevent:ping\ndata:hello"
+        events = _parse_sse_body(text)
+        assert len(events) == 1
+        assert events[0] == {"id": "1", "event": "ping", "data": "hello"}
+
+    def test_extracts_id_event_data_fields(self) -> None:
+        """Correctly extracts id, event, and data fields with whitespace stripping."""
+        from tests.conftest import _parse_sse_body
+
+        text = 'id: 42\nevent: update\ndata: {"key": "val"}\n\n'
+        events = _parse_sse_body(text)
+        assert len(events) == 1
+        assert events[0]["id"] == "42"
+        assert events[0]["event"] == "update"
+        assert events[0]["data"] == '{"key": "val"}'

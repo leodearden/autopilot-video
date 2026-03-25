@@ -1,75 +1,97 @@
 {
-  "task_id": "87",
-  "title": "Harden merge route test assertions: detail message + positive batch spy",
+  "task_id": "89",
+  "title": "Consolidate _parse_sse_body into shared test helper",
   "files": [
-    "tests/test_cluster_review.py"
+    "tests/conftest.py",
+    "tests/test_sse.py",
+    "tests/test_web_e2e.py"
   ],
   "modules": [
     "tests"
   ],
-  "analysis": "Two test gaps in test_cluster_review.py need hardening, both in the merge route test classes. (1) test_returns_404_for_missing_cluster (line 543) asserts status_code==404 but never checks resp.json()['detail']. The route at review.py:408-412 already returns `f\"Cluster {first_missing} not found\"` so the string 'nonexistent' will appear in the detail when cluster_ids=['c-1','nonexistent']. Adding the assertion is a one-liner. (2) test_merge_uses_batch_fetch (line 943) monkeypatches get_activity_cluster to raise (proving the old N+1 path is NOT taken) but never positively asserts get_activity_clusters_by_ids IS called. The fix is to wrap the real method with a call-counting spy via monkeypatch and assert call_count >= 1 after the request. Both are test-only changes to a single file; no implementation code needs modification.",
+  "analysis": "_parse_sse_body is defined identically in tests/test_web_e2e.py (line 66) and tests/test_sse.py (line 39). Both parse SSE wire-format text into a list of event dicts with id/event/data keys. The only difference is the type annotation on the local variable: test_web_e2e.py uses `events: list[dict] = []` while test_sse.py uses `events = []`. The fully-typed version from test_web_e2e.py should be canonical. tests/conftest.py already has a shared plain helper function (extract_json_blocks at line 127) following the same pattern \u2014 module-level function, no fixture decorator, with docstring. The function is used 4 times in test_web_e2e.py and 7 times in test_sse.py, always as a bare call. Since _parse_sse_body is a plain function (not a pytest fixture), both test files need explicit imports. The conftest.py import path is `from tests.conftest import _parse_sse_body`. The change is purely structural \u2014 no behavioral change to any test.",
   "prerequisites": [],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Add detail message assertion to test_returns_404_for_missing_cluster: after `assert resp.status_code == 404`, add `assert 'nonexistent' in resp.json()['detail']` to verify the 404 error identifies the specific missing cluster ID.",
+      "description": "Write a focused test that imports _parse_sse_body from tests.conftest and verifies it parses SSE wire-format text correctly: multi-event bodies, trailing event without blank line terminator, and id/event/data field extraction. This test will fail because _parse_sse_body does not yet exist in conftest.py.",
       "status": "done",
-      "commit": "665da08"
+      "commit": "7fdd5b1"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Run tests to confirm step-1 assertion passes (implementation already returns 'Cluster nonexistent not found' at review.py:409). No code change needed \u2014 this step verifies green.",
+      "description": "Add _parse_sse_body to tests/conftest.py after the existing extract_json_blocks helper (after line 139). Use the fully-typed signature from test_web_e2e.py (`events: list[dict] = []`). The import test from step-1 should now pass.",
       "status": "done",
-      "commit": "665da08"
+      "commit": "c4088fe"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Add positive batch spy to test_merge_uses_batch_fetch: use monkeypatch to wrap CatalogDB.get_activity_clusters_by_ids with a call-counting spy (save original method, replace with wrapper that increments a counter list then delegates to original). After the POST request, assert the spy's call count >= 1.",
-      "status": "done",
-      "commit": "4cda354"
+      "description": "Run pytest tests/test_sse.py tests/test_web_e2e.py as a baseline to confirm all existing tests pass before removing the duplicate definitions.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Run tests to confirm step-3 spy assertion passes (merge route already calls db.get_activity_clusters_by_ids at review.py:405). No code change needed \u2014 this step verifies green.",
-      "status": "done",
-      "commit": "4cda354"
+      "description": "Remove the _parse_sse_body definition from tests/test_sse.py (lines 39-59) and add `from tests.conftest import _parse_sse_body` to the imports at the top of the file.",
+      "status": "pending",
+      "commit": null
+    },
+    {
+      "id": "step-5",
+      "type": "test",
+      "description": "Run pytest tests/test_sse.py to verify all 10 SSE tests still pass after replacing the local definition with the conftest import.",
+      "status": "pending",
+      "commit": null
+    },
+    {
+      "id": "step-6",
+      "type": "impl",
+      "description": "Remove the _parse_sse_body definition and its section comment from tests/test_web_e2e.py (lines 61-86) and add `from tests.conftest import _parse_sse_body` to the imports at the top of the file.",
+      "status": "pending",
+      "commit": null
+    },
+    {
+      "id": "step-7",
+      "type": "test",
+      "description": "Run pytest tests/test_web_e2e.py tests/test_sse.py to verify all tests in both files pass after both duplicates are removed and both files import from conftest.",
+      "status": "pending",
+      "commit": null
     }
   ],
   "design_decisions": [
     {
-      "decision": "Use substring check `'nonexistent' in resp.json()['detail']` rather than exact string match",
-      "rationale": "Task description specifies this form. It's resilient to minor wording changes in the error message while still verifying the missing ID is surfaced."
+      "decision": "Use explicit import (`from tests.conftest import _parse_sse_body`) rather than relying on pytest conftest auto-discovery",
+      "rationale": "pytest auto-discovery only works for fixtures (decorated with @pytest.fixture). _parse_sse_body is a plain helper function, so it must be explicitly imported. This is consistent with how extract_json_blocks (another plain helper in conftest.py) would be used."
     },
     {
-      "decision": "Implement batch spy via a closure counter + monkeypatch wrapping the real method, not unittest.mock",
-      "rationale": "The existing test already uses pytest monkeypatch (line 957). A closure-based counter (`calls = [0]`, wrapper increments then delegates) keeps the pattern consistent with the file's style and avoids adding unittest.mock as a new import."
+      "decision": "Use the fully-typed signature `events: list[dict] = []` from test_web_e2e.py as the canonical version",
+      "rationale": "The task description specifies using the fully-typed signature. The test_sse.py version uses bare `events = []` which loses the type annotation. Both are functionally identical."
     },
     {
-      "decision": "Spy wraps the real method (delegates to original) rather than replacing it",
-      "rationale": "The test already asserts on the merge result (status 200, correct cluster_id, correct clip_ids). The spy must delegate so those downstream assertions continue to pass."
+      "decision": "Place _parse_sse_body after extract_json_blocks in conftest.py",
+      "rationale": "conftest.py organizes code as: imports, internal helpers, fixtures, public helper functions. extract_json_blocks is already at the end (line 127). Adding _parse_sse_body after it maintains this grouping."
+    },
+    {
+      "decision": "No separate helpers module \u2014 add directly to conftest.py",
+      "rationale": "The task explicitly specifies conftest.py as the destination. The existing pattern (extract_json_blocks) already lives there. A separate helpers.py would add unnecessary indirection for two helper functions."
     }
   ],
   "reuse": [
     {
-      "what": "monkeypatch.setattr(CatalogDB, ...) pattern",
-      "where": "tests/test_cluster_review.py line 957",
-      "how": "Same pattern used for the N+1 trap; reuse for the batch spy wrapper on get_activity_clusters_by_ids"
+      "what": "_parse_sse_body implementation from tests/test_web_e2e.py (lines 66-86)",
+      "where": "tests/conftest.py",
+      "how": "Copy the fully-typed version verbatim as the canonical shared helper"
     },
     {
-      "what": "_seed_cluster_via_db helper",
-      "where": "tests/test_cluster_review.py line 260",
-      "how": "Already used by both tests for seeding clusters; no new helper needed"
-    },
-    {
-      "what": "resp.json() pattern for detail assertions",
-      "where": "Common FastAPI test pattern, not yet used in this file for 404 detail checks",
-      "how": "Simple dict access on the JSON response body"
+      "what": "Existing plain helper function pattern in conftest.py (extract_json_blocks, line 127)",
+      "where": "tests/conftest.py",
+      "how": "Follow the same style: module-level function, no fixture decorator, with docstring, placed at file bottom"
     }
   ],
-  "_session_id": "87-41a924bb",
-  "_created_at": "2026-03-25T02:34:18.830425+00:00"
+  "_session_id": "89-34b95731",
+  "_created_at": "2026-03-25T02:39:38.005211+00:00"
 }

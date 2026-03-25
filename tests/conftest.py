@@ -137,3 +137,26 @@ def extract_json_blocks(text: str) -> list:
         parsed = json.loads(match.strip())
         results.append(parsed)
     return results
+
+
+def _parse_sse_body(text: str) -> list[dict]:
+    """Parse SSE response text into a list of event dicts.
+
+    Each event has 'id', 'event', and 'data' keys extracted from
+    the SSE wire format.
+    """
+    events: list[dict] = []
+    current: dict = {}
+    for line in text.splitlines():
+        if line.startswith("id:"):
+            current["id"] = line[3:].strip()
+        elif line.startswith("event:"):
+            current["event"] = line[6:].strip()
+        elif line.startswith("data:"):
+            current["data"] = line[5:].strip()
+        elif line == "" and current:
+            events.append(current)
+            current = {}
+    if current:
+        events.append(current)
+    return events
