@@ -1036,6 +1036,49 @@ class TestJobStatus:
 # ===========================================================================
 
 
+@pytest.fixture
+def pipeline_simulation_app(tmp_path: Path) -> FastAPI:
+    """App seeded with a pipeline run, one job per stage, and default gates."""
+    db_path = str(tmp_path / "pipeline.db")
+    with CatalogDB(db_path) as db:
+        db.conn.isolation_level = None
+
+        # Default gates
+        db.init_default_gates()
+
+        # Pipeline run
+        db.insert_run(
+            "sim-run-1",
+            started_at="2025-06-15T10:00:00",
+            config_snapshot='{"mode": "simulation"}',
+            current_stage="ingest",
+            status="running",
+            budget_remaining_seconds=7200,
+        )
+
+        # One job per stage
+        for stage in PIPELINE_STAGES:
+            db.insert_job(
+                f"sim-{stage}-0", stage, "task",
+                target_id=f"media-{stage}",
+                target_label=f"{stage}_video.mp4",
+                status="pending",
+                run_id="sim-run-1",
+            )
+
+        # Set all gates to waiting (simulating pipeline reaching each gate)
+        for stage in PIPELINE_STAGES:
+            db.update_gate(stage, status="waiting")
+
+    return create_app(db_path)
+
+
+@pytest.fixture
+def pipeline_client(pipeline_simulation_app: FastAPI) -> TestClient:
+    """TestClient for pipeline simulation tests."""
+    return TestClient(pipeline_simulation_app)
+
+
 class TestFullPipelineSimulation:
     """Verify end-to-end gate approval workflow across all 9 pipeline stages."""
 
