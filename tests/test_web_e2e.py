@@ -535,3 +535,144 @@ class TestGateWorkflow:
         assert resp.status_code == 200
         for gate in resp.json():
             assert gate["mode"] == "auto"
+
+
+# ===========================================================================
+# 5. Media Browsing Tests
+# ===========================================================================
+
+
+@pytest.fixture
+def media_seeded_app(tmp_path: Path) -> FastAPI:
+    """App seeded with 12 media files, transcripts, detections, faces, etc."""
+    db_path = str(tmp_path / "media.db")
+    with CatalogDB(db_path) as db:
+        db.conn.isolation_level = None
+        # 12 media files: 5 analyzed, 4 pending, 3 ingested
+        for i in range(5):
+            _seed_media(db, f"m-{i}", status="analyzed",
+                        file_path=f"/video/video_{i}.mp4")
+        for i in range(5, 9):
+            _seed_media(db, f"m-{i}", status="pending",
+                        file_path=f"/video/video_{i}.mp4")
+        for i in range(9, 12):
+            _seed_media(db, f"m-{i}", status="ingested",
+                        file_path=f"/video/video_{i}.mp4")
+
+        # Transcripts for m-0, m-1, m-2
+        for mid in ("m-0", "m-1", "m-2"):
+            segments = [
+                {"start": 0.0, "end": 10.0, "text": "Hello", "speaker": "A"},
+                {"start": 10.0, "end": 20.0, "text": "World", "speaker": "B"},
+            ]
+            db.upsert_transcript(mid, json.dumps(segments), "en")
+
+        # Detections for m-0, m-1
+        dets = [
+            ("m-0", 0, json.dumps([{"class": "person", "confidence": 0.9}])),
+            ("m-0", 30, json.dumps([{"class": "car", "confidence": 0.8}])),
+            ("m-1", 0, json.dumps([{"class": "dog", "confidence": 0.7}])),
+        ]
+        db.batch_insert_detections(dets)
+
+        # Faces for m-0
+        faces = [
+            ("m-0", 0, 0, json.dumps([10, 20, 100, 200]), None, None),
+        ]
+        db.batch_insert_faces(faces)
+
+        # Embeddings for m-0, m-1
+        embs = [
+            ("m-0", 0, b"\x00" * 16),
+            ("m-0", 30, b"\x00" * 16),
+            ("m-1", 0, b"\x00" * 16),
+        ]
+        db.batch_insert_embeddings(embs)
+
+        # Audio events for m-0
+        audio = [
+            ("m-0", 5.0, json.dumps({"type": "speech", "label": "voice"})),
+        ]
+        db.batch_insert_audio_events(audio)
+
+    return create_app(db_path)
+
+
+@pytest.fixture
+def media_client(media_seeded_app: FastAPI) -> TestClient:
+    """TestClient for media browsing tests."""
+    return TestClient(media_seeded_app)
+
+
+class TestMediaBrowsing:
+    """Verify media list, search, detail, and tab endpoints."""
+
+    def test_media_list_page_returns_html(
+        self, media_client: TestClient,
+    ) -> None:
+        """GET /media returns 200 HTML."""
+        resp = media_client.get("/media")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_media_api_returns_paginated(
+        self, media_client: TestClient,
+    ) -> None:
+        """GET /api/media returns items + total."""
+        resp = media_client.get("/api/media")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "items" in data
+        assert "total" in data
+        assert data["total"] == 12
+
+    def test_media_filter_by_status(
+        self, media_client: TestClient,
+    ) -> None:
+        """GET /api/media?status=analyzed returns only matching."""
+        resp = media_client.get("/api/media", params={"status": "analyzed"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 5
+        for item in data["items"]:
+            assert item["status"] == "analyzed"
+
+    def test_media_search_by_name(
+        self, media_client: TestClient,
+    ) -> None:
+        """GET /api/media?q=video_3 returns matching item."""
+        resp = media_client.get("/api/media", params={"q": "video_3"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] >= 1
+        paths = [item["file_path"] for item in data["items"]]
+        assert any("video_3" in p for p in paths)
+
+    def test_media_detail_page(
+        self, media_client: TestClient,
+    ) -> None:
+        """GET /media/{id} returns 200 HTML with media info."""
+        resp = media_client.get("/media/m-0")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_media_detail_api(
+        self, media_client: TestClient,
+    ) -> None:
+        """GET /api/media/{id} returns JSON with expected keys."""
+        resp = media_client.get("/api/media/m-0")
+        assert resp.status_code == 200
+        data = resp.json()
+        for key in ("media", "transcript", "detections", "faces",
+                     "audio_events", "embedding_count"):
+            assert key in data, f"Missing key: {key}"
+        assert data["embedding_count"] == 2
+
+    def test_media_tab_transcript(
+        self, media_client: TestClient,
+    ) -> None:
+        """GET /media/{id}/tab/transcript returns HTML with segment text."""
+        resp = media_client.get("/media/m-0/tab/transcript")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "Hello" in resp.text
