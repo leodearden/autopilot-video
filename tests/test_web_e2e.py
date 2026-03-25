@@ -861,10 +861,13 @@ class TestClusterReview:
     def test_exclude_cluster(
         self, cluster_client: TestClient,
     ) -> None:
-        """POST /api/clusters/c-3/exclude sets excluded=1."""
+        """POST /api/clusters/c-3/exclude sets excluded=1 and persists."""
         resp = cluster_client.post("/api/clusters/c-3/exclude")
         assert resp.status_code == 200
         assert resp.json()["excluded"] == 1
+        # Verify persistence (mirrors test_relabel_cluster pattern)
+        check = cluster_client.get("/api/clusters/c-3")
+        assert check.json()["excluded"] == 1
 
     def test_merge_clusters(
         self, cluster_client: TestClient,
