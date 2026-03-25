@@ -613,6 +613,61 @@ class TestHtmxClusterResponses:
 
 
 # ---------------------------------------------------------------------------
+# TestClusterCardRelabelInputs — task-63 step-11
+# ---------------------------------------------------------------------------
+
+
+class TestClusterCardRelabelInputs:
+    """Tests for cluster_card.html relabel input fields."""
+
+    def test_non_excluded_card_has_label_input(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """Non-excluded cluster card contains an input with name='label' and current value."""
+        _seed_cluster_via_db(app, "c-1", label="Morning Walk", description="Walk in the park")
+        resp = client.post(
+            "/api/clusters/c-1/relabel",
+            json={"label": "Morning Walk"},
+            headers={"HX-Request": "true"},
+        )
+        assert resp.status_code == 200
+        body = resp.text
+        assert 'name="label"' in body
+        assert 'value="Morning Walk"' in body
+
+    def test_non_excluded_card_has_description_input(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """Non-excluded cluster card contains a textarea with name='description'."""
+        _seed_cluster_via_db(app, "c-1", label="Morning Walk", description="Walk in the park")
+        resp = client.post(
+            "/api/clusters/c-1/relabel",
+            json={"label": "Morning Walk"},
+            headers={"HX-Request": "true"},
+        )
+        assert resp.status_code == 200
+        body = resp.text
+        assert 'name="description"' in body
+        assert "Walk in the park" in body
+
+    def test_relabel_button_sends_json_body(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """Relabel button has hx-vals with js: prefix to send JSON."""
+        _seed_cluster_via_db(app, "c-1", label="Test", description="Desc")
+        resp = client.post(
+            "/api/clusters/c-1/relabel",
+            json={"label": "Test"},
+            headers={"HX-Request": "true"},
+        )
+        assert resp.status_code == 200
+        body = resp.text
+        # Button should have hx-vals='js:...' to gather input values as JSON
+        assert "hx-vals" in body
+        assert "js:" in body
+
+
+# ---------------------------------------------------------------------------
 # TestReviewHubClassifyGate — step-21
 # ---------------------------------------------------------------------------
 
