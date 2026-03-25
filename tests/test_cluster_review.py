@@ -900,6 +900,26 @@ def _setup_classify_gate_app(tmp_path: Path, clusters: int = 2, excluded: int = 
     return create_app(db_path=db_path)
 
 
+# ---------------------------------------------------------------------------
+# TestGetActivityClustersByIds — task 80, steps 1-3
+# ---------------------------------------------------------------------------
+
+
+class TestGetActivityClustersByIds:
+    """Tests for CatalogDB.get_activity_clusters_by_ids(cluster_ids)."""
+
+    def test_returns_dict_keyed_by_cluster_id(self, db: CatalogDB) -> None:
+        """Seed 3 clusters, fetch 2 by ID, assert dict has exactly 2 keys."""
+        _seed_cluster(db, "c-1", label="Alpha")
+        _seed_cluster(db, "c-2", label="Beta")
+        _seed_cluster(db, "c-3", label="Gamma")
+        result = db.get_activity_clusters_by_ids(["c-1", "c-3"])
+        assert isinstance(result, dict)
+        assert set(result.keys()) == {"c-1", "c-3"}
+        assert result["c-1"]["label"] == "Alpha"
+        assert result["c-3"]["label"] == "Gamma"
+
+
 class TestReviewHubClassifyGate:
     """Tests for review hub integration with classify gate."""
 
