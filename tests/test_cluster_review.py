@@ -272,6 +272,20 @@ class TestApiRelabelCluster:
         )
         assert resp.status_code == 422
 
+    def test_relabel_noop_empty_body(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """POST relabel with empty body {} is a valid no-op returning 200."""
+        _seed_cluster_via_db(app, "c-1", label="Keep", description="Same")
+        resp = client.post("/api/clusters/c-1/relabel", json={})
+        assert resp.status_code == 200
+        # Verify original values are unchanged via GET
+        get_resp = client.get("/api/clusters/c-1")
+        assert get_resp.status_code == 200
+        persisted = get_resp.json()
+        assert persisted["label"] == "Keep"
+        assert persisted["description"] == "Same"
+
 
 # ---------------------------------------------------------------------------
 # TestApiExcludeCluster — step-13
