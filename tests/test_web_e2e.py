@@ -447,3 +447,91 @@ class TestSSEEventFlow:
             events = _parse_sse_body(resp.text)
 
         assert len(events) == 3
+
+
+# ===========================================================================
+# 4. Gate Workflow Tests
+# ===========================================================================
+
+
+@pytest.fixture
+def gates_app(tmp_path: Path) -> FastAPI:
+    """App with default gates initialized."""
+    db_path = str(tmp_path / "gates.db")
+    with CatalogDB(db_path) as db:
+        db.init_default_gates()
+    return create_app(db_path)
+
+
+@pytest.fixture
+def gates_client(gates_app: FastAPI) -> TestClient:
+    """TestClient for gate workflow tests."""
+    return TestClient(gates_app)
+
+
+class TestGateWorkflow:
+    """Verify gate CRUD: list, detail, update, approve, skip, presets."""
+
+    def test_get_gates_returns_9_gates(self, gates_client: TestClient) -> None:
+        """GET /api/gates returns list of 9 gates with default modes."""
+        resp = gates_client.get("/api/gates")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 9
+        for gate in data:
+            assert gate["mode"] == "auto"
+
+    def test_get_single_gate(self, gates_client: TestClient) -> None:
+        """GET /api/gates/narrate returns gate dict."""
+        resp = gates_client.get("/api/gates/narrate")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["stage"] == "narrate"
+        assert data["mode"] == "auto"
+
+    def test_update_gate_mode(self, gates_client: TestClient) -> None:
+        """PUT /api/gates/narrate with mode='pause' persists."""
+        resp = gates_client.put("/api/gates/narrate", json={"mode": "pause"})
+        assert resp.status_code == 200
+        assert resp.json()["mode"] == "pause"
+        # Verify persistence
+        check = gates_client.get("/api/gates/narrate")
+        assert check.json()["mode"] == "pause"
+
+    def test_approve_gate(self, gates_client: TestClient) -> None:
+        """POST /api/gates/narrate/approve sets status to 'approved'."""
+        resp = gates_client.post("/api/gates/narrate/approve")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "approved"
+        assert data["decided_by"] == "console"
+
+    def test_skip_gate(self, gates_client: TestClient) -> None:
+        """POST /api/gates/narrate/skip sets status to 'skipped'."""
+        resp = gates_client.post("/api/gates/narrate/skip")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "skipped"
+        assert data["decided_by"] == "console"
+
+    def test_apply_preset_review_creative(
+        self, gates_client: TestClient,
+    ) -> None:
+        """PUT review_creative preset pauses narrate, script, upload."""
+        resp = gates_client.put("/api/gates/preset/review_creative")
+        assert resp.status_code == 200
+        modes = {g["stage"]: g["mode"] for g in resp.json()}
+        assert modes["narrate"] == "pause"
+        assert modes["script"] == "pause"
+        assert modes["upload"] == "pause"
+        for stage in ("ingest", "analyze", "classify", "edl", "source", "render"):
+            assert modes[stage] == "auto"
+
+    def test_apply_preset_full_auto(self, gates_client: TestClient) -> None:
+        """PUT full_auto preset sets all gates to auto."""
+        # First pause everything, then reset
+        gates_client.put("/api/gates/preset/review_everything")
+        resp = gates_client.put("/api/gates/preset/full_auto")
+        assert resp.status_code == 200
+        for gate in resp.json():
+            assert gate["mode"] == "auto"
