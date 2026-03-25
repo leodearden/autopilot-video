@@ -80,3 +80,123 @@ def _parse_sse_body(text: str) -> list[dict]:
     if current:
         events.append(current)
     return events
+
+
+# ---------------------------------------------------------------------------
+# DB seeding helpers
+# ---------------------------------------------------------------------------
+
+
+def _seed_media(
+    db: CatalogDB, media_id: str = "m-1", **overrides: object,
+) -> None:
+    """Insert a media file with sensible defaults, overridable via kwargs."""
+    defaults: dict[str, object] = {
+        "file_path": f"/video/{media_id}.mp4",
+        "codec": "h264",
+        "resolution_w": 1920,
+        "resolution_h": 1080,
+        "fps": 30.0,
+        "duration_seconds": 120.0,
+        "status": "analyzed",
+    }
+    defaults.update(overrides)
+    file_path = defaults.pop("file_path")
+    db.insert_media(media_id, str(file_path), **defaults)  # type: ignore[arg-type]
+
+
+def _seed_narrative(
+    db: CatalogDB, narrative_id: str = "n-1", **overrides: object,
+) -> None:
+    """Insert a narrative with sensible defaults, overridable via kwargs."""
+    defaults: dict[str, object] = {
+        "title": "Morning Walk",
+        "description": "A walk in the park",
+        "proposed_duration_seconds": 120.0,
+        "activity_cluster_ids_json": '["c-1","c-2"]',
+        "arc_notes": "peaceful start",
+        "emotional_journey": "calm → happy",
+        "status": "proposed",
+    }
+    defaults.update(overrides)
+    db.insert_narrative(narrative_id, **defaults)  # type: ignore[arg-type]
+
+
+def _seed_cluster(
+    db: CatalogDB, cluster_id: str = "c-1", **overrides: object,
+) -> None:
+    """Insert an activity cluster with sensible defaults, overridable via kwargs."""
+    defaults: dict[str, object] = {
+        "label": "Morning Activity",
+        "description": "Walking the dog",
+        "time_start": "2025-01-01T08:00:00",
+        "time_end": "2025-01-01T09:00:00",
+        "location_label": "Park",
+        "gps_center_lat": 37.7749,
+        "gps_center_lon": -122.4194,
+        "clip_ids_json": '["clip-1","clip-2"]',
+    }
+    defaults.update(overrides)
+    db.insert_activity_cluster(cluster_id, **defaults)  # type: ignore[arg-type]
+
+
+def _seed_pipeline(db: CatalogDB) -> None:
+    """Seed a running pipeline: run, jobs across stages, gates, and events.
+
+    Creates:
+      - Run 'run-1' (running, current_stage=analyze)
+      - Ingest: 5 done + 2 running jobs
+      - Analyze: 1 running + 2 pending jobs
+      - Classify: 1 error job
+      - Default gates with analyze set to mode='manual'
+      - Error event for classify stage
+    """
+    db.insert_run(
+        "run-1",
+        started_at="2025-06-15T10:00:00",
+        config_snapshot='{"quality": "high"}',
+        current_stage="analyze",
+        status="running",
+        budget_remaining_seconds=3600,
+    )
+    db.update_run("run-1", wall_clock_seconds=120.0)
+
+    # ingest: 5 done + 2 running
+    for i in range(5):
+        db.insert_job(
+            f"ingest-done-{i}", "ingest", "transcode",
+            target_id=f"media-{i}", target_label=f"video_{i}.mp4",
+            status="done", run_id="run-1", duration_seconds=10.0 + i,
+        )
+    for i in range(2):
+        db.insert_job(
+            f"ingest-run-{i}", "ingest", "transcode",
+            target_id=f"media-{5 + i}", target_label=f"video_{5 + i}.mp4",
+            status="running", run_id="run-1", progress_pct=50.0,
+        )
+
+    # analyze: 1 running + 2 pending
+    db.insert_job(
+        "analyze-run-0", "analyze", "asr",
+        target_id="media-0", status="running", run_id="run-1",
+    )
+    for i in range(2):
+        db.insert_job(
+            f"analyze-pend-{i}", "analyze", "asr",
+            target_id=f"media-{1 + i}", status="pending", run_id="run-1",
+        )
+
+    # classify: 1 error
+    db.insert_job(
+        "classify-err-0", "classify", "cluster",
+        target_id="media-0", status="error",
+        error_message="Clustering failed: OOM", run_id="run-1",
+    )
+
+    # gates
+    db.init_default_gates()
+    db.update_gate("analyze", mode="manual")
+
+    # events
+    db.insert_event("stage_error", stage="classify",
+                     payload_json=json.dumps({"error": "OOM"}))
