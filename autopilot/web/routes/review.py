@@ -359,7 +359,7 @@ def api_merge_clusters(
         )
     db = _get_db(request)
     try:
-        # Load all clusters
+        # Load and parse all clusters
         clusters: list[dict[str, object]] = []
         for cid in body.cluster_ids:
             row = db.get_activity_cluster(cid)
@@ -368,14 +368,13 @@ def api_merge_clusters(
                     status_code=404,
                     detail=f"Cluster {cid} not found",
                 )
-            clusters.append(dict(row))
+            clusters.append(row)
 
-        # Parse clip_ids for each cluster
         parsed_clusters = [_parse_cluster(c) for c in clusters]
 
         # Find largest by clip count
-        largest = max(parsed_clusters, key=lambda c: int(str(c["clip_count"])))
-        largest_id = str(largest["cluster_id"])
+        largest = max(parsed_clusters, key=lambda c: c["clip_count"])  # type: ignore[arg-type]
+        largest_id = largest["cluster_id"]
 
         # Combine all clip_ids
         all_clip_ids: list[str] = []
@@ -396,21 +395,22 @@ def api_merge_clusters(
             update_kwargs["time_start"] = min_start
         if max_end is not None:
             update_kwargs["time_end"] = max_end
-        db.update_activity_cluster(largest_id, **update_kwargs)
+        db.update_activity_cluster(str(largest_id), **update_kwargs)
 
-        # Delete non-largest clusters
-        for pc in parsed_clusters:
-            cid = str(pc["cluster_id"])
-            if cid != largest_id:
-                db.delete_activity_cluster(cid)
+        # Batch-delete non-surviving clusters
+        non_surviving = [
+            pc["cluster_id"] for pc in parsed_clusters
+            if pc["cluster_id"] != largest_id
+        ]
+        db.batch_delete_activity_clusters([str(cid) for cid in non_surviving])
 
         db.conn.commit()
-        merged = db.get_activity_cluster(largest_id)
+        merged = db.get_activity_cluster(str(largest_id))
     finally:
         db.close()
     if merged is None:
         raise HTTPException(status_code=500, detail="Merged cluster missing")
-    return _parse_cluster(dict(merged))
+    return _parse_cluster(merged)
 
 
 @router.post("/api/narratives/bulk-approve")
