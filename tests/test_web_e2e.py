@@ -1029,3 +1029,58 @@ class TestJobStatus:
         analyze = by_name["analyze"]["status_counts"]
         assert analyze.get("running", 0) == 1
         assert analyze.get("pending", 0) == 2
+
+
+# ===========================================================================
+# 10. Full Pipeline Simulation Tests
+# ===========================================================================
+
+
+class TestFullPipelineSimulation:
+    """Verify end-to-end gate approval workflow across all 9 pipeline stages."""
+
+    def test_complete_gate_workflow(
+        self, pipeline_client: TestClient,
+    ) -> None:
+        """Walk through approving every gate in sequence.
+
+        1. Apply 'review_everything' preset (all gates pause mode).
+        2. Set all gates to 'waiting' via DB (simulating pipeline reaching gate).
+        3. Approve each of the 9 gates sequentially via API.
+        4. Verify each gate becomes 'approved' after approval.
+        5. At the end, verify all 9 gates show 'approved'.
+        """
+        # Step 1: Apply review_everything preset → all gates mode='pause'
+        resp = pipeline_client.put("/api/gates/preset/review_everything")
+        assert resp.status_code == 200
+        for gate in resp.json():
+            assert gate["mode"] == "pause"
+
+        # Step 2: Set all gates to 'waiting' status via DB
+        # (the fixture's pipeline_simulation_db is responsible for this)
+        # The fixture already sets status='waiting' for all gates.
+
+        # Step 3 & 4: Approve each gate and verify
+        for stage in PIPELINE_STAGES:
+            resp = pipeline_client.post(f"/api/gates/{stage}/approve")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["status"] == "approved", (
+                f"Gate {stage} should be approved, got {data['status']}"
+            )
+            assert data["decided_by"] == "console"
+
+            # Verify via GET
+            check = pipeline_client.get(f"/api/gates/{stage}")
+            assert check.status_code == 200
+            assert check.json()["status"] == "approved"
+
+        # Step 5: Final verification — all 9 gates approved
+        resp = pipeline_client.get("/api/gates")
+        assert resp.status_code == 200
+        gates = resp.json()
+        assert len(gates) == 9
+        for gate in gates:
+            assert gate["status"] == "approved", (
+                f"Gate {gate['stage']} should be approved at end"
+            )
