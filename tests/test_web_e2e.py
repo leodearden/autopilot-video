@@ -409,8 +409,12 @@ class TestSSEEventFlow:
         """Connect with Last-Event-ID:3, verify only events after ID 3 arrive."""
         from autopilot.web.routes import sse as sse_module
 
-        for i in range(5):
-            sse_db.insert_event(f"event_{i}", stage="INGEST")
+        valid_types = [
+            "stage_started", "job_started", "job_progress",
+            "job_completed", "stage_completed",
+        ]
+        for et in valid_types:
+            sse_db.insert_event(et, stage="INGEST")
 
         async def _finite_gen(request):
             db = sse_module._get_db(request)
@@ -435,8 +439,9 @@ class TestSSEEventFlow:
         """Non-numeric Last-Event-ID falls back to 0 (all events)."""
         from autopilot.web.routes import sse as sse_module
 
-        for i in range(3):
-            sse_db.insert_event(f"event_{i}", stage="INGEST")
+        valid_types = ["stage_started", "job_started", "job_completed"]
+        for et in valid_types:
+            sse_db.insert_event(et, stage="INGEST")
 
         async def _finite_gen(request):
             db = sse_module._get_db(request)
