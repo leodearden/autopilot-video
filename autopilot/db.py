@@ -1406,7 +1406,10 @@ class CatalogDB:
             "VALUES (?, ?, ?, ?)",
             (event_type, stage, job_id, payload_json),
         )
-        return cast(int, cur.lastrowid)
+        rowid = cur.lastrowid
+        if rowid is None:
+            raise RuntimeError("insert_event: lastrowid is None after INSERT")
+        return rowid
 
     def get_events_since(self, event_id: int) -> list[dict[str, object]]:
         """Return events with event_id > *event_id*, ordered ascending."""
