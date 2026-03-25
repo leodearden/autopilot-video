@@ -437,6 +437,47 @@ class TestSSEEventFlow:
         assert events[0]["event"] == "job_completed"
         assert events[1]["event"] == "stage_completed"
 
+    def test_last_event_id_resumes_with_offset(
+        self, sse_db: CatalogDB, sse_app: FastAPI,
+    ) -> None:
+        """Dynamic IDs work even when a dummy row shifts AUTOINCREMENT."""
+        from autopilot.web.routes import sse as sse_module
+
+        # Pre-insert a dummy event to shift IDs away from 1-based sequence
+        sse_db.insert_event("stage_started", stage="INGEST")
+
+        valid_types = [
+            "stage_started", "job_started", "job_progress",
+            "job_completed", "stage_completed",
+        ]
+        # Capture returned IDs instead of discarding them
+        event_ids = [sse_db.insert_event(et, stage="INGEST") for et in valid_types]
+
+        async def _finite_gen(request):
+            db = sse_module._get_db(request)
+            last_id = sse_module._get_last_event_id(request)
+            try:
+                events = db.get_events_since(last_id)
+                for ev in events:
+                    yield sse_module._format_event(ev)
+            finally:
+                db.close()
+
+        # event_ids[2] is the 3rd inserted event (job_progress).
+        # get_events_since uses WHERE event_id > ?, so events at
+        # indices 3 and 4 (job_completed, stage_completed) are returned.
+        with patch.object(sse_module, "_event_generator", _finite_gen):
+            client = TestClient(sse_app)
+            resp = client.get(
+                "/api/events",
+                headers={"Last-Event-ID": str(event_ids[2])},
+            )
+            events = _parse_sse_body(resp.text)
+
+        assert len(events) == 2
+        assert events[0]["event"] == "job_completed"
+        assert events[1]["event"] == "stage_completed"
+
     def test_invalid_last_event_id_gets_all(
         self, sse_db: CatalogDB, sse_app: FastAPI,
     ) -> None:
