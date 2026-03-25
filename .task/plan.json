@@ -1,124 +1,97 @@
 {
-  "task_id": "80",
-  "title": "Add batch get_activity_clusters_by_ids to eliminate N+1 in merge route",
+  "task_id": "89",
+  "title": "Consolidate _parse_sse_body into shared test helper",
   "files": [
-    "autopilot/db.py",
-    "autopilot/web/routes/review.py",
-    "tests/test_cluster_review.py"
+    "tests/conftest.py",
+    "tests/test_sse.py",
+    "tests/test_web_e2e.py"
   ],
   "modules": [
-    "autopilot",
-    "autopilot/web/routes",
     "tests"
   ],
-  "analysis": "The N+1 problem: `api_merge_clusters` (review.py:406-413) loops through `body.cluster_ids`, calling `db.get_activity_cluster(cid)` per iteration \u2014 one SELECT per cluster. The fix is a batch `SELECT * FROM activity_clusters WHERE cluster_id IN (?,?...)` method returning a dict keyed by cluster_id, mirroring the existing `batch_delete_activity_clusters` (db.py:712-725) which uses the same placeholder pattern. The new method `get_activity_clusters_by_ids` goes at db.py ~line 711 (after `get_activity_clusters`, before `batch_delete_activity_clusters`). The route refactor replaces lines 404-413 with a single call plus a dict-diff check for 404s. Existing merge tests (TestApiMergeClusters) serve as regression coverage \u2014 behavior is identical, only query count changes.",
+  "analysis": "_parse_sse_body is defined identically in tests/test_web_e2e.py (line 66) and tests/test_sse.py (line 39). Both parse SSE wire-format text into a list of event dicts with id/event/data keys. The only difference is the type annotation on the local variable: test_web_e2e.py uses `events: list[dict] = []` while test_sse.py uses `events = []`. The fully-typed version from test_web_e2e.py should be canonical. tests/conftest.py already has a shared plain helper function (extract_json_blocks at line 127) following the same pattern \u2014 module-level function, no fixture decorator, with docstring. The function is used 4 times in test_web_e2e.py and 7 times in test_sse.py, always as a bare call. Since _parse_sse_body is a plain function (not a pytest fixture), both test files need explicit imports. The conftest.py import path is `from tests.conftest import _parse_sse_body`. The change is purely structural \u2014 no behavioral change to any test.",
   "prerequisites": [],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write TestGetActivityClustersByIds.test_returns_dict_keyed_by_cluster_id \u2014 seed 3 clusters, fetch 2 by ID, assert dict has exactly 2 keys with correct data",
+      "description": "Write a focused test that imports _parse_sse_body from tests.conftest and verifies it parses SSE wire-format text correctly: multi-event bodies, trailing event without blank line terminator, and id/event/data field extraction. This test will fail because _parse_sse_body does not yet exist in conftest.py.",
       "status": "done",
-      "commit": "7c4337b"
+      "commit": "7fdd5b1"
     },
     {
       "id": "step-2",
-      "type": "test",
-      "description": "Write TestGetActivityClustersByIds.test_returns_empty_dict_for_empty_input \u2014 call with [] and assert result is {}",
+      "type": "impl",
+      "description": "Add _parse_sse_body to tests/conftest.py after the existing extract_json_blocks helper (after line 139). Use the fully-typed signature from test_web_e2e.py (`events: list[dict] = []`). The import test from step-1 should now pass.",
       "status": "done",
-      "commit": "36d6f30"
+      "commit": "c4088fe"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write TestGetActivityClustersByIds.test_omits_nonexistent_ids \u2014 seed c-1, fetch [c-1, nonexistent], assert dict has only c-1 key",
-      "status": "done",
-      "commit": "e0c4190"
+      "description": "Run pytest tests/test_sse.py tests/test_web_e2e.py as a baseline to confirm all existing tests pass before removing the duplicate definitions.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement get_activity_clusters_by_ids in db.py after get_activity_clusters (~line 711). Mirror batch_delete pattern: early return {} for empty input, build placeholders, SELECT * WHERE cluster_id IN (...), return {row['cluster_id']: dict(row)} dict comprehension",
-      "status": "done",
-      "commit": "b29e688"
+      "description": "Remove the _parse_sse_body definition from tests/test_sse.py (lines 39-59) and add `from tests.conftest import _parse_sse_body` to the imports at the top of the file.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write TestApiMergeClustersUseBatchFetch.test_merge_uses_batch_fetch \u2014 monkeypatch db.get_activity_cluster to raise AssertionError('N+1 detected'), verify merge still succeeds (proving it uses the batch path, not the per-cluster path). Seeds 2 clusters via _seed_cluster_via_db, calls POST /api/clusters/merge",
-      "status": "done",
-      "commit": "ced1595"
+      "description": "Run pytest tests/test_sse.py to verify all 10 SSE tests still pass after replacing the local definition with the conftest import.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Refactor api_merge_clusters in review.py: replace lines 404-413 (per-cluster for loop) with a single call to db.get_activity_clusters_by_ids(body.cluster_ids), then check for missing IDs via set difference and raise 404 for the first missing ID. Convert dict values to list for the existing `clusters` variable",
-      "status": "done",
-      "commit": "c4516cb"
+      "description": "Remove the _parse_sse_body definition and its section comment from tests/test_web_e2e.py (lines 61-86) and add `from tests.conftest import _parse_sse_body` to the imports at the top of the file.",
+      "status": "pending",
+      "commit": null
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Run pyright on autopilot/web/routes/review.py and confirm it reports 'possibly unbound' for `merged_map` at line 458. This is the failing static-analysis check that step-8 will fix.",
-      "status": "done",
-      "commit": "90fee35"
-    },
-    {
-      "id": "step-8",
-      "type": "impl",
-      "description": "Fix possibly-unbound `merged_map` in review.py: move the `merged = merged_map.get(largest_id)` lookup and the 500-check (lines 458-460) inside the try body, before the `finally` clause. The return statement stays after finally. This keeps variable scope tight and mirrors the original code where the post-merge fetch was inside try.",
-      "status": "done",
-      "commit": "90fee35"
+      "description": "Run pytest tests/test_web_e2e.py tests/test_sse.py to verify all tests in both files pass after both duplicates are removed and both files import from conftest.",
+      "status": "pending",
+      "commit": null
     }
   ],
   "design_decisions": [
     {
-      "decision": "Return dict[str, dict[str, object]] keyed by cluster_id, not a list",
-      "rationale": "O(1) lookup for missing-ID detection in the merge route. The caller can detect missing IDs via set(requested_ids) - set(result.keys()) without scanning a list. This is specified in the task description."
+      "decision": "Use explicit import (`from tests.conftest import _parse_sse_body`) rather than relying on pytest conftest auto-discovery",
+      "rationale": "pytest auto-discovery only works for fixtures (decorated with @pytest.fixture). _parse_sse_body is a plain helper function, so it must be explicitly imported. This is consistent with how extract_json_blocks (another plain helper in conftest.py) would be used."
     },
     {
-      "decision": "Place the new method between get_activity_clusters and batch_delete_activity_clusters in db.py",
-      "rationale": "Groups all cluster-read methods together, and positions the batch-read next to the batch-delete it mirrors, maintaining logical ordering."
+      "decision": "Use the fully-typed signature `events: list[dict] = []` from test_web_e2e.py as the canonical version",
+      "rationale": "The task description specifies using the fully-typed signature. The test_sse.py version uses bare `events = []` which loses the type annotation. Both are functionally identical."
     },
     {
-      "decision": "Silently omit non-existent IDs from the result dict rather than raising",
-      "rationale": "Mirrors batch_delete_activity_clusters which silently skips non-existent IDs. The caller (merge route) handles missing IDs by comparing requested vs returned keys."
+      "decision": "Place _parse_sse_body after extract_json_blocks in conftest.py",
+      "rationale": "conftest.py organizes code as: imports, internal helpers, fixtures, public helper functions. extract_json_blocks is already at the end (line 127). Adding _parse_sse_body after it maintains this grouping."
     },
     {
-      "decision": "Monkeypatch test to prove batch path is used",
-      "rationale": "Existing TestApiMergeClusters tests cover merge behavior end-to-end. A monkeypatch test that blocks the old per-cluster get_activity_cluster path proves the route was actually refactored to use the batch method, catching regression if someone reverts."
-    },
-    {
-      "decision": "Keep 404 detail reporting the first missing cluster_id specifically",
-      "rationale": "Preserves the existing API contract where the 404 detail says which cluster_id was not found. Use set difference to find missing IDs, then report the first one."
-    },
-    {
-      "decision": "Move post-finally code inside try body rather than pre-initializing merged_map",
-      "rationale": "Reviewer suggested either pre-initializing `merged_map = {}` before try, or moving the consumption inside try. Moving inside try is cleaner: it keeps variable scope tight, avoids a misleading empty-dict default that would never be intentionally used, and mirrors the original code where the post-merge fetch lived inside the try block."
+      "decision": "No separate helpers module \u2014 add directly to conftest.py",
+      "rationale": "The task explicitly specifies conftest.py as the destination. The existing pattern (extract_json_blocks) already lives there. A separate helpers.py would add unnecessary indirection for two helper functions."
     }
   ],
   "reuse": [
     {
-      "what": "batch_delete_activity_clusters placeholder pattern",
-      "where": "autopilot/db.py:718-724",
-      "how": "Mirror the empty-check, placeholder generation, and parameterized IN clause pattern for the new SELECT query"
+      "what": "_parse_sse_body implementation from tests/test_web_e2e.py (lines 66-86)",
+      "where": "tests/conftest.py",
+      "how": "Copy the fully-typed version verbatim as the canonical shared helper"
     },
     {
-      "what": "_seed_cluster helper and db fixture",
-      "where": "tests/test_cluster_review.py:20-44",
-      "how": "Reuse existing db fixture and _seed_cluster helper for DB-level tests of the new method"
-    },
-    {
-      "what": "_seed_cluster_via_db helper and app fixture",
-      "where": "tests/test_cluster_review.py:260-275",
-      "how": "Reuse for the monkeypatch integration test that proves the merge route uses batch fetch"
-    },
-    {
-      "what": "Existing TestApiMergeClusters tests",
-      "where": "tests/test_cluster_review.py:468-573",
-      "how": "Serve as regression suite \u2014 all existing merge tests must still pass after the refactor"
+      "what": "Existing plain helper function pattern in conftest.py (extract_json_blocks, line 127)",
+      "where": "tests/conftest.py",
+      "how": "Follow the same style: module-level function, no fixture decorator, with docstring, placed at file bottom"
     }
   ],
-  "_session_id": "80-b82183d3",
-  "_created_at": "2026-03-25T02:21:52.031482+00:00"
+  "_session_id": "89-34b95731",
+  "_created_at": "2026-03-25T02:39:38.005211+00:00"
 }
