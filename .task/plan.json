@@ -55,6 +55,20 @@
       "description": "Refactor api_merge_clusters in review.py: replace lines 404-413 (per-cluster for loop) with a single call to db.get_activity_clusters_by_ids(body.cluster_ids), then check for missing IDs via set difference and raise 404 for the first missing ID. Convert dict values to list for the existing `clusters` variable",
       "status": "done",
       "commit": "c4516cb"
+    },
+    {
+      "id": "step-7",
+      "type": "test",
+      "description": "Run pyright on autopilot/web/routes/review.py and confirm it reports 'possibly unbound' for `merged_map` at line 458. This is the failing static-analysis check that step-8 will fix.",
+      "status": "done",
+      "commit": "90fee35"
+    },
+    {
+      "id": "step-8",
+      "type": "impl",
+      "description": "Fix possibly-unbound `merged_map` in review.py: move the `merged = merged_map.get(largest_id)` lookup and the 500-check (lines 458-460) inside the try body, before the `finally` clause. The return statement stays after finally. This keeps variable scope tight and mirrors the original code where the post-merge fetch was inside try.",
+      "status": "done",
+      "commit": "90fee35"
     }
   ],
   "design_decisions": [
@@ -77,6 +91,10 @@
     {
       "decision": "Keep 404 detail reporting the first missing cluster_id specifically",
       "rationale": "Preserves the existing API contract where the 404 detail says which cluster_id was not found. Use set difference to find missing IDs, then report the first one."
+    },
+    {
+      "decision": "Move post-finally code inside try body rather than pre-initializing merged_map",
+      "rationale": "Reviewer suggested either pre-initializing `merged_map = {}` before try, or moving the consumption inside try. Moving inside try is cleaner: it keeps variable scope tight, avoids a misleading empty-dict default that would never be intentionally used, and mirrors the original code where the post-merge fetch lived inside the try block."
     }
   ],
   "reuse": [
@@ -102,5 +120,5 @@
     }
   ],
   "_session_id": "80-b82183d3",
-  "_created_at": "2026-03-25T02:13:54.518676+00:00"
+  "_created_at": "2026-03-25T02:21:52.031482+00:00"
 }
