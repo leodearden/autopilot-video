@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -249,7 +249,7 @@ def _parse_ts(s: str) -> datetime:
         )
 
 
-def _parse_cluster(row: dict[str, object]) -> dict[str, object]:
+def _parse_cluster(row: dict[str, object]) -> dict[str, Any]:
     """Enrich a cluster row with parsed clip_ids and clip_count."""
     result = dict(row)
     raw = result.pop("clip_ids_json", None)
@@ -291,7 +291,7 @@ def clusters_page(request: Request) -> HTMLResponse:
 
 
 @router.get("/api/clusters")
-def api_list_clusters(request: Request) -> list[dict[str, object]]:
+def api_list_clusters(request: Request) -> list[dict[str, Any]]:
     """Return all activity clusters as a JSON list with parsed clip_ids."""
     db = _get_db(request)
     try:
@@ -302,7 +302,7 @@ def api_list_clusters(request: Request) -> list[dict[str, object]]:
 
 
 @router.get("/api/clusters/{cluster_id}")
-def api_get_cluster(request: Request, cluster_id: str) -> dict[str, object]:
+def api_get_cluster(request: Request, cluster_id: str) -> dict[str, Any]:
     """Return a single cluster by ID with parsed clip_ids."""
     db = _get_db(request)
     try:
@@ -315,7 +315,7 @@ def api_get_cluster(request: Request, cluster_id: str) -> dict[str, object]:
 
 
 def _render_cluster_partial(
-    request: Request, cluster: dict[str, object],
+    request: Request, cluster: dict[str, Any],
 ) -> HTMLResponse:
     """Render a single cluster card partial as HTML."""
     templates = request.app.state.templates
@@ -393,7 +393,7 @@ class MergeRequest(BaseModel):
 @router.post("/api/clusters/merge")
 def api_merge_clusters(
     request: Request, body: MergeRequest,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Merge multiple clusters into the largest one by clip count."""
     if len(body.cluster_ids) < 2:
         raise HTTPException(
@@ -415,12 +415,12 @@ def api_merge_clusters(
         parsed_clusters = [_parse_cluster(c) for c in clusters]
 
         # Find largest by clip count
-        largest = max(parsed_clusters, key=lambda c: c["clip_count"])  # type: ignore[arg-type]
+        largest = max(parsed_clusters, key=lambda c: c["clip_count"])
         largest_id = largest["cluster_id"]
 
         # Combine all clip_ids (deduplicated, preserving order)
         all_clip_ids: list[str] = list(dict.fromkeys(
-            cid for pc in parsed_clusters for cid in pc["clip_ids"]  # type: ignore[union-attr]
+            cid for pc in parsed_clusters for cid in pc["clip_ids"]
         ))
 
         # Compute time range (chronological comparison, not lexicographic)
@@ -441,16 +441,16 @@ def api_merge_clusters(
         # Wrap mutations in context manager for explicit transaction safety:
         # __exit__ commits on success, rolls back on exception.
         with db:
-            db.update_activity_cluster(str(largest_id), **update_kwargs)
+            db.update_activity_cluster(largest_id, **update_kwargs)
 
             # Batch-delete non-surviving clusters
             non_surviving = [
                 pc["cluster_id"] for pc in parsed_clusters
                 if pc["cluster_id"] != largest_id
             ]
-            db.batch_delete_activity_clusters([str(cid) for cid in non_surviving])
+            db.batch_delete_activity_clusters(non_surviving)
 
-            merged = db.get_activity_cluster(str(largest_id))
+            merged = db.get_activity_cluster(largest_id)
     finally:
         db.close()
     if merged is None:

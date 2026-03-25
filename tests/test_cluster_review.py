@@ -129,25 +129,6 @@ class TestParseClusterMalformedJson:
 
 
 # ---------------------------------------------------------------------------
-# TestDeleteActivityCluster — step-3
-# ---------------------------------------------------------------------------
-
-class TestDeleteActivityCluster:
-    """Tests for CatalogDB.delete_activity_cluster(cluster_id)."""
-
-    def test_cluster_removed_after_delete(self, db: CatalogDB) -> None:
-        """delete_activity_cluster removes the cluster; get returns None."""
-        _seed_cluster(db, "c-1")
-        db.delete_activity_cluster("c-1")
-        db.conn.commit()
-        assert db.get_activity_cluster("c-1") is None
-
-    def test_no_error_deleting_missing_id(self, db: CatalogDB) -> None:
-        """delete_activity_cluster does not raise for a non-existent id."""
-        db.delete_activity_cluster("nonexistent")  # should not raise
-
-
-# ---------------------------------------------------------------------------
 # TestUpdateActivityClusterWhitelist — step-5
 # ---------------------------------------------------------------------------
 
@@ -428,16 +409,15 @@ class TestApiRelabelCluster:
         assert persisted["label"] == "Keep"
         assert persisted["description"] == "Same"
 
-    def test_404_via_rowcount_path(self, client: TestClient) -> None:
-        """POST relabel returns 404 via rowcount==0 when cluster does not exist.
+    def test_empty_body_nonexistent_cluster_returns_404(
+        self, client: TestClient,
+    ) -> None:
+        """POST relabel with empty body {} on nonexistent cluster returns 404.
 
-        This tests the new code path where UPDATE is issued first and
-        rowcount==0 triggers 404 (no pre-UPDATE SELECT).
+        When no fields are set, the UPDATE is skipped and _update_and_respond_cluster's
+        SELECT finds nothing, yielding 404.
         """
-        resp = client.post(
-            "/api/clusters/nonexistent/relabel",
-            json={"label": "X"},
-        )
+        resp = client.post("/api/clusters/nonexistent/relabel", json={})
         assert resp.status_code == 404
 
 
