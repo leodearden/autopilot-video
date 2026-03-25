@@ -1,273 +1,162 @@
 {
-  "task_id": "47",
-  "title": "Cluster review page",
+  "task_id": "63",
+  "title": "Fix bugs in cluster merge/review: timestamp comparison, UI interaction, error handling",
   "files": [
-    "autopilot/db.py",
     "autopilot/web/routes/review.py",
-    "autopilot/web/templates/review/clusters.html",
     "autopilot/web/templates/partials/cluster_card.html",
     "tests/test_cluster_review.py"
   ],
   "modules": [
-    "autopilot/db",
     "autopilot/web/routes",
-    "autopilot/web/templates/review",
-    "autopilot/web/templates/partials",
+    "autopilot/web/templates",
     "tests"
   ],
-  "analysis": "Build the cluster review page at /review/clusters with card grid, merge, relabel, and exclude functionality. The codebase has a well-established pattern: review.py contains both page routes (/review/*) and JSON API routes (/api/*), with HTMX-aware dual responses (HTML partial vs JSON). Templates use Tailwind dark mode with surface-* colors, and cards have predictable IDs ({entity}-{id}) for HTMX outerHTML swaps. The activity_clusters table exists with cluster_id, label, description, time_start, time_end, location_label, gps coords, and clip_ids_json. Missing from db.py: (1) single-cluster getter get_activity_cluster(id), (2) delete_activity_cluster method, (3) 'excluded' column on the table, (4) column whitelist on update_activity_cluster (it currently does raw **kwargs into SQL like the narrative update did before task 46 fixed it). The review hub already maps waiting gates to review links via _REVIEW_LINKS dict — needs 'classify' entry. Navigation in base.html already links to /review/clusters. New test file test_cluster_review.py keeps cluster tests separate from the 678-line test_review.py. All cluster routes go in the existing review.py following the task spec and narrative route convention.",
-  "prerequisites": [
-    {
-      "id": "pre-1",
-      "description": "Add 'excluded INTEGER DEFAULT 0' to activity_clusters schema in CatalogDB.__init__ — add to CREATE TABLE statement for new DBs and add ALTER TABLE with try/except OperationalError for existing DBs that lack the column",
-      "status": "done",
-      "commit": "10a3d9b",
-      "tests": []
-    }
-  ],
+  "analysis": "Six bugs in the cluster review subsystem discovered during task 47 review. The bugs span three areas: (1) data processing in review.py \u2014 _parse_cluster crashes on malformed JSON (line 222), timestamp comparison uses lexicographic min/max on raw strings (lines 383-386), merge builds clip_ids without deduplication (lines 378-380); (2) transaction safety \u2014 merge endpoint mutates DB without explicit transaction wrapping, relying on implicit sqlite3 behavior (lines 388-404); (3) UI/logic \u2014 cluster_card.html relabel button sends empty POST body (lines 19-24), and classify gate condition is semantically inverted showing approve only when ALL clusters are excluded (line 243). Existing test file test_cluster_review.py has thorough coverage patterns: TestApiMergeClusters for merge operations, _seed_cluster_via_db helper for seeding test data, _setup_classify_gate_app for gate condition tests, and TestHtmxClusterResponses for HTML partial testing. CatalogDB provides __enter__/__exit__ context manager with commit-on-success / rollback-on-exception semantics (db.py:41-53) that should be used for explicit transaction safety in the merge endpoint. The relabel endpoint (api_relabel_cluster) accepts a ClusterRelabel Pydantic model as JSON body \u2014 the template fix must send JSON, following the hx-vals='js:...' pattern already used by the merge button in clusters.html.",
+  "prerequisites": [],
   "steps": [
     {
       "id": "step-1",
       "type": "test",
-      "description": "Write failing tests for get_activity_cluster(id): returns dict for existing cluster with all fields, returns None for missing cluster. Also test that excluded column defaults to 0 on newly inserted cluster.",
+      "description": "Write failing test for _parse_cluster malformed JSON handling: import _parse_cluster from review module, call with {'clip_ids_json': '{bad json'}, verify it returns empty clip_ids list and clip_count=0 instead of raising json.JSONDecodeError. Also test with clip_ids_json=None still returns empty list (preserves existing behavior).",
       "status": "done",
-      "commit": "7ee8e1e"
+      "commit": "2275ff4282bcf0b90b841c5ff103e58a7a2b6fad"
     },
     {
       "id": "step-2",
       "type": "impl",
-      "description": "Implement get_activity_cluster(cluster_id) in CatalogDB — SELECT * FROM activity_clusters WHERE cluster_id=? returning dict(row) or None. Add excluded column to CREATE TABLE and ALTER TABLE migration. Pattern follows get_narrative().",
+      "description": "In _parse_cluster (review.py:222), wrap the json.loads(str(raw)) call in try/except json.JSONDecodeError, defaulting to empty list on failure \u2014 matching the existing 'if raw else []' fallback pattern.",
       "status": "done",
-      "commit": "9aa8255"
+      "commit": "bccfc5d3e783d6cceb9a92075b4e894812f03883"
     },
     {
       "id": "step-3",
       "type": "test",
-      "description": "Write failing tests for delete_activity_cluster(id): cluster is removed after delete (get returns None), no error when deleting missing id.",
+      "description": "Write failing tests for classify gate approve condition on /review/clusters page: (a) setup classify gate='waiting' with 2 clusters, 0 excluded \u2014 page SHOULD contain 'Approve Gate' button; (b) setup classify gate='waiting' with 2 clusters, all 2 excluded \u2014 page should NOT contain 'Approve Gate'. Use _setup_classify_gate_app helper. Currently test (a) fails because the inverted condition requires len(non_excluded)==0.",
       "status": "done",
-      "commit": "cae4b6f"
+      "commit": "6caeac8844818e8a8e3718c4f880e57d2f051ace"
     },
     {
       "id": "step-4",
       "type": "impl",
-      "description": "Implement delete_activity_cluster(cluster_id) in CatalogDB — DELETE FROM activity_clusters WHERE cluster_id=?",
+      "description": "In clusters_page (review.py:243), change show_approve_gate condition from 'len(non_excluded) == 0' to 'len(non_excluded) > 0'. Approve gate shows when reviewed clusters exist to proceed with, not when all are excluded.",
       "status": "done",
-      "commit": "8ffc2c0"
+      "commit": "22b3440218af5ba091d7944fc3d5f3460cb81b7d"
     },
     {
       "id": "step-5",
       "type": "test",
-      "description": "Write failing test that update_activity_cluster rejects columns not in whitelist (raises ValueError with descriptive message), while accepting all valid columns (label, description, time_start, time_end, location_label, gps_center_lat, gps_center_lon, clip_ids_json, excluded).",
+      "description": "Write failing test for merge clip_id deduplication: seed c-1 with clip_ids_json='[\"a\",\"b\"]' and c-2 with clip_ids_json='[\"b\",\"c\",\"d\"]' (note 'b' is shared). Merge them and assert clip_ids has no duplicates \u2014 exactly 4 unique clips, not 5. Assert len(data['clip_ids']) == len(set(data['clip_ids'])).",
       "status": "done",
-      "commit": "9f2d5a2"
+      "commit": "6ca6bdbf47138e617befa655584bfb805c99b86c"
     },
     {
       "id": "step-6",
       "type": "impl",
-      "description": "Add _CLUSTER_ALLOWED_COLUMNS frozenset to CatalogDB and whitelist validation to update_activity_cluster, following the _NARRATIVE_ALLOWED_COLUMNS pattern. Allowed columns: label, description, time_start, time_end, location_label, gps_center_lat, gps_center_lon, clip_ids_json, excluded.",
+      "description": "In api_merge_clusters (review.py:378-380), replace the simple extend() loop with deduplication using dict.fromkeys(): 'all_clip_ids = list(dict.fromkeys(cid for pc in parsed_clusters for cid in pc[\"clip_ids\"]))'.",
       "status": "done",
-      "commit": "113b2e0"
+      "commit": "cf7a0d5880c6f4f42507368c8494b501c58dab41"
     },
     {
       "id": "step-7",
       "type": "test",
-      "description": "Write failing tests for GET /api/clusters: returns JSON list of clusters with clip_ids parsed from clip_ids_json and clip_count added; returns empty list when no clusters exist.",
+      "description": "Write failing test for timestamp comparison in merge: seed c-1 with time_start='2025-06-15T22:00:00+10:00' and time_end='2025-06-15T23:00:00+10:00', seed c-2 with time_start='2025-06-15T14:00:00+00:00' and time_end='2025-06-16T02:00:00+00:00'. Chronologically c-1 starts earlier (12:00 UTC) but sorts later lexicographically. Assert merged time_start matches c-1's value. Test currently fails because lexicographic min picks c-2.",
       "status": "done",
-      "commit": "4945084"
+      "commit": "bf84283b573d59dcb49a93c141d40012847bba71"
     },
     {
       "id": "step-8",
       "type": "impl",
-      "description": "Implement api_list_clusters route and _parse_cluster helper in review.py. _parse_cluster pops clip_ids_json, parses to clip_ids list, adds clip_count. Pattern follows _parse_narrative.",
+      "description": "In api_merge_clusters (review.py:383-386), replace lexicographic min/max with datetime-aware comparison. Add 'from datetime import datetime' import. Use 'min(time_starts, key=datetime.fromisoformat)' and 'max(time_ends, key=datetime.fromisoformat)'. This preserves original string format while comparing chronologically.",
       "status": "done",
-      "commit": "a37c387"
+      "commit": "84c476b7e33ae119f451da325aa24fc4c8836fb9"
     },
     {
       "id": "step-9",
       "type": "test",
-      "description": "Write failing tests for GET /api/clusters/{cluster_id}: returns single cluster JSON with parsed clip_ids and clip_count; returns 404 for missing cluster.",
+      "description": "Write test for merge transaction safety: seed 2 clusters, use monkeypatch to make db.delete_activity_cluster raise RuntimeError after update has been applied. Call merge endpoint \u2014 expect error response. Then read both clusters directly from DB and verify they still exist with original data unchanged (the update was rolled back along with the failed delete).",
       "status": "done",
-      "commit": "d9fefed"
+      "commit": "77ca8c8ea128ccb4a77eb83b013499652c42a4e3"
     },
     {
       "id": "step-10",
       "type": "impl",
-      "description": "Implement api_get_cluster route in review.py — get_activity_cluster(id), parse, return JSON or raise 404.",
+      "description": "In api_merge_clusters (review.py:388-404), wrap the mutation block (update_activity_cluster + delete loop) in 'with db:' context manager. Remove the explicit db.conn.commit() call \u2014 CatalogDB.__exit__ handles commit-on-success and rollback-on-exception. Keep the post-merge read (get_activity_cluster) inside the with block before __exit__ commits.",
       "status": "done",
-      "commit": "81486d6"
+      "commit": "09f85797f71a4bf424fd8df1c6f13df0937c7a4e"
     },
     {
       "id": "step-11",
       "type": "test",
-      "description": "Write failing tests for POST /api/clusters/{cluster_id}/relabel: updates label and description, returns updated cluster JSON; 404 for missing cluster; rejects extra fields in body via Pydantic validation (422).",
+      "description": "Write failing test for cluster_card template relabel inputs: render the cluster card partial for a non-excluded cluster (via HTMX relabel or exclude returning HTML, or direct template rendering) and verify HTML contains: (a) an input element with name='label' and the cluster's current label as value, (b) a textarea/input with name='description' and the cluster's current description as value. These must be associated with the relabel button so values are submitted.",
       "status": "done",
-      "commit": "d2282ab"
+      "commit": "09c84ef"
     },
     {
       "id": "step-12",
       "type": "impl",
-      "description": "Implement api_relabel_cluster route with ClusterRelabel Pydantic model (label: Optional[str], description: Optional[str], extra='forbid'). Calls update_activity_cluster with provided fields, commits, returns updated cluster.",
+      "description": "Update cluster_card.html: for non-excluded clusters, replace static h3 label display with <input type='text' name='label' value='...'> and replace static p description with <textarea name='description'>...</textarea>, styled as inline-editable text. Wire the relabel button using hx-vals='js:{...}' to read values from sibling inputs and hx-headers='{\"Content-Type\":\"application/json\"}' pattern, or an onclick handler that POSTs JSON and swaps outerHTML \u2014 following the JS hx-vals approach used by the merge button in clusters.html.",
       "status": "done",
-      "commit": "0897a5e"
-    },
-    {
-      "id": "step-13",
-      "type": "test",
-      "description": "Write failing tests for POST /api/clusters/{cluster_id}/exclude: sets excluded=1, returns updated cluster with excluded=1; 404 for missing cluster; idempotent (excluding already-excluded cluster succeeds).",
-      "status": "done",
-      "commit": "978ed7d"
-    },
-    {
-      "id": "step-14",
-      "type": "impl",
-      "description": "Implement api_exclude_cluster route — calls update_activity_cluster(id, excluded=1), commits, returns updated cluster JSON.",
-      "status": "done",
-      "commit": "3d04726"
-    },
-    {
-      "id": "step-15",
-      "type": "test",
-      "description": "Write failing tests for POST /api/clusters/merge: (a) merges 2 clusters — combined clip_ids_json, label from largest cluster, min(time_start)/max(time_end), merged cluster kept, other deleted; (b) merges 3 clusters; (c) returns 422 for fewer than 2 cluster_ids; (d) returns 404 if any cluster_id not found.",
-      "status": "done",
-      "commit": "6f78515"
-    },
-    {
-      "id": "step-16",
-      "type": "impl",
-      "description": "Implement api_merge_clusters route with MergeRequest(cluster_ids: list[str]) Pydantic model. Logic: validate >=2 ids, load all clusters (404 if any missing), find largest by clip count, combine all clip_ids, compute min time_start/max time_end, update largest cluster with combined data, delete others, commit, return merged cluster.",
-      "status": "done",
-      "commit": "cbe5442"
-    },
-    {
-      "id": "step-17",
-      "type": "test",
-      "description": "Write failing tests for GET /review/clusters HTML page: returns 200 with cluster card labels and clip counts visible; empty state shows 'No clusters' message; excluded clusters show 'excluded' badge.",
-      "status": "done",
-      "commit": "d35e433"
-    },
-    {
-      "id": "step-18",
-      "type": "impl",
-      "description": "Create review/clusters.html template (extends base.html) with card grid, merge checkboxes, Merge Selected button, and Approve Gate button. Create partials/cluster_card.html with cluster info, status badge, relabel/exclude buttons. Implement clusters_page route in review.py.",
-      "status": "done",
-      "commit": "efca2c0"
-    },
-    {
-      "id": "step-19",
-      "type": "test",
-      "description": "Write failing tests for HTMX responses: POST relabel with HX-Request:true returns HTML containing div with id='cluster-{id}' and updated label; POST exclude with HX-Request:true returns HTML partial with 'excluded' badge.",
-      "status": "done",
-      "commit": "73c5a23"
-    },
-    {
-      "id": "step-20",
-      "type": "impl",
-      "description": "Add _render_cluster_partial helper (renders partials/cluster_card.html). Wire relabel and exclude routes to return HTML partial when _is_htmx(request) is true, JSON otherwise. Pattern follows _render_narrative_partial.",
-      "status": "done",
-      "commit": "9ecd260"
-    },
-    {
-      "id": "step-21",
-      "type": "test",
-      "description": "Write failing test for review hub integration: when classify gate is 'waiting', hub page contains card with 'classify' stage, link to /review/clusters, and pending cluster count (non-excluded clusters).",
-      "status": "done",
-      "commit": "5b74a02"
-    },
-    {
-      "id": "step-22",
-      "type": "impl",
-      "description": "Update _REVIEW_LINKS to add 'classify': '/review/clusters'. In review_hub route, add classify stage handling: count non-excluded activity clusters as pending_count with 'activity clusters' as pending_label.",
-      "status": "done",
-      "commit": "990d9cd"
+      "commit": "0cb6890"
     }
   ],
   "design_decisions": [
     {
-      "decision": "Add 'excluded INTEGER DEFAULT 0' column to activity_clusters rather than a separate exclusion tracking table",
-      "rationale": "Task spec suggests a boolean field directly on the table. SQLite integer-boolean is the project norm. A column on the existing table is simpler than a join table, and ALTER TABLE ADD COLUMN is safe for SQLite with a DEFAULT value. Try/except OperationalError handles existing DBs gracefully."
+      "decision": "Use datetime.fromisoformat() as key function in min/max for timestamp comparison, preserving original string",
+      "rationale": "The DB stores timestamps as ISO strings that may vary in format (timezone-aware vs naive, varying precision). Parsing to datetime for comparison is correct; returning the original string preserves the stored format. fromisoformat() handles both naive and tz-aware formats in Python 3.11+."
     },
     {
-      "decision": "Add column whitelist to update_activity_cluster following the _NARRATIVE_ALLOWED_COLUMNS pattern from task 46",
-      "rationale": "The current update_activity_cluster interpolates raw **kwargs keys into SQL (same vulnerability task 46 fixed for narratives). Adding a frozenset whitelist is defense-in-depth. All non-PK columns are allowed: label, description, time_start, time_end, location_label, gps_center_lat, gps_center_lon, clip_ids_json, excluded."
+      "decision": "Use dict.fromkeys() for clip_id deduplication instead of set()",
+      "rationale": "dict.fromkeys() preserves insertion order (first occurrence wins) while set() gives non-deterministic order. Preserving order ensures stable JSON output and deterministic test assertions."
     },
     {
-      "decision": "Merge keeps the largest cluster (by clip count) as the surviving record and deletes the others",
-      "rationale": "Task spec says 'pick label from largest cluster' and 'delete merged clusters, keep the combined one'. Keeping the largest cluster's row preserves its cluster_id, which may be referenced in narratives via activity_cluster_ids_json. Updating in-place avoids orphaned references."
+      "decision": "Wrap merge writes in 'with db:' context manager rather than relying on close()-rollback",
+      "rationale": "CatalogDB's __exit__ provides explicit commit-on-success and rollback-on-error (db.py:44-53). Using 'with db:' makes transactional intent clear, matches the class's documented usage pattern (seen in _setup_classify_gate_app), and is resilient to future refactoring like connection pooling."
     },
     {
-      "decision": "Create separate test file tests/test_cluster_review.py rather than appending to test_review.py",
-      "rationale": "test_review.py is already 678 lines focused on narrative review. Cluster review is a distinct feature area with its own fixtures (_seed_cluster), DB method tests, and API tests. Separate files keep both manageable and allow parallel test execution."
+      "decision": "Invert classify gate condition from len(non_excluded) == 0 to > 0",
+      "rationale": "The narrative gate shows approve when proposed_count == 0 (nothing pending review). For clusters there's no 'pending' status \u2014 the condition should reflect 'reviewed clusters exist to proceed with'. Showing approve when ALL clusters are excluded (nothing to proceed with) is semantically wrong. The template text 'All clusters have been reviewed' confirms the intent is non-empty reviewed clusters."
     },
     {
-      "decision": "All cluster routes go in review.py following the task spec and existing convention",
-      "rationale": "Task spec says 'extend autopilot/web/routes/review.py'. The file already mixes /review/* page routes and /api/* JSON routes for narratives. Adding /review/clusters and /api/clusters/* follows the same pattern. No new router registration needed."
+      "decision": "Add inline editable inputs to cluster_card.html with JS-based JSON encoding for relabel",
+      "rationale": "The endpoint expects JSON body (Pydantic ClusterRelabel model). Rather than changing the endpoint contract to accept form data (breaking existing tests), we keep the JSON API and use JS to construct the request body \u2014 the same pattern used by the merge button's hx-vals='js:...' in clusters.html."
     },
     {
-      "decision": "_parse_cluster adds computed clip_count field alongside clip_ids",
-      "rationale": "Avoids template-side array length calculation. The API response includes both the full clip_ids list and a convenience clip_count integer. This is cheap to compute and makes the card template simpler."
-    },
-    {
-      "decision": "Merge endpoint returns 422 for fewer than 2 cluster_ids, 404 if any cluster not found",
-      "rationale": "Merging requires at least 2 clusters by definition. Using 422 (Unprocessable Entity) for validation errors and 404 for missing resources follows HTTP semantics and the project's existing error handling patterns in gates.py and review.py."
-    },
-    {
-      "decision": "Hub counts non-excluded clusters as pending for classify gate",
-      "rationale": "Excluded clusters are intentionally removed from consideration, so they shouldn't inflate the pending count. This gives the reviewer an accurate picture of how many clusters still need review before approving the classify gate."
+      "decision": "Catch json.JSONDecodeError specifically in _parse_cluster, not broad Exception",
+      "rationale": "Only JSON parsing can fail on clip_ids_json. Catching broadly would mask programming errors. The empty list fallback is safe \u2014 the cluster card still renders, showing 0 clips. Note: _parse_narrative has the same vulnerability but is out of scope for this task."
     }
   ],
   "reuse": [
     {
-      "what": "_get_db(request) and _is_htmx(request) helpers",
-      "where": "autopilot/web/routes/review.py lines 18-25",
-      "how": "Reuse directly for all new cluster routes — same DB connection pattern and HTMX detection. No duplication needed since they're in the same file."
+      "what": "CatalogDB context manager (__enter__/__exit__) for transaction safety",
+      "where": "autopilot/db.py lines 41-53",
+      "how": "Wrap merge writes in 'with db:' \u2014 __exit__ auto-commits on success, auto-rolls back on exception. Eliminates the explicit db.conn.commit() call."
     },
     {
-      "what": "_parse_narrative pattern for JSON field deserialization",
-      "where": "autopilot/web/routes/review.py lines 101-106",
-      "how": "Create _parse_cluster following identical pattern: pop clip_ids_json, json.loads to list, add clip_count = len(clip_ids)."
+      "what": "_setup_classify_gate_app helper for gate condition tests",
+      "where": "tests/test_cluster_review.py lines 465-488",
+      "how": "Reuse this helper (creates app with classify gate='waiting' and configurable cluster/excluded counts) to set up test scenarios for the approve gate condition fix."
     },
     {
-      "what": "_render_narrative_partial pattern for HTMX card responses",
-      "where": "autopilot/web/routes/review.py lines 144-151",
-      "how": "Create _render_cluster_partial using same templates.get_template + template.render + HTMLResponse pattern, targeting partials/cluster_card.html."
+      "what": "_seed_cluster_via_db helper for merge bug tests",
+      "where": "tests/test_cluster_review.py lines 153-171",
+      "how": "Use this existing helper to seed clusters with specific clip_ids_json, time_start, and time_end values for deduplication and timestamp comparison tests."
     },
     {
-      "what": "Pydantic request body models with ConfigDict(extra='forbid')",
-      "where": "autopilot/web/routes/review.py lines 166-179 (NarrativeUpdate, BulkApproveRequest)",
-      "how": "Create ClusterRelabel(label, description) and MergeRequest(cluster_ids) Pydantic models with same extra='forbid' config for strict input validation."
+      "what": "Existing TestApiMergeClusters test patterns",
+      "where": "tests/test_cluster_review.py lines 307-383",
+      "how": "Follow the same setup/assert pattern for new merge tests: seed clusters via _seed_cluster_via_db, POST to /api/clusters/merge, assert on response JSON fields."
     },
     {
-      "what": "_NARRATIVE_ALLOWED_COLUMNS whitelist pattern in CatalogDB",
-      "where": "autopilot/db.py lines 761-778",
-      "how": "Create _CLUSTER_ALLOWED_COLUMNS frozenset with identical validation logic: check kwargs keys against whitelist, raise ValueError listing bad keys."
+      "what": "hx-vals='js:...' pattern from merge button",
+      "where": "autopilot/web/templates/review/clusters.html line 13",
+      "how": "Apply the same JS-based hx-vals approach for the relabel button to gather input field values and send as JSON body."
     },
     {
-      "what": "Test fixture pattern: file-backed DB, create_app, TestClient, _seed_* helper",
-      "where": "tests/test_review.py lines 19-41",
-      "how": "Create analogous fixtures in test_cluster_review.py: db fixture with tmp_path, app/client fixtures, _seed_cluster helper inserting cluster with sensible defaults."
-    },
-    {
-      "what": "narratives.html template layout (card grid, bulk actions, gate approval section)",
-      "where": "autopilot/web/templates/review/narratives.html",
-      "how": "clusters.html follows identical structure: extends base.html, card grid with grid-cols-1/2/3, action header with Merge Selected button, Approve Gate section at bottom."
-    },
-    {
-      "what": "narrative_card.html partial pattern (div#entity-id, HTMX attributes)",
-      "where": "autopilot/web/templates/partials/narrative_card.html",
-      "how": "cluster_card.html uses same pattern: div#cluster-{cluster_id} as swap target, hx-post/hx-target/hx-swap='outerHTML' on action buttons, status badges with Tailwind color classes."
-    },
-    {
-      "what": "Review hub _REVIEW_LINKS dict and pending count logic",
-      "where": "autopilot/web/routes/review.py lines 28-52",
-      "how": "Add 'classify': '/review/clusters' to _REVIEW_LINKS. Add elif stage == 'classify' block to count non-excluded clusters, mirroring the narrate stage pattern."
-    },
-    {
-      "what": "Existing CatalogDB activity_clusters CRUD (insert, get_all, clear, update)",
-      "where": "autopilot/db.py lines 656-710",
-      "how": "Routes use get_activity_clusters() for list, update_activity_cluster() for relabel/exclude. New get_activity_cluster(id) and delete_activity_cluster(id) extend the existing CRUD section."
+      "what": "_render_cluster_partial for HTMX responses",
+      "where": "autopilot/web/routes/review.py lines 277-284",
+      "how": "Already wired \u2014 the relabel endpoint returns HTML partials for HTMX requests. Template input fix automatically works with existing route code, no route changes needed for Bug 2."
     }
   ],
-  "_session_id": "47-00f54b2c",
-  "_created_at": "2026-03-24T22:31:44.633936+00:00",
-  "_schema_version": 1
+  "_session_id": "63-6eb7edb1",
+  "_created_at": "2026-03-24T23:41:03.682926+00:00"
 }
