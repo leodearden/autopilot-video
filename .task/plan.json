@@ -45,15 +45,15 @@
       "id": "step-4",
       "type": "impl",
       "description": "Remove the 3 redundant `from tests.conftest import _parse_sse_body` imports from TestParseSSEBodyFromConftest methods (lines 327, 337, 346). The module-level import on line 15 already provides the name in module scope.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "849e603"
     },
     {
       "id": "step-5",
       "type": "test",
       "description": "Run full test_sse.py to confirm all fixture-dependent tests pass before the rename. This is the green baseline for the _sse_db_path -> sse_db_path rename.",
-      "status": "pending",
-      "commit": null
+      "status": "done",
+      "commit": "849e603"
     },
     {
       "id": "step-6",

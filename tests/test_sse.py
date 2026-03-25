@@ -17,15 +17,15 @@ from tests.conftest import _parse_sse_body
 
 
 @pytest.fixture
-def _sse_db_path(tmp_path: Path) -> str:
+def sse_db_path(tmp_path: Path) -> str:
     """Return the path string for the test catalog DB."""
     return str(tmp_path / "catalog.db")
 
 
 @pytest.fixture
-def sse_db(_sse_db_path: str) -> Generator:
+def sse_db(sse_db_path: str) -> Generator:
     """Create a CatalogDB backed by a real file so the app can connect to it."""
-    db = CatalogDB(_sse_db_path)
+    db = CatalogDB(sse_db_path)
     db.conn.isolation_level = None  # autocommit for test convenience
     try:
         yield db
@@ -34,9 +34,9 @@ def sse_db(_sse_db_path: str) -> Generator:
 
 
 @pytest.fixture
-def sse_app(sse_db: CatalogDB, _sse_db_path: str) -> FastAPI:
+def sse_app(sse_db: CatalogDB, sse_db_path: str) -> FastAPI:
     """Create a FastAPI app pointing at the same DB as sse_db."""
-    return create_app(_sse_db_path)
+    return create_app(sse_db_path)
 
 
 @pytest.fixture
