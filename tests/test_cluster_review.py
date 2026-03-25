@@ -924,6 +924,13 @@ class TestGetActivityClustersByIds:
         result = db.get_activity_clusters_by_ids([])
         assert result == {}
 
+    def test_omits_nonexistent_ids(self, db: CatalogDB) -> None:
+        """Fetch [c-1, nonexistent] when only c-1 exists; dict has only c-1."""
+        _seed_cluster(db, "c-1", label="Only")
+        result = db.get_activity_clusters_by_ids(["c-1", "nonexistent"])
+        assert set(result.keys()) == {"c-1"}
+        assert result["c-1"]["label"] == "Only"
+
 
 class TestReviewHubClassifyGate:
     """Tests for review hub integration with classify gate."""
