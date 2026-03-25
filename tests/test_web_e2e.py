@@ -226,3 +226,79 @@ class TestAppStartup:
         """GET /static/app.css returns 200 (static mount is working)."""
         resp = e2e_client.get("/static/app.css")
         assert resp.status_code == 200
+
+
+# ===========================================================================
+# 2. Dashboard Rendering Tests
+# ===========================================================================
+
+
+@pytest.fixture
+def dashboard_seeded_db(e2e_db: CatalogDB) -> CatalogDB:
+    """DB seeded with a full pipeline run for dashboard tests."""
+    _seed_pipeline(e2e_db)
+    return e2e_db
+
+
+@pytest.fixture
+def dashboard_app(dashboard_seeded_db: CatalogDB, e2e_db_path: str) -> FastAPI:
+    """App backed by seeded dashboard DB."""
+    return create_app(e2e_db_path)
+
+
+@pytest.fixture
+def dashboard_client(dashboard_app: FastAPI) -> TestClient:
+    """TestClient for dashboard tests."""
+    return TestClient(dashboard_app)
+
+
+class TestDashboardRendering:
+    """Verify dashboard page, stage cards, and /api/stages."""
+
+    def test_dashboard_returns_html(self, dashboard_client: TestClient) -> None:
+        """GET /dashboard returns 200 text/html."""
+        resp = dashboard_client.get("/dashboard")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_dashboard_contains_all_9_stages(
+        self, dashboard_client: TestClient,
+    ) -> None:
+        """Dashboard HTML contains all 9 pipeline stage names."""
+        resp = dashboard_client.get("/dashboard")
+        html = resp.text
+        for stage in PIPELINE_STAGES:
+            assert stage in html, f"Stage '{stage}' not in dashboard"
+
+    def test_stage_cards_show_status(
+        self, dashboard_client: TestClient,
+    ) -> None:
+        """Seeded DB with jobs shows running/error status in cards."""
+        resp = dashboard_client.get("/dashboard")
+        html = resp.text.lower()
+        assert "running" in html
+        assert "error" in html
+
+    def test_stage_cards_show_progress(
+        self, dashboard_client: TestClient,
+    ) -> None:
+        """Ingest card shows done/total progress like '5/7'."""
+        resp = dashboard_client.get("/dashboard")
+        html = resp.text
+        ingest_start = html.find('id="stage-ingest"')
+        ingest_end = html.find("</div>", html.find("</div>", ingest_start) + 1) + 6
+        ingest_card = html[ingest_start:ingest_end]
+        assert "5/7" in ingest_card
+
+    def test_api_stages_returns_9_objects(
+        self, dashboard_client: TestClient,
+    ) -> None:
+        """GET /api/stages returns list of 9 with name/status_counts/gate_mode."""
+        resp = dashboard_client.get("/api/stages")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 9
+        for stage in data:
+            assert "name" in stage
+            assert "status_counts" in stage
+            assert "gate_mode" in stage
