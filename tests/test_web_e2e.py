@@ -407,15 +407,15 @@ class TestSSEEventFlow:
     def test_last_event_id_resumes(
         self, sse_db: CatalogDB, sse_app: FastAPI,
     ) -> None:
-        """Connect with Last-Event-ID:3, verify only events after ID 3 arrive."""
+        """Connect with Last-Event-ID set to the 3rd event, verify only later events arrive."""
         from autopilot.web.routes import sse as sse_module
 
         valid_types = [
             "stage_started", "job_started", "job_progress",
             "job_completed", "stage_completed",
         ]
-        for et in valid_types:
-            sse_db.insert_event(et, stage="INGEST")
+        # Capture returned IDs instead of discarding them
+        event_ids = [sse_db.insert_event(et, stage="INGEST") for et in valid_types]
 
         async def _finite_gen(request):
             db = sse_module._get_db(request)
@@ -427,13 +427,18 @@ class TestSSEEventFlow:
             finally:
                 db.close()
 
+        # event_ids[2] is the 3rd inserted event (job_progress).
+        # get_events_since uses WHERE event_id > ?, so events at
+        # indices 3 and 4 (job_completed, stage_completed) are returned.
         with patch.object(sse_module, "_event_generator", _finite_gen):
             client = TestClient(sse_app)
-            resp = client.get("/api/events", headers={"Last-Event-ID": "3"})
+            resp = client.get(
+                "/api/events",
+                headers={"Last-Event-ID": str(event_ids[2])},
+            )
             events = _parse_sse_body(resp.text)
 
         assert len(events) == 2
-        # Events after Last-Event-ID:3 are #4 (job_completed) and #5 (stage_completed)
         assert events[0]["event"] == "job_completed"
         assert events[1]["event"] == "stage_completed"
 
