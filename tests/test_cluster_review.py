@@ -516,5 +516,4 @@ class TestReviewHubClassifyGate:
         # Link to cluster review page
         assert "/review/clusters" in body
         # Pending count: 3 clusters - 1 excluded = 2
-        assert "2" in body
-        assert "activity clusters" in body
+        assert "2 activity clusters" in body
