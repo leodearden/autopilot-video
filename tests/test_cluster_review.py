@@ -147,6 +147,41 @@ class TestUpdateActivityClusterWhitelist:
 
 
 # ---------------------------------------------------------------------------
+# TestBatchDeleteActivityClusters — task-65 step-3
+# ---------------------------------------------------------------------------
+
+class TestBatchDeleteActivityClusters:
+    """Tests for CatalogDB.batch_delete_activity_clusters(cluster_ids)."""
+
+    def test_deletes_multiple_clusters(self, db: CatalogDB) -> None:
+        """batch_delete_activity_clusters removes all specified clusters."""
+        _seed_cluster(db, "c-1")
+        _seed_cluster(db, "c-2")
+        _seed_cluster(db, "c-3")
+        result = db.batch_delete_activity_clusters(["c-1", "c-2"])
+        db.conn.commit()
+        assert result == 2
+        assert db.get_activity_cluster("c-1") is None
+        assert db.get_activity_cluster("c-2") is None
+        assert db.get_activity_cluster("c-3") is not None
+
+    def test_returns_0_on_empty_list(self, db: CatalogDB) -> None:
+        """batch_delete_activity_clusters returns 0 for empty input."""
+        _seed_cluster(db, "c-1")
+        result = db.batch_delete_activity_clusters([])
+        assert result == 0
+        assert db.get_activity_cluster("c-1") is not None
+
+    def test_skips_nonexistent_ids(self, db: CatalogDB) -> None:
+        """batch_delete_activity_clusters silently skips non-existent IDs."""
+        _seed_cluster(db, "c-1")
+        result = db.batch_delete_activity_clusters(["c-1", "nonexistent"])
+        db.conn.commit()
+        assert result == 1
+        assert db.get_activity_cluster("c-1") is None
+
+
+# ---------------------------------------------------------------------------
 # TestUpdateActivityClusterRowcount — task-65 step-1
 # ---------------------------------------------------------------------------
 
