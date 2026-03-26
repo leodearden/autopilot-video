@@ -309,6 +309,16 @@ class TestGetMediaDetail:
                 " representative_embedding"
             )
 
+    def test_media_detail_faces_exclude_embedding(self, detail_seeded_db: CatalogDB) -> None:
+        """get_media_detail face rows do NOT contain 'embedding' key."""
+        result = detail_seeded_db.get_media_detail("test1")
+        assert result is not None
+        assert len(result["faces"]) > 0
+        for face in result["faces"]:
+            assert "embedding" not in face, (
+                "face rows in get_media_detail should not contain embedding"
+            )
+
     def test_empty_analysis_for_media_without_data(self, detail_seeded_db: CatalogDB) -> None:
         """get_media_detail returns empty/None for media with no analysis data."""
         result = detail_seeded_db.get_media_detail("test2")
