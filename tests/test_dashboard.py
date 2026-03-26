@@ -476,6 +476,34 @@ class TestSSEIntegration:
             "debouncedRefreshStageCard must delegate to refreshStageCard"
         )
 
+    def test_app_js_sse_handlers_use_debounced_refresh(self) -> None:
+        """Inside setupDashboardSSE, all refreshStageCard calls go through debouncedRefreshStageCard."""
+        import re
+
+        content = _APP_JS.read_text()
+        # Extract the setupDashboardSSE function body
+        func_start = content.index("function setupDashboardSSE")
+        # Find the closing brace by counting nesting
+        depth = 0
+        func_end = func_start
+        for i, ch in enumerate(content[func_start:], start=func_start):
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    func_end = i + 1
+                    break
+        func_body = content[func_start:func_end]
+
+        # All refreshStageCard calls inside the function must be debouncedRefreshStageCard
+        # Find occurrences of refreshStageCard that are NOT preceded by "debounced"
+        bare_calls = re.findall(r"(?<!debounced)refreshStageCard\s*\(", func_body)
+        assert bare_calls == [], (
+            f"Found {len(bare_calls)} direct refreshStageCard call(s) in setupDashboardSSE; "
+            "all should use debouncedRefreshStageCard"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Step 13: GET / redirect test
