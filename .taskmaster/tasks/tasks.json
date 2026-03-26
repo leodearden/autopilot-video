@@ -1371,13 +1371,13 @@
         "description": "No test or handler logic covers duplicate cluster_ids in a merge request (e.g. `{\"cluster_ids\": [\"c-1\", \"c-1\"]}`). The current handler loads the same cluster twice, merges it with itself, and produces doubled clip_count — silent data corruption.\n\nDecide on behavior:\n- Option A: Return 422 rejecting duplicates\n- Option B: Silently deduplicate before processing\n\nAdd the chosen validation/dedup logic and a test case.\n\nmemory_hints: search \"merge clusters duplicate ids\", entity \"MergeRequest\", search \"cluster review test merge\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [
           "64"
         ],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:06:38.408Z"
+        "updatedAt": "2026-03-26T18:13:53.281Z"
       },
       {
         "id": "77",
@@ -1740,7 +1740,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-26T18:13:08.269Z",
+      "lastModified": "2026-03-26T18:13:53.281Z",
       "taskCount": 104,
       "completedCount": 71,
       "tags": [
