@@ -101,6 +101,45 @@ function setupDashboardSSE(source) {
             console.error('SSE job_progress parse error:', e);
         }
     });
+
+    source.addEventListener('gate_waiting', function(event) {
+        try {
+            var data = JSON.parse(event.data);
+            var stage = data.stage;
+            if (stage) {
+                refreshStageCard(stage);
+                showToast('Pipeline paused at ' + stage + '. Review required.', 'info');
+            }
+        } catch (e) {
+            console.error('SSE gate_waiting parse error:', e);
+        }
+    });
+
+    source.addEventListener('gate_approved', function(event) {
+        try {
+            var data = JSON.parse(event.data);
+            var stage = data.stage;
+            if (stage) {
+                refreshStageCard(stage);
+                showToast('Gate approved: ' + stage, 'success');
+            }
+        } catch (e) {
+            console.error('SSE gate_approved parse error:', e);
+        }
+    });
+
+    source.addEventListener('gate_skipped', function(event) {
+        try {
+            var data = JSON.parse(event.data);
+            var stage = data.stage;
+            if (stage) {
+                refreshStageCard(stage);
+                showToast('Gate skipped: ' + stage, 'info');
+            }
+        } catch (e) {
+            console.error('SSE gate_skipped parse error:', e);
+        }
+    });
 }
 
 /* Initialize on DOM ready */
