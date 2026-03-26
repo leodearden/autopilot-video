@@ -91,7 +91,7 @@ function setupDashboardSSE(source) {
             var data = JSON.parse(event.data);
             var stage = data.stage;
             if (stage) {
-                refreshStageCard(stage);
+                debouncedRefreshStageCard(stage);
             }
         } catch (e) {
             console.error('SSE stage_started parse error:', e);
@@ -103,7 +103,7 @@ function setupDashboardSSE(source) {
             var data = JSON.parse(event.data);
             var stage = data.stage;
             if (stage) {
-                refreshStageCard(stage);
+                debouncedRefreshStageCard(stage);
             }
         } catch (e) {
             console.error('SSE stage_completed parse error:', e);
@@ -115,7 +115,7 @@ function setupDashboardSSE(source) {
             var data = JSON.parse(event.data);
             var stage = data.stage;
             if (stage) {
-                refreshStageCard(stage);
+                debouncedRefreshStageCard(stage);
             }
         } catch (e) {
             console.error('SSE job_progress parse error:', e);
@@ -127,7 +127,7 @@ function setupDashboardSSE(source) {
             var data = JSON.parse(event.data);
             var stage = data.stage;
             if (stage) {
-                refreshStageCard(stage);
+                debouncedRefreshStageCard(stage);
                 showToast('Pipeline paused at ' + stage + '. Review required.', 'info');
             }
         } catch (e) {
@@ -140,7 +140,7 @@ function setupDashboardSSE(source) {
             var data = JSON.parse(event.data);
             var stage = data.stage;
             if (stage) {
-                refreshStageCard(stage);
+                debouncedRefreshStageCard(stage);
                 showToast('Gate approved: ' + stage, 'success');
             }
         } catch (e) {
@@ -153,7 +153,7 @@ function setupDashboardSSE(source) {
             var data = JSON.parse(event.data);
             var stage = data.stage;
             if (stage) {
-                refreshStageCard(stage);
+                debouncedRefreshStageCard(stage);
                 showToast('Gate skipped: ' + stage, 'info');
             }
         } catch (e) {
@@ -166,7 +166,7 @@ function setupDashboardSSE(source) {
             var data = JSON.parse(event.data);
             var stage = data.stage;
             if (stage) {
-                refreshStageCard(stage);
+                debouncedRefreshStageCard(stage);
                 showToast('Stage error: ' + stage, 'error');
             }
         } catch (e) {
