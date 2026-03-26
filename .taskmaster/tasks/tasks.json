@@ -1329,13 +1329,13 @@
         "description": "The hx-vals JS expression in cluster_card.html:31-32 calls querySelector(\"[name=label]\").value and querySelector(\"[name=description]\").value without null-guarding. If either selector returns null (DOM structure change, excluded state), accessing .value throws TypeError and the relabel POST silently fails with no user feedback.\n\nFix: Use optional chaining (`?.value ?? ''`) to degrade gracefully.\n\nFiles: autopilot/web/templates/partials/cluster_card.html (line 32)\n\nmemory_hints: search \"task 63 relabel button hx-vals\", entity \"cluster_card.html\"",
         "details": "",
         "testStrategy": "",
-        "status": "blocked",
+        "status": "pending",
         "dependencies": [
           "63"
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:16:58.466Z"
+        "updatedAt": "2026-03-26T18:17:28.705Z"
       },
       {
         "id": "74",
@@ -1740,7 +1740,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-26T18:17:12.430Z",
+      "lastModified": "2026-03-26T18:17:28.705Z",
       "taskCount": 104,
       "completedCount": 69,
       "tags": [
