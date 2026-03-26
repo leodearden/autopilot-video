@@ -576,19 +576,31 @@ class CatalogDB:
         return [dict(row) for row in cur.fetchall()]
 
     def get_face_clusters_by_ids(
-        self, cluster_ids: list[int]
+        self,
+        cluster_ids: list[int],
+        *,
+        include_embedding: bool = True,
     ) -> dict[int, dict[str, object]]:
         """Batch-fetch face clusters by IDs using a single query.
 
         Returns a dict mapping cluster_id (int) to raw cluster row.
         Non-existent IDs are silently skipped; empty input returns an
         empty dict.
+
+        Args:
+            include_embedding: When False, exclude the large
+                ``representative_embedding`` BLOB column from the result
+                rows.  Defaults to True for backward compatibility.
         """
         if not cluster_ids:
             return {}
         placeholders = ",".join("?" for _ in cluster_ids)
+        if include_embedding:
+            cols = "*"
+        else:
+            cols = "cluster_id, label, sample_image_paths"
         cur = self.conn.execute(
-            f"SELECT * FROM face_clusters WHERE cluster_id IN ({placeholders})",
+            f"SELECT {cols} FROM face_clusters WHERE cluster_id IN ({placeholders})",
             cluster_ids,
         )
         return {row["cluster_id"]: dict(row) for row in cur.fetchall()}
