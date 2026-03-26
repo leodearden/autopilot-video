@@ -1841,15 +1841,16 @@
         "description": "TestDashboardSSEEventCoverage checks that every VALID_EVENT_TYPE has a listener in app.js, but does not check the reverse: that every addEventListener call in app.js corresponds to a VALID_EVENT_TYPE. The existing `notification` listener is not in VALID_EVENT_TYPES, meaning orphaned handlers go undetected.\n\nAdd a complementary test that extracts all addEventListener event-type strings from app.js and asserts each is either in VALID_EVENT_TYPES or in an explicit allowlist (e.g., `{'notification'}` for the legacy handler).\n\nmemory_hints: search \"VALID_EVENT_TYPES SSE\" for event type definitions",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-03-26T18:25:07.862Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-26T18:25:06.415Z",
+      "lastModified": "2026-03-26T18:25:07.863Z",
       "taskCount": 113,
       "completedCount": 72,
       "tags": [
