@@ -98,11 +98,28 @@ def api_list_narratives(
         db.close()
 
 
+def _safe_json_list(raw: object) -> list[object]:
+    """Parse *raw* as a JSON list, returning ``[]`` on any failure.
+
+    Handles ``None``, empty strings, malformed JSON, and valid JSON that
+    is not a list (e.g. a string, integer, or object).
+    """
+    if not raw:
+        return []
+    try:
+        result = json.loads(str(raw))
+    except (json.JSONDecodeError, TypeError):
+        return []
+    if not isinstance(result, list):
+        return []
+    return result
+
+
 def _parse_narrative(row: dict[str, object]) -> dict[str, object]:
     """Enrich a narrative row with parsed activity_cluster_ids."""
     result = dict(row)
     raw = result.pop("activity_cluster_ids_json", None)
-    result["activity_cluster_ids"] = json.loads(str(raw)) if raw else []
+    result["activity_cluster_ids"] = _safe_json_list(raw)
     return result
 
 

@@ -675,3 +675,139 @@ class TestUpdateNarrativeHTMX:
         assert response.status_code == 200
         data = response.json()
         assert data["title"] == "Updated Title"
+
+
+# ---------------------------------------------------------------------------
+# TestSafeJsonList — task-72 step-1
+# ---------------------------------------------------------------------------
+
+class TestSafeJsonList:
+    """Tests for _safe_json_list helper."""
+
+    def test_valid_json_list(self) -> None:
+        """Valid JSON list string returns parsed list."""
+        from autopilot.web.routes.review import _safe_json_list
+
+        assert _safe_json_list('["a", "b", "c"]') == ["a", "b", "c"]
+
+    def test_none_returns_empty(self) -> None:
+        """None input returns empty list."""
+        from autopilot.web.routes.review import _safe_json_list
+
+        assert _safe_json_list(None) == []
+
+    def test_empty_string_returns_empty(self) -> None:
+        """Empty string input returns empty list."""
+        from autopilot.web.routes.review import _safe_json_list
+
+        assert _safe_json_list("") == []
+
+    def test_malformed_json_returns_empty(self) -> None:
+        """Malformed JSON returns empty list instead of raising."""
+        from autopilot.web.routes.review import _safe_json_list
+
+        assert _safe_json_list("{not-json") == []
+
+    def test_json_string_returns_empty(self) -> None:
+        """JSON string (not a list) returns empty list."""
+        from autopilot.web.routes.review import _safe_json_list
+
+        assert _safe_json_list('"hello"') == []
+
+    def test_json_integer_returns_empty(self) -> None:
+        """JSON integer (not a list) returns empty list."""
+        from autopilot.web.routes.review import _safe_json_list
+
+        assert _safe_json_list("42") == []
+
+    def test_json_object_returns_empty(self) -> None:
+        """JSON object (not a list) returns empty list."""
+        from autopilot.web.routes.review import _safe_json_list
+
+        assert _safe_json_list('{"a": 1}') == []
+
+
+# ---------------------------------------------------------------------------
+# TestParseNarrativeSafety — task-72 step-3
+# ---------------------------------------------------------------------------
+
+class TestParseNarrativeSafety:
+    """Tests for _parse_narrative handling malformed JSON gracefully."""
+
+    def test_malformed_json_returns_empty_cluster_ids(self) -> None:
+        """_parse_narrative with malformed JSON returns empty list, not crash."""
+        from autopilot.web.routes.review import _parse_narrative
+
+        result = _parse_narrative({"activity_cluster_ids_json": "{not-json"})
+        assert result["activity_cluster_ids"] == []
+
+    def test_non_list_json_returns_empty_cluster_ids(self) -> None:
+        """_parse_narrative with non-list JSON returns empty list."""
+        from autopilot.web.routes.review import _parse_narrative
+
+        result = _parse_narrative({"activity_cluster_ids_json": '"just-a-string"'})
+        assert result["activity_cluster_ids"] == []
+
+    def test_none_json_returns_empty_cluster_ids(self) -> None:
+        """_parse_narrative with None JSON value returns empty list."""
+        from autopilot.web.routes.review import _parse_narrative
+
+        result = _parse_narrative({"activity_cluster_ids_json": None})
+        assert result["activity_cluster_ids"] == []
+
+    def test_valid_json_list_still_works(self) -> None:
+        """_parse_narrative with valid JSON list still parses correctly."""
+        from autopilot.web.routes.review import _parse_narrative
+
+        result = _parse_narrative({"activity_cluster_ids_json": '["c-1", "c-2"]'})
+        assert result["activity_cluster_ids"] == ["c-1", "c-2"]
+
+
+# ---------------------------------------------------------------------------
+# TestNarrativeAPIMalformedJSON — task-72 step-5
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def malformed_json_app(tmp_path: Path) -> FastAPI:
+    """App with narratives that have malformed/non-list JSON in cluster IDs."""
+    db_path = str(tmp_path / "catalog.db")
+    with CatalogDB(db_path) as _db:
+        _db.init_default_gates()
+        _seed_narrative(
+            _db, "n-bad-json",
+            title="Bad JSON",
+            activity_cluster_ids_json="{bad",
+        )
+        _seed_narrative(
+            _db, "n-not-list",
+            title="Not A List",
+            activity_cluster_ids_json='"just-a-string"',
+        )
+    return create_app(db_path)
+
+
+@pytest.fixture
+def malformed_json_client(malformed_json_app: FastAPI) -> TestClient:
+    return TestClient(malformed_json_app)
+
+
+class TestNarrativeAPIMalformedJSON:
+    """API-level tests for graceful handling of bad JSON in cluster IDs."""
+
+    def test_malformed_json_returns_200_with_empty_cluster_ids(
+        self, malformed_json_client: TestClient,
+    ) -> None:
+        """GET /api/narratives/n-bad-json returns 200 with empty cluster IDs."""
+        response = malformed_json_client.get("/api/narratives/n-bad-json")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["activity_cluster_ids"] == []
+
+    def test_non_list_json_returns_200_with_empty_cluster_ids(
+        self, malformed_json_client: TestClient,
+    ) -> None:
+        """GET /api/narratives/n-not-list returns 200 with empty cluster IDs."""
+        response = malformed_json_client.get("/api/narratives/n-not-list")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["activity_cluster_ids"] == []
