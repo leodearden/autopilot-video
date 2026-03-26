@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<div id="settings-page">
+    <h1 class="text-2xl font-bold mb-6">Settings</h1>
+
+    <!-- Notification Preferences -->
+    <section class="mb-8 p-4 rounded-md bg-surface-800 border border-gray-700">
+        <h2 class="text-lg font-semibold mb-4">Notification Preferences</h2>
+        <div class="flex items-center justify-between">
+            <label for="browser-notifications" class="text-gray-300 text-sm">Browser Notifications</label>
+            <button id="browser-notifications" type="button"
+                    class="relative inline-flex h-6 w-11 items-center rounded-full bg-gray-600"
+                    aria-label="Toggle browser notifications" disabled>
+                <span class="inline-block h-4 w-4 transform rounded-full bg-white transition translate-x-1"></span>
+            </button>
+        </div>
+        <p class="text-xs text-gray-500 mt-2">Coming soon — enable desktop alerts for pipeline events.</p>
+    </section>
+
+    <!-- Console Preferences -->
+    <section class="mb-8 p-4 rounded-md bg-surface-800 border border-gray-700">
+        <h2 class="text-lg font-semibold mb-4">Console Preferences</h2>
+        <div class="flex items-center justify-between">
+            <label for="theme-select" class="text-gray-300 text-sm">Theme</label>
+            <select id="theme-select" disabled
+                    class="bg-surface-700 border border-gray-600 text-gray-300 text-sm rounded px-3 py-1">
+                <option value="dark" selected>Dark</option>
+                <option value="light">Light</option>
+            </select>
+        </div>
+        <p class="text-xs text-gray-500 mt-2">Coming soon — switch between dark and light themes.</p>
+    </section>
+</div>
+{% endblock %}
