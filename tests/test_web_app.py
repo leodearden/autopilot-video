@@ -336,3 +336,28 @@ class TestDashboardSSEErrorHandlers:
         assert "try" in body, "try block not found in run_failed listener"
         assert "catch" in body, "catch block not found in run_failed listener"
         assert "showToast" in body, "showToast not found in run_failed listener"
+
+
+class TestDashboardSSEEventCoverage:
+    """Comprehensive test ensuring all dashboard-relevant event types are handled."""
+
+    # Job-level detail events are intentionally unhandled at dashboard level —
+    # they update individual job rows, not stage cards.
+    _JOB_LEVEL_EVENTS = {"job_started", "job_completed", "job_error"}
+
+    def test_all_dashboard_event_types_handled(self) -> None:
+        """Every VALID_EVENT_TYPE (except job-level detail events) has an addEventListener in app.js."""
+        from autopilot.web.routes.sse import VALID_EVENT_TYPES
+
+        js_source = _read_app_js()
+
+        dashboard_event_types = set(VALID_EVENT_TYPES) - self._JOB_LEVEL_EVENTS
+        missing = []
+        for event_type in sorted(dashboard_event_types):
+            marker = f"addEventListener('{event_type}'"
+            if marker not in js_source:
+                missing.append(event_type)
+
+        assert not missing, (
+            f"Dashboard-relevant event types missing addEventListener in app.js: {missing}"
+        )
