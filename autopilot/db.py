@@ -330,8 +330,8 @@ class CatalogDB:
         media, transcript, detections, faces, audio_events,
         embedding_count, face_clusters.
 
-        Binary BLOB fields (embedding, representative_embedding) are stripped
-        from faces and face_clusters to keep the result JSON-serializable.
+        Binary BLOB fields (embedding, representative_embedding) are excluded
+        via SQL projection (include_embedding=False) so they are never fetched.
         """
         media = self.get_media(media_id)
         if media is None:
@@ -339,23 +339,20 @@ class CatalogDB:
 
         transcript = self.get_transcript(media_id)
         detections = self.get_detections_for_media(media_id)
-        faces = self.get_faces_for_media(media_id)
+        faces = self.get_faces_for_media(media_id, include_embedding=False)
         audio_events = self.get_audio_events_for_media(media_id)
         embedding_count = self.count_embeddings_for_media(media_id)
 
-        # Strip binary embedding BLOBs from face rows
-        faces = [{k: v for k, v in f.items() if k != "embedding"} for f in faces]
-
         # Build face_clusters lookup for faces that have cluster assignments.
-        # Coerce keys to str and strip representative_embedding BLOBs here
-        # (presentation concern) so get_face_clusters_by_ids can return raw rows.
+        # Coerce keys to str for JSON consistency.
         cluster_ids: set[int] = {
             cast(int, f["cluster_id"]) for f in faces if f.get("cluster_id") is not None
         }
-        raw_clusters = self.get_face_clusters_by_ids(list(cluster_ids))
+        raw_clusters = self.get_face_clusters_by_ids(
+            list(cluster_ids), include_embedding=False
+        )
         face_clusters: dict[str, dict[str, object]] = {
-            str(cid): {k: v for k, v in cluster.items() if k != "representative_embedding"}
-            for cid, cluster in raw_clusters.items()
+            str(cid): dict(cluster) for cid, cluster in raw_clusters.items()
         }
 
         return {
@@ -500,12 +497,24 @@ class CatalogDB:
         )
         return [dict(row) for row in cur.fetchall()]
 
-    def get_faces_for_media(self, media_id: str) -> list[dict[str, object]]:
-        """Get all faces for a media_id."""
-        cur = self.conn.execute(
-            "SELECT * FROM faces WHERE media_id = ?",
-            (media_id,),
-        )
+    def get_faces_for_media(
+        self, media_id: str, *, include_embedding: bool = True
+    ) -> list[dict[str, object]]:
+        """Get all faces for a media_id.
+
+        Args:
+            include_embedding: When False, exclude the large ``embedding``
+                BLOB column from the result rows.  Defaults to True for
+                backward compatibility.
+        """
+        if include_embedding:
+            sql = "SELECT * FROM faces WHERE media_id = ?"
+        else:
+            sql = (
+                "SELECT media_id, frame_number, face_index, bbox_json, cluster_id "
+                "FROM faces WHERE media_id = ?"
+            )
+        cur = self.conn.execute(sql, (media_id,))
         return [dict(row) for row in cur.fetchall()]
 
     def get_all_face_embeddings(self) -> list[dict[str, object]]:
@@ -564,19 +573,31 @@ class CatalogDB:
         return [dict(row) for row in cur.fetchall()]
 
     def get_face_clusters_by_ids(
-        self, cluster_ids: list[int]
+        self,
+        cluster_ids: list[int],
+        *,
+        include_embedding: bool = True,
     ) -> dict[int, dict[str, object]]:
         """Batch-fetch face clusters by IDs using a single query.
 
         Returns a dict mapping cluster_id (int) to raw cluster row.
         Non-existent IDs are silently skipped; empty input returns an
         empty dict.
+
+        Args:
+            include_embedding: When False, exclude the large
+                ``representative_embedding`` BLOB column from the result
+                rows.  Defaults to True for backward compatibility.
         """
         if not cluster_ids:
             return {}
         placeholders = ",".join("?" for _ in cluster_ids)
+        if include_embedding:
+            cols = "*"
+        else:
+            cols = "cluster_id, label, sample_image_paths"
         cur = self.conn.execute(
-            f"SELECT * FROM face_clusters WHERE cluster_id IN ({placeholders})",
+            f"SELECT {cols} FROM face_clusters WHERE cluster_id IN ({placeholders})",
             cluster_ids,
         )
         return {row["cluster_id"]: dict(row) for row in cur.fetchall()}

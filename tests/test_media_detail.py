@@ -187,6 +187,32 @@ class TestGetFaceClustersByIds:
         assert 1 in result
         assert 999 not in result
 
+    def test_excludes_representative_embedding_when_false(
+        self, detail_seeded_db: CatalogDB
+    ) -> None:
+        """include_embedding=False excludes representative_embedding from clusters."""
+        result = detail_seeded_db.get_face_clusters_by_ids(
+            [1], include_embedding=False
+        )
+        assert 1 in result
+        cluster = result[1]
+        assert "representative_embedding" not in cluster, (
+            "representative_embedding should be excluded"
+        )
+        # Other columns remain present
+        for col in ("cluster_id", "label", "sample_image_paths"):
+            assert col in cluster, f"expected column {col!r} present"
+
+    def test_includes_representative_embedding_by_default(
+        self, detail_seeded_db: CatalogDB
+    ) -> None:
+        """Default call (no include_embedding param) returns representative_embedding."""
+        result = detail_seeded_db.get_face_clusters_by_ids([1])
+        assert 1 in result
+        assert "representative_embedding" in result[1], (
+            "representative_embedding should be present by default"
+        )
+
 
 # ---------------------------------------------------------------------------
 # CatalogDB.get_media_detail() tests
@@ -281,6 +307,16 @@ class TestGetMediaDetail:
             assert "representative_embedding" not in cluster, (
                 f"face_clusters[{cid!r}] should not contain"
                 " representative_embedding"
+            )
+
+    def test_media_detail_faces_exclude_embedding(self, detail_seeded_db: CatalogDB) -> None:
+        """get_media_detail face rows do NOT contain 'embedding' key."""
+        result = detail_seeded_db.get_media_detail("test1")
+        assert result is not None
+        assert len(result["faces"]) > 0
+        for face in result["faces"]:
+            assert "embedding" not in face, (
+                "face rows in get_media_detail should not contain embedding"
             )
 
     def test_empty_analysis_for_media_without_data(self, detail_seeded_db: CatalogDB) -> None:
