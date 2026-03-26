@@ -1796,6 +1796,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 110,
+        "title": "Debounce refreshStageCard in SSE handlers to prevent DOM thrash",
+        "description": "When multiple SSE events arrive in rapid succession for the same stage (e.g., gate_waiting then gate_approved within milliseconds), multiple concurrent HTMX GET requests fire for the same stage card, causing redundant server load and potential out-of-order DOM updates.\n\nAdd a per-stage debounce guard before calling refreshStageCard in setupDashboardSSE. A simple approach: maintain a Map of setTimeout handles keyed by stage name; on each event, clear and reschedule so only the last event in a burst triggers a refresh.\n\nmemory_hints: search \"SSE handler app.js gate events\" for implementation context",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -1808,7 +1819,7 @@
       ],
       "created": "2026-03-26T18:24:16.642Z",
       "description": "Tasks for master context",
-      "updated": "2026-03-26T18:24:22.082Z"
+      "updated": "2026-03-26T18:24:24.426Z"
     }
   }
 }
