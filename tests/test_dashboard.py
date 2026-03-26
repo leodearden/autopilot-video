@@ -460,7 +460,7 @@ class TestSSEIntegration:
         assert "DEBOUNCE_MS" in content, "Missing DEBOUNCE_MS constant"
 
     def test_app_js_has_debounced_refresh_function(self) -> None:
-        """app.js defines debouncedRefreshStageCard using clearTimeout/setTimeout and refreshStageCard."""
+        """app.js defines debouncedRefreshStageCard with debounce logic."""
         content = _APP_JS.read_text()
         assert "function debouncedRefreshStageCard" in content, (
             "Missing debouncedRefreshStageCard function"
@@ -477,7 +477,7 @@ class TestSSEIntegration:
         )
 
     def test_app_js_sse_handlers_use_debounced_refresh(self) -> None:
-        """Inside setupDashboardSSE, all refreshStageCard calls go through debouncedRefreshStageCard."""
+        """SSE handlers use debouncedRefreshStageCard, not raw refreshStageCard."""
         import re
 
         content = _APP_JS.read_text()
