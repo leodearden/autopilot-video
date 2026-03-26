@@ -1183,13 +1183,13 @@
         "description": "Add projection variants to get_faces_for_media and get_face_clusters_by_ids to avoid fetching embedding BLOBs that are immediately discarded by the route layer.",
         "details": "Performance issue in autopilot/db.py + autopilot/web/routes/media.py:\n\nBoth `get_faces_for_media` (SELECT * → embedding BLOB) and `get_face_clusters_by_ids` (SELECT * → representative_embedding BLOB) transfer potentially large binary data that the route layer immediately strips with dict comprehension filtering. For a video with hundreds of faces, each with a 512-float embedding (~2KB), this is hundreds of KB fetched and thrown away per faces tab click.\n\nFix: Add optional parameter or projection variant to these DB methods:\n- `get_faces_for_media(media_id, include_embedding=False)` — uses explicit column list instead of SELECT *\n- `get_face_clusters_by_ids(cluster_ids, include_embedding=False)` — same pattern\n\nThen update the media_tab faces branch to use the no-BLOB variant and remove the dict-comprehension stripping.\n\nKeep the existing SELECT * behavior as default (for callers that need embeddings) to avoid breaking changes.\n\nmemory_hints: search \"faces BLOB fetch performance\" \"get_faces_for_media projection\"; entities: get_faces_for_media, get_face_clusters_by_ids, CatalogDB",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [
           "54"
         ],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:06:38.328Z"
+        "updatedAt": "2026-03-26T18:22:04.847Z"
       },
       {
         "id": "63",
@@ -1777,9 +1777,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-26T18:21:52.431Z",
+      "lastModified": "2026-03-26T18:22:04.847Z",
       "taskCount": 107,
-      "completedCount": 69,
+      "completedCount": 70,
       "tags": [
         "master"
       ]
