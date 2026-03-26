@@ -761,3 +761,53 @@ class TestParseNarrativeSafety:
 
         result = _parse_narrative({"activity_cluster_ids_json": '["c-1", "c-2"]'})
         assert result["activity_cluster_ids"] == ["c-1", "c-2"]
+
+
+# ---------------------------------------------------------------------------
+# TestNarrativeAPIMalformedJSON — task-72 step-5
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def malformed_json_app(tmp_path: Path) -> FastAPI:
+    """App with narratives that have malformed/non-list JSON in cluster IDs."""
+    db_path = str(tmp_path / "catalog.db")
+    with CatalogDB(db_path) as _db:
+        _db.init_default_gates()
+        _seed_narrative(
+            _db, "n-bad-json",
+            title="Bad JSON",
+            activity_cluster_ids_json="{bad",
+        )
+        _seed_narrative(
+            _db, "n-not-list",
+            title="Not A List",
+            activity_cluster_ids_json='"just-a-string"',
+        )
+    return create_app(db_path)
+
+
+@pytest.fixture
+def malformed_json_client(malformed_json_app: FastAPI) -> TestClient:
+    return TestClient(malformed_json_app)
+
+
+class TestNarrativeAPIMalformedJSON:
+    """API-level tests for graceful handling of bad JSON in cluster IDs."""
+
+    def test_malformed_json_returns_200_with_empty_cluster_ids(
+        self, malformed_json_client: TestClient,
+    ) -> None:
+        """GET /api/narratives/n-bad-json returns 200 with empty cluster IDs."""
+        response = malformed_json_client.get("/api/narratives/n-bad-json")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["activity_cluster_ids"] == []
+
+    def test_non_list_json_returns_200_with_empty_cluster_ids(
+        self, malformed_json_client: TestClient,
+    ) -> None:
+        """GET /api/narratives/n-not-list returns 200 with empty cluster IDs."""
+        response = malformed_json_client.get("/api/narratives/n-not-list")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["activity_cluster_ids"] == []
