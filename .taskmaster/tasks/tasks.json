@@ -1559,11 +1559,11 @@
         "description": "test_sse.py::TestSSELastEventID::test_last_event_id_header_resumes_from_position still hardcodes Last-Event-ID: \"3\" with the same fragile auto-increment assumption that task 84 fixed in test_web_e2e.py. Apply the same capture-IDs pattern and add assertions on the SSE id field of returned events.",
         "details": "Two issues in one test:\n\n1. Line 197 uses headers={\"Last-Event-ID\": \"3\"} with comment \"IDs will be 1-5\" — same fragile pattern task 84 already fixed in test_web_e2e.py. Capture IDs from insert_event() into a list and use str(event_ids[2]).\n\n2. The test doesn't assert on the SSE `id` field of returned events. Since the resume mechanism depends on clients sending back the last event's `id`, add assertions like:\n   assert events[0][\"id\"] == str(event_ids[3])\n   assert events[1][\"id\"] == str(event_ids[4])\n\nSteps:\n1. Modify test_last_event_id_header_resumes_from_position to capture event_ids\n2. Replace hardcoded \"3\" with str(event_ids[2])\n3. Add id-field assertions on returned events\n4. Run: pytest tests/test_sse.py -k test_last_event_id\n\nmemory_hints: search \"test_last_event_id fragile ID assumption\" ; entities: test_sse.py, insert_event",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:03:57.120Z"
+        "updatedAt": "2026-03-26T18:11:40.094Z"
       },
       {
         "id": "91",
@@ -1739,7 +1739,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-26T18:11:40.040Z",
+      "lastModified": "2026-03-26T18:11:40.094Z",
       "taskCount": 104,
       "completedCount": 71,
       "tags": [
