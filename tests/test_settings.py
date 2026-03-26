@@ -48,3 +48,27 @@ class TestSettingsPage:
         assert "Dashboard" in html
         # Toast container from base.html
         assert "toast-container" in html
+
+
+class TestSettingsContent:
+    """Tests for settings page content sections."""
+
+    def test_notification_preferences_section(self, client: TestClient) -> None:
+        """Settings page contains a 'Notification Preferences' section."""
+        response = client.get("/settings")
+        assert "Notification Preferences" in response.text
+
+    def test_console_preferences_section(self, client: TestClient) -> None:
+        """Settings page contains a 'Console Preferences' section."""
+        response = client.get("/settings")
+        assert "Console Preferences" in response.text
+
+    def test_notification_toggle_control(self, client: TestClient) -> None:
+        """Notification preferences section has a browser notifications toggle."""
+        response = client.get("/settings")
+        assert "Browser Notifications" in response.text
+
+    def test_theme_placeholder(self, client: TestClient) -> None:
+        """Console preferences section has a theme placeholder."""
+        response = client.get("/settings")
+        assert "Theme" in response.text
