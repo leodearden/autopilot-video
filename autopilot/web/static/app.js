@@ -155,21 +155,11 @@ function setupDashboardSSE(source) {
     });
 
     source.addEventListener('run_completed', function(event) {
-        try {
-            var data = JSON.parse(event.data);
-            showToast('Pipeline run completed successfully.', 'success');
-        } catch (e) {
-            console.error('SSE run_completed parse error:', e);
-        }
+        showToast('Pipeline run completed successfully.', 'success');
     });
 
     source.addEventListener('run_failed', function(event) {
-        try {
-            var data = JSON.parse(event.data);
-            showToast('Pipeline run failed.', 'error');
-        } catch (e) {
-            console.error('SSE run_failed parse error:', e);
-        }
+        showToast('Pipeline run failed.', 'error');
     });
 }
 
