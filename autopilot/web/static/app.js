@@ -48,6 +48,10 @@ function connectSSE(url) {
     return source;
 }
 
+/* Per-stage debounce timer map and delay for coalescing burst SSE updates */
+var _refreshTimers = {};
+var DEBOUNCE_MS = 150;
+
 /**
  * Refresh a single stage card via HTMX ajax.
  * @param {string} stage - The pipeline stage name.
@@ -62,6 +66,22 @@ function refreshStageCard(stage) {
 }
 
 /**
+ * Debounced wrapper around refreshStageCard.
+ * Coalesces burst SSE events for the same stage so only the trailing
+ * event triggers the actual HTMX refresh.
+ * @param {string} stage - The pipeline stage name.
+ */
+function debouncedRefreshStageCard(stage) {
+    if (_refreshTimers[stage]) {
+        clearTimeout(_refreshTimers[stage]);
+    }
+    _refreshTimers[stage] = setTimeout(function() {
+        delete _refreshTimers[stage];
+        refreshStageCard(stage);
+    }, DEBOUNCE_MS);
+}
+
+/**
  * Set up SSE event listeners for dashboard stage card updates.
  * @param {EventSource} source - The SSE EventSource connection.
  */
@@ -71,7 +91,7 @@ function setupDashboardSSE(source) {
             var data = JSON.parse(event.data);
             var stage = data.stage;
             if (stage) {
-                refreshStageCard(stage);
+                debouncedRefreshStageCard(stage);
             }
         } catch (e) {
             console.error('SSE stage_started parse error:', e);
@@ -83,7 +103,7 @@ function setupDashboardSSE(source) {
             var data = JSON.parse(event.data);
             var stage = data.stage;
             if (stage) {
-                refreshStageCard(stage);
+                debouncedRefreshStageCard(stage);
             }
         } catch (e) {
             console.error('SSE stage_completed parse error:', e);
@@ -95,7 +115,7 @@ function setupDashboardSSE(source) {
             var data = JSON.parse(event.data);
             var stage = data.stage;
             if (stage) {
-                refreshStageCard(stage);
+                debouncedRefreshStageCard(stage);
             }
         } catch (e) {
             console.error('SSE job_progress parse error:', e);
@@ -107,7 +127,7 @@ function setupDashboardSSE(source) {
             var data = JSON.parse(event.data);
             var stage = data.stage;
             if (stage) {
-                refreshStageCard(stage);
+                debouncedRefreshStageCard(stage);
                 showToast('Pipeline paused at ' + stage + '. Review required.', 'info');
             }
         } catch (e) {
@@ -120,7 +140,7 @@ function setupDashboardSSE(source) {
             var data = JSON.parse(event.data);
             var stage = data.stage;
             if (stage) {
-                refreshStageCard(stage);
+                debouncedRefreshStageCard(stage);
                 showToast('Gate approved: ' + stage, 'success');
             }
         } catch (e) {
@@ -133,7 +153,7 @@ function setupDashboardSSE(source) {
             var data = JSON.parse(event.data);
             var stage = data.stage;
             if (stage) {
-                refreshStageCard(stage);
+                debouncedRefreshStageCard(stage);
                 showToast('Gate skipped: ' + stage, 'info');
             }
         } catch (e) {
@@ -146,7 +166,7 @@ function setupDashboardSSE(source) {
             var data = JSON.parse(event.data);
             var stage = data.stage;
             if (stage) {
-                refreshStageCard(stage);
+                debouncedRefreshStageCard(stage);
                 showToast('Stage error: ' + stage, 'error');
             }
         } catch (e) {
