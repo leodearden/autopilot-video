@@ -1919,17 +1919,18 @@
         "description": "_refreshTimers is a module-level global in app.js that is never cleared when the SSE connection drops and setupDashboardSSE is called again. Pending debounce timers from the previous connection can fire after reconnection, causing redundant double-refreshes and potential flickering.\n\nFix: Add a clearAllRefreshTimers() helper that iterates _refreshTimers, calls clearTimeout on each, and resets the object. Call it at the start of setupDashboardSSE before re-attaching handlers.\n\nImpact is low (HTMX refreshes are idempotent) but it's a correctness gap.\n\nmemory_hints: search \"SSE handler app.js debounce timers\" for implementation context",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [
           "110"
         ],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-03-26T18:35:55.003Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-26T18:35:54.755Z",
+      "lastModified": "2026-03-26T18:35:55.023Z",
       "taskCount": 119,
       "completedCount": 76,
       "tags": [
