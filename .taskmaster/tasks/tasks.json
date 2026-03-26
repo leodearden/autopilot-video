@@ -1385,13 +1385,13 @@
         "description": "Two improvements to api_merge_clusters in review.py:\n\n1. **N+1 query fix** (review.py:362-369): Cluster loading issues one SELECT per cluster_id in a loop. Add `get_activity_clusters_by_ids(ids: list[str])` to CatalogDB that issues a single `SELECT * FROM activity_clusters WHERE cluster_id IN (?,?,...)` and returns a dict keyed by cluster_id. Then build the clusters list in one query, raising 404 for any missing IDs. Mirrors the pattern already used in batch_delete_activity_clusters.\n\n2. **Unchecked rowcount** (review.py:396): db.update_activity_cluster(largest_id, **update_kwargs) return value is silently discarded. If the UPDATE affects 0 rows (concurrent delete between SELECT and UPDATE), the code proceeds to batch-delete all other clusters, causing data loss. Fix: capture the return value and raise 404 if affected==0, before the batch-delete.\n\nmemory_hints: search \"cluster review batch performance\", entity \"api_merge_clusters\", entity \"batch_delete_activity_clusters\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [
           "65"
         ],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:06:38.502Z"
+        "updatedAt": "2026-03-26T18:15:04.853Z"
       },
       {
         "id": "78",
@@ -1740,7 +1740,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-26T18:14:28.724Z",
+      "lastModified": "2026-03-26T18:15:04.853Z",
       "taskCount": 104,
       "completedCount": 71,
       "tags": [
