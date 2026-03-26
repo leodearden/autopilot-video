@@ -363,6 +363,32 @@ class TestBuildStoryboardFull:
         assert "0.0" in result or "00:00" in result or "0s" in result
 
 
+# -- Embedding exclusion tests -------------------------------------------------
+
+
+class TestStoryboardExcludesFaceEmbedding:
+    """Ensure build_narrative_storyboard passes include_embedding=False."""
+
+    def test_storyboard_excludes_face_embedding(self, catalog_db):
+        """Every get_faces_for_media call uses include_embedding=False."""
+        from autopilot.plan.script import build_narrative_storyboard
+
+        _seed_full_storyboard_data(catalog_db)
+
+        with patch.object(
+            catalog_db,
+            "get_faces_for_media",
+            wraps=catalog_db.get_faces_for_media,
+        ) as spy:
+            build_narrative_storyboard("n1", catalog_db)
+
+        assert spy.call_count > 0, "get_faces_for_media should be called"
+        for call in spy.call_args_list:
+            assert call.kwargs.get("include_embedding") is False, (
+                f"Expected include_embedding=False, got call: {call}"
+            )
+
+
 # -- Step 7: Resilience tests for build_narrative_storyboard -------------------
 
 
