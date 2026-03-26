@@ -1687,6 +1687,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 101,
+        "title": "Add minimal settings page or remove dead nav link",
+        "description": "base.html line 69 links to `/settings` which 404s. The web console PRD mentions a settings page for \"console preferences, notification config\" but no route or template exists.",
+        "details": "## Options (implementer should pick simplest)\n\n### Option A: Minimal settings page\n- Create `routes/settings.py` with `GET /settings`\n- Create `templates/settings/config.html` with notification preferences (enable/disable browser notifications) and console preferences (theme toggle if dark mode switch is wanted)\n- Register router in `__init__.py`\n\n### Option B: Remove nav link\n- Remove the Settings link from `base.html` nav\n- Add a TODO comment or create a follow-up task for when notification config is needed\n\nEither way, the nav link must not 404.\n\n## Memory hints\n- PRD: docs/prd-web-console.md — \"Settings\" section in navigation structure",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -1699,7 +1710,7 @@
       ],
       "created": "2026-03-26T17:57:24.291Z",
       "description": "Tasks for master context",
-      "updated": "2026-03-26T17:57:31.685Z"
+      "updated": "2026-03-26T17:57:37.186Z"
     }
   }
 }
