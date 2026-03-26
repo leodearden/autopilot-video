@@ -1767,17 +1767,18 @@
         "description": "Three call sites fetch face embedding BLOBs unnecessarily now that the projection API from task 62 exists. Fix each to avoid wasted I/O.",
         "details": "Task 62 added `include_embedding=False` to `get_faces_for_media` and `get_face_clusters_by_ids`, but only updated the `get_media_detail` call site. Three other callers still use the default (SELECT *) and never access the embedding column:\n\n1. **autopilot/organize/narratives.py:140** — `db.get_faces_for_media(cid)` only reads `cluster_id` to build a set of face cluster IDs. Fix: pass `include_embedding=False`.\n\n2. **autopilot/plan/script.py:138** — `db.get_faces_for_media(clip_id)` passes result to `_get_faces_in_range()` which only reads `frame_number` and `cluster_id`. Fix: pass `include_embedding=False`.\n\n3. **autopilot/analyze/faces.py:47** — `db.get_faces_for_media(media_id)` used purely as an idempotency check (`if existing: return`). Only the truthiness of the list matters. Fix: either pass `include_embedding=False`, or better yet use a cheap `SELECT 1 FROM faces WHERE media_id=? LIMIT 1` existence check to avoid materializing rows at all.\n\nmemory_hints: search \"get_faces_for_media include_embedding projection\"; entities: get_faces_for_media, CatalogDB",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [
           "62"
         ],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-03-26T18:22:04.970Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-26T18:22:04.847Z",
+      "lastModified": "2026-03-26T18:22:04.970Z",
       "taskCount": 107,
       "completedCount": 70,
       "tags": [
