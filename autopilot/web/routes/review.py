@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict
 from starlette.responses import FileResponse, Response
 
 from autopilot.db import CatalogDB
+from autopilot.web.deps import render_partial
 
 logger = logging.getLogger(__name__)
 
@@ -186,18 +187,8 @@ def _narrative_status_action(
         raise HTTPException(status_code=404, detail="Narrative not found")
     parsed = _parse_narrative(updated)
     if _is_htmx(request):
-        return _render_narrative_partial(request, parsed)
+        return render_partial(request, "partials/narrative_card.html", narrative=parsed)
     return JSONResponse(content=parsed)
-
-
-def _render_narrative_partial(
-    request: Request, narrative: dict[str, object],
-) -> HTMLResponse:
-    """Render a single narrative card partial as HTML."""
-    templates = request.app.state.templates
-    template = templates.get_template("partials/narrative_card.html")
-    html = template.render(narrative=narrative)
-    return HTMLResponse(content=html)
 
 
 @router.post("/api/narratives/{narrative_id}/approve", response_model=None)
@@ -249,7 +240,7 @@ def api_update_narrative(
         raise HTTPException(status_code=404, detail="Narrative not found")
     parsed = _parse_narrative(updated)
     if _is_htmx(request):
-        return _render_narrative_partial(request, parsed)
+        return render_partial(request, "partials/narrative_card.html", narrative=parsed)
     return JSONResponse(content=parsed)
 
 
