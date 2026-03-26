@@ -453,6 +453,12 @@ class TestSSEIntegration:
         content = _APP_JS.read_text()
         assert "htmx.ajax" in content or "/dashboard/stage/" in content
 
+    def test_app_js_has_debounce_timer_map(self) -> None:
+        """app.js defines a _refreshTimers object and DEBOUNCE_MS constant for debouncing."""
+        content = _APP_JS.read_text()
+        assert "_refreshTimers" in content, "Missing _refreshTimers timer map"
+        assert "DEBOUNCE_MS" in content, "Missing DEBOUNCE_MS constant"
+
 
 # ---------------------------------------------------------------------------
 # Step 13: GET / redirect test
