@@ -72,3 +72,18 @@ class TestSettingsContent:
         """Console preferences section has a theme placeholder."""
         response = client.get("/settings")
         assert "Theme" in response.text
+
+
+class TestSettingsNavLink:
+    """E2E contract: the /settings nav link in base.html resolves."""
+
+    def test_nav_settings_link_not_404(self, client: TestClient) -> None:
+        """GET /settings (the href from base.html nav) returns 200, not 404."""
+        response = client.get("/settings")
+        assert response.status_code == 200
+        assert response.status_code != 404
+
+    def test_nav_contains_settings_link(self, client: TestClient) -> None:
+        """The settings page itself contains the /settings nav link (from base.html)."""
+        response = client.get("/settings")
+        assert 'href="/settings"' in response.text
