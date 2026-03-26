@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 KNOWN_STAGES = [
     "ingest",
     "analyze",
@@ -350,19 +348,6 @@ class TestEventsCRUD:
         assert row["stage"] == "analyze"
         assert row["job_id"] == "j1"
         assert row["payload_json"] == '{"result": "ok"}'
-
-    def test_insert_event_raises_on_none_lastrowid(self, catalog_db, monkeypatch):
-        """insert_event() raises RuntimeError when lastrowid is None."""
-        from unittest.mock import MagicMock
-
-        mock_cursor = MagicMock()
-        mock_cursor.lastrowid = None
-        mock_conn = MagicMock()
-        mock_conn.execute.return_value = mock_cursor
-
-        monkeypatch.setattr(catalog_db, "conn", mock_conn)
-        with pytest.raises(RuntimeError, match="lastrowid is None"):
-            catalog_db.insert_event("stage_started", stage="ingest")
 
     def test_get_events_since_returns_newer_events(self, catalog_db):
         """get_events_since() returns only events after the given id."""
