@@ -1127,13 +1127,13 @@
         "description": "Address performance issue identified in task 54 review:\n\nget_faces_for_media (SELECT *) fetches embedding BLOBs (~2KB each) and get_face_clusters_by_ids (SELECT *) fetches representative_embedding BLOBs, only for the route layer to immediately discard them. For videos with hundreds of faces this is hundreds of KB fetched and thrown away per tab click.\n\nAdd projection variants or optional parameters: e.g. get_faces_for_media(media_id, exclude_blob=True) that uses explicit column list instead of SELECT *. Same for get_face_clusters_by_ids.\n\nmemory_hints: search \"face query BLOB\" \"get_faces_for_media\", entity \"CatalogDB\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [
           "54"
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:03:57.014Z"
+        "updatedAt": "2026-03-26T18:13:08.259Z"
       },
       {
         "id": "59",
@@ -1740,7 +1740,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-26T18:13:07.900Z",
+      "lastModified": "2026-03-26T18:13:08.269Z",
       "taskCount": 104,
       "completedCount": 71,
       "tags": [
