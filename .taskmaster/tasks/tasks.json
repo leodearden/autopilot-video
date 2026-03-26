@@ -1743,11 +1743,11 @@
         "description": "Three related fixture issues in tests/test_sse.py introduced by task 90:\n\n1. **Naming**: `_sse_db_path` uses a leading underscore, inconsistent with `dashboard_db_path` (test_dashboard.py) and `e2e_db_path` (test_web_e2e.py). Rename to `sse_db_path`.\n\n2. **Resource cleanup**: `sse_db` fixture returns a CatalogDB but never closes it. The peer fixture `e2e_db` in test_web_e2e.py correctly uses `yield` + `db.close()` in a try/finally. Apply the same pattern.\n\n3. **Fixture dependency safety**: `sse_app` depends only on `_sse_db_path`, not `sse_db`. This means a test requesting only `sse_app` would hit an uninitialized DB (no schema). Restore the dependency on `sse_db` to guarantee schema-before-app, or add a comment documenting the pairing requirement.\n\n4. **Autocommit comment**: Add a brief comment to `sse_db` explaining why `isolation_level = None` is needed (the app's internal connection uses default deferred transactions; autocommit ensures test inserts are visible to the app).\n\nmemory_hints: search \"test fixture naming convention underscore\" ; entities: test_sse.py, test_web_e2e.py, e2e_db",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:21:52.289Z"
+        "updatedAt": "2026-03-26T18:25:17.978Z"
       },
       {
         "id": "106",
@@ -1850,7 +1850,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-26T18:25:07.863Z",
+      "lastModified": "2026-03-26T18:25:17.978Z",
       "taskCount": 113,
       "completedCount": 72,
       "tags": [
