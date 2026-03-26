@@ -1865,12 +1865,13 @@
         "description": "The include_embedding parameter on CatalogDB.get_faces_for_media defaults to True for backward compat, but every caller now explicitly passes False. This creates an opt-out footgun where any future caller that forgets the kwarg silently loads multi-KB BLOBs. Flip the default to False so callers must opt-in for embedding data.",
         "details": "1. Audit all callers of get_faces_for_media across the codebase to confirm none rely on the default=True.\n2. Change `include_embedding: bool = True` to `include_embedding: bool = False` in db.py.\n3. Ensure cluster_faces() and any other embedding-consuming callers explicitly pass `include_embedding=True`.\n4. Update get_face_clusters_by_ids similarly if it has the same default.\n5. Run full test suite to verify.\n\nmemory_hints: search \"get_faces_for_media include_embedding callers\"; entities: get_faces_for_media, CatalogDB",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [
           "107"
         ],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-03-26T18:35:05.196Z"
       },
       {
         "id": "116",
@@ -1899,7 +1900,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-26T18:35:04.861Z",
+      "lastModified": "2026-03-26T18:35:05.196Z",
       "taskCount": 117,
       "completedCount": 75,
       "tags": [
