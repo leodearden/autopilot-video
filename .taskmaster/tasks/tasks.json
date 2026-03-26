@@ -1755,11 +1755,11 @@
         "description": "test_sse.py::TestSSEReconnection::test_missing_last_event_id_starts_from_zero only asserts `len(events) == 3` — no content, event name, or SSE `id` field checks. The reconnection test (test_last_event_id_header_resumes_from_position) was strengthened by task 90 with per-event `id` assertions but the baseline test was left weak.\n\nSteps:\n1. Capture the IDs from `insert_event` into a list (same pattern as the reconnection test)\n2. Assert event names: `events[i]['event'] == f'event_{i}'` for all three events\n3. Assert SSE id fields: `events[i]['id'] == str(event_ids[i])` for all three events\n\nmemory_hints: search \"test_last_event_id weak assertions\" ; entities: test_sse.py, insert_event",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:21:52.431Z"
+        "updatedAt": "2026-03-26T18:31:25.950Z"
       },
       {
         "id": "107",
@@ -1850,9 +1850,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-26T18:30:38.971Z",
+      "lastModified": "2026-03-26T18:31:25.950Z",
       "taskCount": 113,
-      "completedCount": 72,
+      "completedCount": 73,
       "tags": [
         "master"
       ]
