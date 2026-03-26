@@ -459,6 +459,23 @@ class TestSSEIntegration:
         assert "_refreshTimers" in content, "Missing _refreshTimers timer map"
         assert "DEBOUNCE_MS" in content, "Missing DEBOUNCE_MS constant"
 
+    def test_app_js_has_debounced_refresh_function(self) -> None:
+        """app.js defines debouncedRefreshStageCard using clearTimeout/setTimeout and refreshStageCard."""
+        content = _APP_JS.read_text()
+        assert "function debouncedRefreshStageCard" in content, (
+            "Missing debouncedRefreshStageCard function"
+        )
+        # The function body should use clearTimeout + setTimeout for debouncing
+        # and delegate to refreshStageCard
+        func_start = content.index("function debouncedRefreshStageCard")
+        # Grab a reasonable chunk after the function declaration
+        func_body = content[func_start : func_start + 400]
+        assert "clearTimeout" in func_body, "debouncedRefreshStageCard must use clearTimeout"
+        assert "setTimeout" in func_body, "debouncedRefreshStageCard must use setTimeout"
+        assert "refreshStageCard" in func_body, (
+            "debouncedRefreshStageCard must delegate to refreshStageCard"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Step 13: GET / redirect test
