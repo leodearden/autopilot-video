@@ -500,12 +500,24 @@ class CatalogDB:
         )
         return [dict(row) for row in cur.fetchall()]
 
-    def get_faces_for_media(self, media_id: str) -> list[dict[str, object]]:
-        """Get all faces for a media_id."""
-        cur = self.conn.execute(
-            "SELECT * FROM faces WHERE media_id = ?",
-            (media_id,),
-        )
+    def get_faces_for_media(
+        self, media_id: str, *, include_embedding: bool = True
+    ) -> list[dict[str, object]]:
+        """Get all faces for a media_id.
+
+        Args:
+            include_embedding: When False, exclude the large ``embedding``
+                BLOB column from the result rows.  Defaults to True for
+                backward compatibility.
+        """
+        if include_embedding:
+            sql = "SELECT * FROM faces WHERE media_id = ?"
+        else:
+            sql = (
+                "SELECT media_id, frame_number, face_index, bbox_json, cluster_id "
+                "FROM faces WHERE media_id = ?"
+            )
+        cur = self.conn.execute(sql, (media_id,))
         return [dict(row) for row in cur.fetchall()]
 
     def get_all_face_embeddings(self) -> list[dict[str, object]]:
