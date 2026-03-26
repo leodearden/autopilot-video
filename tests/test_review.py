@@ -725,3 +725,39 @@ class TestSafeJsonList:
         from autopilot.web.routes.review import _safe_json_list
 
         assert _safe_json_list('{"a": 1}') == []
+
+
+# ---------------------------------------------------------------------------
+# TestParseNarrativeSafety — task-72 step-3
+# ---------------------------------------------------------------------------
+
+class TestParseNarrativeSafety:
+    """Tests for _parse_narrative handling malformed JSON gracefully."""
+
+    def test_malformed_json_returns_empty_cluster_ids(self) -> None:
+        """_parse_narrative with malformed JSON returns empty list, not crash."""
+        from autopilot.web.routes.review import _parse_narrative
+
+        result = _parse_narrative({"activity_cluster_ids_json": "{not-json"})
+        assert result["activity_cluster_ids"] == []
+
+    def test_non_list_json_returns_empty_cluster_ids(self) -> None:
+        """_parse_narrative with non-list JSON returns empty list."""
+        from autopilot.web.routes.review import _parse_narrative
+
+        result = _parse_narrative({"activity_cluster_ids_json": '"just-a-string"'})
+        assert result["activity_cluster_ids"] == []
+
+    def test_none_json_returns_empty_cluster_ids(self) -> None:
+        """_parse_narrative with None JSON value returns empty list."""
+        from autopilot.web.routes.review import _parse_narrative
+
+        result = _parse_narrative({"activity_cluster_ids_json": None})
+        assert result["activity_cluster_ids"] == []
+
+    def test_valid_json_list_still_works(self) -> None:
+        """_parse_narrative with valid JSON list still parses correctly."""
+        from autopilot.web.routes.review import _parse_narrative
+
+        result = _parse_narrative({"activity_cluster_ids_json": '["c-1", "c-2"]'})
+        assert result["activity_cluster_ids"] == ["c-1", "c-2"]
