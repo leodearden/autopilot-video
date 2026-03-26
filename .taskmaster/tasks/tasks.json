@@ -1785,6 +1785,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 109,
+        "title": "Extract shared app/client test fixtures to tests/conftest.py",
+        "description": "Four test files independently define nearly identical `app` and `client` fixtures: test_web_app.py, test_settings.py, test_gates.py, test_review.py. Each creates a FastAPI app via `create_app(str(tmp_path / \"catalog.db\"))` and wraps it in TestClient.\n\n## Plan\n\n1. Add a base `app` + `client` fixture pair to `tests/conftest.py` (plain app, no seeding).\n2. Files that need specialization (test_web_app.py adds a test route, test_gates.py/test_review.py seed DB rows) override locally.\n3. test_settings.py can drop its fixtures entirely and use conftest.\n\nThis reduces boilerplate and ensures consistency as more route test files are added.\n\n## Memory hints\n- search: \"test fixture patterns conftest\" for related conventions",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -1797,7 +1808,7 @@
       ],
       "created": "2026-03-26T18:24:16.642Z",
       "description": "Tasks for master context",
-      "updated": "2026-03-26T18:24:16.651Z"
+      "updated": "2026-03-26T18:24:22.082Z"
     }
   }
 }
