@@ -986,6 +986,19 @@ class TestFacesCRUD:
             for col in ("media_id", "frame_number", "face_index", "bbox_json", "cluster_id"):
                 assert col in row, f"expected column {col!r} present"
 
+    def test_get_faces_for_media_include_embedding_default(self, catalog_db):
+        """get_faces_for_media default (no param) still returns embedding key."""
+        _insert_test_media(catalog_db)
+        emb = self._make_face_embedding()
+        catalog_db.batch_insert_faces(
+            [
+                ("m1", 0, 0, "[10, 20, 100, 200]", emb, None),
+            ]
+        )
+        results = catalog_db.get_faces_for_media("m1")
+        assert len(results) == 1
+        assert "embedding" in results[0], "embedding should be present by default"
+
     def test_get_all_face_embeddings(self, catalog_db):
         """get_all_face_embeddings returns only rows with non-null embedding."""
         _insert_test_media(catalog_db)
