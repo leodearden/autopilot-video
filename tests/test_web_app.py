@@ -304,3 +304,35 @@ class TestSSEErrorHandling:
         assert "console.error" in listener_body, (
             "console.error not found in notification listener catch block"
         )
+
+
+class TestDashboardSSEErrorHandlers:
+    """Tests for stage_error, run_completed, run_failed SSE handlers in app.js."""
+
+    def test_stage_error_handler_exists_with_try_catch_and_toast(self) -> None:
+        """app.js has a stage_error listener with try/catch, refreshStageCard, and showToast."""
+        js_source = _read_app_js()
+        body = _extract_listener_body(js_source, "stage_error")
+
+        assert "try" in body, "try block not found in stage_error listener"
+        assert "catch" in body, "catch block not found in stage_error listener"
+        assert "refreshStageCard" in body, "refreshStageCard not found in stage_error listener"
+        assert "showToast" in body, "showToast not found in stage_error listener"
+
+    def test_run_completed_handler_exists_with_try_catch_and_toast(self) -> None:
+        """app.js has a run_completed listener with try/catch and showToast."""
+        js_source = _read_app_js()
+        body = _extract_listener_body(js_source, "run_completed")
+
+        assert "try" in body, "try block not found in run_completed listener"
+        assert "catch" in body, "catch block not found in run_completed listener"
+        assert "showToast" in body, "showToast not found in run_completed listener"
+
+    def test_run_failed_handler_exists_with_try_catch_and_toast(self) -> None:
+        """app.js has a run_failed listener with try/catch and showToast."""
+        js_source = _read_app_js()
+        body = _extract_listener_body(js_source, "run_failed")
+
+        assert "try" in body, "try block not found in run_failed listener"
+        assert "catch" in body, "catch block not found in run_failed listener"
+        assert "showToast" in body, "showToast not found in run_failed listener"
