@@ -66,6 +66,22 @@ function refreshStageCard(stage) {
 }
 
 /**
+ * Debounced wrapper around refreshStageCard.
+ * Coalesces burst SSE events for the same stage so only the trailing
+ * event triggers the actual HTMX refresh.
+ * @param {string} stage - The pipeline stage name.
+ */
+function debouncedRefreshStageCard(stage) {
+    if (_refreshTimers[stage]) {
+        clearTimeout(_refreshTimers[stage]);
+    }
+    _refreshTimers[stage] = setTimeout(function() {
+        delete _refreshTimers[stage];
+        refreshStageCard(stage);
+    }, DEBOUNCE_MS);
+}
+
+/**
  * Set up SSE event listeners for dashboard stage card updates.
  * @param {EventSource} source - The SSE EventSource connection.
  */
