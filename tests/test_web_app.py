@@ -363,3 +363,20 @@ class TestDashboardSSEEventCoverage:
         assert not missing, (
             f"Dashboard-relevant event types missing addEventListener in app.js: {missing}"
         )
+
+    def test_no_orphaned_sse_listeners(self) -> None:
+        """Every source.addEventListener in app.js corresponds to a known event type."""
+        import re
+
+        from autopilot.web.routes.sse import VALID_EVENT_TYPES
+
+        js_source = _read_app_js()
+
+        # Extract event types from source.addEventListener('...') calls only —
+        # this excludes DOM-level listeners like document.addEventListener('DOMContentLoaded').
+        sse_listeners = set(re.findall(r"source\.addEventListener\('([^']+)'", js_source))
+
+        orphaned = sorted(sse_listeners - set(VALID_EVENT_TYPES))
+        assert not orphaned, (
+            f"SSE listeners in app.js not in VALID_EVENT_TYPES: {orphaned}"
+        )
