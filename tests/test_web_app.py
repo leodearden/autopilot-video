@@ -319,23 +319,25 @@ class TestDashboardSSEErrorHandlers:
         assert "refreshStageCard" in body, "refreshStageCard not found in stage_error listener"
         assert "showToast" in body, "showToast not found in stage_error listener"
 
-    def test_run_completed_handler_exists_with_try_catch_and_toast(self) -> None:
-        """app.js has a run_completed listener with try/catch and showToast."""
+    def test_run_completed_handler_calls_toast_without_json_parse(self) -> None:
+        """app.js run_completed listener calls showToast without JSON.parse."""
         js_source = _read_app_js()
         body = _extract_listener_body(js_source, "run_completed")
 
-        assert "try" in body, "try block not found in run_completed listener"
-        assert "catch" in body, "catch block not found in run_completed listener"
         assert "showToast" in body, "showToast not found in run_completed listener"
+        assert "JSON.parse" not in body, (
+            "run_completed handler should not JSON.parse — toast uses hardcoded strings"
+        )
 
-    def test_run_failed_handler_exists_with_try_catch_and_toast(self) -> None:
-        """app.js has a run_failed listener with try/catch and showToast."""
+    def test_run_failed_handler_calls_toast_without_json_parse(self) -> None:
+        """app.js run_failed listener calls showToast without JSON.parse."""
         js_source = _read_app_js()
         body = _extract_listener_body(js_source, "run_failed")
 
-        assert "try" in body, "try block not found in run_failed listener"
-        assert "catch" in body, "catch block not found in run_failed listener"
         assert "showToast" in body, "showToast not found in run_failed listener"
+        assert "JSON.parse" not in body, (
+            "run_failed handler should not JSON.parse — toast uses hardcoded strings"
+        )
 
 
 class TestDashboardSSEEventCoverage:
