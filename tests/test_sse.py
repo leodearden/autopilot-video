@@ -217,8 +217,8 @@ class TestSSEReconnection:
         """Without Last-Event-ID header, all events are received."""
         from autopilot.web.routes import sse as sse_module
 
-        for i in range(3):
-            sse_db.insert_event(f"event_{i}", stage="INGEST")
+        # Capture returned IDs instead of assuming auto-increment values
+        event_ids = [sse_db.insert_event(f"event_{i}", stage="INGEST") for i in range(3)]
 
         async def _finite_gen(request):
             db = sse_module._get_db(request)
@@ -236,6 +236,13 @@ class TestSSEReconnection:
             events = _parse_sse_body(response.text)
 
         assert len(events) == 3
+        assert events[0]["event"] == "event_0"
+        assert events[1]["event"] == "event_1"
+        assert events[2]["event"] == "event_2"
+        # Verify SSE id field matches the captured event IDs
+        assert events[0]["id"] == str(event_ids[0])
+        assert events[1]["id"] == str(event_ids[1])
+        assert events[2]["id"] == str(event_ids[2])
 
     def test_invalid_last_event_id_starts_from_zero(self, sse_db, sse_app) -> None:
         """Non-numeric Last-Event-ID falls back to 0 (all events)."""
