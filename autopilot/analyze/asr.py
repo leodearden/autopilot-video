@@ -86,8 +86,7 @@ def transcribe_media(
         hf_token: HuggingFace token for pyannote diarization.
     """
     # Idempotency: skip if transcript already exists for this media
-    existing = db.get_transcript(media_id)
-    if existing is not None:
+    if db.has_transcript(media_id):
         logger.info("Transcript already exists for %s, skipping", media_id)
         return
 
