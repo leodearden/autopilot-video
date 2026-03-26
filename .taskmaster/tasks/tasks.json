@@ -1698,6 +1698,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 102,
+        "title": "Add JS handlers for gate SSE events on dashboard",
+        "description": "The server emits gate_waiting, gate_approved, gate_skipped over SSE but app.js only handles stage_started, stage_completed, job_progress. Gate events arrive at the browser and are silently dropped. This breaks the real-time dashboard experience during human-in-the-loop review workflows.",
+        "details": "## Current state\n- Server emits: gate_waiting, gate_approved, gate_skipped (confirmed in orchestrator.py and VALID_EVENT_TYPES in sse.py)\n- app.js handlers exist only for: stage_started, stage_completed, job_progress (plus dead notification handler)\n- No stage card refresh or toast when a gate starts waiting\n\n## Fix needed\n1. Add `source.addEventListener('gate_waiting', ...)` — refresh the affected stage card + show toast \"Pipeline paused at {stage}. Review required.\"\n2. Add `source.addEventListener('gate_approved', ...)` — refresh stage card + toast \"Gate approved: {stage}\"\n3. Add `source.addEventListener('gate_skipped', ...)` — refresh stage card + toast \"Gate skipped: {stage}\"\n4. Consider: also handle `run_completed`, `run_failed`, `stage_error` events (currently unhandled) — at minimum show a toast\n5. Add structural test in test_web_app.py verifying these event types have addEventListener calls in app.js",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -1710,7 +1721,7 @@
       ],
       "created": "2026-03-26T17:57:24.291Z",
       "description": "Tasks for master context",
-      "updated": "2026-03-26T17:57:37.186Z"
+      "updated": "2026-03-26T17:57:44.250Z"
     }
   }
 }
