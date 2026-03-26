@@ -119,7 +119,7 @@ def _parse_narrative(row: dict[str, object]) -> dict[str, object]:
     """Enrich a narrative row with parsed activity_cluster_ids."""
     result = dict(row)
     raw = result.pop("activity_cluster_ids_json", None)
-    result["activity_cluster_ids"] = json.loads(str(raw)) if raw else []
+    result["activity_cluster_ids"] = _safe_json_list(raw)
     return result
 
 
