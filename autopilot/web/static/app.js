@@ -140,6 +140,37 @@ function setupDashboardSSE(source) {
             console.error('SSE gate_skipped parse error:', e);
         }
     });
+
+    source.addEventListener('stage_error', function(event) {
+        try {
+            var data = JSON.parse(event.data);
+            var stage = data.stage;
+            if (stage) {
+                refreshStageCard(stage);
+                showToast('Stage error: ' + stage, 'error');
+            }
+        } catch (e) {
+            console.error('SSE stage_error parse error:', e);
+        }
+    });
+
+    source.addEventListener('run_completed', function(event) {
+        try {
+            var data = JSON.parse(event.data);
+            showToast('Pipeline run completed successfully.', 'success');
+        } catch (e) {
+            console.error('SSE run_completed parse error:', e);
+        }
+    });
+
+    source.addEventListener('run_failed', function(event) {
+        try {
+            var data = JSON.parse(event.data);
+            showToast('Pipeline run failed.', 'error');
+        } catch (e) {
+            console.error('SSE run_failed parse error:', e);
+        }
+    });
 }
 
 /* Initialize on DOM ready */
