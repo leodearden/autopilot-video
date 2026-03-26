@@ -203,6 +203,16 @@ class TestGetFaceClustersByIds:
         for col in ("cluster_id", "label", "sample_image_paths"):
             assert col in cluster, f"expected column {col!r} present"
 
+    def test_includes_representative_embedding_by_default(
+        self, detail_seeded_db: CatalogDB
+    ) -> None:
+        """Default call (no include_embedding param) returns representative_embedding."""
+        result = detail_seeded_db.get_face_clusters_by_ids([1])
+        assert 1 in result
+        assert "representative_embedding" in result[1], (
+            "representative_embedding should be present by default"
+        )
+
 
 # ---------------------------------------------------------------------------
 # CatalogDB.get_media_detail() tests
