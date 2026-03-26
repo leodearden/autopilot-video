@@ -194,6 +194,76 @@ class TestServeCommand:
         mock_uvicorn_run.assert_called_once_with(mock_app, host="0.0.0.0", port=9090)
 
 
+def _extract_listener_body(js_source: str, event_type: str) -> str:
+    """Extract the function body of an addEventListener(event_type, ...) block.
+
+    Returns the full brace-delimited body of the listener callback.
+    Raises AssertionError if the listener is not found.
+    """
+    marker = f"addEventListener('{event_type}'"
+    listener_start = js_source.find(marker)
+    assert listener_start != -1, f"{event_type} event listener not found in app.js"
+
+    func_start = js_source.find("function", listener_start)
+    assert func_start != -1, f"function keyword not found in {event_type} listener"
+
+    body_start = js_source.find("{", func_start)
+    assert body_start != -1, f"opening brace not found in {event_type} listener"
+
+    brace_depth = 0
+    body_end = body_start
+    for i in range(body_start, len(js_source)):
+        if js_source[i] == "{":
+            brace_depth += 1
+        elif js_source[i] == "}":
+            brace_depth -= 1
+            if brace_depth == 0:
+                body_end = i + 1
+                break
+
+    return js_source[body_start:body_end]
+
+
+def _read_app_js() -> str:
+    """Read the app.js source file."""
+    js_path = Path(__file__).resolve().parent.parent / "autopilot" / "web" / "static" / "app.js"
+    return js_path.read_text()
+
+
+class TestDashboardSSEGateHandlers:
+    """Tests for gate event SSE handlers in app.js."""
+
+    def test_gate_waiting_handler_exists_with_try_catch_and_refresh(self) -> None:
+        """app.js has a gate_waiting listener with try/catch and refreshStageCard."""
+        js_source = _read_app_js()
+        body = _extract_listener_body(js_source, "gate_waiting")
+
+        assert "try" in body, "try block not found in gate_waiting listener"
+        assert "catch" in body, "catch block not found in gate_waiting listener"
+        assert "refreshStageCard" in body, "refreshStageCard not found in gate_waiting listener"
+        assert "showToast" in body, "showToast not found in gate_waiting listener"
+
+    def test_gate_approved_handler_exists_with_try_catch_and_refresh(self) -> None:
+        """app.js has a gate_approved listener with try/catch and refreshStageCard."""
+        js_source = _read_app_js()
+        body = _extract_listener_body(js_source, "gate_approved")
+
+        assert "try" in body, "try block not found in gate_approved listener"
+        assert "catch" in body, "catch block not found in gate_approved listener"
+        assert "refreshStageCard" in body, "refreshStageCard not found in gate_approved listener"
+        assert "showToast" in body, "showToast not found in gate_approved listener"
+
+    def test_gate_skipped_handler_exists_with_try_catch_and_refresh(self) -> None:
+        """app.js has a gate_skipped listener with try/catch and refreshStageCard."""
+        js_source = _read_app_js()
+        body = _extract_listener_body(js_source, "gate_skipped")
+
+        assert "try" in body, "try block not found in gate_skipped listener"
+        assert "catch" in body, "catch block not found in gate_skipped listener"
+        assert "refreshStageCard" in body, "refreshStageCard not found in gate_skipped listener"
+        assert "showToast" in body, "showToast not found in gate_skipped listener"
+
+
 class TestSSEErrorHandling:
     """Tests for SSE notification error handling in app.js."""
 
