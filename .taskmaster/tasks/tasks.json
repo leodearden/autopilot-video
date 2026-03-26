@@ -1082,7 +1082,7 @@
         "description": "Address non-blocking review issues from task 44 in tests/test_media_detail.py and autopilot/db.py.",
         "details": "Review issues to address:\n\n1. **face_clusters key normalization (S3)**: Python dict uses int keys, JSON coerces to strings. Normalize to string keys in get_media_detail() and update media_tab lookup to use str(cid). Files: db.py, media.py.\n\n2. **N+1 face cluster queries (S7)**: get_media_detail() issues one get_face_cluster_by_id() per unique cluster_id. Replace with single IN-query. File: db.py.\n\n3. **Weak test assertions (S9)**: Bare substring checks like '2' in html, '5' in html, '3' in html that match incidental HTML content. Replace with more specific patterns matching template output (e.g. 'Alice (2)', '5 detections'). File: tests/test_media_detail.py.\n\n4. **Missing test cases (S10)**: (a) No test for GET /api/media/{id}/transcript returning 404 when media exists but has no transcript (test2 fixture available). (b) No assertion for face_clusters in empty-analysis test. (c) Segment field validation only covers first element. (d) detail_db fixture never calls db.close() — convert to yield fixture. File: tests/test_media_detail.py.\n\nmemory_hints: search \"test patterns media detail\" \"face clusters\"; entities: test_media_detail.py, CatalogDB, face_clusters",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [
           "44"
         ],
@@ -1091,7 +1091,7 @@
         "metadata": {
           "prd": "/home/leo/src/autopilot-video/docs/prd-web-console.md"
         },
-        "updatedAt": "2026-03-26T18:03:56.995Z"
+        "updatedAt": "2026-03-26T18:12:32.101Z"
       },
       {
         "id": "56",
@@ -1740,7 +1740,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-26T18:12:31.928Z",
+      "lastModified": "2026-03-26T18:12:32.102Z",
       "taskCount": 104,
       "completedCount": 71,
       "tags": [
