@@ -175,12 +175,11 @@ class TestSSEReconnection:
     """Tests for Last-Event-ID reconnection support."""
 
     def test_last_event_id_header_resumes_from_position(self, sse_db, sse_app) -> None:
-        """Connecting with Last-Event-ID: 3 skips events 1-3, sends 4-5."""
+        """Connecting with Last-Event-ID skips earlier events, sends only later ones."""
         from autopilot.web.routes import sse as sse_module
 
-        # Insert 5 events (IDs will be 1-5)
-        for i in range(5):
-            sse_db.insert_event(f"event_{i}", stage="INGEST")
+        # Capture returned IDs instead of assuming auto-increment values
+        event_ids = [sse_db.insert_event(f"event_{i}", stage="INGEST") for i in range(5)]
 
         async def _finite_gen(request):
             db = sse_module._get_db(request)
@@ -192,14 +191,23 @@ class TestSSEReconnection:
             finally:
                 db.close()
 
+        # event_ids[2] is the 3rd inserted event.
+        # get_events_since uses WHERE event_id > ?, so events at
+        # indices 3 and 4 are returned.
         with patch.object(sse_module, "_event_generator", _finite_gen):
             client = TestClient(sse_app)
-            response = client.get("/api/events", headers={"Last-Event-ID": "3"})
+            response = client.get(
+                "/api/events",
+                headers={"Last-Event-ID": str(event_ids[2])},
+            )
             events = _parse_sse_body(response.text)
 
         assert len(events) == 2
         assert events[0]["event"] == "event_3"
         assert events[1]["event"] == "event_4"
+        # Verify SSE id field matches the captured event IDs
+        assert events[0]["id"] == str(event_ids[3])
+        assert events[1]["id"] == str(event_ids[4])
 
     def test_missing_last_event_id_starts_from_zero(self, sse_db, sse_app) -> None:
         """Without Last-Event-ID header, all events are received."""
