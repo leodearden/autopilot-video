@@ -1793,10 +1793,11 @@
         "description": "Four test files independently define nearly identical `app` and `client` fixtures: test_web_app.py, test_settings.py, test_gates.py, test_review.py. Each creates a FastAPI app via `create_app(str(tmp_path / \"catalog.db\"))` and wraps it in TestClient.\n\n## Plan\n\n1. Add a base `app` + `client` fixture pair to `tests/conftest.py` (plain app, no seeding).\n2. Files that need specialization (test_web_app.py adds a test route, test_gates.py/test_review.py seed DB rows) override locally.\n3. test_settings.py can drop its fixtures entirely and use conftest.\n\nThis reduces boilerplate and ensures consistency as more route test files are added.\n\n## Memory hints\n- search: \"test fixture patterns conftest\" for related conventions",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-03-26T18:24:40.550Z"
       },
       {
         "id": "110",
@@ -1834,7 +1835,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-26T18:24:40.417Z",
+      "lastModified": "2026-03-26T18:24:40.551Z",
       "taskCount": 112,
       "completedCount": 71,
       "tags": [
