@@ -44,8 +44,7 @@ def detect_faces(
         config: Model configuration (face_model name).
     """
     # Idempotency: skip if faces already exist for this media
-    existing = db.get_faces_for_media(media_id)
-    if existing:
+    if db.has_faces(media_id):
         logger.info("Faces already exist for %s, skipping", media_id)
         return
 
