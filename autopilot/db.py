@@ -330,8 +330,8 @@ class CatalogDB:
         media, transcript, detections, faces, audio_events,
         embedding_count, face_clusters.
 
-        Binary BLOB fields (embedding, representative_embedding) are stripped
-        from faces and face_clusters to keep the result JSON-serializable.
+        Binary BLOB fields (embedding, representative_embedding) are excluded
+        via SQL projection (include_embedding=False) so they are never fetched.
         """
         media = self.get_media(media_id)
         if media is None:
@@ -339,23 +339,20 @@ class CatalogDB:
 
         transcript = self.get_transcript(media_id)
         detections = self.get_detections_for_media(media_id)
-        faces = self.get_faces_for_media(media_id)
+        faces = self.get_faces_for_media(media_id, include_embedding=False)
         audio_events = self.get_audio_events_for_media(media_id)
         embedding_count = self.count_embeddings_for_media(media_id)
 
-        # Strip binary embedding BLOBs from face rows
-        faces = [{k: v for k, v in f.items() if k != "embedding"} for f in faces]
-
         # Build face_clusters lookup for faces that have cluster assignments.
-        # Coerce keys to str and strip representative_embedding BLOBs here
-        # (presentation concern) so get_face_clusters_by_ids can return raw rows.
+        # Coerce keys to str for JSON consistency.
         cluster_ids: set[int] = {
             cast(int, f["cluster_id"]) for f in faces if f.get("cluster_id") is not None
         }
-        raw_clusters = self.get_face_clusters_by_ids(list(cluster_ids))
+        raw_clusters = self.get_face_clusters_by_ids(
+            list(cluster_ids), include_embedding=False
+        )
         face_clusters: dict[str, dict[str, object]] = {
-            str(cid): {k: v for k, v in cluster.items() if k != "representative_embedding"}
-            for cid, cluster in raw_clusters.items()
+            str(cid): dict(cluster) for cid, cluster in raw_clusters.items()
         }
 
         return {
