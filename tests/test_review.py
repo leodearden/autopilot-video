@@ -675,3 +675,53 @@ class TestUpdateNarrativeHTMX:
         assert response.status_code == 200
         data = response.json()
         assert data["title"] == "Updated Title"
+
+
+# ---------------------------------------------------------------------------
+# TestSafeJsonList — task-72 step-1
+# ---------------------------------------------------------------------------
+
+class TestSafeJsonList:
+    """Tests for _safe_json_list helper."""
+
+    def test_valid_json_list(self) -> None:
+        """Valid JSON list string returns parsed list."""
+        from autopilot.web.routes.review import _safe_json_list
+
+        assert _safe_json_list('["a", "b", "c"]') == ["a", "b", "c"]
+
+    def test_none_returns_empty(self) -> None:
+        """None input returns empty list."""
+        from autopilot.web.routes.review import _safe_json_list
+
+        assert _safe_json_list(None) == []
+
+    def test_empty_string_returns_empty(self) -> None:
+        """Empty string input returns empty list."""
+        from autopilot.web.routes.review import _safe_json_list
+
+        assert _safe_json_list("") == []
+
+    def test_malformed_json_returns_empty(self) -> None:
+        """Malformed JSON returns empty list instead of raising."""
+        from autopilot.web.routes.review import _safe_json_list
+
+        assert _safe_json_list("{not-json") == []
+
+    def test_json_string_returns_empty(self) -> None:
+        """JSON string (not a list) returns empty list."""
+        from autopilot.web.routes.review import _safe_json_list
+
+        assert _safe_json_list('"hello"') == []
+
+    def test_json_integer_returns_empty(self) -> None:
+        """JSON integer (not a list) returns empty list."""
+        from autopilot.web.routes.review import _safe_json_list
+
+        assert _safe_json_list("42") == []
+
+    def test_json_object_returns_empty(self) -> None:
+        """JSON object (not a list) returns empty list."""
+        from autopilot.web.routes.review import _safe_json_list
+
+        assert _safe_json_list('{"a": 1}') == []
