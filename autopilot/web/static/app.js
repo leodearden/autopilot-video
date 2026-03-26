@@ -101,6 +101,66 @@ function setupDashboardSSE(source) {
             console.error('SSE job_progress parse error:', e);
         }
     });
+
+    source.addEventListener('gate_waiting', function(event) {
+        try {
+            var data = JSON.parse(event.data);
+            var stage = data.stage;
+            if (stage) {
+                refreshStageCard(stage);
+                showToast('Pipeline paused at ' + stage + '. Review required.', 'info');
+            }
+        } catch (e) {
+            console.error('SSE gate_waiting parse error:', e);
+        }
+    });
+
+    source.addEventListener('gate_approved', function(event) {
+        try {
+            var data = JSON.parse(event.data);
+            var stage = data.stage;
+            if (stage) {
+                refreshStageCard(stage);
+                showToast('Gate approved: ' + stage, 'success');
+            }
+        } catch (e) {
+            console.error('SSE gate_approved parse error:', e);
+        }
+    });
+
+    source.addEventListener('gate_skipped', function(event) {
+        try {
+            var data = JSON.parse(event.data);
+            var stage = data.stage;
+            if (stage) {
+                refreshStageCard(stage);
+                showToast('Gate skipped: ' + stage, 'info');
+            }
+        } catch (e) {
+            console.error('SSE gate_skipped parse error:', e);
+        }
+    });
+
+    source.addEventListener('stage_error', function(event) {
+        try {
+            var data = JSON.parse(event.data);
+            var stage = data.stage;
+            if (stage) {
+                refreshStageCard(stage);
+                showToast('Stage error: ' + stage, 'error');
+            }
+        } catch (e) {
+            console.error('SSE stage_error parse error:', e);
+        }
+    });
+
+    source.addEventListener('run_completed', function(event) {
+        showToast('Pipeline run completed successfully.', 'success');
+    });
+
+    source.addEventListener('run_failed', function(event) {
+        showToast('Pipeline run failed.', 'error');
+    });
 }
 
 /* Initialize on DOM ready */

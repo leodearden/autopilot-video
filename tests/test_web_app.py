@@ -194,6 +194,76 @@ class TestServeCommand:
         mock_uvicorn_run.assert_called_once_with(mock_app, host="0.0.0.0", port=9090)
 
 
+def _extract_listener_body(js_source: str, event_type: str) -> str:
+    """Extract the function body of an addEventListener(event_type, ...) block.
+
+    Returns the full brace-delimited body of the listener callback.
+    Raises AssertionError if the listener is not found.
+    """
+    marker = f"addEventListener('{event_type}'"
+    listener_start = js_source.find(marker)
+    assert listener_start != -1, f"{event_type} event listener not found in app.js"
+
+    func_start = js_source.find("function", listener_start)
+    assert func_start != -1, f"function keyword not found in {event_type} listener"
+
+    body_start = js_source.find("{", func_start)
+    assert body_start != -1, f"opening brace not found in {event_type} listener"
+
+    brace_depth = 0
+    body_end = body_start
+    for i in range(body_start, len(js_source)):
+        if js_source[i] == "{":
+            brace_depth += 1
+        elif js_source[i] == "}":
+            brace_depth -= 1
+            if brace_depth == 0:
+                body_end = i + 1
+                break
+
+    return js_source[body_start:body_end]
+
+
+def _read_app_js() -> str:
+    """Read the app.js source file."""
+    js_path = Path(__file__).resolve().parent.parent / "autopilot" / "web" / "static" / "app.js"
+    return js_path.read_text()
+
+
+class TestDashboardSSEGateHandlers:
+    """Tests for gate event SSE handlers in app.js."""
+
+    def test_gate_waiting_handler_exists_with_try_catch_and_refresh(self) -> None:
+        """app.js has a gate_waiting listener with try/catch and refreshStageCard."""
+        js_source = _read_app_js()
+        body = _extract_listener_body(js_source, "gate_waiting")
+
+        assert "try" in body, "try block not found in gate_waiting listener"
+        assert "catch" in body, "catch block not found in gate_waiting listener"
+        assert "refreshStageCard" in body, "refreshStageCard not found in gate_waiting listener"
+        assert "showToast" in body, "showToast not found in gate_waiting listener"
+
+    def test_gate_approved_handler_exists_with_try_catch_and_refresh(self) -> None:
+        """app.js has a gate_approved listener with try/catch and refreshStageCard."""
+        js_source = _read_app_js()
+        body = _extract_listener_body(js_source, "gate_approved")
+
+        assert "try" in body, "try block not found in gate_approved listener"
+        assert "catch" in body, "catch block not found in gate_approved listener"
+        assert "refreshStageCard" in body, "refreshStageCard not found in gate_approved listener"
+        assert "showToast" in body, "showToast not found in gate_approved listener"
+
+    def test_gate_skipped_handler_exists_with_try_catch_and_refresh(self) -> None:
+        """app.js has a gate_skipped listener with try/catch and refreshStageCard."""
+        js_source = _read_app_js()
+        body = _extract_listener_body(js_source, "gate_skipped")
+
+        assert "try" in body, "try block not found in gate_skipped listener"
+        assert "catch" in body, "catch block not found in gate_skipped listener"
+        assert "refreshStageCard" in body, "refreshStageCard not found in gate_skipped listener"
+        assert "showToast" in body, "showToast not found in gate_skipped listener"
+
+
 class TestSSEErrorHandling:
     """Tests for SSE notification error handling in app.js."""
 
@@ -233,4 +303,63 @@ class TestSSEErrorHandling:
         assert "catch" in listener_body, "catch block not found in notification listener"
         assert "console.error" in listener_body, (
             "console.error not found in notification listener catch block"
+        )
+
+
+class TestDashboardSSEErrorHandlers:
+    """Tests for stage_error, run_completed, run_failed SSE handlers in app.js."""
+
+    def test_stage_error_handler_exists_with_try_catch_and_toast(self) -> None:
+        """app.js has a stage_error listener with try/catch, refreshStageCard, and showToast."""
+        js_source = _read_app_js()
+        body = _extract_listener_body(js_source, "stage_error")
+
+        assert "try" in body, "try block not found in stage_error listener"
+        assert "catch" in body, "catch block not found in stage_error listener"
+        assert "refreshStageCard" in body, "refreshStageCard not found in stage_error listener"
+        assert "showToast" in body, "showToast not found in stage_error listener"
+
+    def test_run_completed_handler_calls_toast_without_json_parse(self) -> None:
+        """app.js run_completed listener calls showToast without JSON.parse."""
+        js_source = _read_app_js()
+        body = _extract_listener_body(js_source, "run_completed")
+
+        assert "showToast" in body, "showToast not found in run_completed listener"
+        assert "JSON.parse" not in body, (
+            "run_completed handler should not JSON.parse — toast uses hardcoded strings"
+        )
+
+    def test_run_failed_handler_calls_toast_without_json_parse(self) -> None:
+        """app.js run_failed listener calls showToast without JSON.parse."""
+        js_source = _read_app_js()
+        body = _extract_listener_body(js_source, "run_failed")
+
+        assert "showToast" in body, "showToast not found in run_failed listener"
+        assert "JSON.parse" not in body, (
+            "run_failed handler should not JSON.parse — toast uses hardcoded strings"
+        )
+
+
+class TestDashboardSSEEventCoverage:
+    """Comprehensive test ensuring all dashboard-relevant event types are handled."""
+
+    # Job-level detail events are intentionally unhandled at dashboard level —
+    # they update individual job rows, not stage cards.
+    _JOB_LEVEL_EVENTS = {"job_started", "job_completed", "job_error"}
+
+    def test_all_dashboard_event_types_handled(self) -> None:
+        """Every VALID_EVENT_TYPE (except job-level events) has a listener in app.js."""
+        from autopilot.web.routes.sse import VALID_EVENT_TYPES
+
+        js_source = _read_app_js()
+
+        dashboard_event_types = set(VALID_EVENT_TYPES) - self._JOB_LEVEL_EVENTS
+        missing = []
+        for event_type in sorted(dashboard_event_types):
+            marker = f"addEventListener('{event_type}'"
+            if marker not in js_source:
+                missing.append(event_type)
+
+        assert not missing, (
+            f"Dashboard-relevant event types missing addEventListener in app.js: {missing}"
         )
