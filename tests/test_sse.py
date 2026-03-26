@@ -15,19 +15,23 @@ from autopilot.web.app import create_app
 
 
 @pytest.fixture
-def sse_db(tmp_path: Path) -> CatalogDB:
+def _sse_db_path(tmp_path: Path) -> str:
+    """Return the path string for the test catalog database."""
+    return str(tmp_path / "catalog.db")
+
+
+@pytest.fixture
+def sse_db(_sse_db_path: str) -> CatalogDB:
     """Create a CatalogDB backed by a real file so the app can connect to it."""
-    db_path = str(tmp_path / "catalog.db")
-    db = CatalogDB(db_path)
+    db = CatalogDB(_sse_db_path)
     db.conn.isolation_level = None  # autocommit for test convenience
-    db._test_path = db_path  # stash for fixture use
     return db
 
 
 @pytest.fixture
-def sse_app(sse_db: CatalogDB) -> FastAPI:
+def sse_app(_sse_db_path: str) -> FastAPI:
     """Create a FastAPI app pointing at the same DB as sse_db."""
-    return create_app(sse_db._test_path)
+    return create_app(_sse_db_path)
 
 
 @pytest.fixture
