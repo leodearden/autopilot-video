@@ -796,3 +796,28 @@ class TestNarrativeAPIMalformedJSON:
         assert response.status_code == 200
         data = response.json()
         assert data["activity_cluster_ids"] == []
+
+
+# ---------------------------------------------------------------------------
+# TestRenderPartialRefactor — task-74 step-3
+# ---------------------------------------------------------------------------
+
+class TestRenderPartialRefactor:
+    """Verify review.py uses render_partial from deps and _render_narrative_partial is removed."""
+
+    def test_no_private_render_narrative_partial(self) -> None:
+        """_render_narrative_partial should be removed from review module."""
+        from autopilot.web.routes import review
+        assert not hasattr(review, "_render_narrative_partial"), (
+            "_render_narrative_partial should be removed in favor of render_partial"
+        )
+
+    def test_review_imports_render_partial(self) -> None:
+        """review module should import render_partial from deps."""
+        import inspect
+
+        from autopilot.web.routes import review as review_mod
+        source = inspect.getsource(review_mod)
+        assert "render_partial" in source, (
+            "review.py should use render_partial from deps"
+        )
