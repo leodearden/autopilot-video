@@ -187,6 +187,22 @@ class TestGetFaceClustersByIds:
         assert 1 in result
         assert 999 not in result
 
+    def test_excludes_representative_embedding_when_false(
+        self, detail_seeded_db: CatalogDB
+    ) -> None:
+        """include_embedding=False excludes representative_embedding from clusters."""
+        result = detail_seeded_db.get_face_clusters_by_ids(
+            [1], include_embedding=False
+        )
+        assert 1 in result
+        cluster = result[1]
+        assert "representative_embedding" not in cluster, (
+            "representative_embedding should be excluded"
+        )
+        # Other columns remain present
+        for col in ("cluster_id", "label", "sample_image_paths"):
+            assert col in cluster, f"expected column {col!r} present"
+
 
 # ---------------------------------------------------------------------------
 # CatalogDB.get_media_detail() tests
