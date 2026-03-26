@@ -346,7 +346,7 @@ class TestDashboardSSEEventCoverage:
     _JOB_LEVEL_EVENTS = {"job_started", "job_completed", "job_error"}
 
     def test_all_dashboard_event_types_handled(self) -> None:
-        """Every VALID_EVENT_TYPE (except job-level detail events) has an addEventListener in app.js."""
+        """Every VALID_EVENT_TYPE (except job-level events) has a listener in app.js."""
         from autopilot.web.routes.sse import VALID_EVENT_TYPES
 
         js_source = _read_app_js()
