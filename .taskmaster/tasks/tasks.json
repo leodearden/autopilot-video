@@ -2000,7 +2000,17 @@
         ],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:35:05.196Z"
+        "updatedAt": "2026-03-26T18:35:05.196Z",
+        "metadata": {
+          "files": [
+            "autopilot/db.py",
+            "tests/test_db.py"
+          ],
+          "modules": [
+            "autopilot",
+            "tests"
+          ]
+        }
       },
       {
         "id": 116,
