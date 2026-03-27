@@ -2046,13 +2046,13 @@
         "description": "Two analyze modules use fetch-all-and-check-truthiness for idempotency instead of the existing has_X() existence checks. Fix to match the has_faces pattern established in task 107.",
         "details": "1. autopilot/analyze/embeddings.py:86 — Replace `existing = db.get_embeddings_for_media(media_id); if existing:` with `if db.has_embeddings(media_id):`. The has_embeddings method already exists in db.py.\n\n2. autopilot/analyze/asr.py:89 — Replace `existing = db.get_transcript(media_id); if existing is not None:` with `if db.has_transcript(media_id):`. The has_transcript method already exists in db.py.\n\nBoth are straightforward one-line fixes. Add tests verifying the has_X method is called (same spy pattern as test_faces.py:TestIdempotency).\n\nmemory_hints: search \"has_embeddings has_transcript idempotency\"; entities: CatalogDB, has_embeddings, has_transcript",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [
           "107"
         ],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-03-27T12:15:46.758Z",
+        "updatedAt": "2026-03-27T12:15:47.057Z",
         "metadata": {
           "files": [
             "autopilot/analyze/embeddings.py",
@@ -2141,7 +2141,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-27T12:15:47.011Z",
+      "lastModified": "2026-03-27T12:15:47.057Z",
       "taskCount": 120,
       "completedCount": 74,
       "tags": [
