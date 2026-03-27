@@ -1946,7 +1946,15 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:32:39.911Z"
+        "updatedAt": "2026-03-26T18:32:39.911Z",
+        "metadata": {
+          "files": [
+            "tests/test_web_app.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 113,
