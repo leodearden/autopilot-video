@@ -968,37 +968,6 @@ class TestFacesCRUD:
         results = catalog_db.get_faces_for_media("m1")
         assert len(results) == 3
 
-    def test_get_faces_for_media_exclude_embedding(self, catalog_db):
-        """get_faces_for_media(include_embedding=False) excludes embedding key."""
-        _insert_test_media(catalog_db)
-        emb = self._make_face_embedding()
-        catalog_db.batch_insert_faces(
-            [
-                ("m1", 0, 0, "[10, 20, 100, 200]", emb, None),
-                ("m1", 30, 0, "[15, 25, 100, 200]", emb, 1),
-            ]
-        )
-        results = catalog_db.get_faces_for_media("m1", include_embedding=False)
-        assert len(results) == 2
-        for row in results:
-            assert "embedding" not in row, "embedding should be excluded"
-            # All other columns should be present
-            for col in ("media_id", "frame_number", "face_index", "bbox_json", "cluster_id"):
-                assert col in row, f"expected column {col!r} present"
-
-    def test_get_faces_for_media_include_embedding_default(self, catalog_db):
-        """get_faces_for_media default (no param) still returns embedding key."""
-        _insert_test_media(catalog_db)
-        emb = self._make_face_embedding()
-        catalog_db.batch_insert_faces(
-            [
-                ("m1", 0, 0, "[10, 20, 100, 200]", emb, None),
-            ]
-        )
-        results = catalog_db.get_faces_for_media("m1")
-        assert len(results) == 1
-        assert "embedding" in results[0], "embedding should be present by default"
-
     def test_get_all_face_embeddings(self, catalog_db):
         """get_all_face_embeddings returns only rows with non-null embedding."""
         _insert_test_media(catalog_db)

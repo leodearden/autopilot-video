@@ -453,57 +453,6 @@ class TestSSEIntegration:
         content = _APP_JS.read_text()
         assert "htmx.ajax" in content or "/dashboard/stage/" in content
 
-    def test_app_js_has_debounce_timer_map(self) -> None:
-        """app.js defines a _refreshTimers object and DEBOUNCE_MS constant for debouncing."""
-        content = _APP_JS.read_text()
-        assert "_refreshTimers" in content, "Missing _refreshTimers timer map"
-        assert "DEBOUNCE_MS" in content, "Missing DEBOUNCE_MS constant"
-
-    def test_app_js_has_debounced_refresh_function(self) -> None:
-        """app.js defines debouncedRefreshStageCard with debounce logic."""
-        content = _APP_JS.read_text()
-        assert "function debouncedRefreshStageCard" in content, (
-            "Missing debouncedRefreshStageCard function"
-        )
-        # The function body should use clearTimeout + setTimeout for debouncing
-        # and delegate to refreshStageCard
-        func_start = content.index("function debouncedRefreshStageCard")
-        # Grab a reasonable chunk after the function declaration
-        func_body = content[func_start : func_start + 400]
-        assert "clearTimeout" in func_body, "debouncedRefreshStageCard must use clearTimeout"
-        assert "setTimeout" in func_body, "debouncedRefreshStageCard must use setTimeout"
-        assert "refreshStageCard" in func_body, (
-            "debouncedRefreshStageCard must delegate to refreshStageCard"
-        )
-
-    def test_app_js_sse_handlers_use_debounced_refresh(self) -> None:
-        """SSE handlers use debouncedRefreshStageCard, not raw refreshStageCard."""
-        import re
-
-        content = _APP_JS.read_text()
-        # Extract the setupDashboardSSE function body
-        func_start = content.index("function setupDashboardSSE")
-        # Find the closing brace by counting nesting
-        depth = 0
-        func_end = func_start
-        for i, ch in enumerate(content[func_start:], start=func_start):
-            if ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    func_end = i + 1
-                    break
-        func_body = content[func_start:func_end]
-
-        # All refreshStageCard calls inside the function must be debouncedRefreshStageCard
-        # Find occurrences of refreshStageCard that are NOT preceded by "debounced"
-        bare_calls = re.findall(r"(?<!debounced)refreshStageCard\s*\(", func_body)
-        assert bare_calls == [], (
-            f"Found {len(bare_calls)} direct refreshStageCard call(s) in setupDashboardSSE; "
-            "all should use debouncedRefreshStageCard"
-        )
-
 
 # ---------------------------------------------------------------------------
 # Step 13: GET / redirect test

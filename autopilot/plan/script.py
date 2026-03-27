@@ -135,7 +135,7 @@ def _build_cluster_section(
         transcript = db.get_transcript(clip_id)
         transcript_segments = _parse_transcript_segments(transcript, clip_id)
         all_detections = db.get_detections_for_media(clip_id)
-        all_faces = db.get_faces_for_media(clip_id, include_embedding=False)
+        all_faces = db.get_faces_for_media(clip_id)
         all_audio_events = db.get_audio_events_for_media(clip_id)
         captions = db.get_captions_for_media(clip_id)
 

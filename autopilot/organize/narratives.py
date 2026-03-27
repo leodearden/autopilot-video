@@ -137,7 +137,7 @@ def _build_cluster_summary(
     # --- People present: face cluster labels ---
     face_cluster_ids: set[int] = set()
     for cid in clip_ids:
-        faces = db.get_faces_for_media(cid, include_embedding=False)
+        faces = db.get_faces_for_media(cid)
         for face in faces:
             cid_val = face.get("cluster_id")
             if cid_val is not None:

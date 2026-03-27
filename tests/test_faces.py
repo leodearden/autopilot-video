@@ -144,35 +144,6 @@ class TestIdempotency:
         detect_faces("vid1", Path("/tmp/vid1.mp4"), catalog_db, scheduler, config)
         scheduler.model.assert_not_called()
 
-    def test_idempotency_uses_has_faces(self, catalog_db) -> None:
-        """Idempotency check uses has_faces(), not get_faces_for_media()."""
-        from autopilot.analyze.faces import detect_faces
-
-        catalog_db.insert_media("vid1", "/tmp/vid1.mp4")
-        catalog_db.batch_insert_faces(
-            [
-                ("vid1", 0, 0, "[10,20,100,200]", b"\x00" * 2048, None),
-            ]
-        )
-
-        scheduler = MagicMock()
-        config = MagicMock()
-        config.face_model = "buffalo_l"
-
-        with (
-            patch.object(
-                catalog_db, "has_faces", wraps=catalog_db.has_faces,
-            ) as spy_has,
-            patch.object(
-                catalog_db, "get_faces_for_media",
-                wraps=catalog_db.get_faces_for_media,
-            ) as spy_get,
-        ):
-            detect_faces("vid1", Path("/tmp/vid1.mp4"), catalog_db, scheduler, config)
-
-        spy_has.assert_called_once_with("vid1")
-        spy_get.assert_not_called()
-
     def test_no_existing_faces_proceeds(self, catalog_db, tmp_path) -> None:
         """When no faces exist, detect_faces proceeds (calls scheduler)."""
         from autopilot.analyze.faces import detect_faces

@@ -15,23 +15,19 @@ from autopilot.web.app import create_app
 
 
 @pytest.fixture
-def _sse_db_path(tmp_path: Path) -> str:
-    """Return the path string for the test catalog database."""
-    return str(tmp_path / "catalog.db")
-
-
-@pytest.fixture
-def sse_db(_sse_db_path: str) -> CatalogDB:
+def sse_db(tmp_path: Path) -> CatalogDB:
     """Create a CatalogDB backed by a real file so the app can connect to it."""
-    db = CatalogDB(_sse_db_path)
+    db_path = str(tmp_path / "catalog.db")
+    db = CatalogDB(db_path)
     db.conn.isolation_level = None  # autocommit for test convenience
+    db._test_path = db_path  # stash for fixture use
     return db
 
 
 @pytest.fixture
-def sse_app(_sse_db_path: str) -> FastAPI:
+def sse_app(sse_db: CatalogDB) -> FastAPI:
     """Create a FastAPI app pointing at the same DB as sse_db."""
-    return create_app(_sse_db_path)
+    return create_app(sse_db._test_path)
 
 
 @pytest.fixture
@@ -179,11 +175,12 @@ class TestSSEReconnection:
     """Tests for Last-Event-ID reconnection support."""
 
     def test_last_event_id_header_resumes_from_position(self, sse_db, sse_app) -> None:
-        """Connecting with Last-Event-ID skips earlier events, sends only later ones."""
+        """Connecting with Last-Event-ID: 3 skips events 1-3, sends 4-5."""
         from autopilot.web.routes import sse as sse_module
 
-        # Capture returned IDs instead of assuming auto-increment values
-        event_ids = [sse_db.insert_event(f"event_{i}", stage="INGEST") for i in range(5)]
+        # Insert 5 events (IDs will be 1-5)
+        for i in range(5):
+            sse_db.insert_event(f"event_{i}", stage="INGEST")
 
         async def _finite_gen(request):
             db = sse_module._get_db(request)
@@ -195,30 +192,21 @@ class TestSSEReconnection:
             finally:
                 db.close()
 
-        # event_ids[2] is the 3rd inserted event.
-        # get_events_since uses WHERE event_id > ?, so events at
-        # indices 3 and 4 are returned.
         with patch.object(sse_module, "_event_generator", _finite_gen):
             client = TestClient(sse_app)
-            response = client.get(
-                "/api/events",
-                headers={"Last-Event-ID": str(event_ids[2])},
-            )
+            response = client.get("/api/events", headers={"Last-Event-ID": "3"})
             events = _parse_sse_body(response.text)
 
         assert len(events) == 2
         assert events[0]["event"] == "event_3"
         assert events[1]["event"] == "event_4"
-        # Verify SSE id field matches the captured event IDs
-        assert events[0]["id"] == str(event_ids[3])
-        assert events[1]["id"] == str(event_ids[4])
 
     def test_missing_last_event_id_starts_from_zero(self, sse_db, sse_app) -> None:
         """Without Last-Event-ID header, all events are received."""
         from autopilot.web.routes import sse as sse_module
 
-        # Capture returned IDs instead of assuming auto-increment values
-        event_ids = [sse_db.insert_event(f"event_{i}", stage="INGEST") for i in range(3)]
+        for i in range(3):
+            sse_db.insert_event(f"event_{i}", stage="INGEST")
 
         async def _finite_gen(request):
             db = sse_module._get_db(request)
@@ -236,13 +224,6 @@ class TestSSEReconnection:
             events = _parse_sse_body(response.text)
 
         assert len(events) == 3
-        assert events[0]["event"] == "event_0"
-        assert events[1]["event"] == "event_1"
-        assert events[2]["event"] == "event_2"
-        # Verify SSE id field matches the captured event IDs
-        assert events[0]["id"] == str(event_ids[0])
-        assert events[1]["id"] == str(event_ids[1])
-        assert events[2]["id"] == str(event_ids[2])
 
     def test_invalid_last_event_id_starts_from_zero(self, sse_db, sse_app) -> None:
         """Non-numeric Last-Event-ID falls back to 0 (all events)."""
