@@ -2018,11 +2018,11 @@
         "description": "Two call sites loop over clip_ids calling get_faces_for_media (and other per-clip queries) one at a time: narratives.py:_build_cluster_summary and script.py:_build_cluster_section. Add batch methods and replace per-clip loops.",
         "details": "Affected locations:\n1. autopilot/organize/narratives.py — loop over clip_ids calling db.get_faces_for_media(cid) per clip.\n2. autopilot/plan/script.py — loop calling get_faces_for_media, get_transcript, get_detections_for_media, get_audio_events_for_media per clip.\n\nApproach:\n- Add batch methods to CatalogDB: get_faces_for_media_batch(media_ids, include_embedding=False), get_transcripts_batch(media_ids), etc. using WHERE media_id IN (...) queries.\n- Return results grouped by media_id (dict[str, list[dict]]).\n- Replace per-clip loops with single batch calls followed by dict lookups.\n- Benchmark on a cluster with 50+ clips to confirm improvement.\n\nmemory_hints: search \"N+1 query batch face transcript\"; entities: CatalogDB, _build_cluster_summary, _build_cluster_section",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:40:27.432Z",
+        "updatedAt": "2026-03-27T12:15:46.728Z",
         "metadata": {
           "files": [
             "autopilot/db.py",
@@ -2141,7 +2141,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-27T12:15:46.691Z",
+      "lastModified": "2026-03-27T12:15:46.728Z",
       "taskCount": 120,
       "completedCount": 74,
       "tags": [
