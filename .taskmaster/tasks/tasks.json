@@ -1737,7 +1737,20 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:19:14.007Z"
+        "updatedAt": "2026-03-26T18:19:14.007Z",
+        "metadata": {
+          "files": [
+            "autopilot/web/routes/review.py",
+            "autopilot/web/templates/partials/narrative_card.html",
+            "autopilot/web/templates/partials/narrative_edit_form.html",
+            "tests/test_review.py"
+          ],
+          "modules": [
+            "autopilot/web/routes",
+            "autopilot/web/templates/partials",
+            "tests"
+          ]
+        }
       },
       {
         "id": 101,
