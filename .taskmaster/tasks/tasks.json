@@ -886,7 +886,7 @@
         "description": "Build the script review page at /review/scripts/{id} with scene list display and inline editing.",
         "details": "Create templates and extend autopilot/web/routes/review.py:\n\n1. GET /review/scripts/{narrative_id} — Script review page:\n   - Fetch narrative_scripts for this narrative_id\n   - Parse script_json into ordered scene list\n   - Display each scene: scene number, shot type (interview/broll/music), estimated duration, voiceover text, visual direction, music mood\n   - Template: autopilot/web/templates/review/scripts.html\n\n2. Actions:\n   - Approve: POST /api/gates/SCRIPT/approve (after reviewing all scripts)\n   - Inline Edit: click on voiceover text, shot type, or music mood to edit in-place\n     * PUT /api/scripts/{narrative_id} with updated script_json\n   - Delete Scene: remove a scene from the script_json array\n   - Add Scene: append a new scene (simple form with required fields)\n   - Reorder: scene number editing or simple up/down arrows (defer drag-and-drop to later)\n   - Regenerate: POST /api/scripts/{narrative_id}/regenerate (re-run LLM — for now just mark as needing regeneration; actual LLM call requires orchestrator)\n\n3. Script list view:\n   GET /review/scripts — List of all narratives with scripts, showing status\n   - Link to individual script review pages\n\n4. JSON API endpoints:\n   GET /api/scripts/{narrative_id} — Script JSON for narrative\n   PUT /api/scripts/{narrative_id} — Update script\n   POST /api/scripts/{narrative_id}/regenerate — Flag for regeneration\n\n5. HTMX: inline edits swap individual scene rows, approve/reject swap status badge\n\nTest: create narrative with script_json, verify scene rendering, inline edit persists, scene add/delete work.\n\nmemory_hints: search \"narrative_scripts\" \"script_json\" \"generate_script\" ; entities: narrative_scripts, script",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [
           "46"
         ],
@@ -911,7 +911,7 @@
             ]
           }
         },
-        "updatedAt": "2026-03-27T12:17:32.733Z"
+        "updatedAt": "2026-03-27T12:21:17.383Z"
       },
       {
         "id": "49",
@@ -2147,7 +2147,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-27T12:17:32.733Z",
+      "lastModified": "2026-03-27T12:21:17.383Z",
       "taskCount": 120,
       "completedCount": 74,
       "tags": [
