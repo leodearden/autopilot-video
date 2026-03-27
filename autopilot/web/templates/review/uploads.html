@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-3xl font-bold text-white">{{ page_title }}</h1>
+        <a href="/review" class="text-blue-400 hover:text-blue-300 text-sm">&larr; Back to Review Hub</a>
+    </div>
+
+    {% if uploads %}
+    <div class="bg-surface-800 rounded-lg overflow-hidden">
+        <table class="w-full text-left">
+            <thead class="border-b border-gray-700">
+                <tr>
+                    <th class="px-4 py-3 text-gray-400 text-sm font-medium">Narrative</th>
+                    <th class="px-4 py-3 text-gray-400 text-sm font-medium">YouTube Video ID</th>
+                    <th class="px-4 py-3 text-gray-400 text-sm font-medium">YouTube URL</th>
+                    <th class="px-4 py-3 text-gray-400 text-sm font-medium">Privacy</th>
+                    <th class="px-4 py-3 text-gray-400 text-sm font-medium">Uploaded At</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-700">
+                {% for upload in uploads %}
+                <tr class="hover:bg-surface-700">
+                    <td class="px-4 py-3">
+                        <a href="/review/render/{{ upload.narrative_id }}"
+                           class="text-blue-400 hover:text-blue-300">
+                            {{ upload.narrative_title or upload.narrative_id }}
+                        </a>
+                    </td>
+                    <td class="px-4 py-3 text-gray-300 text-sm font-mono">{{ upload.youtube_video_id }}</td>
+                    <td class="px-4 py-3">
+                        <a href="{{ upload.youtube_url }}" target="_blank" rel="noopener"
+                           class="text-blue-400 hover:text-blue-300 text-sm">
+                            {{ upload.youtube_url }}
+                        </a>
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium
+                            {% if upload.privacy_status == 'public' %}bg-green-900 text-green-300
+                            {% elif upload.privacy_status == 'unlisted' %}bg-yellow-900 text-yellow-300
+                            {% else %}bg-gray-700 text-gray-300{% endif %}">
+                            {{ upload.privacy_status }}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-gray-400 text-sm">{{ upload.uploaded_at }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-gray-400">No uploads yet</p>
+    {% endif %}
+</div>
+{% endblock %}

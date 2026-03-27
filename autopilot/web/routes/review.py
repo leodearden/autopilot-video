@@ -1,14 +1,16 @@
-"""Review hub and narrative review routes."""
+"""Review hub, narrative review, and cluster review routes."""
 
 from __future__ import annotations
 
 import json
-from typing import Optional
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict
-from starlette.responses import Response
+from starlette.responses import FileResponse, Response
 
 from autopilot.db import CatalogDB
 
@@ -27,6 +29,9 @@ def _is_htmx(request: Request) -> bool:
 
 _REVIEW_LINKS: dict[str, str] = {
     "narrate": "/review/narratives",
+    "classify": "/review/clusters",
+    "render": "/review/render",
+    "upload": "/review/uploads",
 }
 
 
@@ -49,6 +54,30 @@ def review_hub(request: Request) -> HTMLResponse:
                     proposed = db.list_narratives(status="proposed")
                     summary["pending_count"] = len(proposed)
                     summary["pending_label"] = "proposed narratives"
+                elif stage == "classify":
+                    summary["pending_count"] = db.count_non_excluded_clusters()
+                    summary["pending_label"] = "activity clusters"
+                elif stage == "render":
+                    plans = db.list_edit_plans()
+                    pending_renders = [
+                        p for p in plans if not p.get("render_path")
+                    ]
+                    summary["pending_count"] = len(pending_renders)
+                    summary["pending_label"] = "pending renders"
+                elif stage == "upload":
+                    plans = db.list_edit_plans()
+                    rendered_ids = {
+                        p["narrative_id"]
+                        for p in plans
+                        if p.get("render_path")
+                    }
+                    uploaded_ids = {
+                        u["narrative_id"] for u in db.list_uploads()
+                    }
+                    summary["pending_count"] = len(
+                        rendered_ids - uploaded_ids,
+                    )
+                    summary["pending_label"] = "pending uploads"
                 waiting_gates.append(summary)
     finally:
         db.close()
@@ -221,6 +250,234 @@ def api_update_narrative(
     return JSONResponse(content=parsed)
 
 
+# ---------------------------------------------------------------------------
+# Cluster review helpers + routes
+# ---------------------------------------------------------------------------
+
+
+def _parse_ts(s: str) -> datetime:
+    """Parse an ISO timestamp, raising HTTP 422 with the offending value on failure."""
+    try:
+        return datetime.fromisoformat(s)
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid timestamp format: {s!r}",
+        )
+
+
+def _parse_cluster(row: dict[str, object]) -> dict[str, Any]:
+    """Enrich a cluster row with parsed clip_ids and clip_count."""
+    result = dict(row)
+    raw = result.pop("clip_ids_json", None)
+    if raw:
+        try:
+            clip_ids: list[str] = json.loads(str(raw))
+        except json.JSONDecodeError:
+            clip_ids = []
+    else:
+        clip_ids = []
+    result["clip_ids"] = clip_ids
+    result["clip_count"] = len(clip_ids)
+    return result
+
+
+@router.get("/review/clusters")
+def clusters_page(request: Request) -> HTMLResponse:
+    """Render the cluster review page with all clusters."""
+    db = _get_db(request)
+    try:
+        rows = db.get_activity_clusters()
+        clusters = [_parse_cluster(r) for r in rows]
+        classify_gate = db.get_gate("classify")
+    finally:
+        db.close()
+    gate_waiting = (
+        classify_gate is not None
+        and classify_gate.get("status") == "waiting"
+    )
+    non_excluded = [c for c in clusters if not c.get("excluded")]
+    show_approve_gate = gate_waiting and len(non_excluded) > 0
+    templates = request.app.state.templates
+    context = {
+        "page_title": "Cluster Review",
+        "clusters": clusters,
+        "show_approve_gate": show_approve_gate,
+    }
+    return templates.TemplateResponse(request, "review/clusters.html", context)
+
+
+@router.get("/api/clusters")
+def api_list_clusters(request: Request) -> list[dict[str, Any]]:
+    """Return all activity clusters as a JSON list with parsed clip_ids."""
+    db = _get_db(request)
+    try:
+        rows = db.get_activity_clusters()
+        return [_parse_cluster(r) for r in rows]
+    finally:
+        db.close()
+
+
+@router.get("/api/clusters/{cluster_id}")
+def api_get_cluster(request: Request, cluster_id: str) -> dict[str, Any]:
+    """Return a single cluster by ID with parsed clip_ids."""
+    db = _get_db(request)
+    try:
+        row = db.get_activity_cluster(cluster_id)
+    finally:
+        db.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+    return _parse_cluster(row)
+
+
+def _render_cluster_partial(
+    request: Request, cluster: dict[str, Any],
+) -> HTMLResponse:
+    """Render a single cluster card partial as HTML."""
+    templates = request.app.state.templates
+    template = templates.get_template("partials/cluster_card.html")
+    html = template.render(cluster=cluster)
+    return HTMLResponse(content=html)
+
+
+def _update_and_respond_cluster(
+    request: Request, db: CatalogDB, cluster_id: str,
+) -> Response:
+    """Fetch cluster, parse, and return HTMX partial or JSON response.
+
+    Shared post-update logic for relabel and exclude routes.
+    Raises 404 if the cluster doesn't exist.
+    """
+    updated = db.get_activity_cluster(cluster_id)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+    parsed = _parse_cluster(updated)
+    if _is_htmx(request):
+        return _render_cluster_partial(request, parsed)
+    return JSONResponse(content=parsed)
+
+
+class ClusterRelabel(BaseModel):
+    """Request body for relabelling a cluster."""
+
+    label: Optional[str] = None
+    description: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+@router.post("/api/clusters/{cluster_id}/relabel", response_model=None)
+def api_relabel_cluster(
+    request: Request, cluster_id: str, body: ClusterRelabel,
+) -> Response:
+    """Update label/description of a cluster."""
+    db = _get_db(request)
+    try:
+        updates = body.model_dump(exclude_unset=True)
+        if updates:
+            affected = db.update_activity_cluster(cluster_id, **updates)
+            if affected == 0:
+                raise HTTPException(status_code=404, detail="Cluster not found")
+            db.conn.commit()
+        return _update_and_respond_cluster(request, db, cluster_id)
+    finally:
+        db.close()
+
+
+@router.post("/api/clusters/{cluster_id}/exclude", response_model=None)
+def api_exclude_cluster(request: Request, cluster_id: str) -> Response:
+    """Mark a cluster as excluded."""
+    db = _get_db(request)
+    try:
+        affected = db.update_activity_cluster(cluster_id, excluded=1)
+        if affected == 0:
+            raise HTTPException(status_code=404, detail="Cluster not found")
+        db.conn.commit()
+        return _update_and_respond_cluster(request, db, cluster_id)
+    finally:
+        db.close()
+
+
+class MergeRequest(BaseModel):
+    """Request body for merging clusters."""
+
+    cluster_ids: list[str]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+@router.post("/api/clusters/merge")
+def api_merge_clusters(
+    request: Request, body: MergeRequest,
+) -> dict[str, Any]:
+    """Merge multiple clusters into the largest one by clip count."""
+    if len(body.cluster_ids) < 2:
+        raise HTTPException(
+            status_code=422, detail="At least 2 cluster_ids required",
+        )
+    db = _get_db(request)
+    try:
+        # Batch-load all clusters (eliminates N+1 per-cluster queries)
+        clusters_by_id = db.get_activity_clusters_by_ids(body.cluster_ids)
+        missing = set(body.cluster_ids) - set(clusters_by_id)
+        if missing:
+            first_missing = next(m for m in body.cluster_ids if m in missing)
+            raise HTTPException(
+                status_code=404,
+                detail=f"Cluster {first_missing} not found",
+            )
+        clusters: list[dict[str, object]] = [
+            clusters_by_id[cid] for cid in body.cluster_ids
+        ]
+
+        parsed_clusters = [_parse_cluster(c) for c in clusters]
+
+        # Find largest by clip count
+        largest = max(parsed_clusters, key=lambda c: c["clip_count"])
+        largest_id = largest["cluster_id"]
+
+        # Combine all clip_ids (deduplicated, preserving order)
+        all_clip_ids: list[str] = list(dict.fromkeys(
+            cid for pc in parsed_clusters for cid in pc["clip_ids"]
+        ))
+
+        # Compute time range (chronological comparison, not lexicographic)
+        time_starts = [str(c["time_start"]) for c in clusters if c.get("time_start")]
+        time_ends = [str(c["time_end"]) for c in clusters if c.get("time_end")]
+        min_start = min(time_starts, key=_parse_ts) if time_starts else None
+        max_end = max(time_ends, key=_parse_ts) if time_ends else None
+
+        # Update largest cluster with combined data
+        update_kwargs: dict[str, object] = {
+            "clip_ids_json": json.dumps(all_clip_ids),
+        }
+        if min_start is not None:
+            update_kwargs["time_start"] = min_start
+        if max_end is not None:
+            update_kwargs["time_end"] = max_end
+
+        # Wrap mutations in context manager for explicit transaction safety:
+        # __exit__ commits on success, rolls back on exception.
+        with db:
+            db.update_activity_cluster(largest_id, **update_kwargs)
+
+            # Batch-delete non-surviving clusters
+            non_surviving = [
+                pc["cluster_id"] for pc in parsed_clusters
+                if pc["cluster_id"] != largest_id
+            ]
+            db.batch_delete_activity_clusters(non_surviving)
+
+            merged_map = db.get_activity_clusters_by_ids([largest_id])
+        merged = merged_map.get(largest_id)
+        if merged is None:
+            raise HTTPException(status_code=500, detail="Merged cluster missing")
+    finally:
+        db.close()
+    return _parse_cluster(merged)
+
+
 @router.post("/api/narratives/bulk-approve")
 def api_bulk_approve(request: Request, body: BulkApproveRequest) -> dict[str, int]:
     """Approve multiple narratives at once, returning actual count of rows updated."""
@@ -231,3 +488,151 @@ def api_bulk_approve(request: Request, body: BulkApproveRequest) -> dict[str, in
     finally:
         db.close()
     return {"approved": affected}
+
+
+# ---------------------------------------------------------------------------
+# Render review helpers + routes
+# ---------------------------------------------------------------------------
+
+
+def _parse_render(edit_plan: dict[str, object]) -> dict[str, object]:
+    """Parse validation_json from an edit plan into a structured dict."""
+    result = dict(edit_plan)
+    raw = result.pop("validation_json", None)
+    result["validation"] = json.loads(str(raw)) if raw else None
+    return result
+
+
+@router.get("/api/renders/{narrative_id}")
+def api_get_render(
+    request: Request, narrative_id: str,
+) -> dict[str, object]:
+    """Return render data for a narrative with parsed validation."""
+    db = _get_db(request)
+    try:
+        edit_plan = db.get_edit_plan(narrative_id)
+        if edit_plan is None:
+            raise HTTPException(status_code=404, detail="Edit plan not found")
+        narrative = db.get_narrative(narrative_id)
+    finally:
+        db.close()
+    parsed = _parse_render(edit_plan)
+    parsed["narrative_title"] = (
+        narrative["title"] if narrative else None
+    )
+    return parsed
+
+
+@router.get("/api/renders/{narrative_id}/video")
+def api_stream_video(
+    request: Request, narrative_id: str,
+) -> FileResponse:
+    """Stream the rendered video file for a narrative.
+
+    Starlette's FileResponse handles Range headers natively for seeking.
+    """
+    db = _get_db(request)
+    try:
+        edit_plan = db.get_edit_plan(narrative_id)
+    finally:
+        db.close()
+    if edit_plan is None:
+        raise HTTPException(status_code=404, detail="Edit plan not found")
+    render_path = edit_plan.get("render_path")
+    if not render_path or not Path(str(render_path)).is_file():
+        raise HTTPException(status_code=404, detail="Render file not available")
+    return FileResponse(str(render_path), media_type="video/mp4")
+
+
+@router.get("/api/uploads")
+def api_list_uploads(request: Request) -> list[dict[str, object]]:
+    """Return all uploads as a JSON list with narrative titles."""
+    db = _get_db(request)
+    try:
+        return db.list_uploads()
+    finally:
+        db.close()
+
+
+@router.get("/review/render")
+def render_index_page(request: Request) -> HTMLResponse:
+    """List narratives with edit plans and links to individual review pages."""
+    db = _get_db(request)
+    try:
+        edit_plans = db.list_edit_plans()
+    finally:
+        db.close()
+    templates = request.app.state.templates
+    context = {
+        "page_title": "Render Review",
+        "edit_plans": edit_plans,
+    }
+    return templates.TemplateResponse(
+        request, "review/render_index.html", context,
+    )
+
+
+@router.get("/review/render/{narrative_id}")
+def render_review_page(
+    request: Request, narrative_id: str,
+) -> HTMLResponse:
+    """Render the render review page for a single narrative."""
+    db = _get_db(request)
+    try:
+        narrative = db.get_narrative(narrative_id)
+        if narrative is None:
+            raise HTTPException(status_code=404, detail="Narrative not found")
+        edit_plan = db.get_edit_plan(narrative_id)
+        if edit_plan is None:
+            raise HTTPException(
+                status_code=404, detail="Edit plan not found",
+            )
+        script = db.get_narrative_script(narrative_id)
+    finally:
+        db.close()
+
+    parsed = _parse_render(edit_plan)
+    # Parse script scenes
+    scenes: list[dict[str, object]] = []
+    if script and script.get("script_json"):
+        script_data = json.loads(str(script["script_json"]))
+        if isinstance(script_data, dict):
+            scenes = script_data.get("scenes", [])
+        elif isinstance(script_data, list):
+            scenes = script_data
+
+    # Check if render file exists
+    render_path = parsed.get("render_path")
+    has_render = bool(
+        render_path and Path(str(render_path)).is_file()
+    )
+
+    templates = request.app.state.templates
+    context = {
+        "page_title": f"Render Review: {narrative['title']}",
+        "narrative": narrative,
+        "edit_plan": parsed,
+        "has_render": has_render,
+        "scenes": scenes,
+    }
+    return templates.TemplateResponse(
+        request, "review/renders.html", context,
+    )
+
+
+@router.get("/review/uploads")
+def uploads_page(request: Request) -> HTMLResponse:
+    """Render the uploads status page listing all YouTube uploads."""
+    db = _get_db(request)
+    try:
+        uploads = db.list_uploads()
+    finally:
+        db.close()
+    templates = request.app.state.templates
+    context = {
+        "page_title": "Upload Status",
+        "uploads": uploads,
+    }
+    return templates.TemplateResponse(
+        request, "review/uploads.html", context,
+    )

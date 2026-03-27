@@ -134,7 +134,8 @@ class CatalogDB:
                 location_label TEXT,
                 gps_center_lat REAL,
                 gps_center_lon REAL,
-                clip_ids_json TEXT
+                clip_ids_json TEXT,
+                excluded INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS narratives (
@@ -263,6 +264,13 @@ class CatalogDB:
                 ON pipeline_events(created_at);
             """
         )
+        # Migrations for existing databases missing new columns
+        try:
+            self.conn.execute(
+                "ALTER TABLE activity_clusters ADD COLUMN excluded INTEGER DEFAULT 0"
+            )
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
     # -- media_files CRUD -------------------------------------------------------
 
@@ -687,27 +695,94 @@ class CatalogDB:
             ),
         )
 
+    def get_activity_cluster(self, cluster_id: str) -> dict[str, object] | None:
+        """Return a single activity cluster by ID, or None if not found."""
+        cur = self.conn.execute(
+            "SELECT * FROM activity_clusters WHERE cluster_id = ?",
+            (cluster_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
     def get_activity_clusters(self) -> list[dict[str, object]]:
         """List all activity clusters."""
         cur = self.conn.execute("SELECT * FROM activity_clusters")
         return [dict(row) for row in cur.fetchall()]
 
+    def get_activity_clusters_by_ids(
+        self, cluster_ids: list[str],
+    ) -> dict[str, dict[str, object]]:
+        """Return activity clusters for the given IDs as a dict keyed by cluster_id.
+
+        Non-existent IDs are silently omitted. Empty input returns {}.
+        """
+        if not cluster_ids:
+            return {}
+        placeholders = ",".join("?" for _ in cluster_ids)
+        cur = self.conn.execute(
+            f"SELECT * FROM activity_clusters WHERE cluster_id IN ({placeholders})",
+            cluster_ids,
+        )
+        return {row["cluster_id"]: dict(row) for row in cur.fetchall()}
+
+    def batch_delete_activity_clusters(self, cluster_ids: list[str]) -> int:
+        """Delete multiple activity clusters in one query.
+
+        Returns number of rows actually deleted. Empty input returns 0.
+        Non-existent IDs are silently skipped.
+        """
+        if not cluster_ids:
+            return 0
+        placeholders = ",".join("?" for _ in cluster_ids)
+        cur = self.conn.execute(
+            f"DELETE FROM activity_clusters WHERE cluster_id IN ({placeholders})",
+            cluster_ids,
+        )
+        return cur.rowcount
+
+    def count_non_excluded_clusters(self) -> int:
+        """Return the number of non-excluded activity clusters."""
+        cur = self.conn.execute(
+            "SELECT COUNT(*) FROM activity_clusters WHERE excluded = 0",
+        )
+        return cur.fetchone()[0]  # type: ignore[index]
+
     def clear_activity_clusters(self) -> None:
         """Delete all rows from activity_clusters table."""
         self.conn.execute("DELETE FROM activity_clusters")
 
-    def update_activity_cluster(self, cluster_id: str, **kwargs: object) -> None:
-        """Update fields of an activity cluster by keyword arguments."""
+    _CLUSTER_ALLOWED_COLUMNS: frozenset[str] = frozenset({
+        "label",
+        "description",
+        "time_start",
+        "time_end",
+        "location_label",
+        "gps_center_lat",
+        "gps_center_lon",
+        "clip_ids_json",
+        "excluded",
+    })
+
+    def update_activity_cluster(self, cluster_id: str, **kwargs: object) -> int:
+        """Update fields of an activity cluster by keyword arguments.
+
+        Returns number of rows affected (0 if not found or no kwargs).
+        """
         if not kwargs:
-            return
+            return 0
+        bad_keys = set(kwargs) - self._CLUSTER_ALLOWED_COLUMNS
+        if bad_keys:
+            msg = f"Disallowed column(s) for cluster update: {sorted(bad_keys)}"
+            raise ValueError(msg)
         set_clause = ", ".join(f"{k} = ?" for k in kwargs)
         values = list(kwargs.values())
         values.append(cluster_id)
-        self.conn.execute(
+        cur = self.conn.execute(
             f"UPDATE activity_clusters SET {set_clause} "  # noqa: S608
             "WHERE cluster_id = ?",
             values,
         )
+        return cur.rowcount
 
     # -- narratives CRUD --------------------------------------------------------
 
@@ -847,6 +922,15 @@ class CatalogDB:
         row = cur.fetchone()
         return dict(row) if row else None
 
+    def list_edit_plans(self) -> list[dict[str, object]]:
+        """List all edit plans with narrative title via LEFT JOIN."""
+        cur = self.conn.execute(
+            "SELECT e.*, n.title AS narrative_title "
+            "FROM edit_plans e "
+            "LEFT JOIN narratives n ON e.narrative_id = n.narrative_id",
+        )
+        return [dict(row) for row in cur.fetchall()]
+
     # -- narrative_scripts CRUD -------------------------------------------------
 
     def upsert_narrative_script(
@@ -935,6 +1019,16 @@ class CatalogDB:
                 privacy_status,
             ),
         )
+
+    def list_uploads(self) -> list[dict[str, object]]:
+        """List all uploads with narrative title via LEFT JOIN, newest first."""
+        cur = self.conn.execute(
+            "SELECT u.*, n.title AS narrative_title "
+            "FROM uploads u "
+            "LEFT JOIN narratives n ON u.narrative_id = n.narrative_id "
+            "ORDER BY u.uploaded_at DESC",
+        )
+        return [dict(row) for row in cur.fetchall()]
 
     def get_upload(self, narrative_id: str) -> dict[str, object] | None:
         """Get an upload by narrative_id, or None if not found."""
@@ -1312,7 +1406,10 @@ class CatalogDB:
             "VALUES (?, ?, ?, ?)",
             (event_type, stage, job_id, payload_json),
         )
-        return cast(int, cur.lastrowid)
+        rowid = cur.lastrowid
+        if rowid is None:
+            raise RuntimeError("insert_event: lastrowid is None after INSERT")
+        return rowid
 
     def get_events_since(self, event_id: int) -> list[dict[str, object]]:
         """Return events with event_id > *event_id*, ordered ascending."""
