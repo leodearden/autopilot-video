@@ -1942,11 +1942,11 @@
         "description": "Four test improvements in test_web_app.py:\n\n1. **Parametrize duplicate tests**: test_gate_waiting_handler_exists_with_try_catch_and_refresh, test_gate_approved_handler_..., test_gate_skipped_handler_..., and test_stage_error_handler_... are structurally identical. Collapse into one parametrized test.\n\n2. **Reuse _extract_listener_body**: TestSSEErrorHandling.test_sse_notification_listener_has_try_catch (lines 270-299) inlines the exact brace-counting logic that _extract_listener_body was created to replace. Refactor to use the helper.\n\n3. **Add message text assertions**: Gate handler tests only assert showToast is present but not what message is shown. Pin down: 'Pipeline paused at' for gate_waiting, 'Gate approved' for gate_approved, 'Gate skipped' for gate_skipped. Similarly for run_completed ('completed successfully') and run_failed ('Pipeline run failed').\n\n4. **Add stage guard assertion**: Assert `if (stage)` is present in each stage-level handler body to verify the null-guard.\n\nmemory_hints: search \"test_web_app SSE handlers\" for test context",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-27T12:15:46.636Z",
+        "updatedAt": "2026-03-27T12:15:47.166Z",
         "metadata": {
           "files": [
             "tests/test_web_app.py"
@@ -2072,13 +2072,13 @@
         "description": "Several test fragilities in TestSSEIntegration need fixing:\n\n1. Replace the fragile 400-char slice in test_app_js_has_debounced_refresh_function (line 472) with the brace-counting extraction already used in the adjacent test.\n2. Extract a shared `_extract_js_function(content, func_name)` helper using brace-counting, usable by both tests.\n3. Add a guard assertion `assert func_end > func_start` after the brace-counting loop in test_app_js_sse_handlers_use_debounced_refresh to prevent silent false-negative on extraction failure.\n4. Add a DEBOUNCE_MS value assertion (> 0) in test_app_js_has_debounce_timer_map so DEBOUNCE_MS=0 doesn't silently pass.\n5. Move `import re` from inside test_app_js_sse_handlers_use_debounced_refresh to module top-level.\n\nmemory_hints: search \"test_dashboard SSE debounce tests\" for current test structure",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [
           "110"
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-27T12:15:46.792Z",
+        "updatedAt": "2026-03-27T12:15:47.268Z",
         "metadata": {
           "files": [
             "tests/test_dashboard.py"
@@ -2141,7 +2141,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-27T12:15:47.108Z",
+      "lastModified": "2026-03-27T12:15:47.268Z",
       "taskCount": 120,
       "completedCount": 74,
       "tags": [
