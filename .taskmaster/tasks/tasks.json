@@ -1890,7 +1890,19 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:30:02.627Z"
+        "updatedAt": "2026-03-26T18:30:02.627Z",
+        "metadata": {
+          "files": [
+            "tests/conftest.py",
+            "tests/test_web_app.py",
+            "tests/test_settings.py",
+            "tests/test_gates.py",
+            "tests/test_review.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 110,
@@ -1914,7 +1926,15 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:27:55.286Z"
+        "updatedAt": "2026-03-26T18:27:55.286Z",
+        "metadata": {
+          "files": [
+            "autopilot/web/static/app.js"
+          ],
+          "modules": [
+            "autopilot/web/static"
+          ]
+        }
       },
       {
         "id": 112,
