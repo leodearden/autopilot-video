@@ -1786,7 +1786,21 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:11:02.967Z"
+        "updatedAt": "2026-03-26T18:11:02.967Z",
+        "metadata": {
+          "files": [
+            "autopilot/web/routes/sse.py",
+            "autopilot/web/static/app.js",
+            "autopilot/web/templates/base.html",
+            "tests/test_sse.py"
+          ],
+          "modules": [
+            "autopilot/web/routes",
+            "autopilot/web/static",
+            "autopilot/web/templates",
+            "tests"
+          ]
+        }
       },
       {
         "id": 104,
@@ -1810,7 +1824,15 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:31:26.073Z"
+        "updatedAt": "2026-03-26T18:31:26.073Z",
+        "metadata": {
+          "files": [
+            "tests/test_sse.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 106,
