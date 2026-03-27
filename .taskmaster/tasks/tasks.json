@@ -2078,7 +2078,15 @@
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:35:54.754Z"
+        "updatedAt": "2026-03-26T18:35:54.754Z",
+        "metadata": {
+          "files": [
+            "tests/test_dashboard.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 119,
@@ -2092,7 +2100,15 @@
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:38:40.638Z"
+        "updatedAt": "2026-03-26T18:38:40.638Z",
+        "metadata": {
+          "files": [
+            "autopilot/web/static/app.js"
+          ],
+          "modules": [
+            "autopilot/web/static"
+          ]
+        }
       },
       {
         "id": 120,
