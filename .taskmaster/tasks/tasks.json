@@ -1703,7 +1703,29 @@
           "70"
         ],
         "priority": "high",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/web/routes/review.py",
+            "autopilot/web/routes/dashboard.py",
+            "autopilot/web/routes/sse.py",
+            "autopilot/web/static/app.js",
+            "autopilot/web/templates/base.html",
+            "autopilot/web/templates/review/narratives.html",
+            "autopilot/web/templates/review/renders.html",
+            "autopilot/web/templates/review/clusters.html",
+            "autopilot/web/templates/review/hub.html",
+            "tests/test_web_e2e.py",
+            "tests/test_review.py"
+          ],
+          "modules": [
+            "autopilot/web/routes",
+            "autopilot/web/static",
+            "autopilot/web/templates",
+            "autopilot/web/templates/review",
+            "tests"
+          ]
+        }
       },
       {
         "id": 100,
