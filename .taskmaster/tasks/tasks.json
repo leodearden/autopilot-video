@@ -1133,7 +1133,19 @@
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:22:05.042Z"
+        "updatedAt": "2026-03-26T18:22:05.042Z",
+        "metadata": {
+          "files": [
+            "autopilot/db.py",
+            "autopilot/web/routes/review.py",
+            "tests/test_db.py"
+          ],
+          "modules": [
+            "autopilot",
+            "autopilot/web/routes",
+            "tests"
+          ]
+        }
       },
       {
         "id": 59,
