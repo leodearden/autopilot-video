@@ -2121,7 +2121,22 @@
           50
         ],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/web/routes/review.py",
+            "autopilot/web/templates/review/renders.html",
+            "autopilot/db.py",
+            "tests/test_render_review.py",
+            "tests/test_review.py"
+          ],
+          "modules": [
+            "autopilot/web/routes",
+            "autopilot/web/templates/review",
+            "autopilot",
+            "tests"
+          ]
+        }
       }
     ],
     "metadata": {
