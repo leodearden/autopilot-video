@@ -2052,7 +2052,19 @@
         ],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:35:05.355Z"
+        "updatedAt": "2026-03-26T18:35:05.355Z",
+        "metadata": {
+          "files": [
+            "autopilot/analyze/embeddings.py",
+            "autopilot/analyze/asr.py",
+            "tests/test_embeddings.py",
+            "tests/test_asr.py"
+          ],
+          "modules": [
+            "autopilot/analyze",
+            "tests"
+          ]
+        }
       },
       {
         "id": 118,
