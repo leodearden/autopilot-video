@@ -1361,7 +1361,15 @@
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:30:38.971Z"
+        "updatedAt": "2026-03-26T18:30:38.971Z",
+        "metadata": {
+          "files": [
+            "autopilot/web/routes/review.py"
+          ],
+          "modules": [
+            "autopilot/web/routes"
+          ]
+        }
       },
       {
         "id": 75,
@@ -1375,7 +1383,15 @@
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:03:57.055Z"
+        "updatedAt": "2026-03-26T18:03:57.055Z",
+        "metadata": {
+          "files": [
+            "autopilot/web/routes/review.py"
+          ],
+          "modules": [
+            "autopilot/web/routes"
+          ]
+        }
       },
       {
         "id": 76,
