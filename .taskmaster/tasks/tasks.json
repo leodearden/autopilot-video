@@ -1974,11 +1974,11 @@
         "description": "Follow-up improvements to the SSE event coverage tests (task 113 review suggestions).\n\n1. **Unify matching pattern** — `test_all_dashboard_event_types_handled` uses plain substring `addEventListener('{event_type}'` (matches any caller: document, source, etc.), while `test_no_orphaned_sse_listeners` filters to `source.addEventListener(`. This asymmetry means a DOM-level `document.addEventListener('stage_started', ...)` would satisfy the forward test but never appear in the reverse test. Unify both to use `source.addEventListener` as the match pattern.\n\n2. **Assert legacy allowlist entries exist** — `_LEGACY_SSE_LISTENERS` is whitelisted unconditionally but nothing verifies its entries actually appear in app.js. If `notification` is removed, the allowlist silently becomes stale. Add: `assert _LEGACY_SSE_LISTENERS <= sse_listeners`.\n\n3. **Assert legacy/valid sets don't overlap** — No assertion prevents `notification` from being promoted into `VALID_EVENT_TYPES` while remaining in the legacy set. Add: `assert not (_LEGACY_SSE_LISTENERS & set(VALID_EVENT_TYPES))`.\n\n4. **Use frozenset** — Change `_LEGACY_SSE_LISTENERS` from `set` to `frozenset` to prevent accidental mutation across test instances.\n\n5. **Move `import re` to module level** — Minor cleanup while touching this code.\n\nmemory_hints: search \"VALID_EVENT_TYPES SSE\" for event type definitions; search \"SSE event coverage test\" for test context",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:32:39.969Z",
+        "updatedAt": "2026-03-27T12:15:46.663Z",
         "metadata": {
           "files": [
             "tests/test_sse.py"
@@ -1994,13 +1994,13 @@
         "description": "The include_embedding parameter on CatalogDB.get_faces_for_media defaults to True for backward compat, but every caller now explicitly passes False. This creates an opt-out footgun where any future caller that forgets the kwarg silently loads multi-KB BLOBs. Flip the default to False so callers must opt-in for embedding data.",
         "details": "1. Audit all callers of get_faces_for_media across the codebase to confirm none rely on the default=True.\n2. Change `include_embedding: bool = True` to `include_embedding: bool = False` in db.py.\n3. Ensure cluster_faces() and any other embedding-consuming callers explicitly pass `include_embedding=True`.\n4. Update get_face_clusters_by_ids similarly if it has the same default.\n5. Run full test suite to verify.\n\nmemory_hints: search \"get_faces_for_media include_embedding callers\"; entities: get_faces_for_media, CatalogDB",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [
           "107"
         ],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:35:05.196Z",
+        "updatedAt": "2026-03-27T12:15:46.691Z",
         "metadata": {
           "files": [
             "autopilot/db.py",
@@ -2141,7 +2141,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-03-27T12:15:46.636Z",
+      "lastModified": "2026-03-27T12:15:46.691Z",
       "taskCount": 120,
       "completedCount": 74,
       "tags": [
