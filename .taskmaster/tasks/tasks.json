@@ -1870,7 +1870,15 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:24:40.417Z"
+        "updatedAt": "2026-03-26T18:24:40.417Z",
+        "metadata": {
+          "files": [
+            "tests/test_settings.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 109,
