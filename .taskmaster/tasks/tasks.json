@@ -1877,7 +1877,21 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:12:31.928Z"
+        "updatedAt": "2026-03-26T18:12:31.928Z",
+        "metadata": {
+          "memory_hints": {
+            "entities": [
+              "setupDashboardSSE",
+              "connectSSE"
+            ],
+            "queries": [
+              "Playwright FastAPI test setup test DB seed data",
+              "SSE dashboard browser test stage card refresh",
+              "HTMX swap test narrative card gate interaction browser",
+              "app.js connectSSE showToast SSE reconnection Last-Event-ID"
+            ]
+          }
+        }
       },
       {
         "id": 105,
