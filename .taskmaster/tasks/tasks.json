@@ -1960,7 +1960,18 @@
           ],
           "modules": [
             "autopilot/web/static"
-          ]
+          ],
+          "memory_hints": {
+            "entities": [
+              "setupDashboardSSE",
+              "app_js"
+            ],
+            "queries": [
+              "app.js setupDashboardSSE gate_waiting gate_approved gate_skipped handlers",
+              "run_completed run_failed SSE handler try-catch missing",
+              "SSE handler factory pattern stage handler deduplication app.js"
+            ]
+          }
         }
       },
       {
