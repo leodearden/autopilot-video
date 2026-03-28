@@ -1852,7 +1852,19 @@
             "autopilot/web/static",
             "autopilot/web/templates",
             "tests"
-          ]
+          ],
+          "memory_hints": {
+            "entities": [
+              "VALID_EVENT_TYPES",
+              "setupDashboardSSE"
+            ],
+            "queries": [
+              "sse.py VALID_EVENT_TYPES notification event type missing",
+              "notification bell badge base.html hidden class",
+              "orchestrator emit notification events gate_waiting stage_error run_completed",
+              "app.js notification event listener existing"
+            ]
+          }
         }
       },
       {
