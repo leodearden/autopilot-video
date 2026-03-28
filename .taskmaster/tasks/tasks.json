@@ -2241,6 +2241,17 @@
             ]
           }
         }
+      },
+      {
+        "id": 121,
+        "title": "Delete 19 confirmed zombie edges from FalkorDB via direct Cypher",
+        "description": "19 confirmed zombie Graphiti edges exist in the autopilot_video FalkorDB store that cannot be deleted via the MCP delete_memory API (they appear as nodes in FalkorDB but are invisible to the API). A human must execute direct Cypher DELETE statements against FalkorDB to remove them.",
+        "details": "## Background\nGraphiti edges can exist as nodes in FalkorDB but be invisible to the MCP delete_memory API (confirmed edge 4cbdd974). 19 such zombie edges were confirmed during reconciliation runs in 2026-03-23 and remain undeleted (Graphiti edge bac5912f, no invalidation date).\n\n## Key zombie edge UUIDs to delete\n- be6bf4de (referenced Stage 1 report)\n- 70b97ced (referenced Stage 1 report)\n- fd84a19a-7a00-40a8-b479-9e50ba8e27ac (confirmed zombie, Graphiti edge 12444ac7)\n- Additional UUIDs: query FalkorDB for edges with invalid_at set but present as nodes\n\n## Cypher approach\nConnect to FalkorDB (host: localhost, default port 6379 unless overridden), select the autopilot_video graph, then:\n```cypher\nMATCH (e:Entity {uuid: 'be6bf4de-...'}) DELETE e\n```\nRun for each confirmed zombie UUID. Alternatively use batch:\n```cypher\nMATCH (e:Entity) WHERE e.uuid IN ['be6bf4de-...', '70b97ced-...', ...] DELETE e\n```\n\n## Verification\nAfter deletion, run a reconciliation cycle to confirm dead count drops from current baseline. Check via get_queue_stats and store_status.\n\n## Memory hints\n- search: \"zombie edge FalkorDB autopilot_video confirmed UUID\"\n- entity: FalkorDB, zombie_edge\n- search: \"Cypher DELETE zombie Graphiti edge uuid\"",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -2252,7 +2263,8 @@
         "master"
       ],
       "created": "2026-03-28T07:55:40.473Z",
-      "description": "Tasks for master context"
+      "description": "Tasks for master context",
+      "updated": "2026-03-28T07:56:46.525Z"
     }
   }
 }
