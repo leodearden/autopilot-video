@@ -946,7 +946,22 @@
             "autopilot/web/templates/review",
             "autopilot/web/static",
             "tests"
-          ]
+          ],
+          "memory_hints": {
+            "entities": [
+              "edit_plans",
+              "edl_json",
+              "validation_json",
+              "otio_path"
+            ],
+            "queries": [
+              "edit_plans EDL JSON schema clips tracks",
+              "OTIO export path otio_path",
+              "SVG timeline visualization EDL clips server-rendered",
+              "validation_json format EDL validation report",
+              "EDL regenerate gate approve endpoint"
+            ]
+          }
         },
         "updatedAt": "2026-03-27T11:41:35.365Z"
       },
