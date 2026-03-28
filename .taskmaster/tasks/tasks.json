@@ -2252,6 +2252,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 122,
+        "title": "Investigate and resolve 3 stuck dead letters in durable write queue",
+        "description": "As of reconciliation run 1ce54eb3 (2026-03-28), the durable write queue shows 3 dead-letter entries that cannot be auto-replayed (replay_dead_letters returned items_reset=0). These appeared between the early-morning Stage 1 run (which showed 0 dead, 294 completed) and Stage 2 (407 completed, 3 dead). Manual investigation is required to determine root cause and whether they represent a recurrence of the prior write-path defect.",
+        "details": "## Background\n- Previous run 85968a7f (2026-03-28 morning): queue was healthy — 0 dead, 294 completed\n- Current run 1ce54eb3 (2026-03-28): 3 dead, 407 completed (111 new completions between runs)\n- replay_dead_letters(project_id=\"autopilot_video\") returned items_reset=0 — dead letters cannot be auto-reset\n\n## Investigation steps\n1. Access the durable write queue backing store (likely SQLite/Postgres) to inspect the 3 dead-letter records\n2. Identify: what write operation failed, what error message, how many retry attempts exhausted\n3. Determine if all 3 failures share a common pattern (same store? same category? same endpoint?)\n4. If a Qdrant write-path failure: check Qdrant service health (prior DLQ crisis was Qdrant-related)\n5. If a Graphiti write-path failure: check FalkorDB connectivity and zombie-edge intersection\n6. Manually resolve or discard the dead letters after root cause is confirmed\n\n## Memory hints\n- search: \"durable write queue dead letter write path failure\"\n- search: \"Qdrant write path failure autopilot_video DLQ\"\n- entity: DurableWriteQueue",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -2264,7 +2275,7 @@
       ],
       "created": "2026-03-28T07:55:40.473Z",
       "description": "Tasks for master context",
-      "updated": "2026-03-28T07:56:46.525Z"
+      "updated": "2026-03-28T14:22:42.464Z"
     }
   }
 }
