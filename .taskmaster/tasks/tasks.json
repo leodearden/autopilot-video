@@ -1874,7 +1874,9 @@
         "details": "## Scope\nAdd Playwright-based browser tests covering the critical JS integration paths:\n\n1. **Dashboard SSE updates** — Insert a pipeline_event row, verify the stage card refreshes in the browser without page reload\n2. **Gate interaction** — Set a gate to waiting, verify the dashboard shows the waiting state, click approve, verify it updates\n3. **Toast notifications** — Trigger an event that should produce a toast, verify it appears and auto-dismisses\n4. **SSE reconnection** — Disconnect and reconnect SSE, verify events resume from Last-Event-ID\n5. **Media filtering** — Type in search box, verify HTMX partial swap updates the table without page reload\n6. **Narrative review** — Approve/reject a narrative, verify card updates via HTMX swap\n\n## Setup\n- Add `playwright` to dev dependencies (or as a separate test extra)\n- Create `tests/e2e/` directory with Playwright config\n- Tests should spin up the FastAPI app with a test DB, seed data, then run browser assertions\n- Keep scope tight — test the JS wiring, not the Python logic (that's already covered)\n\n## Memory hints\n- app.js: connectSSE(), setupDashboardSSE(), showToast()\n- Key HTMX patterns: stage card outerHTML swap, media row innerHTML swap, narrative card outerHTML swap",
         "testStrategy": "",
         "status": "blocked",
-        "dependencies": [],
+        "dependencies": [
+          "99"
+        ],
         "priority": "medium",
         "subtasks": [],
         "updatedAt": "2026-03-26T18:12:31.928Z",
