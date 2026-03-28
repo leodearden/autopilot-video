@@ -1751,7 +1751,21 @@
             "autopilot/web/templates",
             "autopilot/web/templates/review",
             "tests"
-          ]
+          ],
+          "memory_hints": {
+            "entities": [
+              "PipelineOrchestrator",
+              "CatalogDB",
+              "pipeline_jobs",
+              "pipeline_events"
+            ],
+            "queries": [
+              "pipeline detail page routes templates deleted regression",
+              "review page templates clusters render uploads missing",
+              "notification bell badge hidden JS never shows it",
+              "git history original pipeline review implementations tasks 42 47-50 51"
+            ]
+          }
         }
       },
       {
