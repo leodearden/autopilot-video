@@ -2225,7 +2225,19 @@
             "autopilot/web/templates/review",
             "autopilot",
             "tests"
-          ]
+          ],
+          "memory_hints": {
+            "entities": [
+              "render_review_page",
+              "edit_plans"
+            ],
+            "queries": [
+              "render review page approve reject skip download actions",
+              "edit_plans render_path rejection status notes field",
+              "renders.html HTMX action buttons current implementation",
+              "render review reject API endpoint notes textarea"
+            ]
+          }
         }
       }
     ],
