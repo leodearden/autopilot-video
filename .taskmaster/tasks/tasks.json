@@ -2262,7 +2262,19 @@
         "status": "pending",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "memory_hints": {
+            "entities": [
+              "DurableWriteQueue"
+            ],
+            "queries": [
+              "durable write queue dead letter write path failure autopilot_video",
+              "Qdrant write path failure DLQ autopilot_video",
+              "replay_dead_letters items_reset stuck dead letters"
+            ]
+          }
+        }
       }
     ],
     "metadata": {
