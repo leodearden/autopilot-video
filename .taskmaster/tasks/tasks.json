@@ -1790,7 +1790,19 @@
             "autopilot/web/routes",
             "autopilot/web/templates/partials",
             "tests"
-          ]
+          ],
+          "memory_hints": {
+            "entities": [
+              "narrative_card",
+              "review_py"
+            ],
+            "queries": [
+              "HTMX _is_htmx branch narrative card inline edit",
+              "narrative GET API JSON vs HTMX partial",
+              "narrative PUT update endpoint HTMX support existing",
+              "partials narrative_card hx-get hx-swap outerHTML pattern"
+            ]
+          }
         }
       },
       {
