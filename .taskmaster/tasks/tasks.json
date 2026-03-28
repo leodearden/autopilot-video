@@ -905,9 +905,16 @@
             "tests"
           ],
           "memory_hints": {
-            "entities": [],
+            "entities": [
+              "narrative_scripts",
+              "script_json",
+              "generate_script"
+            ],
             "queries": [
-              "resolution for: Script review page"
+              "narrative_scripts schema script_json structure",
+              "generate_script implementation LLM",
+              "script review route implementation inline edit HTMX",
+              "PUT api scripts narrative_id update endpoint"
             ]
           }
         },
