@@ -1948,11 +1948,11 @@
         "description": "Multiple reviewers flagged quality issues in tests/test_settings.py after task 101.\n\n## Issues to fix\n\n1. **Redundant `!= 404` assertion** (lines 83-84): `assert response.status_code != 404` is dead code after `assert response.status_code == 200`. Remove it.\n\n2. **Duplicate test**: `TestSettingsNavLink.test_nav_settings_link_not_404` tests the exact same thing as `TestSettingsPage.test_settings_page_returns_200` (both GET /settings → assert 200). Remove the duplicate, keep only `test_nav_contains_settings_link` in TestSettingsNavLink.\n\n3. **Redundant \"Settings\" assertion** (line 39): `assert \"Settings\" in response.text` is subsumed by `assert \"Settings - Autopilot Video\" in response.text`. Remove the weaker check.\n\n4. **Weak control assertions** (lines 66-69, 71-74): `test_notification_toggle_control` only checks label text \"Browser Notifications\" — should verify `id=\"browser-notifications\"` and `disabled`. Same for `test_theme_placeholder` — should verify `id=\"theme-select\"` and `disabled`.\n\n5. **Disabled state untested** (lines 56-74): The template marks both controls as `disabled` (coming soon UX). No test verifies this. Add assertions for the disabled attribute on both controls.\n\n## Memory hints\n- search: \"test assertion conventions HTML controls disabled\" for related norms",
         "details": "",
         "testStrategy": "",
-        "status": "blocked",
+        "status": "cancelled",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-02T22:22:06.767Z",
+        "updatedAt": "2026-04-02T22:23:34.053Z",
         "metadata": {
           "files": [
             "tests/test_settings.py"
@@ -2327,7 +2327,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-02T22:23:30.231Z",
+      "lastModified": "2026-04-02T22:23:34.053Z",
       "taskCount": 125,
       "completedCount": 77,
       "tags": [
