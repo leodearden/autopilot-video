@@ -2066,11 +2066,11 @@
         "description": "Follow-up improvements to the SSE event coverage tests (task 113 review suggestions).\n\n1. **Unify matching pattern** — `test_all_dashboard_event_types_handled` uses plain substring `addEventListener('{event_type}'` (matches any caller: document, source, etc.), while `test_no_orphaned_sse_listeners` filters to `source.addEventListener(`. This asymmetry means a DOM-level `document.addEventListener('stage_started', ...)` would satisfy the forward test but never appear in the reverse test. Unify both to use `source.addEventListener` as the match pattern.\n\n2. **Assert legacy allowlist entries exist** — `_LEGACY_SSE_LISTENERS` is whitelisted unconditionally but nothing verifies its entries actually appear in app.js. If `notification` is removed, the allowlist silently becomes stale. Add: `assert _LEGACY_SSE_LISTENERS <= sse_listeners`.\n\n3. **Assert legacy/valid sets don't overlap** — No assertion prevents `notification` from being promoted into `VALID_EVENT_TYPES` while remaining in the legacy set. Add: `assert not (_LEGACY_SSE_LISTENERS & set(VALID_EVENT_TYPES))`.\n\n4. **Use frozenset** — Change `_LEGACY_SSE_LISTENERS` from `set` to `frozenset` to prevent accidental mutation across test instances.\n\n5. **Move `import re` to module level** — Minor cleanup while touching this code.\n\nmemory_hints: search \"VALID_EVENT_TYPES SSE\" for event type definitions; search \"SSE event coverage test\" for test context",
         "details": "",
         "testStrategy": "",
-        "status": "blocked",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-02T22:27:24.991Z",
+        "updatedAt": "2026-04-02T22:29:12.470Z",
         "metadata": {
           "files": [
             "tests/test_sse.py"
@@ -2348,7 +2348,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-02T22:29:10.376Z",
+      "lastModified": "2026-04-02T22:29:12.470Z",
       "taskCount": 127,
       "completedCount": 88,
       "tags": [
