@@ -1753,17 +1753,9 @@
             "tests"
           ],
           "memory_hints": {
-            "entities": [
-              "PipelineOrchestrator",
-              "CatalogDB",
-              "pipeline_jobs",
-              "pipeline_events"
-            ],
+            "entities": [],
             "queries": [
-              "pipeline detail page routes templates deleted regression",
-              "review page templates clusters render uploads missing",
-              "notification bell badge hidden JS never shows it",
-              "git history original pipeline review implementations tasks 42 47-50 51"
+              "resolution for: Restore missing web console features: pipeline detail, review pages, notifications"
             ]
           }
         },
@@ -2313,11 +2305,11 @@
         "description": "Add DB error propagation tests and reduce test boilerplate across idempotency tests in the analyze layer.",
         "details": "1. In tests/test_asr.py and tests/test_embeddings.py, add tests that patch `catalog_db.has_transcript` / `catalog_db.has_embeddings` to raise `sqlite3.OperationalError` and assert the exception propagates unchanged out of `transcribe_media` / `compute_embeddings`. This locks in the contract that DB errors are not swallowed at the idempotency boundary.\n\n2. Once idempotency tests exist for all five analyze modules (asr, embeddings, scenes, objects, audio_events), extract the repeated `patch.object(..., wraps=...)` spy-and-assert structure into a shared helper or `@pytest.mark.parametrize` to avoid five near-identical test bodies.\n\nNote: Part 2 depends on the \"Migrate remaining analyze-layer idempotency guards\" task being completed first.\n\nmemory_hints: search \"idempotency test spy pattern has_* error propagation\"; entities: TestIdempotency",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-02T22:23:16.326Z"
+        "updatedAt": "2026-04-02T22:28:06.006Z"
       },
       {
         "id": "125",
@@ -2334,9 +2326,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-02T22:27:48.168Z",
+      "lastModified": "2026-04-02T22:28:06.006Z",
       "taskCount": 125,
-      "completedCount": 87,
+      "completedCount": 88,
       "tags": [
         "master"
       ]
