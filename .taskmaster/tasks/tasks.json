@@ -2292,12 +2292,13 @@
         "description": "Three analyze modules still use fetch-then-check for idempotency instead of the efficient has_*() existence methods. Fix all three to match the pattern established in asr.py and embeddings.py.",
         "details": "1. autopilot/analyze/scenes.py:179-180 — replace `existing = db.get_boundaries(media_id)` / `if existing:` with `if db.has_boundaries(media_id):`\n2. autopilot/analyze/objects.py:177-178 — replace `existing = db.get_detections_for_frame(media_id, 0)` / `if existing is not None:` with `if db.has_detections(media_id):` (also fixes semantic fragility: frame-0 proxy is wrong when frame 0 has no detections)\n3. autopilot/analyze/audio_events.py:95-96 — replace `existing = db.get_audio_events_for_range(media_id, 0.0, 0.0)` / `if existing:` with `if db.has_audio_events(media_id):`\n\nAll target has_*() methods are confirmed in autopilot/db.py (~lines 1089, 1097, 1121). Add parallel idempotency tests in test_objects.py, test_scenes.py, test_audio_events.py following the spy pattern in test_faces.py:TestIdempotency.\n\nmemory_hints: search \"has_boundaries has_detections has_audio_events idempotency pattern\"; entities: CatalogDB, has_boundaries, has_detections, has_audio_events",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [
           "117"
         ],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-02T22:23:30.230Z"
       },
       {
         "id": "124",
@@ -2326,7 +2327,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-02T22:23:30.112Z",
+      "lastModified": "2026-04-02T22:23:30.231Z",
       "taskCount": 125,
       "completedCount": 77,
       "tags": [
