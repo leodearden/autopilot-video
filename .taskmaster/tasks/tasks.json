@@ -2319,18 +2319,18 @@
         "description": "Add docstring notes to analyze-layer functions clarifying that the has_*() idempotency check is a best-effort optimisation, not a mutual-exclusion guarantee.",
         "details": "Add docstring notes to `transcribe_media` in autopilot/analyze/asr.py (around line 89) and `compute_embeddings` in autopilot/analyze/embeddings.py (around line 86) clarifying:\n\n- The `has_*()` idempotency check is a best-effort optimisation, not a mutual-exclusion guarantee.\n- Two workers can both pass the guard for the same media_id, run expensive computation redundantly, and both write (last writer wins due to upsert semantics).\n- If hard exclusion is needed, the check-and-dispatch must be wrapped in a `BEGIN IMMEDIATE` transaction or an advisory lock.\n- The codebase uses SQLite WAL mode with `check_same_thread=False`, confirming concurrent access is expected.\n\nApply the same docstring note to scenes.py, objects.py, and audio_events.py once those are migrated.\n\nmemory_hints: search \"TOCTOU idempotency SQLite WAL concurrent\"; entities: CatalogDB, transcribe_media, compute_embeddings",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-02T22:23:16.397Z"
+        "updatedAt": "2026-04-02T22:27:13.667Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-02T22:25:56.475Z",
+      "lastModified": "2026-04-02T22:27:13.667Z",
       "taskCount": 125,
-      "completedCount": 80,
+      "completedCount": 81,
       "tags": [
         "master"
       ]
