@@ -2329,10 +2329,11 @@
         "description": "Consolidate duplicated SSE listener extraction logic in TestDashboardSSEEventCoverage and related test infrastructure.\n\n1. **Compile regex once** — Extract `r\"source\\.addEventListener\\('([^']+)'\"` to a class-level compiled constant `_SSE_LISTENER_RE`.\n2. **Create shared helper** — Add `_get_js_sse_listeners() -> set[str]` classmethod that calls `_read_app_js()` + regex extraction. Replace duplicate 2-line patterns in `test_no_orphaned_sse_listeners` and `test_legacy_listeners_exist_in_app_js`.\n3. **Cache `_read_app_js()`** — Add `@functools.cache` decorator to avoid redundant disk reads (called 9+ times per test suite run).\n4. **Consistent frozenset usage** — Change `_JOB_LEVEL_EVENTS` from `set` to `frozenset[str]` to match `_LEGACY_SSE_LISTENERS`.\n5. **Update `_extract_listener_body` prefix** — Change marker from `addEventListener('{event_type}'` to `source.addEventListener('{event_type}'` for consistency with the `source.addEventListener` pattern used throughout `TestDashboardSSEEventCoverage`.\n\nmemory_hints: search \"VALID_EVENT_TYPES SSE\" for event type definitions; search \"SSE event coverage test\" for test context",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-02T22:29:12.542Z"
       },
       {
         "id": "127",
@@ -2348,7 +2349,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-02T22:29:12.470Z",
+      "lastModified": "2026-04-02T22:29:12.542Z",
       "taskCount": 127,
       "completedCount": 88,
       "tags": [
