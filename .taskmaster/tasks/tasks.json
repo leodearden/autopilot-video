@@ -1347,7 +1347,13 @@
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-02T22:27:35.824Z"
+        "updatedAt": "2026-04-02T22:27:35.824Z",
+        "metadata": {
+          "modules": [
+            "autopilot/web/routes/review.py",
+            "tests/test_cluster_review.py"
+          ]
+        }
       },
       {
         "id": 72,
