@@ -1549,11 +1549,11 @@
         "description": "After task 82's refactoring, test_stage_cards_show_progress now tests only the /api/stages JSON endpoint — duplicating the adjacent test_api_stages_returns_9_objects. The original intent (HTML dashboard card rendering of progress) is now untested.",
         "details": "The original test verified that the HTML dashboard rendered progress text (e.g. \"5/7\"). Task 82 replaced the brittle HTML parsing with a JSON endpoint assertion, which is more robust but leaves the HTML rendering path untested and duplicates the adjacent test.\n\nOptions:\n1. Add a targeted HTML assertion alongside the JSON check: `assert \"5\" in dashboard_client.get(\"/dashboard\").text` or similar.\n2. Remove the JSON assertions from this test (they're covered by the adjacent test) and replace with a focused HTML check.\n3. Document that HTML visual rendering is explicitly out of scope for E2E tests.\n\nmemory_hints: search \"test_stage_cards_show_progress HTML dashboard rendering\" ; entities: test_web_e2e.py, test_api_stages_returns_9_objects",
         "testStrategy": "",
-        "status": "cancelled",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:15:05.892Z"
+        "updatedAt": "2026-04-02T22:27:36.133Z"
       },
       {
         "id": "86",
@@ -2334,7 +2334,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-02T22:27:36.086Z",
+      "lastModified": "2026-04-02T22:27:36.134Z",
       "taskCount": 125,
       "completedCount": 87,
       "tags": [
