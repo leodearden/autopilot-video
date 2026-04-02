@@ -1689,11 +1689,11 @@
         "description": "The equal-size merge tie-breaking test (test_merge_equal_size_clusters_first_in_request_wins) has an ambiguity: c-1 < c-2 alphabetically, so the test cannot distinguish request-order from alphabetical-order tie-breaking. Also, the tie-breaking contract (CPython max() first-element-wins) is only documented in the test docstring, not in production code.\n\nChanges needed:\n1. In review.py at the `max(parsed_clusters, key=lambda c: c[\"clip_count\"])` call (~line 420), add an inline comment: \"# Tie-break: max() returns the first element with the highest key value, so request order is deterministic.\"\n2. Add a second assertion or test variant with reversed cluster order (cluster_ids=['c-2','c-1']) asserting c-2 survives, proving the mechanism is request-order not ID-based.\n3. Consider using exact order assertion instead of sorted() on clip_ids (line 1026) to also verify survivor's clips come first.\n4. Consider moving behavioral tie-breaking tests to TestApiMergeClusters (the broader behavioral class) since the tie-breaking contract is a business-logic concern, not a batch-fetch concern.\n\nmemory_hints: search \"merge clusters tie-breaking request order\", entity \"api_merge_clusters\", entity \"TestApiMergeClustersUseBatchFetch\"",
         "details": "",
         "testStrategy": "",
-        "status": "cancelled",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:15:05.920Z"
+        "updatedAt": "2026-04-02T22:27:36.317Z"
       },
       {
         "id": "97",
@@ -2334,7 +2334,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-02T22:27:36.272Z",
+      "lastModified": "2026-04-02T22:27:36.318Z",
       "taskCount": 125,
       "completedCount": 87,
       "tags": [
