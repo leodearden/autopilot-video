@@ -1589,13 +1589,13 @@
         "description": "Three related gaps:\n\n1. **Validation**: `api_merge_clusters` (review.py:398-401) does not reject duplicate cluster_ids. `[\"c-1\", \"c-1\"]` passes the `len < 2` guard and silently runs a degenerate self-merge. Add: `if len(set(body.cluster_ids)) != len(body.cluster_ids): raise HTTPException(422, detail=\"cluster_ids must be unique\")`\n\n2. **Merge test**: Add `test_merge_rejects_duplicate_cluster_ids` that POSTs `[\"c-1\", \"c-1\"]` and asserts 422.\n\n3. **Batch get test**: Add `test_deduplicates_input_ids` to `TestGetActivityClustersByIds` — call `get_activity_clusters_by_ids([\"c-1\", \"c-1\"])` and assert `len(result) == 1` to document that SQL IN deduplicates.\n\nmemory_hints: search \"duplicate cluster_ids validation merge\", entity \"api_merge_clusters\", entity \"get_activity_clusters_by_ids\"",
         "details": "",
         "testStrategy": "",
-        "status": "cancelled",
+        "status": "pending",
         "dependencies": [
           "80"
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:15:05.905Z"
+        "updatedAt": "2026-04-02T22:27:36.224Z"
       },
       {
         "id": "89",
@@ -2334,7 +2334,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-02T22:27:36.178Z",
+      "lastModified": "2026-04-02T22:27:36.224Z",
       "taskCount": 125,
       "completedCount": 87,
       "tags": [
