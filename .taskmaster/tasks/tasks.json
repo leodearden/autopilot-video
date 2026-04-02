@@ -1265,13 +1265,13 @@
         "description": "Cleanup issues from task 47 review:\n\n1. **n_queries_in_loop** (review.py:399-402): Merge deletes non-surviving clusters one by one. Use batch DELETE WHERE cluster_id IN (...).\n2. **unnecessary_roundtrip** (review.py:303-310, 326-331): relabel and exclude do two SELECTs (existence check then re-fetch). Use UPDATE ... RETURNING or check rowcount.\n3. **code_duplication** (review.py:296-338): relabel and exclude share 7 lines of identical post-update refetch. Extract shared helper.\n4. **redundant_copy/cast**: dict(r) on already-dict rows, int(str(x)) double-cast. Remove throughout.\n5. **unnecessary_full_scan** (review.py:54-56): review_hub loads all activity_cluster columns just to count non-excluded. Use COUNT query.\n6. Update module docstring to reflect cluster review addition.\n\nmemory_hints: search \"cluster review performance\" \"task 47\", entity \"api_relabel_cluster\", entity \"api_exclude_cluster\"",
         "details": "",
         "testStrategy": "",
-        "status": "cancelled",
+        "status": "done",
         "dependencies": [
           "47"
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:15:05.851Z"
+        "updatedAt": "2026-04-02T22:27:32.592Z"
       },
       {
         "id": "66",
@@ -2334,9 +2334,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-02T22:27:32.546Z",
+      "lastModified": "2026-04-02T22:27:32.592Z",
       "taskCount": 125,
-      "completedCount": 84,
+      "completedCount": 85,
       "tags": [
         "master"
       ]
