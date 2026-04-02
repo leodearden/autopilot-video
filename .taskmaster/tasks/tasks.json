@@ -2419,15 +2419,16 @@
         "description": "Follow-up from task 114 review suggestions (all in tests/test_web_app.py, TestDashboardSSEEventCoverage class):\n\n1. **Extract shared SSE listener regex to helper** — `_read_app_js()` + `re.findall(r\"source\\.addEventListener\\('([^']+)'\", js_source)` is duplicated in `test_no_orphaned_sse_listeners` and `test_legacy_listeners_exist_in_app_js`. Extract to `_get_js_sse_listeners() -> set[str]` classmethod or module helper. (architect, test_analyst, performance, reuse_auditor)\n\n2. **Make `_JOB_LEVEL_EVENTS` a frozenset** — Currently a plain set while `_LEGACY_SSE_LISTENERS` is frozenset. Apply same treatment: `_JOB_LEVEL_EVENTS: frozenset[str] = frozenset({...})`. (architect)\n\n3. **Update `_extract_listener_body` to use `source.addEventListener` prefix** — Line ~204, still uses old unprefixed `addEventListener('{event_type}'` marker, inconsistent with unified matching. (test_analyst)\n\n4. **Add test: job-level events not handled at dashboard** — Assert `_JOB_LEVEL_EVENTS ∩ sse_listeners == ∅` to enforce that dashboard JS doesn't accidentally wire up job-level events. (test_analyst)\n\n5. **Cache `_read_app_js()` with `@functools.cache`** — Called 9+ times per run reading the same static file. (performance)",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-02T22:38:31.134Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-02T22:38:31.099Z",
+      "lastModified": "2026-04-02T22:38:31.134Z",
       "taskCount": 130,
       "completedCount": 90,
       "tags": [
