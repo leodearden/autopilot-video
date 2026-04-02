@@ -1469,13 +1469,13 @@
         "description": "Define a `ClusterRow(TypedDict)` in db.py with the actual column types (cluster_id: str, clip_ids_json: str | None, label: str | None, description: str | None, time_start: str | None, time_end: str | None, excluded: int) and use it as the return type for `get_activity_cluster`, `get_activity_clusters`, and the `_parse_cluster` helper in review.py. This removes the need for both `Any` and `# type: ignore` while keeping the type contract honest across the db and route layers.\n\nmemory_hints: search \"cluster review typing cleanup\", entity \"_parse_cluster\", entity \"get_activity_cluster\"",
         "details": "",
         "testStrategy": "",
-        "status": "cancelled",
+        "status": "pending",
         "dependencies": [
           "78"
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:15:05.876Z"
+        "updatedAt": "2026-04-02T22:27:36.000Z"
       },
       {
         "id": "80",
@@ -2334,7 +2334,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-02T22:27:35.956Z",
+      "lastModified": "2026-04-02T22:27:36.000Z",
       "taskCount": 125,
       "completedCount": 87,
       "tags": [
