@@ -1195,13 +1195,13 @@
         "description": "Replace TestRedundantDetailContext.test_detail_page_context_does_not_include_detail_key which uses inspect.getsource() — a source-inspection antipattern flagged by 4 reviewers.",
         "details": "The test at tests/test_media_detail.py:164-179 uses `inspect.getsource()` to grep for the string `'\"detail\": detail'` in the source of `media_detail_page`. This is fragile: whitespace changes, reformatting, or variable renaming break the assertion without any behavioral change.\n\nFix: Replace with a behavioral test that either:\n- Patches `TemplateResponse` to capture the context dict and asserts `'detail'` is not a key, OR\n- Removes the test entirely, since the existing integration tests (test_returns_200_html, test_metadata_tab_rendered_by_default) already verify the template renders correctly without the 'detail' key.\n\nThe behavioral approach is preferred since it documents the contract explicitly.\n\nmemory_hints: search \"redundant detail context test\" \"inspect.getsource test\"; entities: TestRedundantDetailContext, media_detail_page",
         "testStrategy": "",
-        "status": "cancelled",
+        "status": "pending",
         "dependencies": [
           "54"
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:15:05.841Z"
+        "updatedAt": "2026-04-02T22:27:35.308Z"
       },
       {
         "id": "61",
@@ -2334,7 +2334,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-02T22:27:35.266Z",
+      "lastModified": "2026-04-02T22:27:35.309Z",
       "taskCount": 125,
       "completedCount": 87,
       "tags": [
