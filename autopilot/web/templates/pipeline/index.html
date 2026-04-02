@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold text-white mb-6">{{ page_title }}</h1>
+
+    {% if not run %}
+    <div class="bg-gray-800 border border-gray-600 rounded-lg p-6 text-center mb-6">
+        <p class="text-gray-400 text-lg">No active pipeline run</p>
+        <p class="text-gray-500 text-sm mt-2">Start a pipeline run from the CLI to see details here.</p>
+    </div>
+    {% else %}
+    <!-- Current run info -->
+    <div class="bg-surface-800 rounded-lg p-4 border border-gray-700 mb-6">
+        <div class="flex items-center justify-between mb-2">
+            <h2 class="text-lg font-semibold text-white">Current Run</h2>
+            <span class="px-2 py-1 rounded text-xs font-medium
+                {% if run.status == 'running' %}bg-blue-900 text-blue-300
+                {% elif run.status == 'completed' %}bg-green-900 text-green-300
+                {% elif run.status == 'failed' %}bg-red-900 text-red-300
+                {% else %}bg-gray-700 text-gray-300{% endif %}">
+                {{ run.status }}
+            </span>
+        </div>
+        <dl class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+                <dt class="text-gray-400">Run ID</dt>
+                <dd class="text-white font-mono text-xs">{{ run.run_id }}</dd>
+            </div>
+            <div>
+                <dt class="text-gray-400">Current Stage</dt>
+                <dd class="text-white capitalize">{{ run.current_stage or 'N/A' }}</dd>
+            </div>
+            <div>
+                <dt class="text-gray-400">Started</dt>
+                <dd class="text-white">{{ run.started_at or 'N/A' }}</dd>
+            </div>
+            <div>
+                <dt class="text-gray-400">Status</dt>
+                <dd class="text-white capitalize">{{ run.status }}</dd>
+            </div>
+        </dl>
+    </div>
+    {% endif %}
+
+    <!-- Stage summary cards -->
+    <h2 class="text-xl font-semibold text-white mb-4">Stages</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 gap-4 mb-6">
+        {% for stage in stages %}
+        <div class="bg-surface-800 rounded-lg p-4 border border-gray-700">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="text-white font-semibold capitalize">{{ stage.name }}</h3>
+                <span class="text-xs px-2 py-1 rounded
+                    {% if stage.status == 'running' %}bg-blue-900 text-blue-300
+                    {% elif stage.status == 'done' %}bg-green-900 text-green-300
+                    {% elif stage.status == 'error' %}bg-red-900 text-red-300
+                    {% elif stage.status == 'waiting' %}bg-amber-900 text-amber-300
+                    {% else %}bg-gray-700 text-gray-300{% endif %}">
+                    {{ stage.status }}
+                </span>
+            </div>
+            <div class="flex items-center justify-between text-sm text-gray-400">
+                <span>{{ stage.done }}/{{ stage.total }} jobs done</span>
+                <span class="text-xs">gate: {{ stage.gate_mode }}</span>
+            </div>
+            {% if stage.total > 0 %}
+            <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
+                <div class="h-2 rounded-full
+                    {% if stage.status == 'error' %}bg-red-500
+                    {% elif stage.status == 'done' %}bg-green-500
+                    {% elif stage.status == 'running' %}bg-blue-500
+                    {% else %}bg-gray-500{% endif %}"
+                    style="width: {{ (stage.done / stage.total * 100) | int }}%">
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Quick links -->
+    <div class="flex space-x-4">
+        <a href="/pipeline/stages" class="text-blue-400 hover:text-blue-300 text-sm">View Stage Details &rarr;</a>
+        <a href="/pipeline/jobs" class="text-blue-400 hover:text-blue-300 text-sm">View All Jobs &rarr;</a>
+    </div>
+
+    {% if runs and runs | length > 1 %}
+    <!-- Past runs -->
+    <h2 class="text-xl font-semibold text-white mt-8 mb-4">Run History</h2>
+    <div class="bg-surface-800 rounded-lg overflow-hidden">
+        <table class="w-full text-left">
+            <thead class="border-b border-gray-700">
+                <tr>
+                    <th class="px-4 py-3 text-gray-400 text-sm font-medium">Run ID</th>
+                    <th class="px-4 py-3 text-gray-400 text-sm font-medium">Status</th>
+                    <th class="px-4 py-3 text-gray-400 text-sm font-medium">Started</th>
+                    <th class="px-4 py-3 text-gray-400 text-sm font-medium">Stage</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-700">
+                {% for r in runs %}
+                <tr class="hover:bg-surface-700">
+                    <td class="px-4 py-3 text-gray-300 text-sm font-mono">{{ r.run_id }}</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 rounded text-xs font-medium
+                            {% if r.status == 'running' %}bg-blue-900 text-blue-300
+                            {% elif r.status == 'completed' %}bg-green-900 text-green-300
+                            {% elif r.status == 'failed' %}bg-red-900 text-red-300
+                            {% else %}bg-gray-700 text-gray-300{% endif %}">
+                            {{ r.status }}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-gray-400 text-sm">{{ r.started_at }}</td>
+                    <td class="px-4 py-3 text-gray-300 text-sm capitalize">{{ r.current_stage or 'N/A' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

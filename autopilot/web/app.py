@@ -40,12 +40,14 @@ def create_app(db_path: str) -> FastAPI:
         dashboard_router,
         gates_router,
         media_router,
+        pipeline_router,
         review_router,
         sse_router,
     )
 
     app.include_router(dashboard_router)
     app.include_router(gates_router)
+    app.include_router(pipeline_router)
     app.include_router(review_router)
     app.include_router(sse_router)
     app.include_router(media_router)
