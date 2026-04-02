@@ -2362,6 +2362,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 129,
+        "title": "Implement review /edit-plans page",
+        "description": "The nav dropdown in base.html links to /review/edit-plans but no route or template exists. Add a route in autopilot/web/routes/review.py and a template at autopilot/web/templates/review/edit_plans.html following the same pattern as the scripts page (review/scripts.html). The page should display edit plans for narratives from CatalogDB.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -2374,7 +2385,7 @@
       ],
       "created": "2026-04-02T22:30:31.506Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-02T22:30:31.507Z"
+      "updated": "2026-04-02T22:32:16.450Z"
     }
   }
 }
