@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict
 from starlette.responses import FileResponse, Response
 
@@ -618,6 +618,55 @@ def render_review_page(
     return templates.TemplateResponse(
         request, "review/renders.html", context,
     )
+
+
+@router.get("/review/scripts")
+def scripts_page(request: Request) -> HTMLResponse:
+    """Render the script review page listing narratives with their scripts."""
+    db = _get_db(request)
+    try:
+        narratives = db.list_narratives()
+        scripts: list[dict[str, object]] = []
+        for n in narratives:
+            script = db.get_narrative_script(str(n["narrative_id"]))
+            if script is None:
+                continue
+            scenes: list[dict[str, object]] = []
+            if script.get("script_json"):
+                script_data = json.loads(str(script["script_json"]))
+                if isinstance(script_data, dict):
+                    scenes = script_data.get("scenes", [])
+                elif isinstance(script_data, list):
+                    scenes = script_data
+            scripts.append({
+                "narrative_id": n["narrative_id"],
+                "narrative_title": n.get("title"),
+                "narrative_status": n.get("status"),
+                "scenes": scenes,
+                "created_at": script.get("created_at"),
+            })
+    finally:
+        db.close()
+    templates = request.app.state.templates
+    context = {
+        "page_title": "Script Review",
+        "scripts": scripts,
+    }
+    return templates.TemplateResponse(
+        request, "review/scripts.html", context,
+    )
+
+
+@router.get("/review/edit-plans")
+def edit_plans_redirect(request: Request) -> RedirectResponse:
+    """Redirect edit-plans to the render index which shows edit plan status."""
+    return RedirectResponse(url="/review/render", status_code=307)
+
+
+@router.get("/review/renders")
+def renders_redirect(request: Request) -> RedirectResponse:
+    """Redirect /review/renders to the canonical /review/render path."""
+    return RedirectResponse(url="/review/render", status_code=307)
 
 
 @router.get("/review/uploads")

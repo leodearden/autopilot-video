@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-3xl font-bold text-white">{{ page_title }}</h1>
+        <a href="/pipeline" class="text-blue-400 hover:text-blue-300 text-sm">&larr; Back to Pipeline</a>
+    </div>
+
+    {% if not run %}
+    <p class="text-gray-400">No active pipeline run.</p>
+    {% else %}
+    <div class="space-y-4">
+        {% for stage in stages %}
+        <div class="bg-surface-800 rounded-lg p-4 border border-gray-700">
+            <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center space-x-3">
+                    <h2 class="text-xl font-semibold text-white capitalize">{{ stage.name }}</h2>
+                    <span class="text-xs px-2 py-1 rounded
+                        {% if stage.status == 'running' %}bg-blue-900 text-blue-300
+                        {% elif stage.status == 'done' %}bg-green-900 text-green-300
+                        {% elif stage.status == 'error' %}bg-red-900 text-red-300
+                        {% elif stage.status == 'waiting' %}bg-amber-900 text-amber-300
+                        {% else %}bg-gray-700 text-gray-300{% endif %}">
+                        {{ stage.status }}
+                    </span>
+                    <span class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300">gate: {{ stage.gate_mode }}</span>
+                </div>
+                <a href="/pipeline/jobs?stage={{ stage.name }}"
+                   class="text-blue-400 hover:text-blue-300 text-sm">
+                    View Jobs &rarr;
+                </a>
+            </div>
+
+            {% if stage.total > 0 %}
+            <!-- Progress bar -->
+            <div class="w-full bg-gray-700 rounded-full h-2 mb-3">
+                <div class="h-2 rounded-full
+                    {% if stage.status == 'error' %}bg-red-500
+                    {% elif stage.status == 'done' %}bg-green-500
+                    {% elif stage.status == 'running' %}bg-blue-500
+                    {% else %}bg-gray-500{% endif %}"
+                    style="width: {{ (stage.done / stage.total * 100) | int }}%">
+                </div>
+            </div>
+
+            <!-- Status breakdown -->
+            <div class="flex flex-wrap gap-3 text-sm">
+                {% for status, count in stage.counts.items() %}
+                <span class="inline-flex items-center px-2 py-1 rounded text-xs
+                    {% if status == 'done' %}bg-green-900 text-green-300
+                    {% elif status == 'running' %}bg-blue-900 text-blue-300
+                    {% elif status == 'error' %}bg-red-900 text-red-300
+                    {% elif status == 'pending' %}bg-gray-700 text-gray-300
+                    {% else %}bg-amber-900 text-amber-300{% endif %}">
+                    {{ status }}: {{ count }}
+                </span>
+                {% endfor %}
+                <span class="text-gray-400">{{ stage.done }}/{{ stage.total }} complete</span>
+            </div>
+            {% else %}
+            <p class="text-gray-500 text-sm">No jobs in this stage.</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

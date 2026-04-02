@@ -20,14 +20,14 @@ def sse_db(tmp_path: Path) -> CatalogDB:
     db_path = str(tmp_path / "catalog.db")
     db = CatalogDB(db_path)
     db.conn.isolation_level = None  # autocommit for test convenience
-    db._test_path = db_path  # stash for fixture use
+    db._test_path = db_path  # type: ignore[attr-defined]  # stash for fixture use
     return db
 
 
 @pytest.fixture
 def sse_app(sse_db: CatalogDB) -> FastAPI:
     """Create a FastAPI app pointing at the same DB as sse_db."""
-    return create_app(sse_db._test_path)
+    return create_app(sse_db._test_path)  # type: ignore[attr-defined]
 
 
 @pytest.fixture

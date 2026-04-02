@@ -103,13 +103,79 @@ function setupDashboardSSE(source) {
     });
 }
 
+/**
+ * Update the notification bell badge visibility and count.
+ * @param {number} count - Number of pending notifications. 0 hides the badge.
+ */
+function updateNotificationBadge(count) {
+    var badge = document.getElementById('notification-badge');
+    if (!badge) return;
+    if (count > 0) {
+        badge.textContent = count > 9 ? '9+' : String(count);
+        badge.classList.remove('hidden');
+    } else {
+        badge.classList.add('hidden');
+    }
+}
+
+/**
+ * Set up SSE event listeners for notification bell updates.
+ * Shows the badge when gate_waiting events arrive and hides it
+ * when gates are approved or skipped.
+ * @param {EventSource} source - The SSE EventSource connection.
+ */
+function setupNotificationSSE(source) {
+    var pendingCount = 0;
+
+    source.addEventListener('gate_waiting', function(event) {
+        pendingCount++;
+        updateNotificationBadge(pendingCount);
+        try {
+            var data = JSON.parse(event.data);
+            showToast('Gate waiting: ' + (data.stage || 'unknown'), 'info');
+        } catch (e) {
+            console.error('SSE gate_waiting parse error:', e);
+        }
+    });
+
+    source.addEventListener('gate_approved', function() {
+        pendingCount = Math.max(0, pendingCount - 1);
+        updateNotificationBadge(pendingCount);
+    });
+
+    source.addEventListener('gate_skipped', function() {
+        pendingCount = Math.max(0, pendingCount - 1);
+        updateNotificationBadge(pendingCount);
+    });
+
+    source.addEventListener('stage_error', function(event) {
+        try {
+            var data = JSON.parse(event.data);
+            showToast('Error in ' + (data.stage || 'unknown') + ' stage', 'error', 6000);
+        } catch (e) {
+            console.error('SSE stage_error parse error:', e);
+        }
+    });
+
+    source.addEventListener('run_completed', function() {
+        showToast('Pipeline run completed!', 'success', 6000);
+    });
+
+    source.addEventListener('run_failed', function() {
+        showToast('Pipeline run failed', 'error', 8000);
+    });
+}
+
 /* Initialize on DOM ready */
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Autopilot Video Console loaded');
 
-    /* If the dashboard grid is present, wire up SSE for live updates */
+    /* Connect SSE on all pages for notifications */
+    var source = connectSSE('/api/events');
+    setupNotificationSSE(source);
+
+    /* If the dashboard grid is present, also wire up stage card updates */
     if (document.getElementById('dashboard-grid')) {
-        var source = connectSSE('/api/events');
         setupDashboardSSE(source);
     }
 });
