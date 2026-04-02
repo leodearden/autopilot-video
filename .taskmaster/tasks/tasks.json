@@ -1181,13 +1181,13 @@
         "description": "Address robustness and correctness issues in media.py identified during Task 54 review.",
         "details": "Six review findings grouped into one task (all in autopilot/web/routes/media.py):\n\n1. **Missing else clause in media_tab** (line 313): The if/elif chain has no else, so `html` is technically unbound if _VALID_TABS drifts from the handler set. Add `else: raise AssertionError(f'Unhandled tab: {tab_name}')` as the final branch.\n\n2. **Simplify isinstance check in _aggregate_detections** (line 47): `json.loads(raw) if isinstance(raw, str) else json.loads(str(raw))` — the DB column is TEXT, so raw is always str when truthy. Simplify to `json.loads(raw)`.\n\n3. **Silent data loss on bytes input** (line ~47): If raw were bytes, `str(raw)` produces `\"b'...'\"` which silently fails JSON parse. After simplifying #2, add a comment explaining the TEXT column contract, or add `raw.decode('utf-8') if isinstance(raw, bytes) else raw` as explicit guard.\n\n4. **Missing frame_number key guard** (line 51): `row[\"frame_number\"]` uses direct indexing. Use `row.get(\"frame_number\", 0)` for defensive consistency with the rest of the function.\n\n5. **Type validation gap** (lines 44-57): After `json.loads()`, no check that result is a list. If detections_json is valid JSON but not a list (e.g. `{}`), the subsequent `for d in dets: d.get(...)` crashes. Add `if not isinstance(dets, list): dets = []` after the try/except.\n\n6. **Duplicate cluster_ids in faces tab** (line 249-251): `cluster_ids` is built as a list, so duplicates are sent to SQL. Change to `cluster_ids = list({cast(int, f['cluster_id']) for f in faces if f.get('cluster_id') is not None})`.\n\nmemory_hints: search \"media_tab robustness\" \"_aggregate_detections\"; entities: media.py, _aggregate_detections, media_tab",
         "testStrategy": "",
-        "status": "cancelled",
+        "status": "done",
         "dependencies": [
           "54"
         ],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:15:05.837Z"
+        "updatedAt": "2026-04-02T22:27:32.546Z"
       },
       {
         "id": "60",
@@ -2334,9 +2334,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-02T22:27:32.499Z",
+      "lastModified": "2026-04-02T22:27:32.546Z",
       "taskCount": 125,
-      "completedCount": 83,
+      "completedCount": 84,
       "tags": [
         "master"
       ]
