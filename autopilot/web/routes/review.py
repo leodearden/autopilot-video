@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict
 from starlette.responses import FileResponse, Response
 
@@ -658,18 +658,14 @@ def scripts_page(request: Request) -> HTMLResponse:
 
 
 @router.get("/review/edit-plans")
-def edit_plans_redirect(request: Request) -> HTMLResponse:
+def edit_plans_redirect(request: Request) -> RedirectResponse:
     """Redirect edit-plans to the render index which shows edit plan status."""
-    from fastapi.responses import RedirectResponse
-
     return RedirectResponse(url="/review/render", status_code=307)
 
 
 @router.get("/review/renders")
-def renders_redirect(request: Request) -> HTMLResponse:
+def renders_redirect(request: Request) -> RedirectResponse:
     """Redirect /review/renders to the canonical /review/render path."""
-    from fastapi.responses import RedirectResponse
-
     return RedirectResponse(url="/review/render", status_code=307)
 
 
