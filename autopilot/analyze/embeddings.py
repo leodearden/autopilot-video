@@ -83,8 +83,7 @@ def compute_embeddings(
         batch_size: Number of frames to process per batch.
     """
     # Idempotency: skip if embeddings already exist for this media
-    existing = db.get_embeddings_for_media(media_id)
-    if existing:
+    if db.has_embeddings(media_id):
         logger.info("Embeddings already exist for %s, skipping", media_id)
         return
 
