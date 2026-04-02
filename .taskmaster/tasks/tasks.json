@@ -2353,10 +2353,11 @@
         "description": "Add `test_job_level_events_not_handled_at_dashboard` to `TestDashboardSSEEventCoverage` that asserts `_JOB_LEVEL_EVENTS ∩ sse_listeners == ∅` — i.e., that dashboard-level app.js does not accidentally wire up job-level events (job_started, job_completed, job_error) via `source.addEventListener`.\n\nThe class comment says these are \"intentionally unhandled at dashboard level\" but nothing currently enforces it. If a developer adds `source.addEventListener('job_started', ...)` in app.js, the test suite remains green.\n\nmemory_hints: search \"SSE event coverage test\" for TestDashboardSSEEventCoverage context; search \"_JOB_LEVEL_EVENTS\" for job-level event definitions",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-02T22:34:10.273Z"
       },
       {
         "id": "128",
@@ -2384,7 +2385,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-02T22:34:01.356Z",
+      "lastModified": "2026-04-02T22:34:10.273Z",
       "taskCount": 129,
       "completedCount": 90,
       "tags": [
