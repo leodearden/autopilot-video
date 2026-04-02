@@ -1251,13 +1251,13 @@
         "description": "Test quality issues from task 47 review:\n\n1. **missing_persistence_verification** (test_cluster_review.py:234-247, 276-285): Relabel and exclude tests assert only on POST response, never verify persistence with follow-up GET.\n2. **assertion_masks_bug** (test_cluster_review.py:338): set(data['clip_ids']) masks duplicate clip IDs in merge result.\n3. **weak_assertion** (test_cluster_review.py:506): `assert '2' in body` matches any '2' including dates. Use a more specific assertion.\n4. **missing_edge_case**: No test for relabel no-op (empty body {}). No test for empty-list merge request.\n5. **untested_behavior**: Excluded clusters should still appear in GET /api/clusters. MergeRequest lacks extra='forbid' (unlike ClusterRelabel).\n\nmemory_hints: search \"cluster review test\" \"task 47 review\", entity \"TestApiMergeClusters\"",
         "details": "",
         "testStrategy": "",
-        "status": "cancelled",
+        "status": "pending",
         "dependencies": [
           "47"
         ],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:15:05.846Z"
+        "updatedAt": "2026-04-02T22:27:35.356Z"
       },
       {
         "id": "65",
@@ -1315,11 +1315,11 @@
         "description": "Add test for _aggregate_detections when detections_json is a valid JSON string that decodes to a non-list (e.g. '{\"a\": 1}'). This exercises the `isinstance(raw, str)` branch followed by the `not isinstance(dets, list)` guard — a case that would have caused AttributeError before the guard was added.",
         "details": "Add a test in tests/test_media_detail.py TestAggregateDetections class:\n\n```python\ndef test_json_string_decoding_to_non_list(self) -> None:\n    \"\"\"JSON string that decodes to dict (not list) is guarded to zero detections.\"\"\"\n    from autopilot.web.routes.media import _aggregate_detections\n    rows = [{\"frame_number\": 0, \"detections_json\": json.dumps({\"a\": 1})}]\n    result = _aggregate_detections(rows)\n    assert result.total == 0\n    assert result.classes == {}\n    assert result.frame_details == [{\"number\": 0, \"count\": 0}]\n```\n\nAlso update the docstring of `test_non_string_dict_detections_json` to clarify the actual code path: str(raw) produces Python repr (not valid JSON), JSONDecodeError is raised, dets stays as initialized [].\n\nmemory_hints: search \"_aggregate_detections non-string raw\"; entities: _aggregate_detections, DetectionSummary",
         "testStrategy": "",
-        "status": "cancelled",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:18:43.764Z"
+        "updatedAt": "2026-04-02T22:27:35.734Z"
       },
       {
         "id": "70",
@@ -2334,7 +2334,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-02T22:27:35.309Z",
+      "lastModified": "2026-04-02T22:27:35.734Z",
       "taskCount": 125,
       "completedCount": 87,
       "tags": [
