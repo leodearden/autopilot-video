@@ -1355,13 +1355,13 @@
         "description": "Three related issues in review.py JSON parsing:\n\n1. _parse_cluster catches JSONDecodeError but doesn't validate the parsed value is a list. Valid JSON like `\"42\"` or `\"a string\"` silently passes through, causing downstream TypeError in merge iteration. Add `if not isinstance(clip_ids, list): clip_ids = []` after json.loads (line 236).\n\n2. _parse_narrative (line 112) has the same bare `json.loads(str(raw))` pattern that was just fixed in _parse_cluster. Apply the same try/except JSONDecodeError guard.\n\n3. Add tests for non-list JSON edge case (e.g. clip_ids_json='\"not-a-list\"') to verify the isinstance guard.\n\nConsider extracting a shared `_safe_json_list(raw)` helper used by both functions.\n\nFiles: autopilot/web/routes/review.py (lines 108-113, 230-243), tests/test_cluster_review.py\n\nmemory_hints: search \"task 63 _parse_cluster malformed JSON\", entity \"_parse_cluster\"",
         "details": "",
         "testStrategy": "",
-        "status": "cancelled",
+        "status": "done",
         "dependencies": [
           "63"
         ],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:15:05.859Z"
+        "updatedAt": "2026-04-02T22:27:32.637Z"
       },
       {
         "id": "73",
@@ -2334,9 +2334,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-02T22:27:32.592Z",
+      "lastModified": "2026-04-02T22:27:32.637Z",
       "taskCount": 125,
-      "completedCount": 85,
+      "completedCount": 86,
       "tags": [
         "master"
       ]
