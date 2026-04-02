@@ -1561,13 +1561,13 @@
         "description": "In `api_merge_clusters` (review.py:455-456), the post-merge read uses `db.get_activity_clusters_by_ids([largest_id])` — a batch method with a single-element list — instead of the existing `db.get_activity_cluster(largest_id)`. The singular method is purpose-built for this case and returns `dict | None` directly. Replace with the singular call and narrow the monkeypatch in `TestApiMergeClustersUseBatchFetch` so it only traps during the bulk load, not the post-merge verification read.\n\nmemory_hints: search \"batch vs singular get_activity_cluster merge route\", entity \"api_merge_clusters\", entity \"get_activity_cluster\"",
         "details": "",
         "testStrategy": "",
-        "status": "cancelled",
+        "status": "pending",
         "dependencies": [
           "80"
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:15:05.898Z"
+        "updatedAt": "2026-04-02T22:27:36.178Z"
       },
       {
         "id": "87",
@@ -2334,7 +2334,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-02T22:27:36.134Z",
+      "lastModified": "2026-04-02T22:27:36.178Z",
       "taskCount": 125,
       "completedCount": 87,
       "tags": [
