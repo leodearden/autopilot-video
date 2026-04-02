@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import click
@@ -194,6 +195,12 @@ class TestServeCommand:
         mock_uvicorn_run.assert_called_once_with(mock_app, host="0.0.0.0", port=9090)
 
 
+def _read_app_js() -> str:
+    """Read the app.js source file."""
+    js_path = Path(__file__).resolve().parent.parent / "autopilot" / "web" / "static" / "app.js"
+    return js_path.read_text()
+
+
 class TestSSEErrorHandling:
     """Tests for SSE notification error handling in app.js."""
 
@@ -233,4 +240,84 @@ class TestSSEErrorHandling:
         assert "catch" in listener_body, "catch block not found in notification listener"
         assert "console.error" in listener_body, (
             "console.error not found in notification listener catch block"
+        )
+
+
+class TestDashboardSSEEventCoverage:
+    """Comprehensive test ensuring all dashboard-relevant event types are handled."""
+
+    # Job-level detail events are intentionally unhandled at dashboard level —
+    # they update individual job rows, not stage cards.
+    _JOB_LEVEL_EVENTS = {"job_started", "job_completed", "job_error"}
+
+    # Server-only events that are in VALID_EVENT_TYPES but intentionally have no
+    # source.addEventListener handler in app.js. These events are emitted by the
+    # backend but the frontend does not act on them at the dashboard level.
+    _SERVER_ONLY_EVENTS = {
+        "gate_waiting",
+        "gate_approved",
+        "gate_skipped",
+        "stage_error",
+        "run_completed",
+        "run_failed",
+    }
+
+    # Legacy SSE listeners in app.js that are not in VALID_EVENT_TYPES.
+    # 'notification' handler exists but the server never emits this event type.
+    _LEGACY_SSE_LISTENERS: frozenset[str] = frozenset({"notification"})
+
+    def test_all_dashboard_event_types_handled(self) -> None:
+        """Every VALID_EVENT_TYPE (except job-level and server-only) has a listener in app.js."""
+        from autopilot.web.routes.sse import VALID_EVENT_TYPES
+
+        js_source = _read_app_js()
+
+        dashboard_event_types = (
+            set(VALID_EVENT_TYPES) - self._JOB_LEVEL_EVENTS - self._SERVER_ONLY_EVENTS
+        )
+        missing = []
+        for event_type in sorted(dashboard_event_types):
+            marker = f"source.addEventListener('{event_type}'"
+            if marker not in js_source:
+                missing.append(event_type)
+
+        assert not missing, (
+            f"Dashboard-relevant event types missing addEventListener in app.js: {missing}"
+        )
+
+    def test_no_orphaned_sse_listeners(self) -> None:
+        """Every source.addEventListener in app.js corresponds to a known event type."""
+        from autopilot.web.routes.sse import VALID_EVENT_TYPES
+
+        js_source = _read_app_js()
+
+        # Extract event types from source.addEventListener('...') calls only —
+        # this excludes DOM-level listeners like document.addEventListener('DOMContentLoaded').
+        sse_listeners = set(re.findall(r"source\.addEventListener\('([^']+)'", js_source))
+
+        allowed = set(VALID_EVENT_TYPES) | self._LEGACY_SSE_LISTENERS
+        orphaned = sorted(sse_listeners - allowed)
+        assert not orphaned, (
+            f"SSE listeners in app.js not in VALID_EVENT_TYPES or _LEGACY_SSE_LISTENERS: {orphaned}"
+        )
+
+    def test_legacy_listeners_exist_in_app_js(self) -> None:
+        """Every _LEGACY_SSE_LISTENERS entry has a source.addEventListener in app.js."""
+        js_source = _read_app_js()
+        sse_listeners = set(re.findall(r"source\.addEventListener\('([^']+)'", js_source))
+
+        stale = sorted(self._LEGACY_SSE_LISTENERS - sse_listeners)
+        assert not stale, (
+            f"_LEGACY_SSE_LISTENERS entries not found in app.js: {stale}. "
+            "Remove them from the allowlist."
+        )
+
+    def test_legacy_and_valid_sets_disjoint(self) -> None:
+        """_LEGACY_SSE_LISTENERS and VALID_EVENT_TYPES must not overlap."""
+        from autopilot.web.routes.sse import VALID_EVENT_TYPES
+
+        overlap = sorted(self._LEGACY_SSE_LISTENERS & set(VALID_EVENT_TYPES))
+        assert not overlap, (
+            f"Event types in both _LEGACY_SSE_LISTENERS and VALID_EVENT_TYPES: {overlap}. "
+            "Promote to VALID_EVENT_TYPES and remove from legacy, or vice versa."
         )
