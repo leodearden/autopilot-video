@@ -1760,7 +1760,7 @@
         "description": "Multiple web console features from tasks marked \"done\" (42, 47-50, 51) have missing routes, templates, or wiring in the working tree — likely regressions from the hardening cycle. This umbrella task restores them to working state.",
         "details": "## What's missing\n\n### Pipeline detail page + job list (task 42)\n- `base.html` links to `/pipeline`, `/pipeline/stages`, `/pipeline/jobs` — all 404\n- No `pipeline.py` route file exists in `autopilot/web/routes/`\n- No templates under `templates/pipeline/`\n- Need: route file, stage detail template, job list template, registration in `__init__.py`\n\n### Review pages (tasks 47-50)\n- `review.py` currently only exposes narrative routes\n- Nav dropdown has 5 sub-links; only `/review/narratives` works\n- Git status shows deleted templates: `review/clusters.html`, `partials/cluster_card.html`, `review/render_index.html`, `review/renders.html`, `review/uploads.html`\n- No routes for `/review/clusters`, `/review/scripts`, `/review/edit-plans`, `/review/renders`\n- Need: restore or rewrite templates and routes for all four review sub-pages\n\n### Notifications (task 51)\n- Notification bell in `base.html` nav is always hidden — no JS code ever shows it\n- `app.js` has a `notification` event listener but server never emits the event type\n- Need: see task for \"Wire notification SSE events\" (separate task) — this task should ensure the bell badge shows/hides based on notification state\n\n## Memory hints\n- Search: \"pipeline detail page implementation\" \"review page templates\"\n- Entity: PipelineOrchestrator, CatalogDB, pipeline_jobs, pipeline_events\n- Check git history for the original implementations (tasks 42, 47-50, 51) to understand what existed before deletion\n\n## Approach\n1. Check git history for original implementations from tasks 42, 47-50, 51\n2. Assess whether originals can be cherry-picked/restored vs need rewrite (hardening tasks may have changed the DB layer they depend on)\n3. Restore each feature, ensuring compatibility with current DB schema and route patterns\n4. Add/restore test coverage for each restored feature\n5. Verify all nav links resolve to working pages",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [
           "63"
         ],
@@ -1794,7 +1794,7 @@
             ]
           }
         },
-        "updatedAt": "2026-04-02T22:29:24.132Z"
+        "updatedAt": "2026-04-02T22:38:32.374Z"
       },
       {
         "id": "100",
@@ -2428,9 +2428,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-02T22:38:31.134Z",
+      "lastModified": "2026-04-02T22:38:32.374Z",
       "taskCount": 130,
-      "completedCount": 90,
+      "completedCount": 91,
       "tags": [
         "master"
       ]
