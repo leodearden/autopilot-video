@@ -1141,13 +1141,13 @@
         "description": "Address test quality issues identified in task 54 review:\n\n1. Replace or remove TestRedundantDetailContext.test_detail_page_context_does_not_include_detail_key (tests/test_media_detail.py:162) — uses inspect.getsource() which is fragile source-text inspection. Replace with behavioral check using TemplateResponse spy, or remove entirely since existing integration tests already cover this.\n2. Add mock_db.get_media_detail.assert_not_called() to every test in TestTabPerTabFetching (tests/test_media_detail.py:1001-1079) — without this, a regression re-introducing get_media_detail() would silently pass.\n3. Add test_handles_none_detections_json to TestAggregateDetections — tests the `if raw:` None path.\n4. Add test for detection item missing 'class' key — exercises the d.get('class', 'unknown') fallback.\n5. Hoist repeated local imports in TestParseMetadataJson, TestAggregateDetections, TestFormatSeconds to module level (12+ duplicate import statements).\n\nmemory_hints: search \"media detail test\" \"task 54 review\", entity \"TestTabPerTabFetching\", entity \"TestAggregateDetections\"",
         "details": "",
         "testStrategy": "",
-        "status": "cancelled",
+        "status": "pending",
         "dependencies": [
           "54"
         ],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-03-26T18:15:05.832Z"
+        "updatedAt": "2026-04-02T22:27:35.266Z"
       },
       {
         "id": "58",
@@ -2334,7 +2334,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-02T22:27:32.678Z",
+      "lastModified": "2026-04-02T22:27:35.266Z",
       "taskCount": 125,
       "completedCount": 87,
       "tags": [
