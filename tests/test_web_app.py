@@ -390,6 +390,62 @@ class TestSSEHandlerFactory:
         )
 
 
+    def test_make_stage_handler_shows_toast_on_missing_stage(self) -> None:
+        """makeStageHandler shows a fallback toast when stage is missing and toastMsg is provided.
+
+        This catches the regression where stage_error events with no stage field
+        silently dropped the error toast from the UI.  The else branch (missing-stage
+        path) must call showToast with '{stage}' replaced by 'unknown' so that
+        error-level events always surface to the user.
+        """
+        js_source = _read_app_js()
+
+        # Extract the full makeStageHandler function body
+        func_start = js_source.find("function makeStageHandler")
+        assert func_start != -1, "makeStageHandler not found"
+
+        body_start = js_source.find("{", func_start)
+        brace_depth = 0
+        body_end = body_start
+        for i in range(body_start, len(js_source)):
+            if js_source[i] == "{":
+                brace_depth += 1
+            elif js_source[i] == "}":
+                brace_depth -= 1
+                if brace_depth == 0:
+                    body_end = i + 1
+                    break
+
+        factory_body = js_source[body_start:body_end]
+
+        # Locate the else branch (the missing-stage path)
+        else_pos = factory_body.find("} else {")
+        assert else_pos != -1, "else branch not found in makeStageHandler"
+
+        # Extract the else block body via brace-matching
+        else_brace_start = factory_body.find("{", else_pos + 1)
+        assert else_brace_start != -1, "opening brace of else block not found"
+
+        brace_depth = 0
+        else_end = else_brace_start
+        for i in range(else_brace_start, len(factory_body)):
+            if factory_body[i] == "{":
+                brace_depth += 1
+            elif factory_body[i] == "}":
+                brace_depth -= 1
+                if brace_depth == 0:
+                    else_end = i + 1
+                    break
+
+        else_body = factory_body[else_brace_start:else_end]
+
+        # The else branch must call showToast for fallback toast on missing stage
+        assert "showToast" in else_body, (
+            "showToast call not found in makeStageHandler else branch (missing-stage path). "
+            "Error-level SSE events with no stage field should still show a fallback toast."
+        )
+
+
 class TestSSERunHandlerRobustness:
     """Tests that run_completed and run_failed handlers have try/catch."""
 
