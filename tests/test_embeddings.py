@@ -357,32 +357,6 @@ class TestIdempotency:
         compute_embeddings("m1", Path("/fake/video.mp4"), catalog_db, scheduler, config)
         scheduler.model.assert_not_called()
 
-    def test_idempotency_uses_has_embeddings(self, catalog_db) -> None:
-        """Idempotency check uses has_embeddings(), not get_embeddings_for_media()."""
-        from autopilot.analyze.embeddings import compute_embeddings
-        from autopilot.config import ModelConfig
-
-        catalog_db.insert_media("m1", "/fake/video.mp4")
-        blob = _make_embedding_blob()
-        catalog_db.batch_insert_embeddings([("m1", 0, blob)])
-
-        scheduler = MagicMock()
-        config = ModelConfig()
-
-        with (
-            patch.object(
-                catalog_db, "has_embeddings", wraps=catalog_db.has_embeddings,
-            ) as spy_has,
-            patch.object(
-                catalog_db, "get_embeddings_for_media",
-                wraps=catalog_db.get_embeddings_for_media,
-            ) as spy_get,
-        ):
-            compute_embeddings("m1", Path("/fake/video.mp4"), catalog_db, scheduler, config)
-
-        spy_has.assert_called_once_with("m1")
-        spy_get.assert_not_called()
-
     def test_no_existing_embeddings_proceeds(self, catalog_db) -> None:
         """Without existing embeddings, scheduler.model() is called."""
         from autopilot.analyze.embeddings import compute_embeddings

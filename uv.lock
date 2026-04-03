@@ -406,7 +406,6 @@ name = "autopilot-video"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "anthropic" },
     { name = "audiocraft" },
     { name = "av" },
     { name = "click" },
@@ -440,6 +439,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+api-fallback = [
+    { name = "anthropic" },
+]
 dev = [
     { name = "httpx" },
     { name = "pyright" },
@@ -453,7 +455,7 @@ vllm = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anthropic" },
+    { name = "anthropic", marker = "extra == 'api-fallback'" },
     { name = "audiocraft", specifier = ">=1.3,<2.0" },
     { name = "av", specifier = ">=14.0,<18.0" },
     { name = "click" },
@@ -487,7 +489,7 @@ requires-dist = [
     { name = "vllm", marker = "extra == 'vllm'" },
     { name = "whisperx", specifier = ">=3.2,<4.0" },
 ]
-provides-extras = ["dev", "vllm"]
+provides-extras = ["dev", "api-fallback", "vllm"]
 
 [[package]]
 name = "av"

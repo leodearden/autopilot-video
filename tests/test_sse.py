@@ -12,35 +12,6 @@ from starlette.testclient import TestClient
 
 from autopilot.db import CatalogDB
 from autopilot.web.app import create_app
-from tests.conftest import _parse_sse_body  # shared helper (consolidated)
-
-
-def _make_finite_gen(*, use_last_event_id: bool = False):
-    """Return a finite async generator for patching ``_event_generator``.
-
-    The returned generator reads events from the app's DB and yields them
-    formatted via the SSE module helpers, then terminates (unlike the real
-    infinite generator).
-
-    Parameters
-    ----------
-    use_last_event_id:
-        If *True*, read the ``Last-Event-ID`` header and resume from that
-        position.  If *False* (default), deliver all events from the start.
-    """
-    from autopilot.web.routes import sse as sse_module
-
-    async def _finite_gen(request):
-        db = sse_module._get_db(request)
-        last_id = sse_module._get_last_event_id(request) if use_last_event_id else 0
-        try:
-            events = db.get_events_since(last_id)
-            for ev in events:
-                yield sse_module._format_event(ev)
-        finally:
-            db.close()
-
-    return _finite_gen
 
 
 @pytest.fixture
@@ -63,6 +34,29 @@ def sse_app(sse_db: CatalogDB) -> FastAPI:
 def sse_client(sse_app: FastAPI):
     """Create a TestClient for SSE tests."""
     return TestClient(sse_app)
+
+
+def _parse_sse_body(text: str) -> list[dict]:
+    """Parse SSE response text into a list of event dicts.
+
+    Each event has 'id', 'event', and 'data' keys extracted from
+    the SSE wire format.
+    """
+    events = []
+    current: dict = {}
+    for line in text.splitlines():
+        if line.startswith("id:"):
+            current["id"] = line[3:].strip()
+        elif line.startswith("event:"):
+            current["event"] = line[6:].strip()
+        elif line.startswith("data:"):
+            current["data"] = line[5:].strip()
+        elif line == "" and current:
+            events.append(current)
+            current = {}
+    if current:
+        events.append(current)
+    return events
 
 
 class TestSSEEndpointBasic:
@@ -97,7 +91,16 @@ class TestSSEEventDelivery:
         sse_db.insert_event("job_started", stage="INGEST", job_id="job-1")
         sse_db.insert_event("stage_completed", stage="INGEST")
 
-        with patch.object(sse_module, "_event_generator", _make_finite_gen()):
+        async def _finite_gen(request):
+            db = sse_module._get_db(request)
+            try:
+                events = db.get_events_since(0)
+                for ev in events:
+                    yield sse_module._format_event(ev)
+            finally:
+                db.close()
+
+        with patch.object(sse_module, "_event_generator", _finite_gen):
             client = TestClient(sse_app)
             response = client.get("/api/events")
             events = _parse_sse_body(response.text)
@@ -113,7 +116,16 @@ class TestSSEEventDelivery:
 
         sse_db.insert_event("stage_started", stage="ANALYZE", job_id="j1")
 
-        with patch.object(sse_module, "_event_generator", _make_finite_gen()):
+        async def _finite_gen(request):
+            db = sse_module._get_db(request)
+            try:
+                events = db.get_events_since(0)
+                for ev in events:
+                    yield sse_module._format_event(ev)
+            finally:
+                db.close()
+
+        with patch.object(sse_module, "_event_generator", _finite_gen):
             client = TestClient(sse_app)
             response = client.get("/api/events")
             events = _parse_sse_body(response.text)
@@ -139,7 +151,16 @@ class TestSSEEventDelivery:
             payload_json=json.dumps({"elapsed": 1.23}),
         )
 
-        with patch.object(sse_module, "_event_generator", _make_finite_gen()):
+        async def _finite_gen(request):
+            db = sse_module._get_db(request)
+            try:
+                events = db.get_events_since(0)
+                for ev in events:
+                    yield sse_module._format_event(ev)
+            finally:
+                db.close()
+
+        with patch.object(sse_module, "_event_generator", _finite_gen):
             client = TestClient(sse_app)
             response = client.get("/api/events")
             events = _parse_sse_body(response.text)
@@ -161,7 +182,17 @@ class TestSSEReconnection:
         for i in range(5):
             sse_db.insert_event(f"event_{i}", stage="INGEST")
 
-        with patch.object(sse_module, "_event_generator", _make_finite_gen(use_last_event_id=True)):
+        async def _finite_gen(request):
+            db = sse_module._get_db(request)
+            last_id = sse_module._get_last_event_id(request)
+            try:
+                events = db.get_events_since(last_id)
+                for ev in events:
+                    yield sse_module._format_event(ev)
+            finally:
+                db.close()
+
+        with patch.object(sse_module, "_event_generator", _finite_gen):
             client = TestClient(sse_app)
             response = client.get("/api/events", headers={"Last-Event-ID": "3"})
             events = _parse_sse_body(response.text)
@@ -177,7 +208,17 @@ class TestSSEReconnection:
         for i in range(3):
             sse_db.insert_event(f"event_{i}", stage="INGEST")
 
-        with patch.object(sse_module, "_event_generator", _make_finite_gen(use_last_event_id=True)):
+        async def _finite_gen(request):
+            db = sse_module._get_db(request)
+            last_id = sse_module._get_last_event_id(request)
+            try:
+                events = db.get_events_since(last_id)
+                for ev in events:
+                    yield sse_module._format_event(ev)
+            finally:
+                db.close()
+
+        with patch.object(sse_module, "_event_generator", _finite_gen):
             client = TestClient(sse_app)
             response = client.get("/api/events")
             events = _parse_sse_body(response.text)
@@ -191,7 +232,17 @@ class TestSSEReconnection:
         for i in range(3):
             sse_db.insert_event(f"event_{i}", stage="INGEST")
 
-        with patch.object(sse_module, "_event_generator", _make_finite_gen(use_last_event_id=True)):
+        async def _finite_gen(request):
+            db = sse_module._get_db(request)
+            last_id = sse_module._get_last_event_id(request)
+            try:
+                events = db.get_events_since(last_id)
+                for ev in events:
+                    yield sse_module._format_event(ev)
+            finally:
+                db.close()
+
+        with patch.object(sse_module, "_event_generator", _finite_gen):
             client = TestClient(sse_app)
             response = client.get("/api/events", headers={"Last-Event-ID": "abc"})
             events = _parse_sse_body(response.text)
@@ -260,7 +311,16 @@ class TestSSEEventTypes:
         for etype in self.ALL_EVENT_TYPES:
             sse_db.insert_event(etype, stage="TEST")
 
-        with patch.object(sse_module, "_event_generator", _make_finite_gen()):
+        async def _finite_gen(request):
+            db = sse_module._get_db(request)
+            try:
+                events = db.get_events_since(0)
+                for ev in events:
+                    yield sse_module._format_event(ev)
+            finally:
+                db.close()
+
+        with patch.object(sse_module, "_event_generator", _finite_gen):
             client = TestClient(sse_app)
             response = client.get("/api/events")
             events = _parse_sse_body(response.text)
@@ -275,21 +335,3 @@ class TestSSEEventTypes:
 
         for etype in self.ALL_EVENT_TYPES:
             assert etype in VALID_EVENT_TYPES, f"'{etype}' missing from VALID_EVENT_TYPES"
-
-
-class TestMakeFiniteGen:
-    """Tests for the _make_finite_gen factory helper."""
-
-    def test_returns_callable(self) -> None:
-        """_make_finite_gen() returns an async callable."""
-        from tests.test_sse import _make_finite_gen
-
-        gen_fn = _make_finite_gen()
-        assert callable(gen_fn)
-
-    def test_with_last_event_id_returns_callable(self) -> None:
-        """_make_finite_gen(use_last_event_id=True) returns an async callable."""
-        from tests.test_sse import _make_finite_gen
-
-        gen_fn = _make_finite_gen(use_last_event_id=True)
-        assert callable(gen_fn)

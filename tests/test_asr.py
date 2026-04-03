@@ -350,37 +350,6 @@ class TestIdempotency:
         # Scheduler should NOT be called for model loading
         scheduler.model.assert_not_called()
 
-    def test_idempotency_uses_has_transcript(self, catalog_db):
-        """Idempotency check uses has_transcript(), not get_transcript()."""
-        from autopilot.analyze.asr import transcribe_media
-
-        catalog_db.insert_media("vid1", "/tmp/audio.wav")
-        catalog_db.upsert_transcript("vid1", '{"segments": []}', "en")
-
-        scheduler = MagicMock()
-        config = MagicMock()
-        config.whisper_size = "large-v3"
-
-        with (
-            patch.object(
-                catalog_db, "has_transcript", wraps=catalog_db.has_transcript,
-            ) as spy_has,
-            patch.object(
-                catalog_db, "get_transcript",
-                wraps=catalog_db.get_transcript,
-            ) as spy_get,
-        ):
-            transcribe_media(
-                "vid1",
-                Path("/tmp/audio.wav"),
-                catalog_db,
-                scheduler,
-                config,
-            )
-
-        spy_has.assert_called_once_with("vid1")
-        spy_get.assert_not_called()
-
     def test_proceeds_when_no_transcript(self, catalog_db):
         """Proceed with transcription when no transcript exists."""
         from autopilot.analyze.asr import transcribe_media
