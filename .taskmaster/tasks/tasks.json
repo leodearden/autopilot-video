@@ -1263,13 +1263,13 @@
         "description": "Test quality issues from task 47 review:\n\n1. **missing_persistence_verification** (test_cluster_review.py:234-247, 276-285): Relabel and exclude tests assert only on POST response, never verify persistence with follow-up GET.\n2. **assertion_masks_bug** (test_cluster_review.py:338): set(data['clip_ids']) masks duplicate clip IDs in merge result.\n3. **weak_assertion** (test_cluster_review.py:506): `assert '2' in body` matches any '2' including dates. Use a more specific assertion.\n4. **missing_edge_case**: No test for relabel no-op (empty body {}). No test for empty-list merge request.\n5. **untested_behavior**: Excluded clusters should still appear in GET /api/clusters. MergeRequest lacks extra='forbid' (unlike ClusterRelabel).\n\nmemory_hints: search \"cluster review test\" \"task 47 review\", entity \"TestApiMergeClusters\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [
           "47"
         ],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-03T10:00:52.539Z",
+        "updatedAt": "2026-04-03T10:08:57.188Z",
         "metadata": {
           "modules": [
             "autopilot/web/routes/review.py",
@@ -2597,9 +2597,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T10:08:48.623Z",
+      "lastModified": "2026-04-03T10:08:57.188Z",
       "taskCount": 132,
-      "completedCount": 102,
+      "completedCount": 103,
       "tags": [
         "master"
       ]
