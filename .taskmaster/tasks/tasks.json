@@ -2906,6 +2906,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 148,
+        "title": "Fix OTIO transition map: add fade_in/fade_out, remove unreachable wipe",
+        "description": "The edit_planner.md prompt schema allows transitions: crossfade, cut, fade_in, fade_out, dissolve. But _TRANSITION_TYPE_MAP in otio_export.py handles crossfade, dissolve, and wipe (not in schema) but omits fade_in and fade_out. LLM-generated fade transitions silently fall back to SMPTE_Dissolve.",
+        "details": "File: plan/otio_export.py:55-60\n\nAdd fade_in and fade_out to _TRANSITION_TYPE_MAP with appropriate OTIO transition types. Remove unreachable \"wipe\" entry. Ensure the map exactly covers the prompt schema's allowed values.\n\nmemory_hints:\n- search: \"OTIO transition type mapping\"",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -2918,7 +2929,7 @@
       ],
       "created": "2026-04-03T22:30:44.764Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-03T22:31:12.562Z"
+      "updated": "2026-04-03T22:31:18.502Z"
     }
   }
 }
