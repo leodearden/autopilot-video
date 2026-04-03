@@ -202,3 +202,60 @@ class TestSeedCluster:
         db.conn.rollback()
         row = db.get_activity_cluster("c-1")
         assert row is None
+
+
+# ---------------------------------------------------------------------------
+# seed_cluster_via_app
+# ---------------------------------------------------------------------------
+
+
+class TestSeedClusterViaApp:
+    """Tests for seed_cluster_via_app / _seed_cluster_via_db alias."""
+
+    def test_importable(self) -> None:
+        """seed_cluster_via_app and _seed_cluster_via_db are importable from conftest."""
+        from tests.conftest import seed_cluster_via_app, _seed_cluster_via_db
+        assert callable(seed_cluster_via_app)
+        assert _seed_cluster_via_db is seed_cluster_via_app
+
+    def test_inserts_with_defaults(self, tmp_path: Path) -> None:
+        """seed_cluster_via_app inserts a cluster into the app's DB with defaults."""
+        from tests.conftest import seed_cluster_via_app
+        from autopilot.web.app import create_app
+
+        db_path = str(tmp_path / "catalog.db")
+        # Initialize the DB so tables exist
+        init_db = CatalogDB(db_path)
+        init_db.close()
+
+        app = create_app(db_path)
+        seed_cluster_via_app(app, "c-1")
+
+        # Read back from DB to verify
+        verify_db = CatalogDB(db_path)
+        row = verify_db.get_activity_cluster("c-1")
+        verify_db.close()
+
+        assert row is not None
+        assert row["label"] == "Morning Activity"
+        assert row["location_label"] == "Park"
+
+    def test_overrides_work(self, tmp_path: Path) -> None:
+        """seed_cluster_via_app accepts keyword overrides."""
+        from tests.conftest import seed_cluster_via_app
+        from autopilot.web.app import create_app
+
+        db_path = str(tmp_path / "catalog.db")
+        init_db = CatalogDB(db_path)
+        init_db.close()
+
+        app = create_app(db_path)
+        seed_cluster_via_app(app, "c-1", label="Beach Walk", location_label="Beach")
+
+        verify_db = CatalogDB(db_path)
+        row = verify_db.get_activity_cluster("c-1")
+        verify_db.close()
+
+        assert row is not None
+        assert row["label"] == "Beach Walk"
+        assert row["location_label"] == "Beach"
