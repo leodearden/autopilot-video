@@ -2624,6 +2624,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 134,
+        "title": "Improve api_stream_video: dynamic MIME type and TOCTOU safety",
+        "description": "In autopilot/web/routes/review.py around line 544, the FileResponse always uses media_type='video/mp4'. If the pipeline produces .mov or .webm the browser gets a wrong Content-Type. Also, the Path.is_file() check followed by FileResponse construction is non-atomic — a deleted file between check and open returns a 500 instead of a 404.\n\nFix: derive media type from the extension using `mimetypes.guess_type(render_path)[0] or 'video/mp4'`, and wrap the FileResponse construction in try/except OSError, re-raising as HTTPException(404).\n\nmemory_hints: search \"api_stream_video FileResponse\", entity \"review.py\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -2636,7 +2647,7 @@
       ],
       "created": "2026-04-03T13:42:11.687Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-03T13:42:11.688Z"
+      "updated": "2026-04-03T13:42:16.985Z"
     }
   }
 }
