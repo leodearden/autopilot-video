@@ -313,3 +313,21 @@ class TestSSEEventTypes:
 
         for etype in self.ALL_EVENT_TYPES:
             assert etype in VALID_EVENT_TYPES, f"'{etype}' missing from VALID_EVENT_TYPES"
+
+
+class TestMakeFiniteGen:
+    """Tests for the _make_finite_gen factory helper."""
+
+    def test_returns_callable(self) -> None:
+        """_make_finite_gen() returns an async callable."""
+        from tests.test_sse import _make_finite_gen
+
+        gen_fn = _make_finite_gen()
+        assert callable(gen_fn)
+
+    def test_with_last_event_id_returns_callable(self) -> None:
+        """_make_finite_gen(use_last_event_id=True) returns an async callable."""
+        from tests.test_sse import _make_finite_gen
+
+        gen_fn = _make_finite_gen(use_last_event_id=True)
+        assert callable(gen_fn)
