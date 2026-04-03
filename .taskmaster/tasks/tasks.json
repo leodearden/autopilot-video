@@ -2884,6 +2884,17 @@
         "dependencies": [],
         "priority": "high",
         "subtasks": []
+      },
+      {
+        "id": 146,
+        "title": "Fix YouTube tag builder: class_name -> class in detection JSON field",
+        "description": "youtube.py:120 reads d.get(\"class_name\") but objects.py uses \"class\" as the detection field name. Detection-based tags are always empty in uploaded videos. One-line fix.",
+        "details": "File: upload/youtube.py:120-121\n\nChange:\n  if d.get(\"class_name\"):\n      class_names.add(d[\"class_name\"])\nTo:\n  if d.get(\"class\"):\n      class_names.add(d[\"class\"])\n\nAlso fix uploaded_at not being set in insert_upload (youtube.py:213) — add uploaded_at=datetime.now(timezone.utc).isoformat() to the call.\n\nmemory_hints:\n- search: \"YouTube upload metadata tags detection\"",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -2896,7 +2907,7 @@
       ],
       "created": "2026-04-03T22:30:44.764Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-03T22:30:58.671Z"
+      "updated": "2026-04-03T22:31:04.001Z"
     }
   }
 }
