@@ -124,6 +124,28 @@ def mock_gpu_scheduler():
     return scheduler
 
 
+def _seed_narrative(
+    db: "CatalogDB",  # noqa: F821 — lazy import to avoid circular deps
+    narrative_id: str = "n-1",
+    **overrides: object,
+) -> None:
+    """Insert a narrative with sensible defaults, overridable via kwargs."""
+    from autopilot.db import CatalogDB as _CDB  # noqa: F811
+
+    defaults: dict[str, object] = {
+        "title": "Morning Walk",
+        "description": "A walk in the park",
+        "proposed_duration_seconds": 120.0,
+        "activity_cluster_ids_json": '["c-1","c-2"]',
+        "arc_notes": "peaceful start",
+        "emotional_journey": "calm \u2192 happy",
+        "status": "proposed",
+    }
+    defaults.update(overrides)
+    db.insert_narrative(narrative_id, **defaults)  # type: ignore[arg-type]
+    db.conn.commit()
+
+
 def extract_json_blocks(text: str) -> list:
     """Extract and parse all fenced ```json code blocks from markdown text.
 

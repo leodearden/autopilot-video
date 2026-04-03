@@ -11,24 +11,7 @@ from starlette.testclient import TestClient
 
 from autopilot.db import CatalogDB
 from autopilot.web.app import create_app
-
-
-def _seed_narrative(
-    db: CatalogDB, narrative_id: str = "n-1", **overrides: object,
-) -> None:
-    """Insert a narrative with sensible defaults, overridable via kwargs."""
-    defaults: dict[str, object] = {
-        "title": "Morning Walk",
-        "description": "A walk in the park",
-        "proposed_duration_seconds": 120.0,
-        "activity_cluster_ids_json": '["c-1","c-2"]',
-        "arc_notes": "peaceful start",
-        "emotional_journey": "calm \u2192 happy",
-        "status": "proposed",
-    }
-    defaults.update(overrides)
-    db.insert_narrative(narrative_id, **defaults)  # type: ignore[arg-type]
-    db.conn.commit()
+from tests.conftest import _seed_narrative
 
 # ---------------------------------------------------------------------------
 # Fixtures
