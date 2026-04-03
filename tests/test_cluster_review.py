@@ -11,6 +11,7 @@ from starlette.testclient import TestClient
 
 from autopilot.db import CatalogDB
 from autopilot.web.app import create_app
+from tests.conftest import _seed_cluster, _seed_cluster_via_db  # shared helpers (consolidated)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -23,9 +24,6 @@ def db(tmp_path: Path) -> Iterator[CatalogDB]:
     _db = CatalogDB(db_path)
     yield _db  # type: ignore[misc]
     _db.close()
-
-
-from tests.conftest import _seed_cluster, _seed_cluster_via_db  # shared helpers (consolidated)
 
 
 @pytest.fixture
