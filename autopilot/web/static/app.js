@@ -81,6 +81,9 @@ function makeStageHandler(eventType, toastMsg, toastType) {
                 }
             } else {
                 console.warn('SSE ' + eventType + ': missing stage field', data);
+                if (toastMsg) {
+                    showToast(toastMsg.replace('{stage}', 'unknown'), toastType || 'info');
+                }
             }
         } catch (e) {
             console.error('SSE ' + eventType + ' parse error:', e);
