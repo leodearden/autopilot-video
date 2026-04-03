@@ -1433,13 +1433,13 @@
         "description": "_render_narrative_partial (review.py:151-158) and _render_cluster_partial (review.py:295-302) are structurally identical — both call templates.get_template(), template.render(), and return HTMLResponse. Only the template path and context variable name differ.\n\nExtract a shared helper: `def _render_partial(request: Request, template_name: str, **ctx) -> HTMLResponse` to reduce duplication.\n\nFiles: autopilot/web/routes/review.py (lines 151-158, 295-302)\n\nmemory_hints: search \"review.py render partial helper\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [
           "63"
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-03-27T12:15:46.273Z",
+        "updatedAt": "2026-04-03T10:27:04.773Z",
         "metadata": {
           "files": [
             "autopilot/web/routes/review.py"
@@ -2611,7 +2611,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T10:27:04.663Z",
+      "lastModified": "2026-04-03T10:27:04.773Z",
       "taskCount": 132,
       "completedCount": 111,
       "tags": [
