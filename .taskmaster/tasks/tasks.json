@@ -2479,18 +2479,18 @@
         "description": "4 tests in tests/test_music.py fail with 'No module named audiocraft.models.musicgen' on the CI/main environment. These failures pre-date any current task branches and block ALL merge queue submissions — no branch can land until this is resolved.\n\nTests failing:\n- 4 tests in TestMusicGen class (approximate)\n- Error: `ModuleNotFoundError: No module named 'audiocraft.models.musicgen'`\n\nAudiocraft/musicgen is an optional heavy ML dependency not available in the test environment.\n\n## Fix options (in order of preference)\n1. **Skip with pytest.importorskip**: Add `audiocraft = pytest.importorskip('audiocraft.models.musicgen')` at top of test class or each test — skips gracefully when module is absent.\n2. **Mock the import**: Use `unittest.mock.patch.dict('sys.modules', {'audiocraft': MagicMock(), 'audiocraft.models': MagicMock(), 'audiocraft.models.musicgen': MagicMock()})` as a session-scoped fixture.\n3. **Conditional skip marker**: `@pytest.mark.skipif(not importlib.util.find_spec('audiocraft'), reason='audiocraft not installed')` on the class.\n\nOption 1 (importorskip) is preferred — it's idiomatic pytest and makes the skip reason explicit in the test report.\n\n## Memory hints\n- search: 'audiocraft musicgen test failures merge queue blocker'\n- search: 'pytest.importorskip optional ML dependency skip pattern'",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "high",
         "subtasks": [],
-        "updatedAt": "2026-04-03T06:17:34.831Z"
+        "updatedAt": "2026-04-03T06:25:31.962Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T06:25:14.561Z",
+      "lastModified": "2026-04-03T06:25:31.962Z",
       "taskCount": 131,
-      "completedCount": 97,
+      "completedCount": 98,
       "tags": [
         "master"
       ]
