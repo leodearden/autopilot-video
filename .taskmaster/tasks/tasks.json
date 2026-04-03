@@ -2407,11 +2407,20 @@
         "description": "Add `assert response.status_code == 200` to TestSettingsNavLink.test_nav_contains_settings_link in tests/test_settings.py so the test explicitly verifies the route contract and doesn't silently pass on error responses.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-02T22:38:31.099Z"
+        "updatedAt": "2026-04-03T06:05:56.403Z",
+        "metadata": {
+          "modules": [
+            "autopilot/web/app.py",
+            "autopilot/web/routes/__init__.py",
+            "autopilot/web/routes/settings.py",
+            "autopilot/web/templates/settings",
+            "tests/test_settings.py"
+          ]
+        }
       },
       {
         "id": "129",
@@ -2447,7 +2456,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T06:05:16.753Z",
+      "lastModified": "2026-04-03T06:05:56.403Z",
       "taskCount": 130,
       "completedCount": 95,
       "tags": [
