@@ -2545,11 +2545,11 @@
         "description": "The nav dropdown in base.html links to /review/edit-plans but no route or template exists. Add a route in autopilot/web/routes/review.py and a template at autopilot/web/templates/review/edit_plans.html following the same pattern as the scripts page (review/scripts.html). The page should display edit plans for narratives from CatalogDB.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-02T22:35:43.852Z",
+        "updatedAt": "2026-04-03T10:18:42.217Z",
         "metadata": {
           "modules": [
             "autopilot/web/routes/review.py",
@@ -2611,7 +2611,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T10:18:42.113Z",
+      "lastModified": "2026-04-03T10:18:42.217Z",
       "taskCount": 132,
       "completedCount": 108,
       "tags": [
