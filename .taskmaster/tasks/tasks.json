@@ -2620,7 +2620,7 @@
         "description": "In autopilot/db.py around lines 268-273, the ALTER TABLE migration (1) runs on every CatalogDB.__init__ call (every HTTP request), paying the cost of a failed DDL each time, and (2) catches all sqlite3.OperationalError, silently swallowing non-duplicate-column errors like disk-full or locking failures.\n\nFix: check `SELECT COUNT(*) FROM pragma_table_info('activity_clusters') WHERE name='excluded'` once (at app startup or lazily via a class-level flag) and only issue ALTER TABLE when the column is absent. Also add a brief comment about DDL auto-commit behavior.\n\nmemory_hints: search \"CatalogDB migration excluded column\", entity \"CatalogDB\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
@@ -2633,7 +2633,8 @@
             "autopilot",
             "tests"
           ]
-        }
+        },
+        "updatedAt": "2026-04-03T13:57:06.382Z"
       },
       {
         "id": "134",
@@ -2772,7 +2773,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T13:57:06.275Z",
+      "lastModified": "2026-04-03T13:57:06.382Z",
       "taskCount": 139,
       "completedCount": 115,
       "tags": [
