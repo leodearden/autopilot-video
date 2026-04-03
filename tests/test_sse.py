@@ -15,6 +15,34 @@ from autopilot.web.app import create_app
 from tests.conftest import _parse_sse_body  # shared helper (consolidated)
 
 
+def _make_finite_gen(*, use_last_event_id: bool = False):
+    """Return a finite async generator for patching ``_event_generator``.
+
+    The returned generator reads events from the app's DB and yields them
+    formatted via the SSE module helpers, then terminates (unlike the real
+    infinite generator).
+
+    Parameters
+    ----------
+    use_last_event_id:
+        If *True*, read the ``Last-Event-ID`` header and resume from that
+        position.  If *False* (default), deliver all events from the start.
+    """
+    from autopilot.web.routes import sse as sse_module
+
+    async def _finite_gen(request):
+        db = sse_module._get_db(request)
+        last_id = sse_module._get_last_event_id(request) if use_last_event_id else 0
+        try:
+            events = db.get_events_since(last_id)
+            for ev in events:
+                yield sse_module._format_event(ev)
+        finally:
+            db.close()
+
+    return _finite_gen
+
+
 @pytest.fixture
 def sse_db(tmp_path: Path) -> CatalogDB:
     """Create a CatalogDB backed by a real file so the app can connect to it."""
