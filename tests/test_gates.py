@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 from html.parser import HTMLParser
-from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
 from starlette.testclient import TestClient
 
 from autopilot.db import CatalogDB
-from autopilot.web.app import create_app
 
 # Constants mirrored from the route module (populated after pre-2)
 VALID_MODES = ("auto", "pause", "notify")
@@ -71,22 +69,6 @@ def _get_selected_modes(html: str) -> dict[str, str]:
     parser = _SelectedOptionParser()
     parser.feed(html)
     return {k.removeprefix("gate-"): v for k, v in parser.selected.items()}
-
-
-@pytest.fixture
-def app(tmp_path: Path) -> FastAPI:
-    """Create a FastAPI app with a file-backed CatalogDB via tmp_path."""
-    db_path = str(tmp_path / "catalog.db")
-    # Seed the gate rows
-    with CatalogDB(db_path) as db:
-        db.init_default_gates()
-    return create_app(db_path)
-
-
-@pytest.fixture
-def client(app: FastAPI) -> TestClient:
-    """Create a TestClient for the app."""
-    return TestClient(app)
 
 
 class TestGateListAPI:

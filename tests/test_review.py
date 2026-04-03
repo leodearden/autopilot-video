@@ -138,15 +138,6 @@ class TestUpdateNarrativeWhitelist:
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def app(tmp_path: Path) -> FastAPI:
-    """Create a FastAPI app with a file-backed CatalogDB via tmp_path."""
-    db_path = str(tmp_path / "catalog.db")
-    with CatalogDB(db_path) as _db:
-        _db.init_default_gates()
-    return create_app(db_path)
-
-
-@pytest.fixture
 def seeded_app(tmp_path: Path) -> FastAPI:
     """Create a FastAPI app with seeded narratives."""
     db_path = str(tmp_path / "catalog.db")
@@ -163,12 +154,6 @@ def seeded_app(tmp_path: Path) -> FastAPI:
         )
         _db.conn.commit()
     return create_app(db_path)
-
-
-@pytest.fixture
-def client(app: FastAPI) -> TestClient:
-    """Create a TestClient for the app."""
-    return TestClient(app)
 
 
 @pytest.fixture
