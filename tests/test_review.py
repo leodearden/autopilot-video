@@ -170,6 +170,13 @@ def seeded_app(tmp_path: Path) -> FastAPI:
         _seed_narrative(_db, "n-1", title="Morning Walk", status="proposed")
         _seed_narrative(_db, "n-2", title="Sunset Hike", status="approved")
         _seed_narrative(_db, "n-3", title="Beach Day", status="proposed")
+        _db.insert_activity_cluster(
+            "c-test-1",
+            label="Morning Jog",
+            description="Jogging in the park",
+            clip_ids_json='["v1","v2"]',
+        )
+        _db.conn.commit()
     return create_app(db_path)
 
 
@@ -811,3 +818,94 @@ class TestNarrativeAPIMalformedJSON:
         assert response.status_code == 200
         data = response.json()
         assert data["activity_cluster_ids"] == []
+
+
+# ---------------------------------------------------------------------------
+# TestRenderPartialRefactor — task-74
+# ---------------------------------------------------------------------------
+
+class TestRenderPartialRefactor:
+    """Verify review.py uses render_partial from deps and private helpers are removed."""
+
+    def test_no_private_render_narrative_partial(self) -> None:
+        """_render_narrative_partial should be removed from review module."""
+        from autopilot.web.routes import review
+        assert not hasattr(review, "_render_narrative_partial"), (
+            "_render_narrative_partial should be removed in favor of render_partial"
+        )
+
+    def test_no_private_render_cluster_partial(self) -> None:
+        """_render_cluster_partial should be removed from review module."""
+        from autopilot.web.routes import review
+        assert not hasattr(review, "_render_cluster_partial"), (
+            "_render_cluster_partial should be removed in favor of render_partial"
+        )
+
+    def test_review_imports_render_partial(self) -> None:
+        """review module should import render_partial from deps."""
+        import inspect
+
+        from autopilot.web.routes import review as review_mod
+        source = inspect.getsource(review_mod)
+        assert "render_partial" in source, (
+            "review.py should use render_partial from deps"
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestClusterRelabelHTMX — task-74
+# ---------------------------------------------------------------------------
+
+class TestClusterRelabelHTMX:
+    """Tests for POST /api/clusters/{id}/relabel with HTMX returning HTML partial."""
+
+    def test_relabel_htmx_returns_html(self, seeded_client: TestClient) -> None:
+        """POST /api/clusters/c-test-1/relabel with HX-Request returns HTML."""
+        response = seeded_client.post(
+            "/api/clusters/c-test-1/relabel",
+            json={"label": "Updated Label"},
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "cluster-c-test-1" in response.text
+        assert "Updated Label" in response.text
+
+    def test_relabel_htmx_preserves_clip_count(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """HTMX relabel response preserves the clip count from parsed cluster."""
+        response = seeded_client.post(
+            "/api/clusters/c-test-1/relabel",
+            json={"label": "Updated Label"},
+            headers={"HX-Request": "true"},
+        )
+        assert "2 clips" in response.text
+
+
+# ---------------------------------------------------------------------------
+# TestClusterExcludeHTMX — task-74
+# ---------------------------------------------------------------------------
+
+class TestClusterExcludeHTMX:
+    """Tests for POST /api/clusters/{id}/exclude with HTMX returning HTML partial."""
+
+    def test_exclude_htmx_returns_html(self, seeded_client: TestClient) -> None:
+        """POST /api/clusters/c-test-1/exclude with HX-Request returns HTML."""
+        response = seeded_client.post(
+            "/api/clusters/c-test-1/exclude",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "cluster-c-test-1" in response.text
+
+    def test_exclude_htmx_contains_excluded_badge(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """HTMX exclude response contains the excluded badge styling."""
+        response = seeded_client.post(
+            "/api/clusters/c-test-1/exclude",
+            headers={"HX-Request": "true"},
+        )
+        assert "bg-red-900" in response.text
