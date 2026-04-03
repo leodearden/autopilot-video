@@ -124,14 +124,18 @@ def mock_gpu_scheduler():
     return scheduler
 
 
+PIPELINE_STAGES = (
+    "ingest", "analyze", "classify", "narrate", "script",
+    "edl", "source", "render", "upload",
+)
+
+
 def _seed_narrative(
     db: "CatalogDB",  # noqa: F821 — lazy import to avoid circular deps
     narrative_id: str = "n-1",
     **overrides: object,
 ) -> None:
     """Insert a narrative with sensible defaults, overridable via kwargs."""
-    from autopilot.db import CatalogDB as _CDB  # noqa: F811
-
     defaults: dict[str, object] = {
         "title": "Morning Walk",
         "description": "A walk in the park",
