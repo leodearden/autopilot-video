@@ -12,6 +12,7 @@ from starlette.testclient import TestClient
 
 from autopilot.db import CatalogDB
 from autopilot.web.app import create_app
+from tests.conftest import _parse_sse_body  # shared helper (consolidated)
 
 
 @pytest.fixture
@@ -34,29 +35,6 @@ def sse_app(sse_db: CatalogDB) -> FastAPI:
 def sse_client(sse_app: FastAPI):
     """Create a TestClient for SSE tests."""
     return TestClient(sse_app)
-
-
-def _parse_sse_body(text: str) -> list[dict]:
-    """Parse SSE response text into a list of event dicts.
-
-    Each event has 'id', 'event', and 'data' keys extracted from
-    the SSE wire format.
-    """
-    events = []
-    current: dict = {}
-    for line in text.splitlines():
-        if line.startswith("id:"):
-            current["id"] = line[3:].strip()
-        elif line.startswith("event:"):
-            current["event"] = line[6:].strip()
-        elif line.startswith("data:"):
-            current["data"] = line[5:].strip()
-        elif line == "" and current:
-            events.append(current)
-            current = {}
-    if current:
-        events.append(current)
-    return events
 
 
 class TestSSEEndpointBasic:
