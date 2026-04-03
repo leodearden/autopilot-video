@@ -2757,7 +2757,17 @@
         "status": "pending",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_db.py",
+            "tests/test_cluster_card.py",
+            "tests/test_web_e2e.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       }
     ],
     "metadata": {
