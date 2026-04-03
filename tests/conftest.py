@@ -252,6 +252,38 @@ def seed_cluster(
 _seed_cluster = seed_cluster
 
 
+def seed_cluster_via_app(
+    app: object,
+    cluster_id: str = "c-1",
+    **overrides: object,
+) -> None:
+    """Insert an activity cluster via the app's database connection.
+
+    Opens a new :class:`CatalogDB` from ``app.state.db_path``, delegates to
+    :func:`seed_cluster`, and ensures the connection is closed afterwards.
+
+    Parameters
+    ----------
+    app:
+        A FastAPI application whose ``state.db_path`` points to a valid
+        CatalogDB database file.
+    cluster_id:
+        Primary key for the cluster row.
+    **overrides:
+        Any column keyword accepted by :func:`seed_cluster`.
+    """
+    from autopilot.db import CatalogDB as _CatalogDB
+
+    db = _CatalogDB(app.state.db_path)  # type: ignore[union-attr]
+    try:
+        seed_cluster(db, cluster_id, **overrides)
+    finally:
+        db.close()
+
+
+_seed_cluster_via_db = seed_cluster_via_app
+
+
 # ---------------------------------------------------------------------------
 # Generic utilities
 # ---------------------------------------------------------------------------
