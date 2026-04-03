@@ -1411,7 +1411,15 @@
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-02T22:27:35.869Z"
+        "updatedAt": "2026-04-02T22:27:35.869Z",
+        "metadata": {
+          "files": [
+            "autopilot/web/templates/partials/cluster_card.html"
+          ],
+          "modules": [
+            "autopilot/web/templates"
+          ]
+        }
       },
       {
         "id": 74,
@@ -1469,7 +1477,17 @@
         ],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-02T22:27:35.915Z"
+        "updatedAt": "2026-04-02T22:27:35.915Z",
+        "metadata": {
+          "files": [
+            "autopilot/web/routes/review.py",
+            "tests/test_cluster_review.py"
+          ],
+          "modules": [
+            "autopilot/web/routes",
+            "tests"
+          ]
+        }
       },
       {
         "id": 77,
