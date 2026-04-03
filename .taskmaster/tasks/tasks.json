@@ -2765,7 +2765,7 @@
         "description": "Multiple test gaps across the test suite:\n\n- tests/test_db.py: Add TestListMethods with test_list_edit_plans_returns_narrative_title, test_list_uploads_ordered_newest_first, test_list_edit_plans_null_narrative_title. Add `assert catalog_db.get_activity_cluster('ac-del') is None` to test_delete_activity_cluster.\n- tests/test_cluster_card.py: Add TestExcludedClusterCard rendering with excluded=1, asserting badge present, inputs absent, and Relabel/Exclude buttons absent.\n- tests/test_web_e2e.py: Add test_exclude_cluster_is_idempotent calling exclude twice and asserting both return 200. Add inline comment or computed assertion in test_merge_resilient_to_dirty_connection_state explaining why c-2 is the survivor. Add test_cluster_with_null_clip_ids_json to TestMalformedJsonResilience asserting clip_ids==[] and clip_count==0.\n\nNote: test_merge_clusters_equal_clip_count is covered by existing task 96 (Strengthen merge tie-breaking contract) — omitted here to avoid duplication.\n\nmemory_hints: search \"test_db test_cluster_card test_web_e2e coverage gaps\", search \"task 96 merge tie-breaking\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
@@ -2779,7 +2779,7 @@
             "tests"
           ]
         },
-        "updatedAt": "2026-04-03T15:00:56.331Z"
+        "updatedAt": "2026-04-03T15:05:05.564Z"
       },
       {
         "id": "140",
@@ -2847,9 +2847,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T15:05:05.481Z",
+      "lastModified": "2026-04-03T15:05:05.564Z",
       "taskCount": 142,
-      "completedCount": 122,
+      "completedCount": 123,
       "tags": [
         "master"
       ]
