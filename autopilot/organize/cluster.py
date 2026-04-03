@@ -39,6 +39,7 @@ class ActivityCluster:
     gps_center_lon: float | None = None
     label: str | None = None
     description: str | None = None
+    excluded: bool = False
 
 
 # -- Constants -----------------------------------------------------------------

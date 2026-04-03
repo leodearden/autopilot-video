@@ -29,8 +29,7 @@
                 hx-post="/api/clusters/{{ cluster.cluster_id }}/relabel"
                 hx-target="#cluster-{{ cluster.cluster_id }}"
                 hx-swap="outerHTML"
-                hx-vals='js:{"label": this.closest("[id^=cluster-]").querySelector("[name=label]").value, "description": this.closest("[id^=cluster-]").querySelector("[name=description]").value}'
-                hx-headers='{"Content-Type": "application/json"}'>
+                hx-vals='js:{"label": this.closest("[id^=cluster-]").querySelector("[name=label]")?.value ?? "", "description": this.closest("[id^=cluster-]").querySelector("[name=description]")?.value ?? ""}'>
             Relabel
         </button>
         <button class="bg-red-700 hover:bg-red-600 text-white px-3 py-1 rounded text-xs font-medium"

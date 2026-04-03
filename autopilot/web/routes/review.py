@@ -1,8 +1,9 @@
-"""Review hub, narrative review, and cluster review routes."""
+"""Review hub, narrative review, cluster review, and render/upload routes."""
 
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -13,6 +14,8 @@ from pydantic import BaseModel, ConfigDict
 from starlette.responses import FileResponse, Response
 
 from autopilot.db import CatalogDB
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -273,7 +276,11 @@ def _parse_cluster(row: dict[str, object]) -> dict[str, Any]:
     if raw:
         try:
             clip_ids: list[str] = json.loads(str(raw))
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, ValueError):
+            logger.warning(
+                "Malformed clip_ids_json in cluster %s",
+                result.get("cluster_id", "?"),
+            )
             clip_ids = []
     else:
         clip_ids = []
@@ -499,7 +506,18 @@ def _parse_render(edit_plan: dict[str, object]) -> dict[str, object]:
     """Parse validation_json from an edit plan into a structured dict."""
     result = dict(edit_plan)
     raw = result.pop("validation_json", None)
-    result["validation"] = json.loads(str(raw)) if raw else None
+    if raw:
+        try:
+            validation = json.loads(str(raw))
+        except (json.JSONDecodeError, ValueError):
+            logger.warning(
+                "Malformed validation_json in edit plan %s",
+                result.get("narrative_id", "?"),
+            )
+            validation = None
+    else:
+        validation = None
+    result["validation"] = validation
     return result
 
 
@@ -595,7 +613,13 @@ def render_review_page(
     # Parse script scenes
     scenes: list[dict[str, object]] = []
     if script and script.get("script_json"):
-        script_data = json.loads(str(script["script_json"]))
+        try:
+            script_data = json.loads(str(script["script_json"]))
+        except (json.JSONDecodeError, ValueError):
+            logger.warning(
+                "Malformed script_json for narrative %s", narrative_id,
+            )
+            script_data = {}
         if isinstance(script_data, dict):
             scenes = script_data.get("scenes", [])
         elif isinstance(script_data, list):
@@ -667,6 +691,7 @@ def edit_plans_redirect(request: Request) -> RedirectResponse:
 def renders_redirect(request: Request) -> RedirectResponse:
     """Redirect /review/renders to the canonical /review/render path."""
     return RedirectResponse(url="/review/render", status_code=307)
+
 
 
 @router.get("/review/uploads")
