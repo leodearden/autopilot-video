@@ -2635,6 +2635,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 135,
+        "title": "Fix render_index_page 'rendered' badge to check file existence",
+        "description": "In autopilot/web/routes/review.py, render_index_page (around line 558-572) passes edit_plans to the template without annotating each plan with a has_render field. The template at autopilot/web/templates/review/render_index.html line 21 checks `{% if plan.render_path %}` (truthy, not existence), so a stale path in the DB shows a misleading 'rendered' badge.\n\nFix: annotate each plan with `plan['has_render'] = bool(plan.get('render_path') and Path(str(plan['render_path'])).is_file())` before passing to the template, then update the template to gate on `has_render`.\n\nmemory_hints: search \"render_index_page has_render badge\", entity \"render_index.html\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -2647,7 +2658,7 @@
       ],
       "created": "2026-04-03T13:42:11.687Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-03T13:42:16.985Z"
+      "updated": "2026-04-03T13:42:21.418Z"
     }
   }
 }
