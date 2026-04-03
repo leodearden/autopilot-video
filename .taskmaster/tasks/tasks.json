@@ -2164,11 +2164,11 @@
         "description": "Three related improvements to setupDashboardSSE in app.js:\n\n1. **Handler factory**: The gate_waiting, gate_approved, gate_skipped, stage_error, stage_started, stage_completed, and job_progress handlers share identical structure (parse JSON, extract stage, refreshStageCard, showToast, catch). Extract a `makeStageHandler(eventType, toastMsg, toastType)` factory function to eliminate duplication (~60 lines → ~20).\n\n2. **Missing try/catch**: run_completed and run_failed are the only handlers lacking try/catch. Wrap them for consistency with all other handlers.\n\n3. **Silent failure logging**: All stage-level handlers silently drop events where `data.stage` is falsy. Add `console.warn('SSE {eventType}: missing stage field', data)` in an else branch to aid debugging.\n\nmemory_hints: search \"SSE handler app.js\" for current implementation; get_entity \"setupDashboardSSE\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-03T15:31:37.213Z",
+        "updatedAt": "2026-04-03T15:31:37.333Z",
         "metadata": {
           "files": [
             "autopilot/web/static/app.js"
@@ -2855,7 +2855,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T15:31:37.213Z",
+      "lastModified": "2026-04-03T15:31:37.333Z",
       "taskCount": 142,
       "completedCount": 123,
       "tags": [
