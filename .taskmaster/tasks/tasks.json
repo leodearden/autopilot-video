@@ -2784,6 +2784,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 141,
+        "title": "DB layer cleanup: excluded type, migration guard, _get_db/is_htmx dedup, naming",
+        "description": "Address reviewer suggestions from task 73 review cycle affecting db.py and related modules:\n\n1. Fix ActivityCluster.excluded type mismatch: change dataclass field to `excluded: int = 0` to match DB (architect S1). File: autopilot/organize/cluster.py:42\n2. Gate ALTER TABLE migration with PRAGMA table_info check at startup instead of per-request try/except (performance S1, robustness S6). File: autopilot/db.py:265-278\n3. Replace local _get_db and _is_htmx in review.py with imports from deps.py (reuse S1). Files: autopilot/web/routes/review.py, autopilot/web/routes/sse.py\n4. Extract shared _safe_json_loads helper from triplicated try/except pattern (reuse S2). File: autopilot/web/routes/review.py\n5. Consider renaming get_activity_clusters() → list_activity_clusters() for consistency with list_* convention (architect S5). File: autopilot/db.py + callers",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -2796,7 +2807,7 @@
       ],
       "created": "2026-04-03T14:24:58.465Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-03T14:24:58.466Z"
+      "updated": "2026-04-03T14:25:06.032Z"
     }
   }
 }
