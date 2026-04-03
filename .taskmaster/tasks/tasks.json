@@ -2041,7 +2041,6 @@
           "files": [
             "tests/conftest.py",
             "tests/test_web_app.py",
-            "tests/test_settings.py",
             "tests/test_gates.py",
             "tests/test_review.py"
           ],
@@ -2069,7 +2068,8 @@
               "settings feature removed commit 0b964cb test_settings.py"
             ]
           },
-          "note_for_executor": "test_settings.py was removed when the settings feature was deleted in commit 0b964cb — skip step 3 of the plan (drop test_settings.py fixtures). Apply refactoring to the remaining 3 files only: test_web_app.py, test_gates.py, test_review.py."
+          "note_for_executor": "test_settings.py was removed when the settings feature was deleted in commit 0b964cb — this refactoring applies to the 3 remaining files only: test_web_app.py, test_gates.py, test_review.py. Also: step 3 in the description body (about test_settings.py) is stale and should be ignored.",
+          "_causation_id": "659e5f7c-429e-4c67-9a42-fdee6fdea804"
         }
       },
       {
