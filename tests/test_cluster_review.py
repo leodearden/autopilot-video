@@ -51,12 +51,6 @@ def app(tmp_path: Path) -> FastAPI:
     return create_app(db_path=db_path)
 
 
-@pytest.fixture
-def client(app: FastAPI) -> TestClient:
-    """Create a test client for the app."""
-    return TestClient(app)
-
-
 # ---------------------------------------------------------------------------
 # TestGetActivityCluster — step-1
 # ---------------------------------------------------------------------------

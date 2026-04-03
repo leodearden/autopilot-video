@@ -25,14 +25,6 @@ def app(tmp_path: Path) -> FastAPI:
     return app
 
 
-@pytest.fixture
-def client(app: FastAPI):
-    """Create a TestClient for the app."""
-    from starlette.testclient import TestClient
-
-    return TestClient(app)
-
-
 class TestCreateApp:
     """Tests for the create_app factory function."""
 

@@ -153,6 +153,26 @@ def _seed_narrative(
     db.conn.commit()
 
 
+@pytest.fixture
+def app(tmp_path: Path):
+    """Create a FastAPI app with a file-backed CatalogDB and default gates."""
+    from autopilot.db import CatalogDB
+    from autopilot.web.app import create_app
+
+    db_path = str(tmp_path / "catalog.db")
+    with CatalogDB(db_path) as db:
+        db.init_default_gates()
+    return create_app(db_path)
+
+
+@pytest.fixture
+def client(app):
+    """Create a TestClient for the app."""
+    from starlette.testclient import TestClient
+
+    return TestClient(app)
+
+
 def extract_json_blocks(text: str) -> list:
     """Extract and parse all fenced ```json code blocks from markdown text.
 

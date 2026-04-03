@@ -37,12 +37,6 @@ def app(tmp_path: Path) -> FastAPI:
     return create_app(db_path=db_path)
 
 
-@pytest.fixture
-def client(app: FastAPI) -> TestClient:
-    """Create a test client for the app."""
-    return TestClient(app)
-
-
 def _seed_edit_plan(
     db: CatalogDB,
     narrative_id: str = "n-1",
