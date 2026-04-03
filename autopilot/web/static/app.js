@@ -62,27 +62,32 @@ function refreshStageCard(stage) {
 }
 
 /**
- * Create an SSE event handler that parses JSON, refreshes the stage card,
+ * Create an SSE event handler that parses JSON, optionally refreshes the stage card,
  * and optionally shows a toast notification.
  * @param {string} eventType - The SSE event type name (for error logging).
  * @param {string} [toastMsg] - Optional toast message. Use '{stage}' as placeholder.
  * @param {'success'|'error'|'info'} [toastType] - Toast type when toastMsg is provided.
+ * @param {number} [toastDuration] - Optional toast duration in ms (defaults to showToast's default).
+ * @param {boolean} [refreshCard=true] - Whether to call refreshStageCard. Set false for error-only handlers.
  * @returns {function} Event handler function.
  */
-function makeStageHandler(eventType, toastMsg, toastType) {
+function makeStageHandler(eventType, toastMsg, toastType, toastDuration, refreshCard) {
+    if (refreshCard === undefined) refreshCard = true;
     return function(event) {
         try {
             var data = JSON.parse(event.data);
             var stage = data.stage;
             if (stage) {
-                refreshStageCard(stage);
+                if (refreshCard) {
+                    refreshStageCard(stage);
+                }
                 if (toastMsg) {
-                    showToast(toastMsg.replace('{stage}', stage), toastType || 'info');
+                    showToast(toastMsg.replace('{stage}', stage), toastType || 'info', toastDuration);
                 }
             } else {
                 console.warn('SSE ' + eventType + ': missing stage field', data);
                 if (toastMsg) {
-                    showToast(toastMsg.replace('{stage}', 'unknown'), toastType || 'info');
+                    showToast(toastMsg.replace('{stage}', 'unknown'), toastType || 'info', toastDuration);
                 }
             }
         } catch (e) {
@@ -146,7 +151,7 @@ function setupNotificationSSE(source) {
         updateNotificationBadge(pendingCount);
     });
 
-    source.addEventListener('stage_error', makeStageHandler('stage_error', 'Error in {stage} stage', 'error'));
+    source.addEventListener('stage_error', makeStageHandler('stage_error', 'Error in {stage} stage', 'error', 6000, false));
 
     source.addEventListener('run_completed', function(event) {
         try {
