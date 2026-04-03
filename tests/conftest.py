@@ -6,7 +6,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Generator
+from typing import TYPE_CHECKING, Any, Generator
 
 import pytest
 
@@ -255,7 +255,7 @@ _seed_cluster = seed_cluster
 def seed_cluster_via_app(
     app: object,
     cluster_id: str = "c-1",
-    **overrides: object,
+    **overrides: Any,
 ) -> None:
     """Insert an activity cluster via the app's database connection.
 

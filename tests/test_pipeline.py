@@ -12,7 +12,6 @@ from autopilot.db import CatalogDB
 from autopilot.web.app import create_app
 from tests.conftest import PIPELINE_STAGES
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

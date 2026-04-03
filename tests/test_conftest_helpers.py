@@ -7,8 +7,8 @@ multi-data-line SSE fix.
 
 from __future__ import annotations
 
-from pathlib import Path
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
@@ -22,7 +22,6 @@ from tests.conftest import (
     seed_cluster,
     seed_narrative,
 )
-
 
 # ---------------------------------------------------------------------------
 # PIPELINE_STAGES
@@ -160,7 +159,7 @@ class TestSeedNarrative:
     def test_commit_false_skips_commit(self, db: CatalogDB) -> None:
         """With commit=False, data is NOT auto-committed."""
         # Use a connection with non-autocommit mode
-        db.conn.isolation_level = ""  # non-autocommit
+        db.conn.isolation_level = "DEFERRED"  # non-autocommit
         seed_narrative(db, "n-1", commit=False)
         db.conn.rollback()
         row = db.get_narrative("n-1")
@@ -197,7 +196,7 @@ class TestSeedCluster:
 
     def test_commit_false_skips_commit(self, db: CatalogDB) -> None:
         """With commit=False, data is NOT auto-committed."""
-        db.conn.isolation_level = ""  # non-autocommit
+        db.conn.isolation_level = "DEFERRED"  # non-autocommit
         seed_cluster(db, "c-1", commit=False)
         db.conn.rollback()
         row = db.get_activity_cluster("c-1")
@@ -214,14 +213,14 @@ class TestSeedClusterViaApp:
 
     def test_importable(self) -> None:
         """seed_cluster_via_app and _seed_cluster_via_db are importable from conftest."""
-        from tests.conftest import seed_cluster_via_app, _seed_cluster_via_db
+        from tests.conftest import _seed_cluster_via_db, seed_cluster_via_app
         assert callable(seed_cluster_via_app)
         assert _seed_cluster_via_db is seed_cluster_via_app
 
     def test_inserts_with_defaults(self, tmp_path: Path) -> None:
         """seed_cluster_via_app inserts a cluster into the app's DB with defaults."""
-        from tests.conftest import seed_cluster_via_app
         from autopilot.web.app import create_app
+        from tests.conftest import seed_cluster_via_app
 
         db_path = str(tmp_path / "catalog.db")
         # Initialize the DB so tables exist
@@ -242,8 +241,8 @@ class TestSeedClusterViaApp:
 
     def test_overrides_work(self, tmp_path: Path) -> None:
         """seed_cluster_via_app accepts keyword overrides."""
-        from tests.conftest import seed_cluster_via_app
         from autopilot.web.app import create_app
+        from tests.conftest import seed_cluster_via_app
 
         db_path = str(tmp_path / "catalog.db")
         init_db = CatalogDB(db_path)
