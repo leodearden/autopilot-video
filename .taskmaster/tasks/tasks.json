@@ -2917,6 +2917,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 149,
+        "title": "Fix or update 9 failing test_web_app.py tests for SSE handler pattern",
+        "description": "9 tests in test_web_app.py fail because they expect a makeStageHandler factory function and try/catch wrappers in app.js that were never implemented. Current app.js uses inline handlers. Either implement the factory pattern in app.js (reduces duplication) or update the tests to match the current inline pattern.",
+        "details": "File: tests/test_web_app.py:274-456, autopilot/web/static/app.js\n\nFailing classes:\n- TestSSEHandlerFactory (7 tests): expect makeStageHandler() factory\n- TestSSERunHandlerRobustness (2 tests): expect try/catch in run_completed/run_failed\n\nRecommended: Implement makeStageHandler in app.js — it reduces duplication and adds robustness (try/catch). The tests already describe the desired contract.\n\nmemory_hints:\n- search: \"makeStageHandler SSE handler factory app.js\"",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -2929,7 +2940,7 @@
       ],
       "created": "2026-04-03T22:30:44.764Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-03T22:31:18.502Z"
+      "updated": "2026-04-03T22:31:25.731Z"
     }
   }
 }
