@@ -2106,11 +2106,11 @@
         "description": "Four test files independently define nearly identical `app` and `client` fixtures: test_web_app.py, test_settings.py, test_gates.py, test_review.py. Each creates a FastAPI app via `create_app(str(tmp_path / \"catalog.db\"))` and wraps it in TestClient.\n\n## Plan\n\n1. Add a base `app` + `client` fixture pair to `tests/conftest.py` (plain app, no seeding).\n2. Files that need specialization (test_web_app.py adds a test route, test_gates.py/test_review.py seed DB rows) override locally.\n3. test_settings.py can drop its fixtures entirely and use conftest.\n\nThis reduces boilerplate and ensures consistency as more route test files are added.\n\n## Memory hints\n- search: \"test fixture patterns conftest\" for related conventions",
         "details": "",
         "testStrategy": "",
-        "status": "blocked",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-03T15:48:20.790Z",
+        "updatedAt": "2026-04-03T16:03:20.839Z",
         "metadata": {
           "files": [
             "tests/conftest.py",
@@ -2843,13 +2843,19 @@
             "tests/test_cluster_card.py",
             "tests/test_cluster_review.py",
             "tests/test_db.py"
-          ]
+          ],
+          "memory_hints": {
+            "entities": [],
+            "queries": [
+              "resolution for: Test coverage gaps: list_edit_plans, list_uploads, excluded template, edge cases"
+            ]
+          }
         }
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T15:49:21.903Z",
+      "lastModified": "2026-04-03T16:03:20.839Z",
       "taskCount": 142,
       "completedCount": 123,
       "tags": [
