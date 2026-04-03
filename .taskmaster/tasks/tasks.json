@@ -2873,6 +2873,17 @@
         "dependencies": [],
         "priority": "high",
         "subtasks": []
+      },
+      {
+        "id": 145,
+        "title": "Add column whitelists to update_gate, update_job, update_run",
+        "description": "SQL injection vector: update_gate, update_job, and update_run build SET clauses from **kwargs keys without whitelist validation. Current callers pass literal kwargs so no live exploit, but the pattern is inconsistent with update_narrative and update_activity_cluster which use frozenset whitelists. Also fix prune_events f-string interpolation (db.py:1438).",
+        "details": "Files: db.py:1287-1298 (update_gate), db.py:1352-1363 (update_job), db.py:1478-1489 (update_run), db.py:1438 (prune_events)\n\nPattern to follow (from update_narrative):\n  _GATE_ALLOWED_COLUMNS = frozenset({\"status\", \"mode\", \"timeout_minutes\", ...})\n  if not kwargs.keys() <= _GATE_ALLOWED_COLUMNS:\n      bad = kwargs.keys() - _GATE_ALLOWED_COLUMNS\n      raise ValueError(f\"Invalid columns: {bad}\")\n\nFor prune_events, parameterize the hours value instead of f-string interpolation.\n\nmemory_hints:\n- search: \"SQL injection whitelist update methods\"\n- entity: \"CatalogDB\"",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -2885,7 +2896,7 @@
       ],
       "created": "2026-04-03T22:30:44.764Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-03T22:30:50.112Z"
+      "updated": "2026-04-03T22:30:58.671Z"
     }
   }
 }
