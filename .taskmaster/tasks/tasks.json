@@ -2735,7 +2735,7 @@
         "description": "autopilot/organize/cluster.py: the ActivityCluster dataclass (lines 30-41) has no `excluded` field, but the DB schema has an `excluded INTEGER DEFAULT 0` column. Any code constructing ActivityCluster from a DB row would silently drop the excluded state. Add `excluded: int = 0` to the dataclass. Optionally add bool coercion (`excluded: bool = False` with `bool(row['excluded'])`) at the DB boundary in get_activity_cluster / get_activity_clusters in autopilot/db.py.\n\nNote: related to task 79 (ClusterRow TypedDict) but distinct — this is about the domain model dataclass, not the TypedDict.\n\nmemory_hints: search \"ActivityCluster dataclass excluded field\", entity \"ActivityCluster\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
@@ -2750,7 +2750,8 @@
             "autopilot",
             "tests"
           ]
-        }
+        },
+        "updatedAt": "2026-04-03T14:02:24.755Z"
       },
       {
         "id": "139",
@@ -2776,7 +2777,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T14:02:24.398Z",
+      "lastModified": "2026-04-03T14:02:24.755Z",
       "taskCount": 139,
       "completedCount": 118,
       "tags": [
