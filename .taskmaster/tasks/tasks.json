@@ -1333,11 +1333,11 @@
         "description": "Add test for _aggregate_detections when detections_json is a valid JSON string that decodes to a non-list (e.g. '{\"a\": 1}'). This exercises the `isinstance(raw, str)` branch followed by the `not isinstance(dets, list)` guard — a case that would have caused AttributeError before the guard was added.",
         "details": "Add a test in tests/test_media_detail.py TestAggregateDetections class:\n\n```python\ndef test_json_string_decoding_to_non_list(self) -> None:\n    \"\"\"JSON string that decodes to dict (not list) is guarded to zero detections.\"\"\"\n    from autopilot.web.routes.media import _aggregate_detections\n    rows = [{\"frame_number\": 0, \"detections_json\": json.dumps({\"a\": 1})}]\n    result = _aggregate_detections(rows)\n    assert result.total == 0\n    assert result.classes == {}\n    assert result.frame_details == [{\"number\": 0, \"count\": 0}]\n```\n\nAlso update the docstring of `test_non_string_dict_detections_json` to clarify the actual code path: str(raw) produces Python repr (not valid JSON), JSONDecodeError is raised, dets stays as initialized [].\n\nmemory_hints: search \"_aggregate_detections non-string raw\"; entities: _aggregate_detections, DetectionSummary",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-02T22:27:35.734Z",
+        "updatedAt": "2026-04-03T10:07:36.584Z",
         "metadata": {
           "modules": [
             "autopilot/web/routes/media.py",
@@ -2597,7 +2597,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T10:07:36.446Z",
+      "lastModified": "2026-04-03T10:07:36.584Z",
       "taskCount": 132,
       "completedCount": 101,
       "tags": [
