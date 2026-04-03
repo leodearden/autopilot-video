@@ -2588,18 +2588,18 @@
         "description": "The notification bell badge in the web console is fully wired client-side (app.js line 35 parses data.message/data.type → showToast(); updateNotificationBadge toggles #notification-badge hidden class), but the orchestrator never emits any SSE events with type='notification'. The bell is dead end-to-end despite the client handler existing.\n\n## What's needed\nThe orchestrator (or a server-side pipeline event emitter) must write rows to the pipeline_events SQLite table with event_type='notification' at appropriate pipeline milestones. The SSE endpoint polls this table and streams matching events to connected clients.\n\n## Candidate notification points\n- Gate reached (already emitted as gate_waiting) — may also emit a notification variant\n- Run completed / run failed — high-value user-facing events\n- Stage error — surfaces unexpected failures to the user immediately\n- Upload finished — confirms YouTube upload succeeded\n\n## Implementation approach\n1. Identify where gate_waiting, run_completed, run_failed, stage_error are inserted into pipeline_events (orchestrator.py or a shared events helper).\n2. For each, add a companion INSERT with event_type='notification', data={'message': '...', 'type': 'info'|'warning'|'error'}.\n3. Verify app.js showToast() receives the message and the badge lights up.\n4. Add tests: one per notification event type, asserting the correct message and type fields.\n\n## Memory hints\n- search: 'pipeline_events table SSE orchestrator INSERT event_type'\n- search: 'notification bell badge updateNotificationBadge app.js'\n- entities: pipeline_events, orchestrator.py, app.js, updateNotificationBadge",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-03T10:00:52.569Z"
+        "updatedAt": "2026-04-03T10:08:21.355Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T10:07:36.584Z",
+      "lastModified": "2026-04-03T10:08:21.355Z",
       "taskCount": 132,
-      "completedCount": 101,
+      "completedCount": 102,
       "tags": [
         "master"
       ]
