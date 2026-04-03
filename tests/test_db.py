@@ -607,6 +607,8 @@ class TestActivityClustersCRUD:
         results = catalog_db.get_activity_clusters()
         assert len(results) == 1
         assert results[0]["cluster_id"] == "ac-keep"
+        # Verify deleted cluster is truly gone (not just filtered)
+        assert catalog_db.get_activity_cluster("ac-del") is None
 
 
 
@@ -695,6 +697,107 @@ class TestEditPlansCRUD:
         assert result is not None
         # Nonexistent
         assert catalog_db.get_edit_plan("nonexistent") is None
+
+
+class TestListEditPlans:
+    """Tests for list_edit_plans() — JOIN, narrative_title, NULL narrative, ordering."""
+
+    def test_returns_narrative_title_via_join(self, catalog_db):
+        """list_edit_plans includes narrative_title from LEFT JOIN on narratives."""
+        catalog_db.insert_narrative(narrative_id="n1", title="Beach Day")
+        catalog_db.upsert_edit_plan(narrative_id="n1", edl_json='{"clips": []}')
+        results = catalog_db.list_edit_plans()
+        assert len(results) == 1
+        assert results[0]["narrative_id"] == "n1"
+        assert results[0]["narrative_title"] == "Beach Day"
+        assert results[0]["edl_json"] == '{"clips": []}'
+
+    def test_null_narrative_title_when_narrative_missing(self, catalog_db):
+        """list_edit_plans returns narrative_title=None when narrative row is absent."""
+        # Temporarily disable FK enforcement to insert orphaned plan
+        catalog_db.conn.execute("PRAGMA foreign_keys=OFF")
+        catalog_db.conn.execute(
+            "INSERT INTO edit_plans (narrative_id, edl_json) VALUES (?, ?)",
+            ("orphan-n", '{"edl": "data"}'),
+        )
+        catalog_db.conn.execute("PRAGMA foreign_keys=ON")
+        results = catalog_db.list_edit_plans()
+        assert len(results) == 1
+        assert results[0]["narrative_id"] == "orphan-n"
+        assert results[0]["narrative_title"] is None
+
+    def test_multiple_plans_all_returned(self, catalog_db):
+        """list_edit_plans returns all plans when multiple exist."""
+        catalog_db.insert_narrative(narrative_id="n1", title="Video A")
+        catalog_db.insert_narrative(narrative_id="n2", title="Video B")
+        catalog_db.upsert_edit_plan(narrative_id="n1", edl_json='{"a": 1}')
+        catalog_db.upsert_edit_plan(narrative_id="n2", edl_json='{"b": 2}')
+        results = catalog_db.list_edit_plans()
+        assert len(results) == 2
+        titles = {r["narrative_title"] for r in results}
+        assert titles == {"Video A", "Video B"}
+
+    def test_empty_table_returns_empty_list(self, catalog_db):
+        """list_edit_plans returns [] when no edit plans exist."""
+        results = catalog_db.list_edit_plans()
+        assert results == []
+
+
+class TestListUploads:
+    """Tests for list_uploads() — JOIN, narrative_title, NULL narrative, ordering."""
+
+    def test_returns_narrative_title_via_join(self, catalog_db):
+        """list_uploads includes narrative_title from LEFT JOIN on narratives."""
+        catalog_db.insert_narrative(narrative_id="n1", title="Beach Day")
+        catalog_db.insert_upload(
+            narrative_id="n1",
+            youtube_video_id="yt-1",
+            youtube_url="https://youtube.com/watch?v=yt-1",
+            uploaded_at="2024-06-01T12:00:00",
+        )
+        results = catalog_db.list_uploads()
+        assert len(results) == 1
+        assert results[0]["narrative_id"] == "n1"
+        assert results[0]["narrative_title"] == "Beach Day"
+        assert results[0]["youtube_video_id"] == "yt-1"
+
+    def test_null_narrative_title_when_narrative_missing(self, catalog_db):
+        """list_uploads returns narrative_title=None when narrative row is absent."""
+        # Temporarily disable FK enforcement to insert orphaned upload
+        catalog_db.conn.execute("PRAGMA foreign_keys=OFF")
+        catalog_db.conn.execute(
+            "INSERT INTO uploads (narrative_id, youtube_video_id, youtube_url, "
+            "uploaded_at, privacy_status) VALUES (?, ?, ?, ?, ?)",
+            (
+                "orphan-n", "yt-orphan", "https://youtube.com/watch?v=orphan",
+                "2024-01-01T00:00:00", "unlisted",
+            ),
+        )
+        catalog_db.conn.execute("PRAGMA foreign_keys=ON")
+        results = catalog_db.list_uploads()
+        assert len(results) == 1
+        assert results[0]["narrative_id"] == "orphan-n"
+        assert results[0]["narrative_title"] is None
+
+    def test_ordering_newest_first(self, catalog_db):
+        """list_uploads returns rows ordered by uploaded_at DESC (newest first)."""
+        catalog_db.insert_narrative(narrative_id="n1", title="Old")
+        catalog_db.insert_narrative(narrative_id="n2", title="New")
+        catalog_db.insert_upload(
+            narrative_id="n1", uploaded_at="2024-01-01T00:00:00",
+        )
+        catalog_db.insert_upload(
+            narrative_id="n2", uploaded_at="2024-06-15T12:00:00",
+        )
+        results = catalog_db.list_uploads()
+        assert len(results) == 2
+        assert results[0]["narrative_id"] == "n2"  # newer first
+        assert results[1]["narrative_id"] == "n1"  # older second
+
+    def test_empty_table_returns_empty_list(self, catalog_db):
+        """list_uploads returns [] when no uploads exist."""
+        results = catalog_db.list_uploads()
+        assert results == []
 
 
 class TestCropPathsCRUD:

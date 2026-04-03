@@ -711,6 +711,29 @@ class TestApiMergeClusters:
         )
         assert resp.status_code == 422
 
+    def test_merge_with_null_clip_ids_json(
+        self, app: FastAPI, client: TestClient,
+    ) -> None:
+        """Merge where one cluster has NULL clip_ids_json succeeds."""
+        _seed_cluster_via_db(
+            app, "c-1", clip_ids_json=None,
+        )
+        _seed_cluster_via_db(
+            app, "c-2", clip_ids_json='["a","b"]',
+        )
+        resp = client.post(
+            "/api/clusters/merge",
+            json={"cluster_ids": ["c-1", "c-2"]},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        # c-2 is largest (2 clips vs 0), so it survives
+        assert data["cluster_id"] == "c-2"
+        assert sorted(data["clip_ids"]) == ["a", "b"]
+        assert data["clip_count"] == 2
+        # c-1 (null clips) is deleted
+        assert client.get("/api/clusters/c-1").status_code == 404
+
 
 # ---------------------------------------------------------------------------
 # TestClustersPage — step-17
