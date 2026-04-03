@@ -1207,7 +1207,13 @@
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-02T22:27:35.308Z"
+        "updatedAt": "2026-04-02T22:27:35.308Z",
+        "metadata": {
+          "modules": [
+            "autopilot/web/routes/media.py",
+            "tests/test_media_detail.py"
+          ]
+        }
       },
       {
         "id": 61,
