@@ -2961,6 +2961,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 153,
+        "title": "Refactor makeStageHandler to use options object instead of positional params",
+        "description": "Replace 5 positional params with an options object for better readability and extensibility",
+        "details": "In autopilot/web/static/app.js: change makeStageHandler(eventType, toastMsg, toastType, toastDuration, refreshCard) to makeStageHandler(eventType, { toastMsg, toastType, toastDuration, refreshCard } = {}). Update all call sites in setupDashboardSSE and setupNotificationSSE. Update corresponding test assertions that check call signatures. Follow-up from task 111 review.",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -2973,7 +2984,7 @@
       ],
       "created": "2026-04-03T22:47:28.760Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-03T22:47:28.792Z"
+      "updated": "2026-04-03T22:47:28.816Z"
     }
   }
 }
