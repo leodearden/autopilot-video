@@ -2665,7 +2665,19 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/web/routes/review.py",
+            "autopilot/web/templates/review/render_index.html",
+            "tests/test_render_review.py"
+          ],
+          "modules": [
+            "autopilot/web/routes",
+            "autopilot/web/templates/review",
+            "tests"
+          ]
+        }
       },
       {
         "id": 136,
@@ -2676,7 +2688,17 @@
         "status": "pending",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/web/routes/review.py",
+            "tests/test_review.py"
+          ],
+          "modules": [
+            "autopilot/web/routes",
+            "tests"
+          ]
+        }
       },
       {
         "id": 137,
