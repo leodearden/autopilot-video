@@ -812,6 +812,13 @@ class TestRenderPartialRefactor:
             "_render_narrative_partial should be removed in favor of render_partial"
         )
 
+    def test_no_private_render_cluster_partial(self) -> None:
+        """_render_cluster_partial should be removed from review module."""
+        from autopilot.web.routes import review
+        assert not hasattr(review, "_render_cluster_partial"), (
+            "_render_cluster_partial should be removed in favor of render_partial"
+        )
+
     def test_review_imports_render_partial(self) -> None:
         """review module should import render_partial from deps."""
         import inspect
