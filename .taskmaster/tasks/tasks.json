@@ -2833,11 +2833,11 @@
         "description": "Address test analyst suggestions from task 73 review cycle:\n\n1. Add DB-layer unit tests for list_edit_plans() and list_uploads() — test JOIN, narrative_title field, NULL narrative, ordering (test_analyst S1). File: tests/test_db.py\n2. Add TestExcludedClusterCard rendering excluded=1 template path — verify badge, no editable inputs (test_analyst S2). File: tests/test_cluster_card.py\n3. Strengthen test_delete_activity_cluster with get_activity_cluster('ac-del') is None assertion (test_analyst S3). File: tests/test_db.py\n4. Add edge case tests: equal-clip-count merge tie-breaking, exclude idempotency, null clip_ids_json (test_analyst S4-S7). File: tests/test_cluster_review.py",
         "details": "",
         "testStrategy": "",
-        "status": "done",
+        "status": "blocked",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-03T16:16:10.377Z",
+        "updatedAt": "2026-04-03T16:16:17.237Z",
         "metadata": {
           "modules": [
             "tests/test_cluster_card.py",
@@ -2855,9 +2855,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T16:16:10.377Z",
+      "lastModified": "2026-04-03T16:16:17.237Z",
       "taskCount": 142,
-      "completedCount": 125,
+      "completedCount": 124,
       "tags": [
         "master"
       ]
