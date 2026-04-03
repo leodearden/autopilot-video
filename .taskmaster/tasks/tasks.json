@@ -2106,11 +2106,11 @@
         "description": "Four test files independently define nearly identical `app` and `client` fixtures: test_web_app.py, test_settings.py, test_gates.py, test_review.py. Each creates a FastAPI app via `create_app(str(tmp_path / \"catalog.db\"))` and wraps it in TestClient.\n\n## Plan\n\n1. Add a base `app` + `client` fixture pair to `tests/conftest.py` (plain app, no seeding).\n2. Files that need specialization (test_web_app.py adds a test route, test_gates.py/test_review.py seed DB rows) override locally.\n3. test_settings.py can drop its fixtures entirely and use conftest.\n\nThis reduces boilerplate and ensures consistency as more route test files are added.\n\n## Memory hints\n- search: \"test fixture patterns conftest\" for related conventions",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-03T15:04:04.407Z",
+        "updatedAt": "2026-04-03T15:45:13.481Z",
         "metadata": {
           "files": [
             "tests/conftest.py",
@@ -2164,11 +2164,11 @@
         "description": "Three related improvements to setupDashboardSSE in app.js:\n\n1. **Handler factory**: The gate_waiting, gate_approved, gate_skipped, stage_error, stage_started, stage_completed, and job_progress handlers share identical structure (parse JSON, extract stage, refreshStageCard, showToast, catch). Extract a `makeStageHandler(eventType, toastMsg, toastType)` factory function to eliminate duplication (~60 lines → ~20).\n\n2. **Missing try/catch**: run_completed and run_failed are the only handlers lacking try/catch. Wrap them for consistency with all other handlers.\n\n3. **Silent failure logging**: All stage-level handlers silently drop events where `data.stage` is falsy. Add `console.warn('SSE {eventType}: missing stage field', data)` in an else branch to aid debugging.\n\nmemory_hints: search \"SSE handler app.js\" for current implementation; get_entity \"setupDashboardSSE\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-03T15:32:39.213Z",
+        "updatedAt": "2026-04-03T15:45:13.515Z",
         "metadata": {
           "files": [
             "autopilot/web/static/app.js"
@@ -2855,7 +2855,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T15:45:13.234Z",
+      "lastModified": "2026-04-03T15:45:13.515Z",
       "taskCount": 142,
       "completedCount": 123,
       "tags": [
