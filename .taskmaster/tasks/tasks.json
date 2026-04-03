@@ -2055,7 +2055,21 @@
             "tests/test_review.py",
             "tests/test_scripts_review.py",
             "tests/test_web_app.py"
-          ]
+          ],
+          "memory_hints": {
+            "entities": [
+              "conftest.py",
+              "test_web_app.py",
+              "test_gates.py",
+              "test_review.py"
+            ],
+            "queries": [
+              "test fixture patterns conftest shared app client",
+              "create_app TestClient fixture duplication",
+              "settings feature removed commit 0b964cb test_settings.py"
+            ]
+          },
+          "note_for_executor": "test_settings.py was removed when the settings feature was deleted in commit 0b964cb — skip step 3 of the plan (drop test_settings.py fixtures). Apply refactoring to the remaining 3 files only: test_web_app.py, test_gates.py, test_review.py."
         }
       },
       {
