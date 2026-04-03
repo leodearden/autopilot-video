@@ -1779,11 +1779,11 @@
         "description": "Post-review improvements for the shared parse_sse_body helper (conftest.py) after task 89.\n\n1. Rename `_parse_sse_body` → `parse_sse_body` (drop leading underscore) in conftest.py and all import sites (test_sse.py, test_web_e2e.py) to match the `extract_json_blocks` naming precedent for public shared helpers.\n2. Add edge-case tests in TestParseSSEBodyFromConftest:\n   - Empty string input: `assert parse_sse_body('') == []`\n   - Data-only event (no id/event fields): `text = 'data:heartbeat\\n\\n'` → assert sparse dict\n   - Multi-data-line behavior: `text = 'data:line1\\ndata:line2\\n\\n'` → assert and document current last-wins behavior\n3. Fix or document the multi-data-line limitation: current implementation overwrites `current[\"data\"]` on consecutive `data:` lines instead of concatenating with `\\n` per SSE spec (WHATWG). Either fix to concatenate or add a docstring note documenting the intentional deviation (this is a test helper, not a production parser, so documenting may be sufficient).\n\nmemory_hints: search \"parse_sse_body SSE test helper\" ; search \"SSE spec multi-data-line\" ; entities: conftest.py, test_sse.py, test_web_e2e.py",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-02T22:27:36.272Z",
+        "updatedAt": "2026-04-03T10:08:48.623Z",
         "metadata": {
           "files": [
             "tests/conftest.py",
@@ -2597,7 +2597,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T10:08:48.582Z",
+      "lastModified": "2026-04-03T10:08:48.623Z",
       "taskCount": 132,
       "completedCount": 102,
       "tags": [
