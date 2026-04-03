@@ -163,10 +163,7 @@ def empty_client(empty_app: FastAPI) -> TestClient:
 # Step 1: GET /dashboard basic page tests
 # ---------------------------------------------------------------------------
 
-PIPELINE_STAGES = (
-    "ingest", "analyze", "classify", "narrate", "script",
-    "edl", "source", "render", "upload",
-)
+from tests.conftest import PIPELINE_STAGES  # shared constant (consolidated)
 
 
 class TestDashboardPage:
