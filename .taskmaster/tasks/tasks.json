@@ -1161,13 +1161,13 @@
         "description": "Address performance issue identified in task 54 review:\n\nget_faces_for_media (SELECT *) fetches embedding BLOBs (~2KB each) and get_face_clusters_by_ids (SELECT *) fetches representative_embedding BLOBs, only for the route layer to immediately discard them. For videos with hundreds of faces this is hundreds of KB fetched and thrown away per tab click.\n\nAdd projection variants or optional parameters: e.g. get_faces_for_media(media_id, exclude_blob=True) that uses explicit column list instead of SELECT *. Same for get_face_clusters_by_ids.\n\nmemory_hints: search \"face query BLOB\" \"get_faces_for_media\", entity \"CatalogDB\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [
           "54"
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-03T10:22:09.979Z",
+        "updatedAt": "2026-04-03T10:27:04.663Z",
         "metadata": {
           "files": [
             "autopilot/db.py",
@@ -2611,9 +2611,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T10:22:09.979Z",
+      "lastModified": "2026-04-03T10:27:04.663Z",
       "taskCount": 132,
-      "completedCount": 110,
+      "completedCount": 111,
       "tags": [
         "master"
       ]
