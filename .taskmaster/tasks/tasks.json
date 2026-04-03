@@ -1499,7 +1499,14 @@
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-02T22:27:36.000Z"
+        "updatedAt": "2026-04-02T22:27:36.000Z",
+        "metadata": {
+          "modules": [
+            "autopilot/db.py",
+            "autopilot/web/routes/review.py",
+            "tests/test_cluster_review.py"
+          ]
+        }
       },
       {
         "id": 80,
