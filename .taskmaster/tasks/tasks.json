@@ -2657,6 +2657,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 137,
+        "title": "Replace local _get_db/_is_htmx in review.py with imports from deps.py",
+        "description": "autopilot/web/routes/review.py defines `_get_db` (line 20-22) and `_is_htmx` (line 25-27) that are byte-for-byte identical to `get_db` and `is_htmx` in autopilot/web/deps.py. Replace the local definitions with `from autopilot.web.deps import get_db, is_htmx` and update all ~15 call-sites in review.py (rename _get_db → get_db, _is_htmx → is_htmx). Also apply the same cleanup to sse.py which has the same pre-existing duplicate.\n\nmemory_hints: search \"_get_db _is_htmx deps.py duplicate\", entity \"deps.py\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -2669,7 +2680,7 @@
       ],
       "created": "2026-04-03T13:42:11.687Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-03T13:42:27.248Z"
+      "updated": "2026-04-03T13:42:31.422Z"
     }
   }
 }
