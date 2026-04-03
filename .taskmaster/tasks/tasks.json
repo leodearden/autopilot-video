@@ -2157,11 +2157,11 @@
         "description": "Three related improvements to setupDashboardSSE in app.js:\n\n1. **Handler factory**: The gate_waiting, gate_approved, gate_skipped, stage_error, stage_started, stage_completed, and job_progress handlers share identical structure (parse JSON, extract stage, refreshStageCard, showToast, catch). Extract a `makeStageHandler(eventType, toastMsg, toastType)` factory function to eliminate duplication (~60 lines → ~20).\n\n2. **Missing try/catch**: run_completed and run_failed are the only handlers lacking try/catch. Wrap them for consistency with all other handlers.\n\n3. **Silent failure logging**: All stage-level handlers silently drop events where `data.stage` is falsy. Add `console.warn('SSE {eventType}: missing stage field', data)` in an else branch to aid debugging.\n\nmemory_hints: search \"SSE handler app.js\" for current implementation; get_entity \"setupDashboardSSE\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-03T15:45:13.768Z",
+        "updatedAt": "2026-04-03T16:34:04.968Z",
         "metadata": {
           "files": [
             "autopilot/web/static/app.js"
@@ -2344,7 +2344,7 @@
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-03T15:49:09.468Z",
+        "updatedAt": "2026-04-03T18:24:57.157Z",
         "metadata": {
           "files": [
             "tests/test_dashboard.py",
@@ -2833,11 +2833,11 @@
         "description": "Address test analyst suggestions from task 73 review cycle:\n\n1. Add DB-layer unit tests for list_edit_plans() and list_uploads() — test JOIN, narrative_title field, NULL narrative, ordering (test_analyst S1). File: tests/test_db.py\n2. Add TestExcludedClusterCard rendering excluded=1 template path — verify badge, no editable inputs (test_analyst S2). File: tests/test_cluster_card.py\n3. Strengthen test_delete_activity_cluster with get_activity_cluster('ac-del') is None assertion (test_analyst S3). File: tests/test_db.py\n4. Add edge case tests: equal-clip-count merge tie-breaking, exclude idempotency, null clip_ids_json (test_analyst S4-S7). File: tests/test_cluster_review.py",
         "details": "",
         "testStrategy": "",
-        "status": "blocked",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-03T16:16:17.237Z",
+        "updatedAt": "2026-04-03T16:36:10.556Z",
         "metadata": {
           "modules": [
             "tests/test_cluster_card.py",
@@ -2855,9 +2855,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T16:16:17.237Z",
+      "lastModified": "2026-04-03T18:24:57.165Z",
       "taskCount": 142,
-      "completedCount": 124,
+      "completedCount": 126,
       "tags": [
         "master"
       ]
