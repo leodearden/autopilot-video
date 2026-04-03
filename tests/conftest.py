@@ -6,9 +6,12 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Generator
+from typing import TYPE_CHECKING, Generator
 
 import pytest
+
+if TYPE_CHECKING:
+    from autopilot.db import CatalogDB
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +134,7 @@ PIPELINE_STAGES = (
 
 
 def _seed_narrative(
-    db: "CatalogDB",  # noqa: F821 — lazy import to avoid circular deps
+    db: CatalogDB,
     narrative_id: str = "n-1",
     **overrides: object,
 ) -> None:
