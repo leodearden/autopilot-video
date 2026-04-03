@@ -2373,7 +2373,7 @@
         "description": "The render review page (/review/render/{narrative_id}) has Approve, Skip, and Download buttons but is missing the \"Reject: flag for re-render with notes textarea\" action specified in task 50. Add a Reject button with a notes textarea to renders.html, wire it to an API endpoint that sets a rejection status with notes, and add tests.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [
           "50"
         ],
@@ -2406,7 +2406,7 @@
             ]
           }
         },
-        "updatedAt": "2026-04-03T10:08:57.298Z"
+        "updatedAt": "2026-04-03T10:12:52.126Z"
       },
       {
         "id": "121",
@@ -2599,9 +2599,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T10:11:49.142Z",
+      "lastModified": "2026-04-03T10:12:52.126Z",
       "taskCount": 132,
-      "completedCount": 106,
+      "completedCount": 107,
       "tags": [
         "master"
       ]
