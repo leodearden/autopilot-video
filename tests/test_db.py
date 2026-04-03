@@ -540,6 +540,75 @@ class TestActivityClustersCRUD:
         results = catalog_db.get_activity_clusters()
         assert results[0]["clip_ids_json"] == json_str
 
+    def test_insert_activity_cluster_with_excluded(self, catalog_db):
+        """Insert a cluster with excluded=1 and verify it reads back."""
+        catalog_db.insert_activity_cluster(cluster_id="ac-ex", excluded=1)
+        results = catalog_db.get_activity_clusters()
+        assert len(results) == 1
+        assert results[0]["excluded"] == 1
+
+    def test_activity_cluster_excluded_defaults_to_zero(self, catalog_db):
+        """Insert a cluster without excluded and verify it defaults to 0."""
+        catalog_db.insert_activity_cluster(cluster_id="ac-def")
+        results = catalog_db.get_activity_clusters()
+        assert len(results) == 1
+        assert results[0]["excluded"] == 0
+
+    def test_schema_migration_adds_excluded_column(self, tmp_path):
+        """CatalogDB adds excluded column to pre-existing activity_clusters table."""
+        import sqlite3 as _sqlite3
+
+        from autopilot.db import CatalogDB
+
+        db_path = str(tmp_path / "legacy.db")
+        # Create DB with OLD schema (no excluded column)
+        conn = _sqlite3.connect(db_path)
+        conn.execute(
+            "CREATE TABLE activity_clusters ("
+            "cluster_id TEXT PRIMARY KEY, label TEXT, description TEXT, "
+            "time_start TEXT, time_end TEXT, location_label TEXT, "
+            "gps_center_lat REAL, gps_center_lon REAL, clip_ids_json TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO activity_clusters (cluster_id, label) VALUES (?, ?)",
+            ("ac-old", "Pre-migration"),
+        )
+        conn.commit()
+        conn.close()
+
+        # Open with CatalogDB — should run migration
+        db = CatalogDB(db_path)
+        db.insert_activity_cluster(cluster_id="ac-new", excluded=1)
+        results = db.get_activity_clusters()
+        db.close()
+
+        old_row = next(r for r in results if r["cluster_id"] == "ac-old")
+        new_row = next(r for r in results if r["cluster_id"] == "ac-new")
+        assert old_row["excluded"] == 0  # default applied by migration
+        assert new_row["excluded"] == 1
+
+    def test_get_activity_cluster_by_id(self, catalog_db):
+        """Fetch a single activity cluster by cluster_id."""
+        catalog_db.insert_activity_cluster(cluster_id="ac-single", label="Solo")
+        result = catalog_db.get_activity_cluster("ac-single")
+        assert result is not None
+        assert result["label"] == "Solo"
+
+    def test_get_activity_cluster_not_found(self, catalog_db):
+        """get_activity_cluster returns None for nonexistent id."""
+        result = catalog_db.get_activity_cluster("nonexistent")
+        assert result is None
+
+    def test_delete_activity_cluster(self, catalog_db):
+        """delete_activity_cluster removes the specified cluster."""
+        catalog_db.insert_activity_cluster(cluster_id="ac-keep", label="Keep")
+        catalog_db.insert_activity_cluster(cluster_id="ac-del", label="Delete")
+        catalog_db.delete_activity_cluster("ac-del")
+        results = catalog_db.get_activity_clusters()
+        assert len(results) == 1
+        assert results[0]["cluster_id"] == "ac-keep"
+
+
 
 # -- narratives, edit_plans, crop_paths, uploads CRUD -------------------------
 

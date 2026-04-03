@@ -12,7 +12,6 @@ from starlette.testclient import TestClient
 from autopilot.db import CatalogDB
 from autopilot.web.app import create_app
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

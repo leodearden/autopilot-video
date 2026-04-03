@@ -135,7 +135,7 @@ class CatalogDB:
                 gps_center_lat REAL,
                 gps_center_lon REAL,
                 clip_ids_json TEXT,
-                excluded INTEGER DEFAULT 0
+                excluded INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS narratives (
@@ -264,13 +264,17 @@ class CatalogDB:
                 ON pipeline_events(created_at);
             """
         )
-        # Migrations for existing databases missing new columns
+        # -- Schema migrations (idempotent) ------------------------------------
+        # Databases created before the 'excluded' column was added need it now.
         try:
             self.conn.execute(
-                "ALTER TABLE activity_clusters ADD COLUMN excluded INTEGER DEFAULT 0"
+                "ALTER TABLE activity_clusters "
+                "ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0"
             )
-        except sqlite3.OperationalError:
-            pass  # Column already exists
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e).lower():
+                raise  # only suppress "column already exists"
+
 
     # -- media_files CRUD -------------------------------------------------------
 
@@ -675,13 +679,14 @@ class CatalogDB:
         gps_center_lat: float | None = None,
         gps_center_lon: float | None = None,
         clip_ids_json: str | None = None,
+        excluded: int = 0,
     ) -> None:
         """Insert a new activity cluster."""
         self.conn.execute(
             "INSERT INTO activity_clusters "
             "(cluster_id, label, description, time_start, time_end, "
-            "location_label, gps_center_lat, gps_center_lon, clip_ids_json) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "location_label, gps_center_lat, gps_center_lon, clip_ids_json, excluded) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 cluster_id,
                 label,
@@ -692,6 +697,7 @@ class CatalogDB:
                 gps_center_lat,
                 gps_center_lon,
                 clip_ids_json,
+                excluded,
             ),
         )
 
@@ -783,6 +789,13 @@ class CatalogDB:
             values,
         )
         return cur.rowcount
+
+    def delete_activity_cluster(self, cluster_id: str) -> None:
+        """Delete a single activity cluster by id."""
+        self.conn.execute(
+            "DELETE FROM activity_clusters WHERE cluster_id = ?",
+            (cluster_id,),
+        )
 
     # -- narratives CRUD --------------------------------------------------------
 

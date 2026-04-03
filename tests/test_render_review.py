@@ -12,6 +12,7 @@ from starlette.testclient import TestClient
 
 from autopilot.db import CatalogDB
 from autopilot.web.app import create_app
+from tests.conftest import _seed_narrative
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -40,9 +41,6 @@ def app(tmp_path: Path) -> FastAPI:
 def client(app: FastAPI) -> TestClient:
     """Create a test client for the app."""
     return TestClient(app)
-
-
-from tests.conftest import _seed_narrative  # shared helper (consolidated)
 
 
 def _seed_edit_plan(

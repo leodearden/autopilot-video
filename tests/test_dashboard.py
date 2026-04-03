@@ -11,6 +11,7 @@ from starlette.testclient import TestClient
 
 from autopilot.db import CatalogDB
 from autopilot.web.app import create_app
+from tests.conftest import PIPELINE_STAGES
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -162,9 +163,6 @@ def empty_client(empty_app: FastAPI) -> TestClient:
 # ---------------------------------------------------------------------------
 # Step 1: GET /dashboard basic page tests
 # ---------------------------------------------------------------------------
-
-from tests.conftest import PIPELINE_STAGES  # shared constant (consolidated)
-
 
 class TestDashboardPage:
     """Tests for GET /dashboard HTML page."""
