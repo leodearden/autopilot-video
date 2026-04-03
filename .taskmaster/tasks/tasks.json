@@ -2178,11 +2178,11 @@
         "description": "Four test improvements in test_web_app.py:\n\n1. **Parametrize duplicate tests**: test_gate_waiting_handler_exists_with_try_catch_and_refresh, test_gate_approved_handler_..., test_gate_skipped_handler_..., and test_stage_error_handler_... are structurally identical. Collapse into one parametrized test.\n\n2. **Reuse _extract_listener_body**: TestSSEErrorHandling.test_sse_notification_listener_has_try_catch (lines 270-299) inlines the exact brace-counting logic that _extract_listener_body was created to replace. Refactor to use the helper.\n\n3. **Add message text assertions**: Gate handler tests only assert showToast is present but not what message is shown. Pin down: 'Pipeline paused at' for gate_waiting, 'Gate approved' for gate_approved, 'Gate skipped' for gate_skipped. Similarly for run_completed ('completed successfully') and run_failed ('Pipeline run failed').\n\n4. **Add stage guard assertion**: Assert `if (stage)` is present in each stage-level handler body to verify the null-guard.\n\nmemory_hints: search \"test_web_app SSE handlers\" for test context",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-02T22:25:10.671Z",
+        "updatedAt": "2026-04-03T10:08:48.582Z",
         "metadata": {
           "files": [
             "tests/test_web_app.py"
@@ -2597,7 +2597,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T10:08:48.491Z",
+      "lastModified": "2026-04-03T10:08:48.582Z",
       "taskCount": 132,
       "completedCount": 102,
       "tags": [
