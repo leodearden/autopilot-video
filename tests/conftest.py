@@ -6,9 +6,12 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Generator
+from typing import TYPE_CHECKING, Generator
 
 import pytest
+
+if TYPE_CHECKING:
+    from autopilot.db import CatalogDB
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +125,32 @@ def mock_gpu_scheduler():
 
     scheduler.model = _model
     return scheduler
+
+
+PIPELINE_STAGES = (
+    "ingest", "analyze", "classify", "narrate", "script",
+    "edl", "source", "render", "upload",
+)
+
+
+def _seed_narrative(
+    db: CatalogDB,
+    narrative_id: str = "n-1",
+    **overrides: object,
+) -> None:
+    """Insert a narrative with sensible defaults, overridable via kwargs."""
+    defaults: dict[str, object] = {
+        "title": "Morning Walk",
+        "description": "A walk in the park",
+        "proposed_duration_seconds": 120.0,
+        "activity_cluster_ids_json": '["c-1","c-2"]',
+        "arc_notes": "peaceful start",
+        "emotional_journey": "calm \u2192 happy",
+        "status": "proposed",
+    }
+    defaults.update(overrides)
+    db.insert_narrative(narrative_id, **defaults)  # type: ignore[arg-type]
+    db.conn.commit()
 
 
 def extract_json_blocks(text: str) -> list:
