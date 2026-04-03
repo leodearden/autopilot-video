@@ -1371,13 +1371,13 @@
         "description": "api_relabel_cluster and api_exclude_cluster still use db.conn.commit() directly, while api_merge_clusters was refactored to use `with db:` context manager for transaction safety. Apply the same pattern to both routes for consistency.\n\nFiles: autopilot/web/routes/review.py (lines 314-357)\n\nmemory_hints: search \"task 63 transaction pattern\", entity \"api_merge_clusters\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "blocked",
         "dependencies": [
           "63"
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-03T14:04:08.019Z",
+        "updatedAt": "2026-04-03T15:02:10.245Z",
         "metadata": {
           "modules": [
             "autopilot/web/routes/review.py",
@@ -2814,7 +2814,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T15:01:28.912Z",
+      "lastModified": "2026-04-03T15:02:10.245Z",
       "taskCount": 142,
       "completedCount": 121,
       "tags": [
