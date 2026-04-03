@@ -65,3 +65,30 @@ class TestRelabelHxVals:
         assert matches == [], (
             f"Found hx-headers with JSON Content-Type override: {matches}"
         )
+
+
+class TestExcludedClusterCard:
+    """Verify the excluded=1 template branch renders read-only card."""
+
+    def test_excluded_badge_present(self) -> None:
+        """Excluded card shows a badge with 'excluded' text."""
+        html = _render_cluster_card(excluded=1)
+        assert ">excluded</span>" in html
+
+    def test_no_label_input(self) -> None:
+        """Excluded card uses <h3> for label, not an editable <input>."""
+        html = _render_cluster_card(excluded=1)
+        assert '<input type="text" name="label"' not in html
+        assert "<h3" in html
+
+    def test_no_description_textarea(self) -> None:
+        """Excluded card uses <p> for description, not a <textarea>."""
+        html = _render_cluster_card(excluded=1)
+        assert "<textarea" not in html
+
+    def test_no_action_buttons_or_checkbox(self) -> None:
+        """Excluded card has no Relabel/Exclude buttons and no checkbox."""
+        html = _render_cluster_card(excluded=1)
+        assert "Relabel" not in html
+        assert "Exclude" not in html
+        assert '<input type="checkbox"' not in html
