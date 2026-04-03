@@ -2862,6 +2862,17 @@
         "dependencies": [],
         "priority": "high",
         "subtasks": []
+      },
+      {
+        "id": 144,
+        "title": "Fix broken idempotency check in classify_audio_events",
+        "description": "classify_audio_events uses get_audio_events_for_range(media_id, 0.0, 0.0) for idempotency, but this only returns events at exactly timestamp 0.0. If no event exists at t=0, the entire classification reruns and creates duplicate rows. Should use has_audio_events(media_id) instead, consistent with all other analyze stages.",
+        "details": "File: analyze/audio_events.py:95\n\nChange:\n  existing = db.get_audio_events_for_range(media_id, 0.0, 0.0)\nTo:\n  existing = db.has_audio_events(media_id)\n\nThe has_audio_events() method already exists in db.py and uses SELECT 1 ... LIMIT 1.\n\nmemory_hints:\n- search: \"audio events idempotency checkpoint\"",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -2874,7 +2885,7 @@
       ],
       "created": "2026-04-03T22:30:44.764Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-03T22:30:44.765Z"
+      "updated": "2026-04-03T22:30:50.112Z"
     }
   }
 }
