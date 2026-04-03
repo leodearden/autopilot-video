@@ -2895,6 +2895,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 147,
+        "title": "Add checkpoint/resume logic to NARRATE stage",
+        "description": "Unlike other stages, _run_narrate has no checkpoint check or force guard. Every pipeline run re-proposes all narratives via LLM and creates new UUID rows. This is expensive (LLM call) and creates duplicates. Also fix EDL double-write: orchestrator's redundant upsert_edit_plan clobbers the detailed validation_json from generate_edl().",
+        "details": "Files: orchestrator.py:576-615 (NARRATE), orchestrator.py:761-766 (EDL double-write)\n\nNARRATE fix: Before calling propose_narratives(), check if approved narratives already exist for the current media set. Skip re-proposal if narratives exist and force=False.\n\nEDL fix: Remove the validation_json kwarg from the orchestrator's upsert_edit_plan call (line 764), since generate_edl() already wrote the detailed version. Or omit the entire redundant upsert if generate_edl() already persists everything needed.\n\nmemory_hints:\n- search: \"NARRATE checkpoint idempotency\"\n- search: \"EDL validation double write\"",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -2907,7 +2918,7 @@
       ],
       "created": "2026-04-03T22:30:44.764Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-03T22:31:04.001Z"
+      "updated": "2026-04-03T22:31:12.562Z"
     }
   }
 }
