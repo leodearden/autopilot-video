@@ -62,45 +62,40 @@ function refreshStageCard(stage) {
 }
 
 /**
+ * Create an SSE event handler that parses JSON, refreshes the stage card,
+ * and optionally shows a toast notification.
+ * @param {string} eventType - The SSE event type name (for error logging).
+ * @param {string} [toastMsg] - Optional toast message. Use '{stage}' as placeholder.
+ * @param {'success'|'error'|'info'} [toastType] - Toast type when toastMsg is provided.
+ * @returns {function} Event handler function.
+ */
+function makeStageHandler(eventType, toastMsg, toastType) {
+    return function(event) {
+        try {
+            var data = JSON.parse(event.data);
+            var stage = data.stage;
+            if (stage) {
+                refreshStageCard(stage);
+                if (toastMsg) {
+                    showToast(toastMsg.replace('{stage}', stage), toastType || 'info');
+                }
+            } else {
+                console.warn('SSE ' + eventType + ': missing stage field', data);
+            }
+        } catch (e) {
+            console.error('SSE ' + eventType + ' parse error:', e);
+        }
+    };
+}
+
+/**
  * Set up SSE event listeners for dashboard stage card updates.
  * @param {EventSource} source - The SSE EventSource connection.
  */
 function setupDashboardSSE(source) {
-    source.addEventListener('stage_started', function(event) {
-        try {
-            var data = JSON.parse(event.data);
-            var stage = data.stage;
-            if (stage) {
-                refreshStageCard(stage);
-            }
-        } catch (e) {
-            console.error('SSE stage_started parse error:', e);
-        }
-    });
-
-    source.addEventListener('stage_completed', function(event) {
-        try {
-            var data = JSON.parse(event.data);
-            var stage = data.stage;
-            if (stage) {
-                refreshStageCard(stage);
-            }
-        } catch (e) {
-            console.error('SSE stage_completed parse error:', e);
-        }
-    });
-
-    source.addEventListener('job_progress', function(event) {
-        try {
-            var data = JSON.parse(event.data);
-            var stage = data.stage;
-            if (stage) {
-                refreshStageCard(stage);
-            }
-        } catch (e) {
-            console.error('SSE job_progress parse error:', e);
-        }
-    });
+    source.addEventListener('stage_started', makeStageHandler('stage_started'));
+    source.addEventListener('stage_completed', makeStageHandler('stage_completed'));
+    source.addEventListener('job_progress', makeStageHandler('job_progress'));
 }
 
 /**
@@ -148,21 +143,22 @@ function setupNotificationSSE(source) {
         updateNotificationBadge(pendingCount);
     });
 
-    source.addEventListener('stage_error', function(event) {
+    source.addEventListener('stage_error', makeStageHandler('stage_error', 'Error in {stage} stage', 'error'));
+
+    source.addEventListener('run_completed', function(event) {
         try {
-            var data = JSON.parse(event.data);
-            showToast('Error in ' + (data.stage || 'unknown') + ' stage', 'error', 6000);
+            showToast('Pipeline run completed!', 'success', 6000);
         } catch (e) {
-            console.error('SSE stage_error parse error:', e);
+            console.error('SSE run_completed error:', e);
         }
     });
 
-    source.addEventListener('run_completed', function() {
-        showToast('Pipeline run completed!', 'success', 6000);
-    });
-
-    source.addEventListener('run_failed', function() {
-        showToast('Pipeline run failed', 'error', 8000);
+    source.addEventListener('run_failed', function(event) {
+        try {
+            showToast('Pipeline run failed', 'error', 8000);
+        } catch (e) {
+            console.error('SSE run_failed error:', e);
+        }
     });
 }
 

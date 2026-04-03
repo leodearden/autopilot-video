@@ -201,6 +201,36 @@ def _read_app_js() -> str:
     return js_path.read_text()
 
 
+def _extract_listener_body(js_source: str, event_type: str) -> str:
+    """Extract the body of a source.addEventListener callback by brace-matching.
+
+    Returns the outermost { ... } block of the callback function for the given
+    event type.  Raises AssertionError if the listener is not found.
+    """
+    marker = f"addEventListener('{event_type}'"
+    listener_start = js_source.find(marker)
+    assert listener_start != -1, f"{event_type} event listener not found in app.js"
+
+    func_start = js_source.find("function", listener_start)
+    assert func_start != -1, f"function keyword not found in {event_type} listener"
+
+    body_start = js_source.find("{", func_start)
+    assert body_start != -1, f"opening brace not found in {event_type} listener"
+
+    brace_depth = 0
+    body_end = body_start
+    for i in range(body_start, len(js_source)):
+        if js_source[i] == "{":
+            brace_depth += 1
+        elif js_source[i] == "}":
+            brace_depth -= 1
+            if brace_depth == 0:
+                body_end = i + 1
+                break
+
+    return js_source[body_start:body_end]
+
+
 class TestSSEErrorHandling:
     """Tests for SSE notification error handling in app.js."""
 
@@ -241,6 +271,143 @@ class TestSSEErrorHandling:
         assert "console.error" in listener_body, (
             "console.error not found in notification listener catch block"
         )
+
+
+class TestSSEHandlerFactory:
+    """Tests for the makeStageHandler factory function in app.js."""
+
+    def test_make_stage_handler_defined(self) -> None:
+        """makeStageHandler function is defined in app.js."""
+        js_source = _read_app_js()
+        assert "function makeStageHandler" in js_source, (
+            "makeStageHandler factory function not found in app.js"
+        )
+
+    def test_make_stage_handler_has_try_catch(self) -> None:
+        """makeStageHandler contains try/catch error handling."""
+        js_source = _read_app_js()
+        # Extract the makeStageHandler function body
+        func_start = js_source.find("function makeStageHandler")
+        assert func_start != -1, "makeStageHandler not found"
+
+        body_start = js_source.find("{", func_start)
+        brace_depth = 0
+        body_end = body_start
+        for i in range(body_start, len(js_source)):
+            if js_source[i] == "{":
+                brace_depth += 1
+            elif js_source[i] == "}":
+                brace_depth -= 1
+                if brace_depth == 0:
+                    body_end = i + 1
+                    break
+
+        factory_body = js_source[body_start:body_end]
+        assert "try" in factory_body, "try block not found in makeStageHandler"
+        assert "catch" in factory_body, "catch block not found in makeStageHandler"
+        assert "console.error" in factory_body, (
+            "console.error not found in makeStageHandler catch block"
+        )
+
+    def test_make_stage_handler_has_console_warn_for_missing_stage(self) -> None:
+        """makeStageHandler logs console.warn when data.stage is falsy."""
+        js_source = _read_app_js()
+        func_start = js_source.find("function makeStageHandler")
+        assert func_start != -1, "makeStageHandler not found"
+
+        body_start = js_source.find("{", func_start)
+        brace_depth = 0
+        body_end = body_start
+        for i in range(body_start, len(js_source)):
+            if js_source[i] == "{":
+                brace_depth += 1
+            elif js_source[i] == "}":
+                brace_depth -= 1
+                if brace_depth == 0:
+                    body_end = i + 1
+                    break
+
+        factory_body = js_source[body_start:body_end]
+        assert "console.warn" in factory_body, (
+            "console.warn for missing stage field not found in makeStageHandler"
+        )
+
+    def test_make_stage_handler_calls_refresh_stage_card(self) -> None:
+        """makeStageHandler calls refreshStageCard when stage is present."""
+        js_source = _read_app_js()
+        func_start = js_source.find("function makeStageHandler")
+        assert func_start != -1, "makeStageHandler not found"
+
+        body_start = js_source.find("{", func_start)
+        brace_depth = 0
+        body_end = body_start
+        for i in range(body_start, len(js_source)):
+            if js_source[i] == "{":
+                brace_depth += 1
+            elif js_source[i] == "}":
+                brace_depth -= 1
+                if brace_depth == 0:
+                    body_end = i + 1
+                    break
+
+        factory_body = js_source[body_start:body_end]
+        assert "refreshStageCard" in factory_body, (
+            "refreshStageCard call not found in makeStageHandler"
+        )
+
+    def test_setup_dashboard_sse_uses_factory(self) -> None:
+        """setupDashboardSSE uses makeStageHandler for all 3 event types."""
+        js_source = _read_app_js()
+
+        # Extract setupDashboardSSE body
+        func_start = js_source.find("function setupDashboardSSE")
+        assert func_start != -1, "setupDashboardSSE not found"
+
+        body_start = js_source.find("{", func_start)
+        brace_depth = 0
+        body_end = body_start
+        for i in range(body_start, len(js_source)):
+            if js_source[i] == "{":
+                brace_depth += 1
+            elif js_source[i] == "}":
+                brace_depth -= 1
+                if brace_depth == 0:
+                    body_end = i + 1
+                    break
+
+        dashboard_body = js_source[body_start:body_end]
+
+        for event_type in ("stage_started", "stage_completed", "job_progress"):
+            assert f"makeStageHandler('{event_type}'" in dashboard_body, (
+                f"setupDashboardSSE does not use makeStageHandler for '{event_type}'"
+            )
+
+    def test_stage_error_uses_factory(self) -> None:
+        """stage_error handler uses makeStageHandler with toast parameters."""
+        js_source = _read_app_js()
+        assert "makeStageHandler('stage_error'" in js_source, (
+            "stage_error handler does not use makeStageHandler"
+        )
+
+
+class TestSSERunHandlerRobustness:
+    """Tests that run_completed and run_failed handlers have try/catch."""
+
+    def test_run_completed_has_try_catch(self) -> None:
+        """run_completed handler wraps its body in try/catch."""
+        js_source = _read_app_js()
+        body = _extract_listener_body(js_source, "run_completed")
+        assert "try" in body, "try block not found in run_completed handler"
+        assert "catch" in body, "catch block not found in run_completed handler"
+        assert "console.error" in body, "console.error not found in run_completed catch block"
+
+    def test_run_failed_has_try_catch(self) -> None:
+        """run_failed handler wraps its body in try/catch."""
+        js_source = _read_app_js()
+        body = _extract_listener_body(js_source, "run_failed")
+        assert "try" in body, "try block not found in run_failed handler"
+        assert "catch" in body, "catch block not found in run_failed handler"
+        assert "console.error" in body, "console.error not found in run_failed catch block"
 
 
 class TestDashboardSSEEventCoverage:
