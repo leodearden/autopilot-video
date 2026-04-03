@@ -1631,7 +1631,15 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-02T22:27:36.133Z"
+        "updatedAt": "2026-04-02T22:27:36.133Z",
+        "metadata": {
+          "files": [
+            "tests/test_dashboard.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 86,
@@ -1679,7 +1687,17 @@
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-02T22:27:36.224Z"
+        "updatedAt": "2026-04-02T22:27:36.224Z",
+        "metadata": {
+          "files": [
+            "autopilot/web/routes/review.py",
+            "tests/test_cluster_review.py"
+          ],
+          "modules": [
+            "autopilot/web/routes",
+            "tests"
+          ]
+        }
       },
       {
         "id": 89,
@@ -1765,7 +1783,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-02T22:27:36.272Z"
+        "updatedAt": "2026-04-02T22:27:36.272Z",
+        "metadata": {
+          "files": [
+            "tests/conftest.py",
+            "tests/test_sse.py",
+            "tests/test_web_e2e.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 96,
