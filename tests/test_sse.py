@@ -97,16 +97,7 @@ class TestSSEEventDelivery:
         sse_db.insert_event("job_started", stage="INGEST", job_id="job-1")
         sse_db.insert_event("stage_completed", stage="INGEST")
 
-        async def _finite_gen(request):
-            db = sse_module._get_db(request)
-            try:
-                events = db.get_events_since(0)
-                for ev in events:
-                    yield sse_module._format_event(ev)
-            finally:
-                db.close()
-
-        with patch.object(sse_module, "_event_generator", _finite_gen):
+        with patch.object(sse_module, "_event_generator", _make_finite_gen()):
             client = TestClient(sse_app)
             response = client.get("/api/events")
             events = _parse_sse_body(response.text)
@@ -122,16 +113,7 @@ class TestSSEEventDelivery:
 
         sse_db.insert_event("stage_started", stage="ANALYZE", job_id="j1")
 
-        async def _finite_gen(request):
-            db = sse_module._get_db(request)
-            try:
-                events = db.get_events_since(0)
-                for ev in events:
-                    yield sse_module._format_event(ev)
-            finally:
-                db.close()
-
-        with patch.object(sse_module, "_event_generator", _finite_gen):
+        with patch.object(sse_module, "_event_generator", _make_finite_gen()):
             client = TestClient(sse_app)
             response = client.get("/api/events")
             events = _parse_sse_body(response.text)
@@ -157,16 +139,7 @@ class TestSSEEventDelivery:
             payload_json=json.dumps({"elapsed": 1.23}),
         )
 
-        async def _finite_gen(request):
-            db = sse_module._get_db(request)
-            try:
-                events = db.get_events_since(0)
-                for ev in events:
-                    yield sse_module._format_event(ev)
-            finally:
-                db.close()
-
-        with patch.object(sse_module, "_event_generator", _finite_gen):
+        with patch.object(sse_module, "_event_generator", _make_finite_gen()):
             client = TestClient(sse_app)
             response = client.get("/api/events")
             events = _parse_sse_body(response.text)
@@ -188,17 +161,7 @@ class TestSSEReconnection:
         for i in range(5):
             sse_db.insert_event(f"event_{i}", stage="INGEST")
 
-        async def _finite_gen(request):
-            db = sse_module._get_db(request)
-            last_id = sse_module._get_last_event_id(request)
-            try:
-                events = db.get_events_since(last_id)
-                for ev in events:
-                    yield sse_module._format_event(ev)
-            finally:
-                db.close()
-
-        with patch.object(sse_module, "_event_generator", _finite_gen):
+        with patch.object(sse_module, "_event_generator", _make_finite_gen(use_last_event_id=True)):
             client = TestClient(sse_app)
             response = client.get("/api/events", headers={"Last-Event-ID": "3"})
             events = _parse_sse_body(response.text)
@@ -214,17 +177,7 @@ class TestSSEReconnection:
         for i in range(3):
             sse_db.insert_event(f"event_{i}", stage="INGEST")
 
-        async def _finite_gen(request):
-            db = sse_module._get_db(request)
-            last_id = sse_module._get_last_event_id(request)
-            try:
-                events = db.get_events_since(last_id)
-                for ev in events:
-                    yield sse_module._format_event(ev)
-            finally:
-                db.close()
-
-        with patch.object(sse_module, "_event_generator", _finite_gen):
+        with patch.object(sse_module, "_event_generator", _make_finite_gen(use_last_event_id=True)):
             client = TestClient(sse_app)
             response = client.get("/api/events")
             events = _parse_sse_body(response.text)
@@ -238,17 +191,7 @@ class TestSSEReconnection:
         for i in range(3):
             sse_db.insert_event(f"event_{i}", stage="INGEST")
 
-        async def _finite_gen(request):
-            db = sse_module._get_db(request)
-            last_id = sse_module._get_last_event_id(request)
-            try:
-                events = db.get_events_since(last_id)
-                for ev in events:
-                    yield sse_module._format_event(ev)
-            finally:
-                db.close()
-
-        with patch.object(sse_module, "_event_generator", _finite_gen):
+        with patch.object(sse_module, "_event_generator", _make_finite_gen(use_last_event_id=True)):
             client = TestClient(sse_app)
             response = client.get("/api/events", headers={"Last-Event-ID": "abc"})
             events = _parse_sse_body(response.text)
@@ -317,16 +260,7 @@ class TestSSEEventTypes:
         for etype in self.ALL_EVENT_TYPES:
             sse_db.insert_event(etype, stage="TEST")
 
-        async def _finite_gen(request):
-            db = sse_module._get_db(request)
-            try:
-                events = db.get_events_since(0)
-                for ev in events:
-                    yield sse_module._format_event(ev)
-            finally:
-                db.close()
-
-        with patch.object(sse_module, "_event_generator", _finite_gen):
+        with patch.object(sse_module, "_event_generator", _make_finite_gen()):
             client = TestClient(sse_app)
             response = client.get("/api/events")
             events = _parse_sse_body(response.text)
