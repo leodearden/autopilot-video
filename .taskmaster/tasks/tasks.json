@@ -1564,13 +1564,13 @@
         "description": "Move duplicated test helpers and constants from individual test files into tests/conftest.py (or tests/helpers.py) as a single source of truth. Currently multiple test files define identical copies that will silently diverge.",
         "details": "Duplicated items to consolidate:\n\n1. `_parse_sse_body()` — identical in test_web_e2e.py:62-82 and test_sse.py:39-59. Move to conftest.py. While consolidating, fix the multi-data-line bug: currently overwrites previous `data:` lines instead of concatenating with newlines per the SSE spec.\n\n2. `PIPELINE_STAGES` tuple — identical in test_web_e2e.py:21-24 and test_dashboard.py:166. Move to conftest.py.\n\n3. `_seed_narrative()` — identical in test_web_e2e.py:108-122 and test_review.py:28-41 (only difference: test_review.py calls db.conn.commit()). Move to conftest.py with optional commit=False parameter.\n\n4. `_seed_cluster()` — duplicated in test_web_e2e.py:125-140 and test_cluster_review.py:189-207 (`_seed_cluster_via_db`). Move to conftest.py.\n\n5. SSE test fixtures (`sse_db`, `sse_app`) — nearly identical in test_web_e2e.py:312-323 and test_sse.py:17-31. Eliminate the redundant `sse_db` fixture in test_web_e2e.py; reuse `e2e_db` directly.\n\n6. SSE `_finite_gen` generators — 4 nearly identical inline async generators in test_web_e2e.py:352-442. Extract a single `_make_finite_gen(use_last_event_id=True)` factory. Also decouple from private module functions (`sse_module._get_db`, `_format_event`, `_get_last_event_id`) — follow the pattern in test_sse.py which patches `_event_generator` with self-contained generators.\n\nmemory_hints: search \"test helper conftest shared fixture\" ; entities: _parse_sse_body, PIPELINE_STAGES, _seed_narrative, _seed_cluster",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "blocked",
         "dependencies": [
           "53"
         ],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-03T10:12:52.275Z",
+        "updatedAt": "2026-04-03T10:13:17.604Z",
         "metadata": {
           "modules": [
             "tests/conftest.py",
@@ -2599,7 +2599,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T10:12:52.276Z",
+      "lastModified": "2026-04-03T10:13:17.604Z",
       "taskCount": 132,
       "completedCount": 107,
       "tags": [
