@@ -2646,6 +2646,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 136,
+        "title": "Extract _safe_json_loads helper and fix missing error handling in _parse_render",
+        "description": "In autopilot/web/routes/review.py, three places parse JSON with inconsistent error handling: _parse_cluster (line 274-277) has try/except JSONDecodeError, but _parse_render (line 502) uses bare `json.loads(str(raw)) if raw else None` with no exception handling — malformed validation_json raises an unhandled JSONDecodeError. The inline usage in render_review_page is similarly unguarded.\n\nExtract a shared `_safe_json_loads(raw, fallback, *, field, entity_id)` helper that logs a warning on failure, and replace all three call sites.\n\nmemory_hints: search \"_parse_cluster _parse_render json.loads\", entity \"review.py\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -2658,7 +2669,7 @@
       ],
       "created": "2026-04-03T13:42:11.687Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-03T13:42:21.418Z"
+      "updated": "2026-04-03T13:42:27.248Z"
     }
   }
 }
