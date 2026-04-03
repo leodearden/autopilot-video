@@ -1560,11 +1560,11 @@
         "description": "Several test assertions can produce confusing errors (KeyError, StopIteration) instead of clear AssertionError messages when preconditions fail.",
         "details": "Three locations to fix:\n\n1. `test_stage_cards_show_progress` (line ~293): `next(s for s in stages if s[\"name\"] == \"ingest\")` raises `StopIteration` instead of `AssertionError` when ingest stage is absent. Fix: use `next(..., None)` with explicit `assert ingest is not None, \"ingest stage missing from /api/stages\"`.\n\n2. `test_stage_cards_show_progress` (line ~296): `counts[\"running\"]` raises `KeyError` if the key is missing. Fix: use `counts.get(\"running\", 0)`.\n\n3. `test_exclude_cluster` (line ~869) and `test_relabel_cluster` (line ~858): access `check.json()[\"excluded\"]` / `check.json()[\"label\"]` without first asserting `check.status_code == 200`. Fix: add `assert check.status_code == 200` before `.json()` access in both persistence checks.\n\nmemory_hints: search \"test_stage_cards_show_progress test_exclude_cluster defensive assertions\" ; entities: test_web_e2e.py",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-02T22:27:36.086Z"
+        "updatedAt": "2026-04-03T06:03:27.950Z"
       },
       {
         "id": "84",
@@ -2428,9 +2428,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T06:00:42.065Z",
+      "lastModified": "2026-04-03T06:03:27.950Z",
       "taskCount": 130,
-      "completedCount": 93,
+      "completedCount": 94,
       "tags": [
         "master"
       ]
