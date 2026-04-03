@@ -14,11 +14,12 @@ from autopilot.source import MusicRequest
 # ---------------------------------------------------------------------------
 
 
-def _make_mock_audiocraft() -> tuple[MagicMock, MagicMock, MagicMock, MagicMock]:
+def _make_mock_audiocraft() -> tuple[MagicMock, MagicMock, MagicMock, MagicMock, MagicMock]:
     """Create mock audiocraft and torchaudio modules.
 
     Returns:
-        Tuple of (mock_audiocraft, mock_torchaudio).
+        Tuple of (mock_audiocraft, mock_audiocraft_models,
+        mock_audiocraft_models_musicgen, mock_torchaudio, mock_torch).
     """
     mock_audiocraft = MagicMock()
     mock_audiocraft_models = MagicMock()
@@ -32,12 +33,19 @@ def _make_mock_audiocraft() -> tuple[MagicMock, MagicMock, MagicMock, MagicMock]
     mock_model.sample_rate = 32000
     mock_audiocraft_models.MusicGen.get_pretrained.return_value = mock_model
 
+    # Submodule mock so `from audiocraft.models.musicgen import MusicGen` works
+    mock_musicgen_module = MagicMock()
+    mock_musicgen_module.MusicGen = mock_audiocraft_models.MusicGen
+
     mock_torchaudio = MagicMock()
     mock_torchaudio.save = MagicMock()
 
     mock_torch = MagicMock()
 
-    return mock_audiocraft, mock_audiocraft_models, mock_torchaudio, mock_torch
+    return (
+        mock_audiocraft, mock_audiocraft_models, mock_musicgen_module,
+        mock_torchaudio, mock_torch,
+    )
 
 
 def _make_model_config(music_engine: str = "musicgen") -> MagicMock:
@@ -106,7 +114,7 @@ class TestMusicGenEngine:
 
     def test_musicgen_generates_audio(self, tmp_path):
         """MusicGen engine generates and saves an audio file."""
-        mock_ac, mock_ac_models, mock_ta, mock_torch = _make_mock_audiocraft()
+        mock_ac, mock_ac_models, mock_mg, mock_ta, mock_torch = _make_mock_audiocraft()
         request = _make_music_request()
         config = _make_model_config("musicgen")
 
@@ -115,6 +123,7 @@ class TestMusicGenEngine:
             {
                 "audiocraft": mock_ac,
                 "audiocraft.models": mock_ac_models,
+                "audiocraft.models.musicgen": mock_mg,
                 "torchaudio": mock_ta,
                 "torch": mock_torch,
             },
@@ -130,7 +139,7 @@ class TestMusicGenEngine:
 
     def test_musicgen_calls_generate_with_mood(self, tmp_path):
         """MusicGen model.generate is called with the mood description."""
-        mock_ac, mock_ac_models, mock_ta, mock_torch = _make_mock_audiocraft()
+        mock_ac, mock_ac_models, mock_mg, mock_ta, mock_torch = _make_mock_audiocraft()
         request = _make_music_request(mood="gentle piano")
         config = _make_model_config("musicgen")
 
@@ -139,6 +148,7 @@ class TestMusicGenEngine:
             {
                 "audiocraft": mock_ac,
                 "audiocraft.models": mock_ac_models,
+                "audiocraft.models.musicgen": mock_mg,
                 "torchaudio": mock_ta,
                 "torch": mock_torch,
             },
@@ -157,7 +167,7 @@ class TestMusicGenEngine:
 
     def test_musicgen_model_cached_across_calls(self, tmp_path):
         """MusicGen model is loaded once and cached across multiple calls."""
-        mock_ac, mock_ac_models, mock_ta, mock_torch = _make_mock_audiocraft()
+        mock_ac, mock_ac_models, mock_mg, mock_ta, mock_torch = _make_mock_audiocraft()
         request1 = _make_music_request(mood="upbeat acoustic")
         request2 = _make_music_request(mood="gentle piano")
         config = _make_model_config("musicgen")
@@ -167,6 +177,7 @@ class TestMusicGenEngine:
             {
                 "audiocraft": mock_ac,
                 "audiocraft.models": mock_ac_models,
+                "audiocraft.models.musicgen": mock_mg,
                 "torchaudio": mock_ta,
                 "torch": mock_torch,
             },
@@ -189,13 +200,14 @@ class TestMusicGenEngine:
 
     def test_musicgen_cache_clearable(self, tmp_path):
         """_musicgen_cache can be cleared for test isolation."""
-        mock_ac, mock_ac_models, mock_ta, mock_torch = _make_mock_audiocraft()
+        mock_ac, mock_ac_models, mock_mg, mock_ta, mock_torch = _make_mock_audiocraft()
 
         with patch.dict(
             sys.modules,
             {
                 "audiocraft": mock_ac,
                 "audiocraft.models": mock_ac_models,
+                "audiocraft.models.musicgen": mock_mg,
                 "torchaudio": mock_ta,
                 "torch": mock_torch,
             },
@@ -211,7 +223,7 @@ class TestMusicGenEngine:
 
     def test_musicgen_saves_to_output_dir(self, tmp_path):
         """MusicGen saves file within the provided output_dir."""
-        mock_ac, mock_ac_models, mock_ta, mock_torch = _make_mock_audiocraft()
+        mock_ac, mock_ac_models, mock_mg, mock_ta, mock_torch = _make_mock_audiocraft()
         request = _make_music_request()
         config = _make_model_config("musicgen")
 
@@ -220,6 +232,7 @@ class TestMusicGenEngine:
             {
                 "audiocraft": mock_ac,
                 "audiocraft.models": mock_ac_models,
+                "audiocraft.models.musicgen": mock_mg,
                 "torchaudio": mock_ta,
                 "torch": mock_torch,
             },
