@@ -2100,11 +2100,11 @@
         "description": "Four test files independently define nearly identical `app` and `client` fixtures: test_web_app.py, test_settings.py, test_gates.py, test_review.py. Each creates a FastAPI app via `create_app(str(tmp_path / \"catalog.db\"))` and wraps it in TestClient.\n\n## Plan\n\n1. Add a base `app` + `client` fixture pair to `tests/conftest.py` (plain app, no seeding).\n2. Files that need specialization (test_web_app.py adds a test route, test_gates.py/test_review.py seed DB rows) override locally.\n3. test_settings.py can drop its fixtures entirely and use conftest.\n\nThis reduces boilerplate and ensures consistency as more route test files are added.\n\n## Memory hints\n- search: \"test fixture patterns conftest\" for related conventions",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-03T13:36:45.608Z",
+        "updatedAt": "2026-04-03T14:02:21.894Z",
         "metadata": {
           "files": [
             "tests/conftest.py",
@@ -2664,7 +2664,7 @@
         "description": "In autopilot/web/routes/review.py, render_index_page (around line 558-572) passes edit_plans to the template without annotating each plan with a has_render field. The template at autopilot/web/templates/review/render_index.html line 21 checks `{% if plan.render_path %}` (truthy, not existence), so a stale path in the DB shows a misleading 'rendered' badge.\n\nFix: annotate each plan with `plan['has_render'] = bool(plan.get('render_path') and Path(str(plan['render_path'])).is_file())` before passing to the template, then update the template to gate on `has_render`.\n\nmemory_hints: search \"render_index_page has_render badge\", entity \"render_index.html\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
@@ -2679,7 +2679,8 @@
             "autopilot/web/templates/review",
             "tests"
           ]
-        }
+        },
+        "updatedAt": "2026-04-03T14:02:21.944Z"
       },
       {
         "id": "136",
@@ -2775,7 +2776,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-03T14:02:21.684Z",
+      "lastModified": "2026-04-03T14:02:21.944Z",
       "taskCount": 139,
       "completedCount": 117,
       "tags": [
