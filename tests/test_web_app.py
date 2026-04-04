@@ -502,11 +502,9 @@ class TestDashboardSSEEventCoverage:
     # 'notification' handler exists but the server never emits this event type.
     _LEGACY_SSE_LISTENERS: frozenset[str] = frozenset({"notification"})
 
-    def test_all_dashboard_event_types_handled(self) -> None:
+    def test_all_dashboard_event_types_handled(self, app_js_source: str) -> None:
         """Every VALID_EVENT_TYPE (except job-level and server-only) has a listener in app.js."""
         from autopilot.web.routes.sse import VALID_EVENT_TYPES
-
-        js_source = _read_app_js()
 
         dashboard_event_types = (
             set(VALID_EVENT_TYPES) - self._JOB_LEVEL_EVENTS - self._SERVER_ONLY_EVENTS
@@ -514,22 +512,20 @@ class TestDashboardSSEEventCoverage:
         missing = []
         for event_type in sorted(dashboard_event_types):
             marker = f"source.addEventListener('{event_type}'"
-            if marker not in js_source:
+            if marker not in app_js_source:
                 missing.append(event_type)
 
         assert not missing, (
             f"Dashboard-relevant event types missing addEventListener in app.js: {missing}"
         )
 
-    def test_no_orphaned_sse_listeners(self) -> None:
+    def test_no_orphaned_sse_listeners(self, app_js_source: str) -> None:
         """Every source.addEventListener in app.js corresponds to a known event type."""
         from autopilot.web.routes.sse import VALID_EVENT_TYPES
 
-        js_source = _read_app_js()
-
         # Extract event types from source.addEventListener('...') calls only —
         # this excludes DOM-level listeners like document.addEventListener('DOMContentLoaded').
-        sse_listeners = set(re.findall(r"source\.addEventListener\('([^']+)'", js_source))
+        sse_listeners = set(re.findall(r"source\.addEventListener\('([^']+)'", app_js_source))
 
         allowed = set(VALID_EVENT_TYPES) | self._LEGACY_SSE_LISTENERS
         orphaned = sorted(sse_listeners - allowed)
@@ -537,10 +533,9 @@ class TestDashboardSSEEventCoverage:
             f"SSE listeners in app.js not in VALID_EVENT_TYPES or _LEGACY_SSE_LISTENERS: {orphaned}"
         )
 
-    def test_legacy_listeners_exist_in_app_js(self) -> None:
+    def test_legacy_listeners_exist_in_app_js(self, app_js_source: str) -> None:
         """Every _LEGACY_SSE_LISTENERS entry has a source.addEventListener in app.js."""
-        js_source = _read_app_js()
-        sse_listeners = set(re.findall(r"source\.addEventListener\('([^']+)'", js_source))
+        sse_listeners = set(re.findall(r"source\.addEventListener\('([^']+)'", app_js_source))
 
         stale = sorted(self._LEGACY_SSE_LISTENERS - sse_listeners)
         assert not stale, (
