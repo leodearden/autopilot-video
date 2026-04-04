@@ -3697,15 +3697,16 @@
         "description": "Clean up review suggestions from task 178 in tests/test_youtube.py",
         "details": "In tests/test_youtube.py: (1) Remove redundant `assert \"person\" not in tags` and `assert \"car\" not in tags` in test_tags_empty_when_detections_use_old_class_name_key — they're subsumed by `assert tags == []`. (2) Remove redundant `assert \"\" not in tags` in test_tags_exclude_empty_string_class — subsumed by `assert tags == [\"dog\"]`. (3) Rename test_tags_exclude_low_confidence_detections to test_tags_ignore_detections_without_class_key — the production code does no confidence filtering, the test passes because detections use the old `class_name` key not `class`. Update docstring to match. (4) Add test_tags_with_mixed_old_and_new_key_detections that uses `[{\"class_name\": \"car\"}, {\"class\": \"dog\"}]` and asserts `tags == [\"dog\"]` to verify old-key entries are ignored while new-key entries are included. Follow-up from task 178 review.",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:02:01.829Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T09:02:01.191Z",
+      "lastModified": "2026-04-04T09:02:01.829Z",
       "taskCount": 189,
       "completedCount": 138,
       "tags": [
