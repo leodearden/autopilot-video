@@ -4180,10 +4180,11 @@
         "description": "In autopilot/render/router.py around lines 135-240: refactor the render loop to accumulate a resolved_clips list (e.g. resolved_clips: list[dict] = []) during the first pass, appending each clip (with source_path injected via the non-mutating {**clip, 'source_path': ...} pattern). Use resolved_clips for the rendering pass. Optionally switch the subtitle loop at line 240 to also use resolved_clips for consistency. This makes it explicit that the resolved dicts (with source_path set) have a defined lifetime, and prevents future second-pass code from silently reading the unresolved original clips list.\n\nmemory_hints:\n- search: \"resolved_clips source_path resolution render loop lifetime\"\n- entity: \"render_router\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T13:11:19.029Z"
       },
       {
         "id": "220",
@@ -4199,7 +4200,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T13:11:18.957Z",
+      "lastModified": "2026-04-04T13:11:19.029Z",
       "taskCount": 220,
       "completedCount": 155,
       "tags": [
