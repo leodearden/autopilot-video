@@ -368,6 +368,42 @@ class TestIdempotency:
         events = catalog_db.get_audio_events_for_media("vid1")
         assert len(events) == 2
 
+    def test_skip_when_events_exist_beyond_range(self, catalog_db):
+        """Skip classification when audio events exist beyond the old proxy range.
+
+        Regression test: the old proxy pattern used
+        get_audio_events_for_range(media_id, 0.0, 10.0) to check for existing
+        events, which would miss events at t>=10.0. The unbounded
+        get_audio_events_for_media (and has_audio_events) correctly detects
+        events at any timestamp.
+        """
+        from autopilot.analyze.audio_events import classify_audio_events
+
+        catalog_db.insert_media("vid1", "/tmp/vid1.wav")
+        with catalog_db:
+            catalog_db.batch_insert_audio_events(
+                [
+                    ("vid1", 15.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
+                ]
+            )
+
+        scheduler = MagicMock()
+        classify_audio_events(
+            "vid1",
+            Path("/tmp/vid1.wav"),
+            catalog_db,
+            scheduler,
+        )
+
+        # Scheduler should NOT be called: classification skipped because events already exist
+        scheduler.model.assert_not_called()
+        scheduler.assert_not_called()
+
+        # DB postcondition: the single pre-existing event at t=15.0 is still present
+        events = catalog_db.get_audio_events_for_media("vid1")
+        assert len(events) == 1
+        assert float(events[0]["timestamp_seconds"]) == 15.0
+
     def test_processes_when_no_events(self, catalog_db):
         """Proceed with classification when no events exist."""
         from autopilot.analyze.audio_events import classify_audio_events
