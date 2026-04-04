@@ -469,6 +469,11 @@ class TestEventsCRUD:
             "No parameters passed to execute — query is not parameterized"
         )
 
+    def test_prune_events_rejects_zero_hours(self, catalog_db):
+        """prune_events(hours=0) raises ValueError."""
+        with pytest.raises(ValueError, match="positive"):
+            catalog_db.prune_events(hours=0)
+
 
 # -- Runs CRUD tests --------------------------------------------------------
 
