@@ -137,6 +137,10 @@ def route_and_render(
 
             # Resolve source_path from DB when not already present in clip
             if "source_path" not in clip:
+                if "clip_id" not in clip:
+                    raise RoutingError(
+                        f"Clip at index {i} has no clip_id and no source_path"
+                    )
                 media = db.get_media(clip_id)
                 if media is None:
                     raise RoutingError(
