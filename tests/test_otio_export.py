@@ -541,6 +541,120 @@ class TestTransitionMapping:
         transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
         assert len(transitions) == 0
 
+    def test_fade_in_creates_smpte_dissolve(self, tmp_path):
+        """EDL transition type 'fade_in' creates SMPTE_Dissolve with name='fade_in'."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "fade_in",
+                    "duration": 1.0,
+                    "position": 0,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+        transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
+        assert len(transitions) == 1
+        assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
+        assert transitions[0].name == "fade_in"
+
+    def test_fade_out_creates_smpte_dissolve(self, tmp_path):
+        """EDL transition type 'fade_out' creates SMPTE_Dissolve with name='fade_out'."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "fade_out",
+                    "duration": 1.0,
+                    "position": 0,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+        transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
+        assert len(transitions) == 1
+        assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
+        assert transitions[0].name == "fade_out"
+
+    def test_dissolve_creates_smpte_dissolve(self, tmp_path):
+        """EDL transition type 'dissolve' creates SMPTE_Dissolve with name='dissolve'."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "dissolve",
+                    "duration": 1.0,
+                    "position": 0,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+        transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
+        assert len(transitions) == 1
+        assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
+        assert transitions[0].name == "dissolve"
+
 
 # -- Step 20: Multi-track transition isolation tests ---------------------------
 
