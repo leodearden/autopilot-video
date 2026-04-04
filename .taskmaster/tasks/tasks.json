@@ -2978,7 +2978,7 @@
         "description": "The edit_planner.md prompt schema allows transitions: crossfade, cut, fade_in, fade_out, dissolve. But _TRANSITION_TYPE_MAP in otio_export.py handles crossfade, dissolve, and wipe (not in schema) but omits fade_in and fade_out. LLM-generated fade transitions silently fall back to SMPTE_Dissolve.",
         "details": "File: plan/otio_export.py:55-60\n\nAdd fade_in and fade_out to _TRANSITION_TYPE_MAP with appropriate OTIO transition types. Remove unreachable \"wipe\" entry. Ensure the map exactly covers the prompt schema's allowed values.\n\nmemory_hints:\n- search: \"OTIO transition type mapping\"",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
@@ -2992,7 +2992,7 @@
             "tests"
           ]
         },
-        "updatedAt": "2026-04-04T08:00:53.540Z"
+        "updatedAt": "2026-04-04T08:10:36.875Z"
       },
       {
         "id": "149",
@@ -3178,9 +3178,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:10:20.747Z",
+      "lastModified": "2026-04-04T08:10:36.875Z",
       "taskCount": 159,
-      "completedCount": 124,
+      "completedCount": 125,
       "tags": [
         "master"
       ]
