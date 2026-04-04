@@ -229,7 +229,7 @@ class TestBuildUploadMetadata:
         assert "backpack" in tags
         assert "tent" in tags
 
-    def _insert_detections(self, catalog_db, detections_json):
+    def _setup_media_with_detections(self, catalog_db, detections_json):
         """Set up a narrative + media + detections for metadata tests."""
         catalog_db.insert_narrative("n1", title="Title", description="desc")
         catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
@@ -239,7 +239,7 @@ class TestBuildUploadMetadata:
         """Detections keyed with old 'class_name' field are ignored (regression guard)."""
         from autopilot.upload.youtube import _build_upload_metadata
 
-        self._insert_detections(
+        self._setup_media_with_detections(
             catalog_db,
             [
                 (
@@ -296,7 +296,7 @@ class TestBuildUploadMetadata:
         """Empty-string class values are excluded; valid ones are kept."""
         from autopilot.upload.youtube import _build_upload_metadata
 
-        self._insert_detections(
+        self._setup_media_with_detections(
             catalog_db,
             [
                 (
