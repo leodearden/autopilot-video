@@ -4418,10 +4418,11 @@
         "description": "Three related assertion quality fixes in tests/test_web_app.py TestBraceMatchFrom:\n1. Line 354: tighten match=r'depth \\d+' to match=r'depth 2' since the input '{ open { but no close' opens exactly 2 braces and closes none.\n2. In the parametrized out-of-range test (after refactor), add a label-presence check to the match pattern, e.g. match=f'out of range.*{label}', mirroring the coverage in test_label_appears_in_error_message.\n3. In test_unbalanced_error_includes_depth (line 354), use a distinct input from test_raises_on_unbalanced_braces (e.g. '{ a { b { c }') to make each test self-contained, or merge the depth assertion into test_raises_on_unbalanced_braces.\n\nmemory_hints: search for \"TestBraceMatchFrom assertion precision\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T14:07:09.842Z"
       },
       {
         "id": "233",
@@ -4693,7 +4694,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:07:09.732Z",
+      "lastModified": "2026-04-04T14:07:09.843Z",
       "taskCount": 255,
       "completedCount": 173,
       "tags": [
