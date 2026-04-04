@@ -4429,6 +4429,7 @@ class TestNarrateJobTracking:
         self,
         mock_narratives,
         minimal_config,
+        mock_db,
     ):
         """Creates 'build_storyboard' and 'propose_narratives' jobs."""
         from autopilot.orchestrator import _run_narrate
@@ -4436,21 +4437,19 @@ class TestNarrateJobTracking:
         mock_narratives.build_master_storyboard.return_value = MagicMock()
         mock_narratives.propose_narratives.return_value = []
         mock_narratives.format_for_review.return_value = ""
-        db = MagicMock()
-        db.list_narratives.return_value = []  # no checkpoint hit
 
         _run_narrate(
             config=minimal_config,
-            db=db,
+            db=mock_db,
             run_id="run_n",
             emit_fn=MagicMock(),
         )
 
-        assert db.insert_job.call_count == 2
-        job_types = [c[0][2] for c in db.insert_job.call_args_list]
+        assert mock_db.insert_job.call_count == 2
+        job_types = [c[0][2] for c in mock_db.insert_job.call_args_list]
         assert "build_storyboard" in job_types
         assert "propose_narratives" in job_types
-        for call in db.insert_job.call_args_list:
+        for call in mock_db.insert_job.call_args_list:
             assert call[0][1] == "NARRATE"
             assert call[1]["worker"] == "cpu"
 
@@ -4459,6 +4458,7 @@ class TestNarrateJobTracking:
         self,
         mock_narratives,
         minimal_config,
+        mock_db,
     ):
         """When run_id=None, no insert_job calls."""
         from autopilot.orchestrator import _run_narrate
@@ -4466,12 +4466,10 @@ class TestNarrateJobTracking:
         mock_narratives.build_master_storyboard.return_value = MagicMock()
         mock_narratives.propose_narratives.return_value = []
         mock_narratives.format_for_review.return_value = ""
-        db = MagicMock()
-        db.list_narratives.return_value = []  # no checkpoint hit
 
-        _run_narrate(config=minimal_config, db=db)
+        _run_narrate(config=minimal_config, db=mock_db)
 
-        db.insert_job.assert_not_called()
+        mock_db.insert_job.assert_not_called()
 
 
 class TestScriptJobTracking:
