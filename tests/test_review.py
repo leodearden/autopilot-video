@@ -908,6 +908,7 @@ class TestGetNarrativeEditHTMX:
         assert 'name="title"' in response.text
         assert 'name="description"' in response.text
         assert 'name="proposed_duration_seconds"' in response.text
+        assert 'id="narrative-n-1"' in response.text  # outerHTML swap target
 
     def test_get_htmx_edit_prepopulates_values(
         self, seeded_client: TestClient,
