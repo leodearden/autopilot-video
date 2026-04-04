@@ -649,6 +649,12 @@ class TestTransitionMapping:
         assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
         assert transitions[0].name == "dissolve"
 
+        # Verify transition is positioned BETWEEN the two clips
+        track_items = list(video_tracks[0])
+        assert isinstance(track_items[0], otio.schema.Clip)
+        assert isinstance(track_items[1], otio.schema.Transition)
+        assert isinstance(track_items[2], otio.schema.Clip)
+
 
 # -- Step 20: Multi-track transition isolation tests ---------------------------
 
