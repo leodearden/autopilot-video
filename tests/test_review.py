@@ -919,3 +919,25 @@ class TestGetNarrativeEditHTMX:
         )
         assert "Morning Walk" in response.text
         assert "A walk in the park" in response.text
+
+    def test_get_htmx_edit_has_save_button(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """HTMX edit response contains Save button with hx-put to update endpoint."""
+        response = seeded_client.get(
+            "/api/narratives/n-1?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert 'hx-put="/api/narratives/n-1"' in response.text
+
+    def test_get_htmx_edit_has_cancel_button(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """HTMX edit response contains Cancel button that swaps back to read-only card."""
+        response = seeded_client.get(
+            "/api/narratives/n-1?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        # Cancel button should GET the narrative without ?edit=1 to get the card back
+        assert 'hx-get="/api/narratives/n-1"' in response.text
+        assert "Cancel" in response.text
