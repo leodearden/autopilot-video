@@ -3566,11 +3566,11 @@
         "description": "In tests/test_youtube.py, add a private helper method `_insert_detections(self, catalog_db, detections_json)` to `TestBuildUploadMetadata` that encapsulates the repeated 3-step setup: `catalog_db.insert_narrative('n1', ...)`, `catalog_db.insert_media('m1', ...)`, `catalog_db.batch_insert_detections(...)`. Replace the duplicated blocks in `test_tags_empty_when_detections_use_old_class_name_key` and `test_tags_exclude_empty_string_class` with calls to this helper, passing only the varying detections JSON.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:28:27.288Z",
+        "updatedAt": "2026-04-04T09:08:14.121Z",
         "metadata": {
           "modules": [
             "tests/test_youtube.py"
@@ -3841,7 +3841,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T09:08:13.300Z",
+      "lastModified": "2026-04-04T09:08:14.121Z",
       "taskCount": 196,
       "completedCount": 143,
       "tags": [
