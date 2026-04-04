@@ -309,6 +309,16 @@ class TestExtractListenerBody:
             _extract_listener_body(malformed_js, "broken_event")
 
 
+class TestFixtureSanity:
+    """Sanity checks for module-scoped caching fixtures."""
+
+    def test_app_js_source_returns_string(self, app_js_source: str) -> None:
+        """app_js_source fixture returns a non-empty string containing 'function'."""
+        assert isinstance(app_js_source, str)
+        assert len(app_js_source) > 0
+        assert "function" in app_js_source
+
+
 class TestSSEErrorHandling:
     """Tests for SSE notification error handling in app.js."""
 
