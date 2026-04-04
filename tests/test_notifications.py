@@ -115,6 +115,29 @@ class TestNotificationSSESetup:
             "showToast should use guarded msg variable, not raw data.message"
         )
 
+    def test_request_permission_chains_then_with_granted_check(self) -> None:
+        """requestPermission() must be chained with .then() that creates a
+        Notification only when permission is 'granted'."""
+        content = _APP_JS.read_text()
+        func_start = content.find("function setupNotificationSSE")
+        assert func_start != -1
+        func_body = content[func_start:]
+        next_func = func_body.find("\nfunction ", 1)
+        if next_func != -1:
+            func_body = func_body[:next_func]
+
+        # requestPermission must be followed by .then(
+        assert "requestPermission().then(" in func_body, (
+            "requestPermission should be chained with .then() callback"
+        )
+        # The .then callback must check for 'granted'
+        perm_idx = func_body.find("requestPermission().then(")
+        assert perm_idx != -1
+        after_perm = func_body[perm_idx:]
+        assert "'granted'" in after_perm or '"granted"' in after_perm, (
+            ".then() callback should check permission === 'granted'"
+        )
+
     def test_connectsse_no_duplicate_notification_listener(self) -> None:
         """connectSSE must not duplicate the notification listener."""
         content = _APP_JS.read_text()
