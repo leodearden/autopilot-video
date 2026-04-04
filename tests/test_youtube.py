@@ -175,19 +175,23 @@ class TestBuildUploadMetadata:
         meta = _build_upload_metadata("n1", catalog_db, youtube_config)
         assert "Narrative desc" in meta["snippet"]["description"]
 
-    def test_tags_from_activity_labels_and_detections(self, catalog_db, youtube_config):
-        """Tags combine activity cluster labels and detected object classes."""
+    def _setup_media_with_detections(
+        self, catalog_db, detections_json, *, activity_cluster_ids_json=None
+    ):
+        """Set up a narrative + media + detections for metadata tests."""
         catalog_db.insert_narrative(
             "n1",
             title="Title",
             description="desc",
-            activity_cluster_ids_json=json.dumps(["c1", "c2"]),
+            activity_cluster_ids_json=activity_cluster_ids_json,
         )
-        catalog_db.insert_activity_cluster("c1", label="hiking")
-        catalog_db.insert_activity_cluster("c2", label="camping")
-        # Insert a media file + detections with class names
         catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
-        catalog_db.batch_insert_detections(
+        catalog_db.batch_insert_detections(detections_json)
+
+    def test_tags_from_activity_labels_and_detections(self, catalog_db, youtube_config):
+        """Tags combine activity cluster labels and detected object classes."""
+        self._setup_media_with_detections(
+            catalog_db,
             [
                 (
                     "m1",
@@ -209,8 +213,11 @@ class TestBuildUploadMetadata:
                         ]
                     ),
                 ),
-            ]
+            ],
+            activity_cluster_ids_json=json.dumps(["c1", "c2"]),
         )
+        catalog_db.insert_activity_cluster("c1", label="hiking")
+        catalog_db.insert_activity_cluster("c2", label="camping")
 
         meta = _build_upload_metadata("n1", catalog_db, youtube_config)
         tags = meta["snippet"]["tags"]
@@ -221,12 +228,6 @@ class TestBuildUploadMetadata:
         assert "person" in tags
         assert "backpack" in tags
         assert "tent" in tags
-
-    def _insert_detections(self, catalog_db, detections_json):
-        """Set up a narrative + media + detections for metadata tests."""
-        catalog_db.insert_narrative("n1", title="Title", description="desc")
-        catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
-        catalog_db.batch_insert_detections(detections_json)
 
     @pytest.mark.parametrize(
         "detections_json",
@@ -246,7 +247,7 @@ class TestBuildUploadMetadata:
         self, catalog_db, youtube_config, detections_json
     ):
         """Detections without a 'class' key produce no tags."""
-        self._insert_detections(
+        self._setup_media_with_detections(
             catalog_db,
             [("m1", 0, json.dumps(detections_json))],
         )
@@ -257,7 +258,7 @@ class TestBuildUploadMetadata:
 
     def test_tags_exclude_empty_string_class(self, catalog_db, youtube_config):
         """Empty-string class values are excluded; valid ones are kept."""
-        self._insert_detections(
+        self._setup_media_with_detections(
             catalog_db,
             [
                 (
