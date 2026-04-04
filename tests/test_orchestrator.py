@@ -2120,11 +2120,11 @@ class TestRemainingStagesShutdown:
             {"narrative_id": "n2"},
         ]
         # Resume logic: get_edit_plan must return None so narratives aren't
-        # filtered out as already having edit plans
-        db.get_edit_plan.return_value = None
+        # filtered out as already having edit plans.
+        # After checkpoint (2 Nones for n1, n2), assertion guard needs truthy.
+        db.get_edit_plan.side_effect = [None, None, {"edl_json": "{}"}]
         db.get_narrative_script.return_value = "some script"
         mock_edl_mod.generate_edl.return_value = []
-        mock_validator.validate_edl.return_value = MagicMock(passed=True)
 
         call_count = 0
 
@@ -4661,10 +4661,10 @@ class TestEdlJobTracking:
 
         db = MagicMock()
         db.list_narratives.return_value = [{"narrative_id": "n1"}]
-        db.get_edit_plan.return_value = None
+        # Checkpoint returns None; assertion guard returns truthy dict
+        db.get_edit_plan.side_effect = [None, {"edl_json": "{}"}]
         db.get_narrative_script.return_value = "some script"
         mock_edl.generate_edl.return_value = {"cuts": []}
-        mock_validator.validate_edl.return_value = MagicMock(passed=True)
 
         _run_edl(
             config=minimal_config,
@@ -4673,10 +4673,10 @@ class TestEdlJobTracking:
             emit_fn=MagicMock(),
         )
 
-        assert db.insert_job.call_count == 3
+        # validate_edl tracked job was removed; only generate_edl + otio_export
+        assert db.insert_job.call_count == 2
         job_types = [c[0][2] for c in db.insert_job.call_args_list]
         assert "generate_edl" in job_types
-        assert "validate_edl" in job_types
         assert "otio_export" in job_types
         for call in db.insert_job.call_args_list:
             assert call[0][1] == "EDL"
@@ -4697,10 +4697,10 @@ class TestEdlJobTracking:
 
         db = MagicMock()
         db.list_narratives.return_value = [{"narrative_id": "n1"}]
-        db.get_edit_plan.return_value = None
+        # Checkpoint returns None; assertion guard returns truthy dict
+        db.get_edit_plan.side_effect = [None, {"edl_json": "{}"}]
         db.get_narrative_script.return_value = "some script"
         mock_edl.generate_edl.return_value = {"cuts": []}
-        mock_validator.validate_edl.return_value = MagicMock(passed=True)
 
         _run_edl(config=minimal_config, db=db)
 
