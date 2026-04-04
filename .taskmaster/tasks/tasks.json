@@ -1897,11 +1897,11 @@
         "description": "The Edit button on `partials/narrative_card.html` does `hx-get=\"/api/narratives/{id}\"` which returns raw JSON. HTMX injects JSON text into the card's outerHTML, breaking the UI. The approve/reject endpoints correctly branch on `_is_htmx()` — the edit GET endpoint doesn't.",
         "details": "## Current state\n- `partials/narrative_card.html` line 32: Edit button with `hx-get=\"/api/narratives/{id}\"` and `hx-swap=\"outerHTML\"`\n- `review.py` `GET /api/narratives/{narrative_id}` always returns a dict (JSON) — no `_is_htmx()` check\n- Compare: approve/reject endpoints call `_narrative_status_action` -> `_render_narrative_partial` when HTMX detected\n\n## Fix needed\n1. Create `partials/narrative_edit_form.html` — inline edit form with title, description, proposed_duration fields, save/cancel buttons\n2. Add `_is_htmx()` branch to `GET /api/narratives/{narrative_id}` — return edit form partial for HTMX, JSON for API\n3. Save button should `PUT /api/narratives/{id}` (endpoint already exists and has HTMX support)\n4. Cancel button should swap back to the read-only `narrative_card.html` partial\n5. Add test: HTMX GET returns HTML form, non-HTMX GET returns JSON",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:00:53.370Z",
+        "updatedAt": "2026-04-04T08:19:47.024Z",
         "metadata": {
           "files": [
             "autopilot/web/routes/review.py",
@@ -3347,9 +3347,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:19:46.454Z",
+      "lastModified": "2026-04-04T08:19:47.025Z",
       "taskCount": 169,
-      "completedCount": 128,
+      "completedCount": 129,
       "tags": [
         "master"
       ]
