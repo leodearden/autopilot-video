@@ -985,3 +985,41 @@ class TestGetNarrativeEditHTMX:
             headers={"HX-Request": "true"},
         )
         assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# TestDepsImportRefactor — task-137 step-1
+# ---------------------------------------------------------------------------
+
+class TestDepsImportRefactor:
+    """Verify review.py uses get_db/is_htmx from deps and private copies are removed."""
+
+    def test_no_private_get_db(self) -> None:
+        """_get_db should be removed from review module."""
+        from autopilot.web.routes import review
+        assert not hasattr(review, "_get_db"), (
+            "_get_db should be removed in favor of get_db from deps"
+        )
+
+    def test_no_private_is_htmx(self) -> None:
+        """_is_htmx should be removed from review module."""
+        from autopilot.web.routes import review
+        assert not hasattr(review, "_is_htmx"), (
+            "_is_htmx should be removed in favor of is_htmx from deps"
+        )
+
+    def test_review_get_db_is_deps_get_db(self) -> None:
+        """review.get_db should be the same object as deps.get_db."""
+        from autopilot.web import deps
+        from autopilot.web.routes import review
+        assert review.get_db is deps.get_db, (
+            "review.get_db should be imported from deps"
+        )
+
+    def test_review_is_htmx_is_deps_is_htmx(self) -> None:
+        """review.is_htmx should be the same object as deps.is_htmx."""
+        from autopilot.web import deps
+        from autopilot.web.routes import review
+        assert review.is_htmx is deps.is_htmx, (
+            "review.is_htmx should be imported from deps"
+        )
