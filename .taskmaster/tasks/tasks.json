@@ -5221,6 +5221,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 287,
+        "title": "Consolidate JS extraction test utilities into shared module",
+        "description": "Create tests/js_test_utils.py (or tests/helpers.py) and move _extract_listener_body from test_web_app.py into it. Add _extract_js_function (the top-level function variant) there as well. Update test_notifications.py to import and use these helpers instead of the four copies of the inline func_start/func_body/next_func pattern (lines 27-108), and update test_web_app.py imports accordingly. This removes 4x duplication and replaces the weaker split-on-newline approach with correct brace-matching.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5233,7 +5244,7 @@
       ],
       "created": "2026-04-04T18:12:47.315Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:12:57.014Z"
+      "updated": "2026-04-04T18:13:02.157Z"
     }
   }
 }
