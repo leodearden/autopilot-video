@@ -74,7 +74,14 @@ _TRANSITION_TYPE_MAP = {
 # Transition types that are semantic approximations — see the NOTE above.
 # These types are mapped to SMPTE_Dissolve but are not true cross-dissolves;
 # Transition objects for these types carry approximation metadata.
-_FADE_APPROXIMATION_TYPES = {"fade_in", "fade_out"}
+_FADE_APPROXIMATION_TYPES: frozenset[str] = frozenset({"fade_in", "fade_out"})
+assert _FADE_APPROXIMATION_TYPES <= _TRANSITION_TYPE_MAP.keys()
+
+_FADE_APPROXIMATION_MSG: str = (
+    "Rendered as SMPTE_Dissolve (cross-dissolve between adjacent "
+    "clips). True fade-to/from-black requires an opacity-based "
+    "Effect on the clip."
+)
 
 
 def _get_media_info(clip_id: str, db: CatalogDB) -> tuple[str, float]:
@@ -171,11 +178,7 @@ def _insert_transitions(
         # that this is a cross-dissolve standing in for a true fade-to/from-black.
         if trans_type in _FADE_APPROXIMATION_TYPES:
             transition.metadata["autopilot"] = {
-                "approximation": (
-                    "Rendered as SMPTE_Dissolve (cross-dissolve between adjacent "
-                    "clips). True fade-to/from-black requires an opacity-based "
-                    "Effect on the clip."
-                ),
+                "approximation": _FADE_APPROXIMATION_MSG,
             }
 
         # Insert after clip at 'position' (which is index position + 1 in the track
