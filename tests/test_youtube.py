@@ -286,7 +286,7 @@ class TestBuildUploadMetadata:
         meta = _build_upload_metadata("n1", catalog_db, config)
         tags = meta["snippet"]["tags"]
         assert "" not in tags
-        assert "dog" in tags
+        assert tags == ["dog"]
 
     def test_uses_config_privacy_status_and_category(self, catalog_db):
         """Privacy and category come from YouTubeConfig."""
