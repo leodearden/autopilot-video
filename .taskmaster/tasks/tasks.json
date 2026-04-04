@@ -4746,10 +4746,11 @@
         "description": "Two related gaps in autopilot/render/router.py and tests/test_render_router.py: (1) Line 61 of router.py uses `clip.get('clip_id', '')` (empty-string sentinel) while the rest of `route_and_render` uses `str | None`. Change to `clip.get('clip_id')` and add `if clip_id is None: return 'fast'` before the crop_modes lookup. (2) Add a unit test in TestClassifyClip covering `_classify_clip({'source_path': '/x.mp4', 'overlay': 'pip'}, {})` — a clip with no clip_id key — to document that the overlay branch fires before the clip_id lookup.\n\nmemory_hints:\n- search: \"_classify_clip clip_id empty string None convention\"\n- entity: \"render_router\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T14:10:03.224Z"
       },
       {
         "id": "259",
@@ -4765,7 +4766,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:10:02.924Z",
+      "lastModified": "2026-04-04T14:10:03.243Z",
       "taskCount": 259,
       "completedCount": 173,
       "tags": [
