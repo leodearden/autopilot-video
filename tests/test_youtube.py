@@ -157,31 +157,25 @@ class TestLoadCredentials:
 class TestBuildUploadMetadata:
     """Verify _build_upload_metadata helper."""
 
-    def test_builds_title_from_narrative(self, catalog_db):
+    def test_builds_title_from_narrative(self, catalog_db, youtube_config):
         """Title comes from narrative title in DB."""
         catalog_db.insert_narrative("n1", title="My Great Video", description="desc")
-        config = MagicMock()
-        config.privacy_status = "unlisted"
-        config.default_category = "22"
 
-        meta = _build_upload_metadata("n1", catalog_db, config)
+        meta = _build_upload_metadata("n1", catalog_db, youtube_config)
         assert meta["snippet"]["title"] == "My Great Video"
 
-    def test_builds_description_from_script(self, catalog_db):
+    def test_builds_description_from_script(self, catalog_db, youtube_config):
         """Description includes narrative description and script content."""
         catalog_db.insert_narrative("n1", title="Title", description="Narrative desc")
         catalog_db.upsert_narrative_script(
             "n1",
             json.dumps({"scenes": [{"narration": "Scene one narration."}]}),
         )
-        config = MagicMock()
-        config.privacy_status = "unlisted"
-        config.default_category = "22"
 
-        meta = _build_upload_metadata("n1", catalog_db, config)
+        meta = _build_upload_metadata("n1", catalog_db, youtube_config)
         assert "Narrative desc" in meta["snippet"]["description"]
 
-    def test_tags_from_activity_labels_and_detections(self, catalog_db):
+    def test_tags_from_activity_labels_and_detections(self, catalog_db, youtube_config):
         """Tags combine activity cluster labels and detected object classes."""
         catalog_db.insert_narrative(
             "n1",
@@ -217,11 +211,8 @@ class TestBuildUploadMetadata:
                 ),
             ]
         )
-        config = MagicMock()
-        config.privacy_status = "unlisted"
-        config.default_category = "22"
 
-        meta = _build_upload_metadata("n1", catalog_db, config)
+        meta = _build_upload_metadata("n1", catalog_db, youtube_config)
         tags = meta["snippet"]["tags"]
         # Activity labels present
         assert "hiking" in tags
@@ -231,7 +222,7 @@ class TestBuildUploadMetadata:
         assert "backpack" in tags
         assert "tent" in tags
 
-    def test_tags_empty_when_detections_use_old_class_name_key(self, catalog_db):
+    def test_tags_empty_when_detections_use_old_class_name_key(self, catalog_db, youtube_config):
         """Detections keyed with old 'class_name' field are ignored (regression guard)."""
         catalog_db.insert_narrative("n1", title="Title", description="desc")
         catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
@@ -249,17 +240,14 @@ class TestBuildUploadMetadata:
                 ),
             ]
         )
-        config = MagicMock()
-        config.privacy_status = "unlisted"
-        config.default_category = "22"
 
-        meta = _build_upload_metadata("n1", catalog_db, config)
+        meta = _build_upload_metadata("n1", catalog_db, youtube_config)
         tags = meta["snippet"]["tags"]
         assert "person" not in tags
         assert "car" not in tags
         assert tags == []
 
-    def test_tags_empty_when_detection_has_no_class_key(self, catalog_db):
+    def test_tags_empty_when_detection_has_no_class_key(self, catalog_db, youtube_config):
         """Detections with no 'class' key at all produce no tags."""
         catalog_db.insert_narrative("n1", title="Title", description="desc")
         catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
@@ -277,15 +265,12 @@ class TestBuildUploadMetadata:
                 ),
             ]
         )
-        config = MagicMock()
-        config.privacy_status = "unlisted"
-        config.default_category = "22"
 
-        meta = _build_upload_metadata("n1", catalog_db, config)
+        meta = _build_upload_metadata("n1", catalog_db, youtube_config)
         tags = meta["snippet"]["tags"]
         assert tags == []
 
-    def test_tags_exclude_empty_string_class(self, catalog_db):
+    def test_tags_exclude_empty_string_class(self, catalog_db, youtube_config):
         """Empty-string class values are excluded; valid ones are kept."""
         catalog_db.insert_narrative("n1", title="Title", description="desc")
         catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
@@ -303,11 +288,8 @@ class TestBuildUploadMetadata:
                 ),
             ]
         )
-        config = MagicMock()
-        config.privacy_status = "unlisted"
-        config.default_category = "22"
 
-        meta = _build_upload_metadata("n1", catalog_db, config)
+        meta = _build_upload_metadata("n1", catalog_db, youtube_config)
         tags = meta["snippet"]["tags"]
         assert "" not in tags
         assert tags == ["dog"]
