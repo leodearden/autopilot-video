@@ -128,6 +128,7 @@ def route_and_render(
 
     # -- Render each clip ------------------------------------------------------
     segments: list[Path] = []
+    resolved_clips: list[dict] = []
 
     with tempfile.TemporaryDirectory(prefix="render_") as work_dir_str:
         work_dir = Path(work_dir_str)
@@ -153,6 +154,7 @@ def route_and_render(
                     )
                 clip = {**clip, "source_path": str(file_path)}
 
+            resolved_clips.append(clip)
             classification = _classify_clip(clip, crop_modes)
             segment_path = work_dir / f"segment_{i:04d}.mp4"
 
