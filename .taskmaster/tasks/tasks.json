@@ -6056,6 +6056,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 349,
+        "title": "Complete consistent fixture caching: add setup_dashboard_sse_body and sse_listener_names fixtures",
+        "description": "In tests/test_web_app.py, add two new fixtures to match the caching pattern established by `app_js_source` and `make_stage_handler_body`:\n1. Add `@pytest.fixture(scope='module') def setup_dashboard_sse_body(app_js_source)` that calls `_extract_function_body(app_js_source, 'setupDashboardSSE')` once and inject it into `TestSSEHandlerFactory.test_setup_dashboard_sse_uses_factory` (line 461) instead of calling `_extract_function_body` inline.\n2. Add `@pytest.fixture(scope='class') def sse_listener_names(app_js_source)` that computes `set(re.findall(r\"source\\.addEventListener\\('([^']+)'\", app_js_source))` once and inject it into both `test_no_orphaned_sse_listeners` (line 572) and `test_legacy_listeners_exist_in_app_js` (line 586) in `TestDashboardSSEEventCoverage`, eliminating the two identical duplicate regex scans.\n\nMemory hints: search for \"task 162 fixture caching\" and \"setupDashboardSSE extraction\".",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -6068,7 +6079,7 @@
       ],
       "created": "2026-04-04T23:14:22.169Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T23:14:26.374Z"
+      "updated": "2026-04-04T23:14:33.037Z"
     }
   }
 }
