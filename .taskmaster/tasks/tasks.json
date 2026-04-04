@@ -4833,11 +4833,11 @@
         "description": "In tests/test_youtube.py, the `_setup_media_with_detections` helper has two related issues:\n\n1. **Leaky interface**: The `activity_cluster_ids_json` parameter accepts a pre-encoded JSON string, forcing callers to call `json.dumps()` at the call site. Rename to `activity_cluster_ids: list[str] | None` and do `json.dumps(value) if value is not None else None` inside the helper.\n\n2. **Inverted fixture ordering**: In `test_tags_from_activity_labels_and_detections` (line ~219), `insert_activity_cluster(\"c1\", ...)` and `insert_activity_cluster(\"c2\", ...)` are called *after* `_setup_media_with_detections` which inserts a narrative referencing those clusters. Although SQLite doesn't enforce FK constraints on JSON columns, the ordering is conceptually inverted. Move `insert_activity_cluster` calls before the helper call (or into the helper when cluster IDs are provided), and add a brief comment if ordering still matters.\n\nMemory hints: search \"task 202 _setup_media_with_detections helper rename\" for prior context.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:07:21.279Z"
+        "updatedAt": "2026-04-04T18:18:29.406Z"
       },
       {
         "id": "255",
@@ -5418,9 +5418,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:18:24.559Z",
+      "lastModified": "2026-04-04T18:18:29.406Z",
       "taskCount": 301,
-      "completedCount": 189,
+      "completedCount": 190,
       "tags": [
         "master"
       ]
