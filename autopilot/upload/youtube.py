@@ -99,8 +99,7 @@ def _build_upload_metadata(
             cluster_ids = json.loads(str(narrative["activity_cluster_ids_json"]))
         except (json.JSONDecodeError, TypeError):
             cluster_ids = []
-        clusters = db.get_activity_clusters()
-        cluster_map = {c["cluster_id"]: c for c in clusters}
+        cluster_map = db.get_activity_clusters_by_ids(cluster_ids)
         for cid in cluster_ids:
             cluster = cluster_map.get(cid)
             if cluster and cluster.get("label"):

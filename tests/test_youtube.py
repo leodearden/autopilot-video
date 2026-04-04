@@ -255,6 +255,51 @@ class TestBuildUploadMetadata:
         assert "person" in tags
         assert len(tags) == 1
 
+    def test_uses_targeted_cluster_lookup_not_full_scan(
+        self, catalog_db, youtube_config
+    ):
+        """Regression guard: _build_upload_metadata must call the targeted
+        get_activity_clusters_by_ids() rather than the full-scan
+        get_activity_clusters()."""
+        catalog_db.insert_activity_cluster("c1", label="hiking")
+        catalog_db.insert_activity_cluster("c2", label="camping")
+
+        self._setup_media_with_detections(
+            catalog_db,
+            [
+                (
+                    "m1",
+                    0,
+                    json.dumps([{"class": "person", "confidence": 0.9}]),
+                ),
+            ],
+            activity_cluster_ids=["c1", "c2"],
+        )
+
+        with patch.object(
+            catalog_db,
+            "get_activity_clusters_by_ids",
+            wraps=catalog_db.get_activity_clusters_by_ids,
+        ) as spy_by_ids, patch.object(
+            catalog_db,
+            "get_activity_clusters",
+            wraps=catalog_db.get_activity_clusters,
+        ) as spy_full_scan:
+            meta = _build_upload_metadata("n1", catalog_db, youtube_config)
+
+        # The targeted method must be used
+        spy_by_ids.assert_called_once()
+        called_ids = spy_by_ids.call_args[0][0]
+        assert sorted(called_ids) == ["c1", "c2"]
+
+        # The full-scan method must NOT be used
+        spy_full_scan.assert_not_called()
+
+        # Functional correctness preserved
+        tags = meta["snippet"]["tags"]
+        assert "hiking" in tags
+        assert "camping" in tags
+
     @pytest.mark.parametrize(
         "detections_json",
         [
