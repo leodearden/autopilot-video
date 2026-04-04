@@ -676,6 +676,31 @@ class TestDryRunZeroSideEffects:
     """
 
     @pytest.mark.parametrize("cmd_name", list(SUBCOMMAND_STAGES.keys()))
+    def test_dry_run_no_side_effects(self, cmd_name: str) -> None:
+        """'<cmd> --dry-run' does NOT call load_config, CatalogDB, or PipelineOrchestrator."""
+        runner = CliRunner()
+
+        with patch("autopilot.cli.load_config") as mock_load:
+            with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+                with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                    result = runner.invoke(
+                        main,
+                        ["--config", "dummy.yaml", cmd_name, "--dry-run"],
+                    )
+                    assert result.exit_code == 0, (
+                        f"{cmd_name} --dry-run failed: {result.output}"
+                    )
+                    assert not mock_load.called, (
+                        f"{cmd_name} --dry-run should NOT call load_config"
+                    )
+                    assert not mock_db_cls.called, (
+                        f"{cmd_name} --dry-run should NOT instantiate CatalogDB"
+                    )
+                    assert not mock_orch_cls.called, (
+                        f"{cmd_name} --dry-run should NOT instantiate PipelineOrchestrator"
+                    )
+
+    @pytest.mark.parametrize("cmd_name", list(SUBCOMMAND_STAGES.keys()))
     def test_dry_run_does_not_call_load_config(self, cmd_name: str) -> None:
         """'<cmd> --dry-run' does NOT call load_config."""
         runner = CliRunner()
