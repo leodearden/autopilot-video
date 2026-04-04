@@ -5,7 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 import sys
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
