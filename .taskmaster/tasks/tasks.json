@@ -5488,6 +5488,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 307,
+        "title": "Refactor test classes into parametrized pattern and add read-back assertions",
+        "description": "In tests/test_db_update_rowcount.py: (1) Replace the four test classes (TestUpdateNarrativeRowcount, TestUpdateGateRowcount, TestUpdateJobRowcount, TestUpdateRunRowcount) with a single `@pytest.mark.parametrize`-driven structure or a shared helper accepting (setup_fn, update_fn, fetch_fn) pairs — this removes ~12 near-identical methods. (2) For each 'existing row' test case, add a read-back assertion after the update call (e.g. `assert db.get_narrative('n-1')['title'] == 'New'`) to verify the field was actually mutated, not just that rowcount was 1. (3) Add a note in the module docstring pointing to `tests/test_db_validate_helper.py` for ValueError coverage, documenting that ValueError paths are intentionally tested elsewhere.\n\nMemory hints: search for \"CatalogDB update pattern\" and \"test parametrize conventions\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5500,7 +5511,7 @@
       ],
       "created": "2026-04-04T18:21:23.724Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:21:23.726Z"
+      "updated": "2026-04-04T18:21:29.489Z"
     }
   }
 }
