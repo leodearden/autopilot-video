@@ -349,6 +349,22 @@ class TestBraceMatchFrom:
         with pytest.raises(AssertionError, match="test-block"):
             _brace_match_from("{ broken", 0, "test-block")
 
+    def test_raises_on_out_of_range_start(self) -> None:
+        """Raises AssertionError with 'out of range' for invalid start indices."""
+        source = "{ ok }"
+        # start == len(source)
+        with pytest.raises(AssertionError, match="out of range"):
+            _brace_match_from(source, len(source), "at-len")
+        # start > len(source)
+        with pytest.raises(AssertionError, match="out of range"):
+            _brace_match_from(source, len(source) + 5, "beyond-len")
+        # negative start
+        with pytest.raises(AssertionError, match="out of range"):
+            _brace_match_from(source, -1, "negative")
+        # empty source
+        with pytest.raises(AssertionError, match="out of range"):
+            _brace_match_from("", 0, "empty")
+
 
 class TestSSEErrorHandling:
     """Tests for SSE notification error handling in app.js."""
