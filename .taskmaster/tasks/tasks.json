@@ -5223,10 +5223,11 @@
         "description": "In autopilot/orchestrator.py line 1450, change the raw f'Stage {stage_name} failed: {exc}' to truncate or sanitize the exception: e.g. f'Stage {stage_name} failed: {type(exc).__name__}: {str(exc)[:120]}'. This prevents file paths, credentials fragments, or multi-line tracebacks from appearing in user-facing toast/browser notifications.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T18:15:41.763Z"
       },
       {
         "id": "287",
@@ -5286,7 +5287,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:15:41.694Z",
+      "lastModified": "2026-04-04T18:15:41.763Z",
       "taskCount": 291,
       "completedCount": 186,
       "tags": [
