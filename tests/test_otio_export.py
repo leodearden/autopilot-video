@@ -726,7 +726,7 @@ class TestTransitionMapping:
         self._assert_clip_transition_clip(video_tracks[0])
 
     def test_cut_filtered_before_type_lookup(self, tmp_path):
-        """Cut transitions are filtered early; only non-cut transitions produce Transition objects."""
+        """Cut transitions are filtered early; non-cut types produce Transitions."""
         from autopilot.plan.otio_export import export_otio
 
         edl = _minimal_edl(

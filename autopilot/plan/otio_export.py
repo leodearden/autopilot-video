@@ -148,7 +148,7 @@ def _insert_transitions(
     # Insert transitions in reverse order to avoid index shifting
     for pos in sorted(transitions_by_pos.keys(), reverse=True):
         trans_data = transitions_by_pos[pos]
-        trans_type = trans_data.get("type")
+        trans_type = trans_data.get("type", "")
         duration_secs = float(trans_data.get("duration") or 0.5)
 
         otio_type = _TRANSITION_TYPE_MAP.get(trans_type)
