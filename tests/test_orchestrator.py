@@ -849,6 +849,85 @@ class TestAnalyzeStage:
 
         assert any("2/3" in r.message for r in caplog.records)
 
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
+    def test_analyze_passes_default_batch_size_yolo(
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
+    ):
+        """_run_analyze passes config.processing.batch_size_yolo (default=16) to detect_objects."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = MagicMock()
+        db.list_all_media.return_value = [
+            {"id": "m1", "file_path": "/fake/v1.mp4", "status": "ingested"},
+        ]
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(config=minimal_config, db=db)
+
+        mock_objects.detect_objects.assert_called_once()
+        call_kwargs = mock_objects.detect_objects.call_args[1]
+        assert call_kwargs.get("batch_size") == 16
+
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
+    def test_analyze_passes_custom_batch_size_yolo(
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
+    ):
+        """_run_analyze passes a custom batch_size_yolo (32) to detect_objects."""
+        from autopilot.orchestrator import _run_analyze
+
+        minimal_config.processing.batch_size_yolo = 32
+        db = MagicMock()
+        db.list_all_media.return_value = [
+            {"id": "m1", "file_path": "/fake/v1.mp4", "status": "ingested"},
+        ]
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(config=minimal_config, db=db)
+
+        mock_objects.detect_objects.assert_called_once()
+        call_kwargs = mock_objects.detect_objects.call_args[1]
+        assert call_kwargs.get("batch_size") == 32
+
 
 class TestClassifyStage:
     """Tests for the real _run_classify stage function."""
