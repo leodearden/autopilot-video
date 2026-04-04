@@ -6162,6 +6162,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 357,
+        "title": "Hoist color-map dicts out of Jinja2 template loops",
+        "description": "Three templates define identical dicts on every loop iteration: (1) pipeline/index.html:51 — stage_colors inside {% for stage in stages %}; run_colors at line 7 is already correctly hoisted, apply the same pattern to stage_colors; (2) pipeline/stages.html:22 — stage_colors inside outer {% for stage in stages %}, and stages.html:46 — job_count_colors also inside the same outer loop; (3) pipeline/jobs.html:58 — job_colors inside {% for job in jobs %}. Fix: move all three {% set ... %} statements to before their respective outermost loops.\n\nmemory_hints: search \"Jinja2 template loop performance color_map\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -6174,7 +6185,7 @@
       ],
       "created": "2026-04-04T23:17:38.103Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T23:17:46.547Z"
+      "updated": "2026-04-04T23:17:51.947Z"
     }
   }
 }
