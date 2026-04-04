@@ -4285,11 +4285,11 @@
         "description": "In `autopilot/web/templates/partials/narrative_edit_form.html` lines 4 and 11, either:\n- Replace `{{ narrative.title or '' }}` and `{{ narrative.description or '' }}` with the same `if X is not none else ''` guard used for `proposed_duration_seconds`, OR\n- Add an explanatory comment (e.g. `{# or '' is safe for string fields: empty string is equivalent to None here #}`) explaining why the simpler pattern is intentional for string fields.\nThis prevents silent falsy-value bugs if the schema evolves.\n\nMemory hints: search \"zero-value falsy handling Jinja\" for the convention established in task 167.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T14:02:16.439Z",
+        "updatedAt": "2026-04-04T14:20:35.520Z",
         "metadata": {
           "modules": [
             "autopilot/web/templates/partials",
@@ -5006,7 +5006,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:20:34.828Z",
+      "lastModified": "2026-04-04T14:20:35.520Z",
       "taskCount": 273,
       "completedCount": 178,
       "tags": [
