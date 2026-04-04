@@ -3910,10 +3910,11 @@
         "description": "In tests/test_web_app.py: (1) Move class TestBraceMatchFrom (lines 309-331) to appear immediately before class TestExtractFunctionBody (line 268) so the file reads in dependency order: primitive helper → higher-level helpers → integration tests. (2) In `test_make_stage_handler_shows_toast_on_missing_stage` (line 415), add a comment near the `_brace_match_from` call noting that it now raises loudly on malformed JS rather than silently yielding an empty body as the old inline loop did.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:14:38.883Z"
       },
       {
         "id": "201",
@@ -3929,7 +3930,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T09:14:38.307Z",
+      "lastModified": "2026-04-04T09:14:38.890Z",
       "taskCount": 201,
       "completedCount": 144,
       "tags": [
