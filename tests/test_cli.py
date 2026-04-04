@@ -549,3 +549,46 @@ class TestForceFlag:
                         assert call[1].get("force") is True, (
                             f"{cmd_name}: stage func not called with force=True"
                         )
+
+
+import pytest
+
+
+# Mapping from CLI subcommand name → stage names it would normally execute
+SUBCOMMAND_STAGES = {
+    "ingest": ["INGEST"],
+    "analyze": ["ANALYZE", "CLASSIFY"],
+    "plan": ["NARRATE", "SCRIPT"],
+    "edit": ["EDL", "SOURCE_ASSETS"],
+    "render": ["RENDER"],
+    "upload": ["UPLOAD"],
+}
+
+
+class TestDryRunSubcommands:
+    """Tests that --dry-run prevents stage functions from being called."""
+
+    @pytest.mark.parametrize("cmd_name", list(SUBCOMMAND_STAGES.keys()))
+    def test_dry_run_does_not_call_stage_func(self, tmp_path: Path, cmd_name: str) -> None:
+        """'<cmd> --dry-run' does NOT call any stage function."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+            mock_db_cls.return_value = MagicMock()
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch = MagicMock()
+                mock_orch_cls.return_value = mock_orch
+                stage_func = MagicMock()
+                mock_orch._stage_map.__getitem__.return_value.func = stage_func
+
+                result = runner.invoke(
+                    main,
+                    ["--config", str(config_file), cmd_name, "--dry-run"],
+                )
+                assert result.exit_code == 0, (
+                    f"{cmd_name} --dry-run failed: {result.output}"
+                )
+                stage_func.assert_not_called(), (
+                    f"{cmd_name} --dry-run should NOT call any stage function"
+                )
