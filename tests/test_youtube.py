@@ -229,13 +229,18 @@ class TestBuildUploadMetadata:
         assert "backpack" in tags
         assert "tent" in tags
 
+    def _insert_detections(self, catalog_db, detections_json):
+        """Set up a narrative + media + detections for metadata tests."""
+        catalog_db.insert_narrative("n1", title="Title", description="desc")
+        catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
+        catalog_db.batch_insert_detections(detections_json)
+
     def test_tags_empty_when_detections_use_old_class_name_key(self, catalog_db):
         """Detections keyed with old 'class_name' field are ignored (regression guard)."""
         from autopilot.upload.youtube import _build_upload_metadata
 
-        catalog_db.insert_narrative("n1", title="Title", description="desc")
-        catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
-        catalog_db.batch_insert_detections(
+        self._insert_detections(
+            catalog_db,
             [
                 (
                     "m1",
@@ -247,7 +252,7 @@ class TestBuildUploadMetadata:
                         ]
                     ),
                 ),
-            ]
+            ],
         )
         config = MagicMock()
         config.privacy_status = "unlisted"
@@ -291,9 +296,8 @@ class TestBuildUploadMetadata:
         """Empty-string class values are excluded; valid ones are kept."""
         from autopilot.upload.youtube import _build_upload_metadata
 
-        catalog_db.insert_narrative("n1", title="Title", description="desc")
-        catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
-        catalog_db.batch_insert_detections(
+        self._insert_detections(
+            catalog_db,
             [
                 (
                     "m1",
@@ -305,7 +309,7 @@ class TestBuildUploadMetadata:
                         ]
                     ),
                 ),
-            ]
+            ],
         )
         config = MagicMock()
         config.privacy_status = "unlisted"
