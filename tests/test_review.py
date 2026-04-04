@@ -1032,7 +1032,8 @@ class TestEditFormZeroDuration:
             headers={"HX-Request": "true"},
         )
         assert response.status_code == 200
-        assert 'value="0"' in response.text
+        # DB stores REAL, so 0 renders as "0" or "0.0" — either is acceptable
+        assert 'value="0"' in response.text or 'value="0.0"' in response.text
 
     def test_edit_form_renders_empty_for_none_duration(
         self, zero_duration_client: TestClient,
