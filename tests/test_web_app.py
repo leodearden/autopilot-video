@@ -285,6 +285,19 @@ class TestExtractFunctionBody:
             _extract_function_body(js, "broken")
 
 
+class TestExtractListenerBody:
+    """Tests for the _extract_listener_body helper hardening."""
+
+    def test_raises_on_unclosed_braces(self) -> None:
+        """_extract_listener_body raises AssertionError on malformed JS with unclosed braces."""
+        malformed_js = (
+            "source.addEventListener('broken_event', function(event) "
+            "{ if (true) { doStuff(); }"
+        )
+        with pytest.raises(AssertionError):
+            _extract_listener_body(malformed_js, "broken_event")
+
+
 class TestSSEErrorHandling:
     """Tests for SSE notification error handling in app.js."""
 
