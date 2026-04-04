@@ -796,10 +796,7 @@ class CatalogDB:
         """
         if not kwargs:
             return 0
-        bad_keys = set(kwargs) - self._CLUSTER_ALLOWED_COLUMNS
-        if bad_keys:
-            msg = f"Disallowed column(s) for cluster update: {sorted(bad_keys)}"
-            raise ValueError(msg)
+        self._validate_update_kwargs(self._CLUSTER_ALLOWED_COLUMNS, kwargs, "cluster")
         set_clause = ", ".join(f"{k} = ?" for k in kwargs)
         values = list(kwargs.values())
         values.append(cluster_id)
@@ -880,10 +877,7 @@ class CatalogDB:
         """Update fields of a narrative by keyword arguments."""
         if not kwargs:
             return
-        bad_keys = set(kwargs) - self._NARRATIVE_ALLOWED_COLUMNS
-        if bad_keys:
-            msg = f"Disallowed column(s) for narrative update: {sorted(bad_keys)}"
-            raise ValueError(msg)
+        self._validate_update_kwargs(self._NARRATIVE_ALLOWED_COLUMNS, kwargs, "narrative")
         set_clause = ", ".join(f"{k} = ?" for k in kwargs)
         values = list(kwargs.values())
         values.append(narrative_id)
@@ -1317,10 +1311,7 @@ class CatalogDB:
         """Update fields of a gate by keyword arguments."""
         if not kwargs:
             return
-        bad_keys = set(kwargs) - self._GATE_ALLOWED_COLUMNS
-        if bad_keys:
-            msg = f"Disallowed column(s) for gate update: {sorted(bad_keys)}"
-            raise ValueError(msg)
+        self._validate_update_kwargs(self._GATE_ALLOWED_COLUMNS, kwargs, "gate")
         set_clause = ", ".join(f"{k} = ?" for k in kwargs)
         values = list(kwargs.values())
         values.append(stage)
@@ -1401,10 +1392,7 @@ class CatalogDB:
         """Update fields of a job by keyword arguments."""
         if not kwargs:
             return
-        bad_keys = set(kwargs) - self._JOB_ALLOWED_COLUMNS
-        if bad_keys:
-            msg = f"Disallowed column(s) for job update: {sorted(bad_keys)}"
-            raise ValueError(msg)
+        self._validate_update_kwargs(self._JOB_ALLOWED_COLUMNS, kwargs, "job")
         set_clause = ", ".join(f"{k} = ?" for k in kwargs)
         values = list(kwargs.values())
         values.append(job_id)
@@ -1544,10 +1532,7 @@ class CatalogDB:
         """Update fields of a run by keyword arguments."""
         if not kwargs:
             return
-        bad_keys = set(kwargs) - self._RUN_ALLOWED_COLUMNS
-        if bad_keys:
-            msg = f"Disallowed column(s) for run update: {sorted(bad_keys)}"
-            raise ValueError(msg)
+        self._validate_update_kwargs(self._RUN_ALLOWED_COLUMNS, kwargs, "run")
         set_clause = ", ".join(f"{k} = ?" for k in kwargs)
         values = list(kwargs.values())
         values.append(run_id)
