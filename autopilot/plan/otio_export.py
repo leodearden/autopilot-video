@@ -149,7 +149,8 @@ def _insert_transitions(
     for pos in sorted(transitions_by_pos.keys(), reverse=True):
         trans_data = transitions_by_pos[pos]
         trans_type = trans_data.get("type", "")
-        duration_secs = float(trans_data.get("duration") or 0.5)
+        raw_duration = trans_data.get("duration")
+        duration_secs = float(0.5 if raw_duration is None else raw_duration)
 
         otio_type = _TRANSITION_TYPE_MAP.get(trans_type)
         if otio_type is None:

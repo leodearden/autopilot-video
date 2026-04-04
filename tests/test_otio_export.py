@@ -650,6 +650,48 @@ class TestTransitionMapping:
             f"Expected a WARNING containing 'None, falling back', got: {warning_messages}"
         )
 
+    def test_zero_duration_preserved(self, tmp_path):
+        """Transition with duration=0 must remain 0s, not coerced to 0.5s default."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "crossfade",
+                    "duration": 0,
+                    "position": 0,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+        track_items = self._assert_clip_transition_clip(video_tracks[0])
+        trans = track_items[1]
+        total_dur_sec = otio.opentime.to_seconds(trans.in_offset) + otio.opentime.to_seconds(
+            trans.out_offset
+        )
+        assert total_dur_sec == 0.0, (
+            f"duration=0 should be preserved as 0.0s, got {total_dur_sec}"
+        )
+
     def test_null_duration_uses_default(self, tmp_path):
         """Transition with duration=None should use 0.5s default, not crash."""
         from autopilot.plan.otio_export import export_otio
