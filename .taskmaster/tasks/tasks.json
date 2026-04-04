@@ -5788,6 +5788,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 331,
+        "title": "Extract reusable two-clip EDL fixture helper in TestTransitionMapping",
+        "description": "In `tests/test_otio_export.py`, the `TestTransitionMapping` class has ~12 inlined copies of the same two-clip dict list. Generalize `_wipe_edl()` to accept a `transitions` parameter (defaulting to the current wipe transition), or add a `_two_clip_edl(transitions)` static helper alongside it. Update the three new tests (`test_null_duration_uses_default`, `test_null_position_uses_default`, `test_cut_filtered_before_type_lookup`) and ideally the prior tests to call the helper instead of inlining. Suggestions [5] and [6].\n\nmemory_hints:\n- search: \"TestTransitionMapping _wipe_edl fixture helper pattern\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5800,7 +5811,7 @@
       ],
       "created": "2026-04-04T19:10:15.972Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T19:10:31.422Z"
+      "updated": "2026-04-04T19:10:37.192Z"
     }
   }
 }
