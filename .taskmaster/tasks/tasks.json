@@ -5627,6 +5627,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 320,
+        "title": "Strengthen test assertions and coverage for missing-cluster graceful degradation",
+        "description": "In tests/test_youtube.py: (a) Replace `assert len(tags) == 1` with `assert tags == ['person']` in test_tags_missing_activity_clusters_gracefully_degrades for clarity. (b) Add a second detection entry to match the 'plural' docstring. (c) Add a new test test_tags_mixed_valid_and_nonexistent_clusters with both real and missing cluster IDs to cover the mixed-list edge case.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5639,7 +5650,7 @@
       ],
       "created": "2026-04-04T18:42:10.618Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:42:10.620Z"
+      "updated": "2026-04-04T18:42:12.687Z"
     }
   }
 }
