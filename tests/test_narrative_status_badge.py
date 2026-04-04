@@ -113,3 +113,12 @@ class TestNarrativeEditFormBadge:
         source_path = TEMPLATES_DIR / "partials" / "narrative_edit_form.html"
         source = source_path.read_text()
         assert "{% from 'macros/narrative_status_badge.html' import status_badge %}" in source
+
+
+class TestReviewNarrativesBadge:
+    """Verify review/narratives.html uses the shared status_badge macro."""
+
+    def test_source_uses_macro_import(self) -> None:
+        source_path = TEMPLATES_DIR / "review" / "narratives.html"
+        source = source_path.read_text()
+        assert "{% from 'macros/narrative_status_badge.html' import status_badge %}" in source
