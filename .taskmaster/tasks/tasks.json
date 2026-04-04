@@ -4494,11 +4494,11 @@
         "description": "In tests/test_otio_export.py around line 535, split `test_unknown_transition_type_falls_back_and_warns` back into two separate tests: (1) `test_unknown_transition_type_falls_back_to_smpte_dissolve` — asserts SMPTE_Dissolve fallback type and Clip/Transition/Clip structure; (2) `test_unknown_transition_type_emits_warning` — asserts the WARNING log contains 'wipe'. Both can call `_assert_clip_transition_clip` (or its renamed form) and share the same EDL construction via a private `_wipe_edl()` helper or fixture to avoid duplication. This ensures a structural regression does not silently hide whether warning emission is also broken.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T14:02:16.510Z",
+        "updatedAt": "2026-04-04T14:11:23.592Z",
         "metadata": {
           "modules": [
             "tests/test_otio_export.py"
@@ -4800,9 +4800,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:11:08.722Z",
+      "lastModified": "2026-04-04T14:11:23.592Z",
       "taskCount": 262,
-      "completedCount": 176,
+      "completedCount": 177,
       "tags": [
         "master"
       ]
