@@ -1533,3 +1533,21 @@ class TestFadeApproximationMetadata:
         from autopilot.plan.otio_export import _FADE_APPROXIMATION_TYPES
 
         assert isinstance(_FADE_APPROXIMATION_TYPES, frozenset)
+
+    def test_fade_approximation_types_subset_of_transition_map(self):
+        """Every fade approximation type is a valid transition type."""
+        from autopilot.plan.otio_export import (
+            _FADE_APPROXIMATION_TYPES,
+            _TRANSITION_TYPE_MAP,
+        )
+
+        assert _FADE_APPROXIMATION_TYPES <= _TRANSITION_TYPE_MAP.keys()
+
+    def test_subset_assertion_exists_in_source(self):
+        """Module source contains a runtime assertion enforcing the subset invariant."""
+        import inspect
+
+        import autopilot.plan.otio_export as mod
+
+        source = inspect.getsource(mod)
+        assert "_FADE_APPROXIMATION_TYPES <= _TRANSITION_TYPE_MAP.keys()" in source
