@@ -138,6 +138,34 @@ class TestNotificationSSESetup:
             ".then() callback should check permission === 'granted'"
         )
 
+    def test_permission_requested_flag_guards_request_permission(self) -> None:
+        """A module-level _permissionRequested flag must exist before
+        setupNotificationSSE and be checked before calling requestPermission()
+        to prevent stacking permission dialogs on rapid SSE events."""
+        content = _APP_JS.read_text()
+
+        # _permissionRequested must be declared at module level,
+        # before setupNotificationSSE
+        flag_idx = content.find("_permissionRequested")
+        assert flag_idx != -1, "_permissionRequested flag not found in app.js"
+        func_idx = content.find("function setupNotificationSSE")
+        assert flag_idx < func_idx, (
+            "_permissionRequested should be declared before setupNotificationSSE"
+        )
+
+        # Inside setupNotificationSSE, the flag must guard requestPermission
+        func_body = content[func_idx:]
+        next_func = func_body.find("\nfunction ", 1)
+        if next_func != -1:
+            func_body = func_body[:next_func]
+        assert "_permissionRequested" in func_body, (
+            "setupNotificationSSE should check _permissionRequested flag"
+        )
+        # The flag should be set to true before/after calling requestPermission
+        assert "_permissionRequested = true" in func_body, (
+            "setupNotificationSSE should set _permissionRequested = true"
+        )
+
     def test_connectsse_no_duplicate_notification_listener(self) -> None:
         """connectSSE must not duplicate the notification listener."""
         content = _APP_JS.read_text()
