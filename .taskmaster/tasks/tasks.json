@@ -3515,11 +3515,11 @@
         "description": "Two independent cleanup items: (1) In autopilot/plan/otio_export.py, append a note to the _TRANSITION_TYPE_MAP docblock: `# Types not in this map emit a WARNING and fall back to SMPTE_Dissolve (see _insert_transitions).` (2) In tests/test_otio_export.py, add test_null_transition_type_falls_back_to_smpte_dissolve passing `{'type': None, 'duration': 1.0, 'position': 0}` and asserting the SMPTE_Dissolve fallback and the warning log — this covers the distinct code path where the key exists with a null value (dict.get returns None rather than the 'cut' default).\n\nmemory_hints:\n- search: \"OTIO _TRANSITION_TYPE_MAP fallback behavior\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:26:43.587Z",
+        "updatedAt": "2026-04-04T18:05:22.680Z",
         "metadata": {
           "modules": [
             "autopilot/plan/otio_export.py",
@@ -5043,7 +5043,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:05:03.895Z",
+      "lastModified": "2026-04-04T18:05:22.682Z",
       "taskCount": 275,
       "completedCount": 185,
       "tags": [
