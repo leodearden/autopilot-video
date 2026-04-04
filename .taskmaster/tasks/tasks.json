@@ -4953,6 +4953,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 270,
+        "title": "Fix test_rejects_multiple_disallowed_columns to unambiguously prove sorted() ordering",
+        "description": "In tests/test_db_pipeline.py line 654, change `spec['update'](catalog_db, aaa_col='x', zzz_col='y')` to `spec['update'](catalog_db, zzz_col='y', aaa_col='x')` so kwargs arrive in reverse alphabetical order. The existing assertion `msg.index('aaa_col') < msg.index('zzz_col')` then genuinely proves the implementation uses sorted() rather than preserving insertion order.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -4965,7 +4976,7 @@
       ],
       "created": "2026-04-04T14:20:14.591Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T14:20:14.603Z"
+      "updated": "2026-04-04T14:20:18.582Z"
     }
   }
 }
