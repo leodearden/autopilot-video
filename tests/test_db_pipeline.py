@@ -485,11 +485,25 @@ class TestEventsCRUD:
         self, catalog_db, hours, expected_param,
     ):
         """prune_events() uses parameterized SQL, not f-string interpolation."""
+        # Seed a canary event backdated well beyond any threshold so prune
+        # should always delete it — verifies the DELETE actually executes.
+        catalog_db.conn.execute(
+            "INSERT INTO pipeline_events (event_type, created_at) "
+            "VALUES (?, datetime('now', '-72 hours'))",
+            ("old_spy_canary",),
+        )
         with patch.object(
             catalog_db, "conn", wraps=catalog_db.conn,
         ) as mock_conn:
             catalog_db.prune_events(hours=hours)
 
+            # --- Data-level assertion: canary must be gone ---------------
+            remaining = catalog_db.get_events_since(0)
+            assert not any(
+                e["event_type"] == "old_spy_canary" for e in remaining
+            ), "old_spy_canary survived prune — DELETE did not execute"
+
+            # --- Call-args assertions ------------------------------------
             # Extract positional args from each execute call; find the DELETE
             all_calls = [
                 c.args for c in mock_conn.execute.call_args_list
