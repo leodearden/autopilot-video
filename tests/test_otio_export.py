@@ -650,7 +650,8 @@ class TestTransitionMapping:
         )
 
     def test_empty_string_transition_type_falls_back_to_smpte_dissolve(self, tmp_path, caplog):
-        """Transition with type='' bypasses 'cut' filter, misses map lookup, falls back to SMPTE_Dissolve."""
+        """Transition with type='' bypasses 'cut' filter, misses map
+        lookup, falls back to SMPTE_Dissolve."""
         import logging
 
         from autopilot.plan.otio_export import export_otio
