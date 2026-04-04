@@ -3886,11 +3886,11 @@
         "description": "In tests/test_web_app.py, class TestBraceMatchFrom (lines 309-331): (1) Add a test `test_raises_when_start_not_at_brace` that calls `_brace_match_from('abc', 1, 'no-brace')` and asserts `AssertionError` matching `\"expected '{'\"`. (2) Merge or differentiate `test_raises_on_unbalanced_braces` and `test_label_appears_in_error_message` — either combine into one assertion or use distinct inputs (e.g. depth-1 vs depth-3 unclosed brace) so the two tests exercise meaningfully different scenarios.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T09:13:15.926Z",
+        "updatedAt": "2026-04-04T09:15:25.566Z",
         "metadata": {
           "modules": [
             "tests/test_web_app.py"
@@ -3952,7 +3952,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T09:15:25.554Z",
+      "lastModified": "2026-04-04T09:15:25.566Z",
       "taskCount": 202,
       "completedCount": 145,
       "tags": [
