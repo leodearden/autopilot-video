@@ -381,58 +381,49 @@ class TestSSEErrorHandling:
 class TestSSEHandlerFactory:
     """Tests for the makeStageHandler factory function in app.js."""
 
-    def test_make_stage_handler_defined(self) -> None:
+    def test_make_stage_handler_defined(self, app_js_source: str) -> None:
         """makeStageHandler function is defined in app.js."""
-        js_source = _read_app_js()
-        assert "function makeStageHandler" in js_source, (
+        assert "function makeStageHandler" in app_js_source, (
             "makeStageHandler factory function not found in app.js"
         )
 
-    def test_make_stage_handler_has_try_catch(self) -> None:
+    def test_make_stage_handler_has_try_catch(self, make_stage_handler_body: str) -> None:
         """makeStageHandler contains try/catch error handling."""
-        js_source = _read_app_js()
-        factory_body = _extract_function_body(js_source, "makeStageHandler")
-        assert "try" in factory_body, "try block not found in makeStageHandler"
-        assert "catch" in factory_body, "catch block not found in makeStageHandler"
-        assert "console.error" in factory_body, (
+        assert "try" in make_stage_handler_body, "try block not found in makeStageHandler"
+        assert "catch" in make_stage_handler_body, "catch block not found in makeStageHandler"
+        assert "console.error" in make_stage_handler_body, (
             "console.error not found in makeStageHandler catch block"
         )
 
-    def test_make_stage_handler_has_console_warn_for_missing_stage(self) -> None:
+    def test_make_stage_handler_has_console_warn_for_missing_stage(self, make_stage_handler_body: str) -> None:
         """makeStageHandler logs console.warn when data.stage is falsy."""
-        js_source = _read_app_js()
-        factory_body = _extract_function_body(js_source, "makeStageHandler")
-        assert "console.warn" in factory_body, (
+        assert "console.warn" in make_stage_handler_body, (
             "console.warn for missing stage field not found in makeStageHandler"
         )
 
-    def test_make_stage_handler_calls_refresh_stage_card(self) -> None:
+    def test_make_stage_handler_calls_refresh_stage_card(self, make_stage_handler_body: str) -> None:
         """makeStageHandler calls refreshStageCard when stage is present."""
-        js_source = _read_app_js()
-        factory_body = _extract_function_body(js_source, "makeStageHandler")
-        assert "refreshStageCard" in factory_body, (
+        assert "refreshStageCard" in make_stage_handler_body, (
             "refreshStageCard call not found in makeStageHandler"
         )
 
-    def test_setup_dashboard_sse_uses_factory(self) -> None:
+    def test_setup_dashboard_sse_uses_factory(self, app_js_source: str) -> None:
         """setupDashboardSSE uses makeStageHandler for all 3 event types."""
-        js_source = _read_app_js()
-        dashboard_body = _extract_function_body(js_source, "setupDashboardSSE")
+        dashboard_body = _extract_function_body(app_js_source, "setupDashboardSSE")
 
         for event_type in ("stage_started", "stage_completed", "job_progress"):
             assert f"makeStageHandler('{event_type}'" in dashboard_body, (
                 f"setupDashboardSSE does not use makeStageHandler for '{event_type}'"
             )
 
-    def test_stage_error_uses_factory(self) -> None:
+    def test_stage_error_uses_factory(self, app_js_source: str) -> None:
         """stage_error handler uses makeStageHandler with toast parameters."""
-        js_source = _read_app_js()
-        assert "makeStageHandler('stage_error'" in js_source, (
+        assert "makeStageHandler('stage_error'" in app_js_source, (
             "stage_error handler does not use makeStageHandler"
         )
 
 
-    def test_make_stage_handler_shows_toast_on_missing_stage(self) -> None:
+    def test_make_stage_handler_shows_toast_on_missing_stage(self, make_stage_handler_body: str) -> None:
         """makeStageHandler shows a fallback toast when stage is missing and toastMsg is provided.
 
         This catches the regression where stage_error events with no stage field
@@ -440,9 +431,7 @@ class TestSSEHandlerFactory:
         path) must call showToast with '{stage}' replaced by 'unknown' so that
         error-level events always surface to the user.
         """
-        js_source = _read_app_js()
-
-        factory_body = _extract_function_body(js_source, "makeStageHandler")
+        factory_body = make_stage_handler_body
 
         # Locate the else branch (the missing-stage path)
         else_pos = factory_body.find("} else {")
