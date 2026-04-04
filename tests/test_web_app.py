@@ -196,8 +196,16 @@ def _read_app_js() -> str:
 def _extract_listener_body(js_source: str, event_type: str) -> str:
     """Extract the body of a source.addEventListener callback by brace-matching.
 
-    Returns the outermost { ... } block of the callback function for the given
-    event type.  Raises AssertionError if the listener is not found.
+    Returns the outermost ``{ ... }`` block of the callback function for the
+    given *event_type*.  Raises :class:`AssertionError` if the listener is not
+    found or if braces are not balanced (malformed JS).
+
+    .. note::
+
+       This helper only works for **inline function** listeners, e.g.
+       ``source.addEventListener('event', function(e) { ... })``.  It does
+       **not** work for factory-pattern listeners like ``stage_error`` where
+       the callback is a function call (``makeStageHandler(...)``).
     """
     marker = f"addEventListener('{event_type}'"
     listener_start = js_source.find(marker)
@@ -220,6 +228,9 @@ def _extract_listener_body(js_source: str, event_type: str) -> str:
                 body_end = i + 1
                 break
 
+    assert brace_depth == 0, (
+        f"unbalanced braces in {event_type} listener (depth {brace_depth} after scan)"
+    )
     return js_source[body_start:body_end]
 
 
