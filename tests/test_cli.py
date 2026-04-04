@@ -647,15 +647,20 @@ class TestDryRunZeroSideEffects:
                     assert result.exit_code == 0, (
                         f"{cmd_name} --dry-run failed: {result.output}"
                     )
-                    assert not mock_load.called, (
-                        f"{cmd_name} --dry-run should NOT call load_config"
-                    )
-                    assert not mock_db_cls.called, (
-                        f"{cmd_name} --dry-run should NOT instantiate CatalogDB"
-                    )
-                    assert not mock_orch_cls.called, (
-                        f"{cmd_name} --dry-run should NOT instantiate PipelineOrchestrator"
-                    )
+                    failures: list[str] = []
+                    if mock_load.called:
+                        failures.append(
+                            f"{cmd_name} --dry-run should NOT call load_config"
+                        )
+                    if mock_db_cls.called:
+                        failures.append(
+                            f"{cmd_name} --dry-run should NOT instantiate CatalogDB"
+                        )
+                    if mock_orch_cls.called:
+                        failures.append(
+                            f"{cmd_name} --dry-run should NOT instantiate PipelineOrchestrator"
+                        )
+                    assert not failures, "\n".join(failures)
 
     def test_soft_assert_reports_all_failures(self) -> None:
         """When all three side-effects fire, the failure-collector reports all three."""
