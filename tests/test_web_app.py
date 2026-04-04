@@ -350,6 +350,11 @@ class TestBraceMatchFrom:
         with pytest.raises(AssertionError, match="test-block"):
             _brace_match_from("{ broken", 0, "test-block")
 
+    def test_unbalanced_error_includes_depth(self) -> None:
+        """Error message from unbalanced braces includes 'depth' with a number."""
+        with pytest.raises(AssertionError, match=r"depth \d+"):
+            _brace_match_from("{ open { but no close", 0, "depth-check")
+
     def test_raises_on_out_of_range_start(self) -> None:
         """Raises AssertionError with 'out of range' for invalid start indices."""
         source = "{ ok }"
