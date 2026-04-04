@@ -3133,10 +3133,11 @@
         "description": "In tests/test_youtube.py: (1) Move `from datetime import datetime` at line 328 out of the test method body and add `from datetime import datetime, timezone, timedelta` to the top-level imports section (alongside `import json`, `import sys`, etc.). (2) Replace the assertion at line 330 (`assert ts.tzinfo is not None or upload_rec['uploaded_at'].endswith('+00:00')`) with two assertions: `assert ts.tzinfo is not None, 'uploaded_at must be timezone-aware'` and `assert ts.utcoffset() == timedelta(0), 'uploaded_at must be UTC'`. The `or` branch is dead code because `fromisoformat` on a `+00:00` string always yields a timezone-aware datetime; the stronger form also catches non-UTC timezone-aware timestamps.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T08:10:20.597Z"
       },
       {
         "id": "157",
@@ -3175,7 +3176,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:10:20.549Z",
+      "lastModified": "2026-04-04T08:10:20.597Z",
       "taskCount": 159,
       "completedCount": 124,
       "tags": [
