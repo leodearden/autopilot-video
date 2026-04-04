@@ -5926,6 +5926,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 339,
+        "title": "Convert client fixtures to yield-based teardown with context manager",
+        "description": "In tests/test_review.py, convert `zero_duration_client` and `_roundtrip_client` from bare `return TestClient(app)` to yield-based fixtures using the context manager pattern:\n\n```python\nwith TestClient(app) as client:\n    yield client\n```\n\nThis ensures lifespan events are fired and the underlying httpx transport is explicitly closed rather than deferred to GC, preventing file handle accumulation across the test run.\n\nMemory hints: search \"task 224 zero-duration fixture scope optimization\" for parent task context.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5938,7 +5949,7 @@
       ],
       "created": "2026-04-04T23:07:46.399Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T23:07:52.812Z"
+      "updated": "2026-04-04T23:07:56.707Z"
     }
   }
 }
