@@ -1127,10 +1127,10 @@ class TestEditFormZeroDuration:
     ) -> None:
         """Zero duration survives a save→render roundtrip via JSON API + edit form.
 
-        This behavioural roundtrip also subsumes JS-pattern regression coverage:
-        if the hx-vals serialisation ever coerces 0 to null/empty, the final
-        assertion will catch it regardless of the specific JS implementation
-        (isNaN, Number.isFinite, etc.).
+        Covers server-side persistence and edit-form rendering only. The
+        TestClient sends JSON directly and does not execute the browser-side
+        hx-vals JS; see test_edit_form_js_does_not_use_falsy_or_null for
+        template JS regression coverage.
         """
         # PUT zero duration via JSON API
         put_resp = zero_duration_client.put(
