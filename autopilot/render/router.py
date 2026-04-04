@@ -167,6 +167,13 @@ def route_and_render(
                 clip = {**clip, "source_path": str(file_path)}
 
             classification = _classify_clip(clip, crop_modes)
+
+            if classification == "slow" and clip_id is None:
+                raise RoutingError(
+                    f"Clip at index {i} has overlay requiring "
+                    f"slow path but no clip_id for crop lookup"
+                )
+
             segment_path = work_dir / f"segment_{i:04d}.mp4"
 
             # Load crop_path from DB when applicable (only when clip_id exists)
