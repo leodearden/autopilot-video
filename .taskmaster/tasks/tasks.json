@@ -4394,11 +4394,16 @@
         "description": "In tests/test_web_app.py lines 203-204, update the docstring to mention the bounds-check failure mode. Change the current text to: 'Raises AssertionError if *start* is out of range, if `source[start]` is not `{`, or if the braces are unbalanced.'\n\nmemory_hints: search for \"_brace_match_from docstring contract\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T14:06:47.743Z"
+        "updatedAt": "2026-04-04T14:07:48.099Z",
+        "metadata": {
+          "modules": [
+            "tests/test_web_app.py"
+          ]
+        }
       },
       {
         "id": "231",
@@ -4694,7 +4699,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:07:09.843Z",
+      "lastModified": "2026-04-04T14:07:48.100Z",
       "taskCount": 255,
       "completedCount": 173,
       "tags": [
