@@ -502,6 +502,30 @@ class TestEventsCRUD:
             "Parameter value mismatch — expected ('-48 hours',)"
         )
 
+    def test_prune_events_parameterizes_hours_actually_deletes(self, catalog_db):
+        """Canary: wrapping conn at attribute level must still run real SQL."""
+        # Insert an event backdated 49 hours — should be pruned with hours=48
+        catalog_db.conn.execute(
+            "INSERT INTO pipeline_events (event_type, created_at) "
+            "VALUES (?, datetime('now', '-49 hours'))",
+            ("old_event",),
+        )
+        catalog_db.insert_event("recent_event")
+
+        # Current mock pattern: wraps the whole conn object
+        with patch.object(
+            catalog_db, "conn", wraps=catalog_db.conn,
+        ):
+            catalog_db.prune_events(hours=48)
+
+        # The old event should actually be deleted from the DB
+        events = catalog_db.get_events_since(0)
+        event_types = [e["event_type"] for e in events]
+        assert "old_event" not in event_types, (
+            "old_event still in DB — mock swallowed execute without forwarding"
+        )
+        assert len(events) == 1
+
     def test_prune_events_rejects_zero_hours(self, catalog_db):
         """prune_events(hours=0) raises ValueError."""
         with pytest.raises(ValueError, match="positive"):
