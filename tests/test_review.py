@@ -879,3 +879,20 @@ class TestClusterExcludeHTMX:
             headers={"HX-Request": "true"},
         )
         assert "bg-red-900" in response.text
+
+
+# ---------------------------------------------------------------------------
+# TestGetNarrativeEditHTMX — task-100 step-1
+# ---------------------------------------------------------------------------
+
+class TestGetNarrativeEditHTMX:
+    """Tests for GET /api/narratives/{id}?edit=1 with HTMX returning edit form."""
+
+    def test_get_htmx_edit_returns_html(self, seeded_client: TestClient) -> None:
+        """GET /api/narratives/n-1?edit=1 with HX-Request returns text/html."""
+        response = seeded_client.get(
+            "/api/narratives/n-1?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
