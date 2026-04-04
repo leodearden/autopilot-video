@@ -5844,6 +5844,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 333,
+        "title": "Harden mock_run.call_args access with explicit call_count assertion",
+        "description": "In tests/test_render_router.py, in test_subtitle_loop_uses_resolved_clips (around lines 1711 and the cmd_str access), add `assert mock_run.call_count == 1` before accessing `mock_run.call_args[0][0]`. This makes the failure mode explicit if a future subprocess.run call is added — currently the assertion would silently inspect the wrong command call.\n\nmemory_hints:\n- search: \"mock_run call_args call_count subprocess assertion\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5856,7 +5867,7 @@
       ],
       "created": "2026-04-04T23:03:51.862Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T23:03:51.864Z"
+      "updated": "2026-04-04T23:03:54.967Z"
     }
   }
 }
