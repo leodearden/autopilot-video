@@ -223,6 +223,34 @@ def _extract_listener_body(js_source: str, event_type: str) -> str:
     return js_source[body_start:body_end]
 
 
+class TestExtractFunctionBody:
+    """Tests for the _extract_function_body helper."""
+
+    def test_extracts_simple_function_body(self) -> None:
+        """Extracts the body of a simple named function."""
+        js = "function greet() { return 'hello'; }"
+        body = _extract_function_body(js, "greet")
+        assert body == "{ return 'hello'; }"
+
+    def test_handles_nested_braces(self) -> None:
+        """Correctly brace-matches when there are nested braces."""
+        js = "function calc() { if (true) { return 1; } else { return 2; } }"
+        body = _extract_function_body(js, "calc")
+        assert body == "{ if (true) { return 1; } else { return 2; } }"
+
+    def test_raises_when_function_not_found(self) -> None:
+        """Raises AssertionError when the function name is not found."""
+        js = "function otherFunc() { return 1; }"
+        with pytest.raises(AssertionError, match="nonexistent"):
+            _extract_function_body(js, "nonexistent")
+
+    def test_raises_on_unclosed_braces(self) -> None:
+        """Raises AssertionError when braces are not balanced (malformed JS)."""
+        js = "function broken() { if (true) { return 1; }"
+        with pytest.raises(AssertionError):
+            _extract_function_body(js, "broken")
+
+
 class TestSSEErrorHandling:
     """Tests for SSE notification error handling in app.js."""
 
