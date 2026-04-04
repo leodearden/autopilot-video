@@ -6091,6 +6091,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 351,
+        "title": "Tighten AST walk: use any() and skip nested function scopes",
+        "description": "In tests/test_render_router.py around lines 1608–1612: replace the list-comprehension + empty-check with `any(isinstance(n, ast.Assert) for n in ast.walk(tree))` for short-circuit efficiency. Additionally, after parsing the source into a tree, locate the top-level FunctionDef node and walk only its direct body while skipping nested FunctionDef/AsyncFunctionDef children, so future inner helpers that use assert don't cause false positives.\n\nmemory_hints:\n- search: \"ast.walk nested scope false positive test_render_router\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -6103,7 +6114,7 @@
       ],
       "created": "2026-04-04T23:16:16.824Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T23:16:16.826Z"
+      "updated": "2026-04-04T23:16:21.298Z"
     }
   }
 }
