@@ -955,8 +955,9 @@ class TestGetNarrativeEditHTMX:
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
         assert "Morning Walk" in response.text
-        # Read-only card has Approve button, not input fields
+        # Read-only card has Approve button with HTMX wiring, not input fields
         assert "Approve" in response.text
+        assert "hx-post" in response.text
         assert 'name="title"' not in response.text
 
     def test_get_htmx_edit_param_non_one_returns_card(
