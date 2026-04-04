@@ -4138,10 +4138,11 @@
         "description": "Four assertion gaps remain in TestNarrateResume (tests/test_orchestrator.py) after task 172:\n\n1. **test_narrate_force_repropose_even_with_existing** (line ~1107): Add `mock_narratives.build_master_storyboard.assert_called_once_with(db)` — the test sets up `return_value = \"sb\"` but never verifies the call. A regression skipping build_master_storyboard would pass silently since propose_narratives.assert_called_once() doesn't check its arguments.\n\n2. **test_narrate_logs_resume_message** (line ~1089): Add `mock_narratives.build_master_storyboard.assert_not_called()` for consistency with test_narrate_skips_when_approved_narratives_exist which already asserts both list_narratives and build_master_storyboard.\n\n3. **test_narrate_proceeds_when_no_approved_narratives** (line ~1122): Add `db.list_narratives.assert_called_once_with(\"approved\")` and `mock_narratives.build_master_storyboard.assert_called_once()` to mirror the assertion pattern established by the skip-path tests.\n\n4. **test_narrate_force_repropose_even_with_existing** (line ~1100-1102): Remove the dead `db.list_narratives.return_value = [...]` setup — since force=True bypasses the checkpoint, list_narratives is never called and this setup is misleading. Replace with a comment clarifying that force=True bypasses the checkpoint entirely.\n\nmemory_hints:\n- search: \"NARRATE checkpoint test assertions task 172\"\n- entity: \"TestNarrateResume\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T13:23:04.357Z"
       },
       {
         "id": "215",
@@ -4435,7 +4436,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T13:23:04.258Z",
+      "lastModified": "2026-04-04T13:23:04.357Z",
       "taskCount": 238,
       "completedCount": 162,
       "tags": [
