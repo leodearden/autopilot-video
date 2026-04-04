@@ -1151,3 +1151,67 @@ class TestEditFormZeroDuration:
         )
         assert get_resp.status_code == 200
         assert 'value="0"' in get_resp.text or 'value="0.0"' in get_resp.text
+
+
+# ---------------------------------------------------------------------------
+# Null-title/description fixtures — task-223
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def null_title_desc_app(tmp_path: Path) -> FastAPI:
+    """App with narratives seeded with title=None and description=None."""
+    db_path = str(tmp_path / "catalog.db")
+    with CatalogDB(db_path) as _db:
+        _db.init_default_gates()
+        _seed_narrative(
+            _db, "n-null-title",
+            title=None,
+            description="Has Desc",
+        )
+        _seed_narrative(
+            _db, "n-null-desc",
+            title="Has Title",
+            description=None,
+        )
+    return create_app(db_path)
+
+
+@pytest.fixture
+def null_title_desc_client(null_title_desc_app: FastAPI) -> TestClient:
+    """TestClient for the null-title/description app."""
+    return TestClient(null_title_desc_app)
+
+
+# ---------------------------------------------------------------------------
+# TestEditFormNullTitleDescription — task-223 step-1
+# ---------------------------------------------------------------------------
+
+class TestEditFormNullTitleDescription:
+    """Tests for edit form rendering of None title and description values."""
+
+    def test_edit_form_renders_empty_for_none_title(
+        self, null_title_desc_client: TestClient,
+    ) -> None:
+        """Edit form for narrative with title=None shows value="" not value="None"."""
+        response = null_title_desc_client.get(
+            "/api/narratives/n-null-title?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        # Title input should render with an empty value, not the string 'None'
+        assert 'value="None"' not in response.text
+        assert 'value=""' in response.text
+        assert 'name="title"' in response.text
+
+    def test_edit_form_renders_empty_for_none_description(
+        self, null_title_desc_client: TestClient,
+    ) -> None:
+        """Edit form for narrative with description=None shows empty textarea."""
+        response = null_title_desc_client.get(
+            "/api/narratives/n-null-desc?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        # Textarea content should be empty, not the string 'None'
+        assert ">None</textarea>" not in response.text
+        assert 'name="description"' in response.text
