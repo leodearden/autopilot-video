@@ -3991,11 +3991,17 @@
         "description": "Reduce test duplication and fix assertion quality in test_orchestrator.py and test_cli.py",
         "details": "In tests/test_orchestrator.py: (1) Merge test_analyze_passes_default_batch_size_yolo and test_analyze_passes_custom_batch_size_yolo into one parametrized test. (2) Merge test_ingest_calls_scan_directory and test_ingest_passes_custom_num_cpu_workers into one parametrized test. (3) Replace `call_args[1]` with `call_args.kwargs` for explicit kwarg inspection. (4) Replace `call_kwargs.get('batch_size')` with direct `call_kwargs['batch_size']` for clear KeyError on missing. (5) Use `minimal_config.processing.num_cpu_workers` instead of hardcoded 12. (6) Add test for run_id branch batch_size propagation. In tests/test_cli.py: (7) Extract _invoke_dry_run helper to deduplicate test boilerplate. (8) Add mock_orch_cls.assert_not_called() to verify early return. Follow-up from task 150 review.",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T13:03:00.622Z"
+        "updatedAt": "2026-04-04T13:06:28.777Z",
+        "metadata": {
+          "modules": [
+            "tests/test_cli.py",
+            "tests/test_orchestrator.py"
+          ]
+        }
       },
       {
         "id": "206",
@@ -4012,7 +4018,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T13:05:47.162Z",
+      "lastModified": "2026-04-04T13:06:28.777Z",
       "taskCount": 206,
       "completedCount": 150,
       "tags": [
