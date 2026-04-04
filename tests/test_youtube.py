@@ -197,8 +197,8 @@ class TestBuildUploadMetadata:
                     0,
                     json.dumps(
                         [
-                            {"class_name": "person", "confidence": 0.9},
-                            {"class_name": "backpack", "confidence": 0.8},
+                            {"class": "person", "confidence": 0.9},
+                            {"class": "backpack", "confidence": 0.8},
                         ]
                     ),
                 ),
@@ -207,8 +207,8 @@ class TestBuildUploadMetadata:
                     1,
                     json.dumps(
                         [
-                            {"class_name": "person", "confidence": 0.85},
-                            {"class_name": "tent", "confidence": 0.7},
+                            {"class": "person", "confidence": 0.85},
+                            {"class": "tent", "confidence": 0.7},
                         ]
                     ),
                 ),
