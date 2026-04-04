@@ -66,3 +66,26 @@ class TestExtraClasses:
     def test_no_extra_classes_by_default(self) -> None:
         html = _render_badge("proposed")
         assert "ml-2" not in html
+
+
+class TestNarrativeCardBadge:
+    """Verify narrative_card.html uses the shared status_badge macro."""
+
+    def test_renders_approved_badge(self) -> None:
+        env = jinja2.Environment(
+            loader=jinja2.FileSystemLoader(str(TEMPLATES_DIR)),
+            autoescape=True,
+        )
+        template = env.get_template("partials/narrative_card.html")
+        html = template.render(narrative={
+            "narrative_id": "n-1",
+            "status": "approved",
+            "title": "Test",
+            "description": "desc",
+        })
+        assert "bg-green-900" in html
+
+    def test_source_uses_macro_import(self) -> None:
+        source_path = TEMPLATES_DIR / "partials" / "narrative_card.html"
+        source = source_path.read_text()
+        assert "{% from 'macros/narrative_status_badge.html' import status_badge %}" in source
