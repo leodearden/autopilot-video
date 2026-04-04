@@ -3347,11 +3347,17 @@
         "description": "Two zero-value bugs in `autopilot/web/templates/partials/narrative_edit_form.html`:\n1. **Jinja (line 21):** Replace `{{ narrative.proposed_duration_seconds or '' }}` with `{{ narrative.proposed_duration_seconds if narrative.proposed_duration_seconds is not none else '' }}` so that a stored value of `0` renders as `0` rather than blank.\n2. **JS hx-vals (line 30):** Replace `parseFloat(...) || null` with an explicit NaN check, e.g. `(v => v !== '' && !isNaN(parseFloat(v)) ? parseFloat(v) : null)(...)`, so that a user-entered `0` is sent as `0` not `null`.\nResolves review suggestions [1], [10], and [11] from task 100 review cycle.\n\nMemory hints: search \"zero-value falsy handling Jinja JS convention\" for related norms.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:19:32.040Z"
+        "updatedAt": "2026-04-04T08:22:31.244Z",
+        "metadata": {
+          "modules": [
+            "autopilot/web/templates/partials",
+            "tests/test_review.py"
+          ]
+        }
       },
       {
         "id": "168",
@@ -3427,7 +3433,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:21:41.258Z",
+      "lastModified": "2026-04-04T08:22:31.244Z",
       "taskCount": 173,
       "completedCount": 131,
       "tags": [
