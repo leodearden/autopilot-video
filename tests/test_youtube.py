@@ -177,14 +177,14 @@ class TestBuildUploadMetadata:
         assert "Narrative desc" in meta["snippet"]["description"]
 
     def _setup_media_with_detections(
-        self, catalog_db, detections_json, *, activity_cluster_ids_json=None
+        self, catalog_db, detections_json, *, activity_cluster_ids: list[str] | None = None
     ):
         """Set up a narrative + media + detections for metadata tests."""
         catalog_db.insert_narrative(
             "n1",
             title="Title",
             description="desc",
-            activity_cluster_ids_json=activity_cluster_ids_json,
+            activity_cluster_ids_json=json.dumps(activity_cluster_ids) if activity_cluster_ids is not None else None,
         )
         catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
         catalog_db.batch_insert_detections(detections_json)
