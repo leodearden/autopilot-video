@@ -442,15 +442,12 @@ class TestTransitionMapping:
 
         tl = otio.adapters.read_from_file(str(output))
         video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
-        transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
+
+        # Verify Clip/Transition/Clip structure and derive transitions
+        track_items = self._assert_clip_transition_clip(video_tracks[0])
+        transitions = [item for item in track_items if isinstance(item, otio.schema.Transition)]
         assert len(transitions) == 1
         assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
-
-        # Verify transition is positioned BETWEEN the two clips
-        track_items = list(video_tracks[0])
-        assert isinstance(track_items[0], otio.schema.Clip)
-        assert isinstance(track_items[1], otio.schema.Transition)
-        assert isinstance(track_items[2], otio.schema.Clip)
 
     def test_crossfade_duration_correct(self, tmp_path):
         """Transition duration matches EDL duration (1.0 second)."""
