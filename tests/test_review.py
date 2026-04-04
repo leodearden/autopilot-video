@@ -1111,6 +1111,17 @@ class TestEditFormZeroDuration:
         assert 'value=""' in response.text
         assert 'name="proposed_duration_seconds"' in response.text
 
+    def test_edit_form_js_does_not_use_falsy_or_null(
+        self, zero_duration_client: TestClient,
+    ) -> None:
+        """Edit form template must not use the dangerous ``v || null`` JS pattern."""
+        response = zero_duration_client.get(
+            "/api/narratives/n-zero?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "|| null" not in response.text
+
     def test_update_zero_duration_roundtrip(
         self, zero_duration_client: TestClient,
     ) -> None:
