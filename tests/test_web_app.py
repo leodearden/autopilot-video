@@ -470,6 +470,15 @@ class TestSSERunHandlerRobustness:
         assert "try" in body, "try block not found in run_completed handler"
         assert "catch" in body, "catch block not found in run_completed handler"
         assert "console.error" in body, "console.error not found in run_completed catch block"
+        assert "'Pipeline run completed!'" in body, (
+            "toast message 'Pipeline run completed!' not found in run_completed handler"
+        )
+        assert "'success'" in body, (
+            "toast type 'success' not found in run_completed handler"
+        )
+        assert "6000" in body, (
+            "toast duration 6000 not found in run_completed handler"
+        )
 
     def test_run_failed_has_try_catch(self) -> None:
         """run_failed handler wraps its body in try/catch."""
