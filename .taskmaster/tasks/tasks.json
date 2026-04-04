@@ -4921,11 +4921,16 @@
         "description": "Five improvements to tests/test_render_router.py, all within or adjacent to TestClipIdValidation: (1) Extract a `_make_db(edl, narrative_id='n1')` helper (or pytest fixture) covering the repeated 4-line MagicMock db setup (get_edit_plan/get_narrative/get_transcript stubs) to reduce boilerplate across the 5 tests that duplicate it. (2) Add `test_empty_string_clip_id_raises_routing_error`: clip with `{'clip_id': ''}` and no source_path, configure `db.get_media('')` to return None, assert RoutingError with the empty id in the message. (3) In `test_source_path_no_clip_id_renders_fast_without_crop_lookup` (line ~1356): after `mock_rs.assert_called_once()`, add `assert mock_rs.call_args[0][0]['source_path'] == '/some/video.mp4'`. (4) In `test_source_path_no_clip_id_emits_warning` (line 1398): change `any('0' in msg and 'clip_id' in msg ...)` to `any('index 0' in msg for msg in warning_msgs)` for precision. (5) In `test_slow_path_no_clip_id_raises_routing_error` (line 1522-1525): remove the `patch('autopilot.render.router.render_complex')` context manager — it is dead code since the guard at line 171 fires before any renderer is invoked.\n\nmemory_hints:\n- search: \"TestClipIdValidation _make_db test helper render router\"\n- entity: \"test_render_router\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:12:18.906Z"
+        "updatedAt": "2026-04-04T18:15:12.360Z",
+        "metadata": {
+          "modules": [
+            "tests/test_render_router.py"
+          ]
+        }
       },
       {
         "id": "261",
@@ -5269,7 +5274,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:14:00.636Z",
+      "lastModified": "2026-04-04T18:15:12.360Z",
       "taskCount": 290,
       "completedCount": 186,
       "tags": [
