@@ -3156,11 +3156,16 @@
         "description": "In tests/test_otio_export.py, consolidate the four structurally-identical transition tests (test_crossfade_creates_smpte_dissolve, test_fade_in_creates_smpte_dissolve, test_fade_out_creates_smpte_dissolve, test_dissolve_creates_smpte_dissolve) into a single @pytest.mark.parametrize('transition_type', ['crossfade', 'fade_in', 'fade_out', 'dissolve']) test. Also move the repeated inline import of _TRANSITION_TYPE_MAP from the four methods of TestTransitionMapKeys to module level alongside other imports.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:10:20.630Z"
+        "updatedAt": "2026-04-04T08:13:04.176Z",
+        "metadata": {
+          "modules": [
+            "tests/test_otio_export.py"
+          ]
+        }
       },
       {
         "id": "158",
@@ -3200,7 +3205,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:12:37.329Z",
+      "lastModified": "2026-04-04T08:13:04.176Z",
       "taskCount": 159,
       "completedCount": 125,
       "tags": [
