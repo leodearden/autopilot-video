@@ -3041,7 +3041,7 @@
         "description": "CLI subcommands (ingest, analyze, plan, edit, render, upload) accept --dry-run but silently ignore it. Implement dry-run behavior for each. Also wire up config keys num_cpu_workers (to scanner's ProcessPoolExecutor max_workers) and batch_size_yolo (to detect_objects batch_size parameter).",
         "details": "Files: cli.py:130,156,183,210,237,263, config.py:103-104, orchestrator.py:227,430-446\n\n--dry-run: Each subcommand should log what it would do without executing. Pass dry_run to stage functions or add a guard at the CLI level.\n\nConfig wiring:\n- config.processing.num_cpu_workers -> orchestrator.py:227 scan_directory(max_workers=config.processing.num_cpu_workers)\n- config.processing.batch_size_yolo -> orchestrator.py:430 detect_objects(batch_size=config.processing.batch_size_yolo)\n\nmemory_hints:\n- search: \"CLI dry-run config num_cpu_workers batch_size_yolo\"",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
@@ -3061,7 +3061,7 @@
             "tests/test_orchestrator.py"
           ]
         },
-        "updatedAt": "2026-04-04T08:04:30.956Z"
+        "updatedAt": "2026-04-04T08:21:10.119Z"
       },
       {
         "id": "151",
@@ -3421,7 +3421,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:21:10.055Z",
+      "lastModified": "2026-04-04T08:21:10.119Z",
       "taskCount": 173,
       "completedCount": 131,
       "tags": [
