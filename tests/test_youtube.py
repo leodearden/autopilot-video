@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 import sys
+from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -325,7 +326,6 @@ class TestUploadVideoFlow:
         assert upload_rec["youtube_url"] == "https://youtu.be/xyz789"
         # uploaded_at must be set to a valid ISO-format UTC timestamp
         assert upload_rec["uploaded_at"] is not None
-        from datetime import datetime
         ts = datetime.fromisoformat(upload_rec["uploaded_at"])
         assert ts.tzinfo is not None or upload_rec["uploaded_at"].endswith("+00:00")
 
