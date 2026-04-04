@@ -1064,6 +1064,8 @@ class TestNarrateResume:
 
         _run_narrate(config=minimal_config, db=db)
 
+        db.list_narratives.assert_called_once_with("approved")
+        mock_narratives.build_master_storyboard.assert_not_called()
         mock_narratives.propose_narratives.assert_not_called()
 
     @patch("autopilot.organize.narratives")
@@ -1084,6 +1086,7 @@ class TestNarrateResume:
         assert any(
             "Resuming NARRATE" in r.message and "3" in r.message for r in caplog.records
         )
+        db.list_narratives.assert_called_once_with("approved")
 
     @patch("autopilot.organize.narratives")
     def test_narrate_force_repropose_even_with_existing(self, mock_narratives, minimal_config):
@@ -1100,6 +1103,7 @@ class TestNarrateResume:
 
         _run_narrate(config=minimal_config, db=db, force=True)
 
+        db.list_narratives.assert_not_called()
         mock_narratives.propose_narratives.assert_called_once()
 
     @patch("autopilot.organize.narratives")
