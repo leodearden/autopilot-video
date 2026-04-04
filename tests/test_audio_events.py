@@ -325,8 +325,48 @@ class TestIdempotency:
             scheduler,
         )
 
-        # Scheduler should NOT be called for model loading
+        # Scheduler should NOT be called: classification skipped because events already exist
         scheduler.model.assert_not_called()
+        scheduler.assert_not_called()
+
+        # DB postcondition: the single pre-existing event is still present,
+        # no extra rows written
+        events = catalog_db.get_audio_events_for_media("vid1")
+        assert len(events) == 1
+
+    def test_skip_when_events_exist_at_nonzero_timestamp(self, catalog_db):
+        """Skip classification when audio events exist only at non-zero timestamps.
+
+        Regression test: the old idempotency check used
+        get_audio_events_for_range(media_id, 0.0, 0.0) which only found events
+        at exactly t=0.0, missing events that start later.
+        """
+        from autopilot.analyze.audio_events import classify_audio_events
+
+        catalog_db.insert_media("vid1", "/tmp/vid1.wav")
+        with catalog_db:
+            catalog_db.batch_insert_audio_events(
+                [
+                    ("vid1", 1.5, json.dumps([{"class": "Speech", "probability": 0.9}])),
+                    ("vid1", 3.0, json.dumps([{"class": "Music", "probability": 0.8}])),
+                ]
+            )
+
+        scheduler = MagicMock()
+        classify_audio_events(
+            "vid1",
+            Path("/tmp/vid1.wav"),
+            catalog_db,
+            scheduler,
+        )
+
+        # Scheduler should NOT be called: classification skipped because events already exist
+        scheduler.model.assert_not_called()
+        scheduler.assert_not_called()
+
+        # DB postcondition: both pre-existing events remain, no extra rows written
+        events = catalog_db.get_audio_events_for_media("vid1")
+        assert len(events) == 2
 
     def test_processes_when_no_events(self, catalog_db):
         """Proceed with classification when no events exist."""

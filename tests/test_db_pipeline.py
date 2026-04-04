@@ -177,6 +177,24 @@ class TestGatesCRUD:
         assert gate is not None
         assert gate["mode"] == "auto"  # unchanged
 
+    def test_update_gate_rejects_disallowed_columns(self, catalog_db):
+        """update_gate() raises ValueError for unknown columns."""
+        catalog_db.init_default_gates()
+        with pytest.raises(ValueError, match="evil_col"):
+            catalog_db.update_gate("ingest", evil_col="bad")
+        with pytest.raises(ValueError, match="hacked"):
+            catalog_db.update_gate("ingest", hacked="yes")
+
+    def test_update_gate_rejects_mix_of_valid_and_invalid(self, catalog_db):
+        """update_gate() raises ValueError when valid+invalid columns are mixed."""
+        catalog_db.init_default_gates()
+        with pytest.raises(ValueError, match="Disallowed column"):
+            catalog_db.update_gate("ingest", mode="manual", evil_col="bad")
+        # Ensure the valid column was NOT applied
+        gate = catalog_db.get_gate("ingest")
+        assert gate is not None
+        assert gate["mode"] == "auto"
+
 
 # -- Jobs CRUD tests --------------------------------------------------------
 
@@ -309,6 +327,24 @@ class TestJobsCRUD:
         counts = catalog_db.count_jobs_by_status("ingest", run_id="r1")
         assert counts == {"done": 1, "pending": 1}
 
+    def test_update_job_rejects_disallowed_columns(self, catalog_db):
+        """update_job() raises ValueError for unknown columns."""
+        catalog_db.insert_job("j30", "ingest", "media_import")
+        with pytest.raises(ValueError, match="hacked"):
+            catalog_db.update_job("j30", hacked="yes")
+        with pytest.raises(ValueError, match="injected"):
+            catalog_db.update_job("j30", injected="bad")
+
+    def test_update_job_rejects_mix_of_valid_and_invalid(self, catalog_db):
+        """update_job() raises ValueError when valid+invalid columns are mixed."""
+        catalog_db.insert_job("j31", "ingest", "media_import")
+        with pytest.raises(ValueError, match="Disallowed column"):
+            catalog_db.update_job("j31", status="done", hacked="yes")
+        # Ensure the valid column was NOT applied
+        job = catalog_db.get_job("j31")
+        assert job is not None
+        assert job["status"] == "pending"
+
 
 # -- Events CRUD tests ------------------------------------------------------
 
@@ -407,6 +443,49 @@ class TestEventsCRUD:
         events = catalog_db.get_events_since(0)
         assert len(events) == 2
 
+    def test_prune_events_parameterizes_hours(self, catalog_db, monkeypatch):
+        """prune_events() uses parameterized SQL, not f-string interpolation."""
+        calls: list[tuple] = []
+        real_execute = catalog_db.conn.execute
+
+        def spy_execute(*args, **kwargs):
+            calls.append(args)
+            return real_execute(*args, **kwargs)
+
+        monkeypatch.setattr(catalog_db, "conn", type("FakeConn", (), {
+            "execute": staticmethod(spy_execute),
+        })())
+        catalog_db.prune_events(hours=48)
+        # Find the DELETE call
+        delete_calls = [c for c in calls if "DELETE" in c[0]]
+        assert len(delete_calls) == 1
+        sql_arg = delete_calls[0][0]
+        # The literal '48' should NOT appear in the SQL string
+        assert "48" not in sql_arg, (
+            f"hours value interpolated into SQL: {sql_arg}"
+        )
+        # A parameters tuple/list must have been passed as second arg
+        assert len(delete_calls[0]) >= 2, (
+            "No parameters passed to execute — query is not parameterized"
+        )
+
+    def test_prune_events_rejects_zero_hours(self, catalog_db):
+        """prune_events(hours=0) raises ValueError."""
+        with pytest.raises(ValueError, match="positive"):
+            catalog_db.prune_events(hours=0)
+
+    def test_prune_events_rejects_negative_hours(self, catalog_db):
+        """prune_events(hours=-5) raises ValueError mentioning the value."""
+        with pytest.raises(ValueError, match="-5"):
+            catalog_db.prune_events(hours=-5)
+
+    def test_prune_events_accepts_positive_hours(self, catalog_db):
+        """prune_events(hours=1) does not raise for valid positive values."""
+        catalog_db.insert_event("recent_event")
+        catalog_db.prune_events(hours=1)  # should not raise
+        events = catalog_db.get_events_since(0)
+        assert len(events) == 1  # recent event is kept
+
 
 # -- Runs CRUD tests --------------------------------------------------------
 
@@ -495,6 +574,24 @@ class TestRunsCRUD:
         runs = catalog_db.list_runs()
         assert len(runs) == 3
         assert [r["run_id"] for r in runs] == ["r11", "r12", "r10"]
+
+    def test_update_run_rejects_disallowed_columns(self, catalog_db):
+        """update_run() raises ValueError for unknown columns."""
+        catalog_db.insert_run("r20", started_at="2026-01-01T00:00:00")
+        with pytest.raises(ValueError, match="injected"):
+            catalog_db.update_run("r20", injected="bad")
+        with pytest.raises(ValueError, match="evil"):
+            catalog_db.update_run("r20", evil="yes")
+
+    def test_update_run_rejects_mix_of_valid_and_invalid(self, catalog_db):
+        """update_run() raises ValueError when valid+invalid columns are mixed."""
+        catalog_db.insert_run("r21", started_at="2026-01-01T00:00:00")
+        with pytest.raises(ValueError, match="Disallowed column"):
+            catalog_db.update_run("r21", status="completed", injected="bad")
+        # Ensure the valid column was NOT applied
+        run = catalog_db.get_run("r21")
+        assert run is not None
+        assert run["status"] == "running"
 
 
 # -- Cross-table integration tests ------------------------------------------

@@ -1,16 +1,10 @@
+{% from 'macros/narrative_status_badge.html' import status_badge %}
 <div id="narrative-{{ narrative.narrative_id }}" class="bg-surface-800 rounded-lg p-4 border border-gray-700">
     <div class="flex justify-between items-start mb-2">
         <input type="text" name="title" value="{{ narrative.title or '' }}"
                class="text-lg font-semibold text-white bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none w-full"
                placeholder="Title">
-        <span class="px-2 py-1 rounded text-xs font-medium ml-2 whitespace-nowrap
-            {% if narrative.status == 'approved' %}bg-green-900 text-green-300
-            {% elif narrative.status == 'rejected' %}bg-red-900 text-red-300
-            {% elif narrative.status == 'proposed' %}bg-amber-900 text-amber-300
-            {% elif narrative.status == 'scripted' %}bg-blue-900 text-blue-300
-            {% else %}bg-purple-900 text-purple-300{% endif %}">
-            {{ narrative.status }}
-        </span>
+        {{ status_badge(narrative.status, 'ml-2 whitespace-nowrap') }}
     </div>
     <textarea name="description"
               class="text-gray-400 text-sm mb-2 bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none w-full resize-none"
@@ -18,7 +12,7 @@
     <div class="mb-3">
         <label class="text-gray-500 text-xs">Duration (seconds):</label>
         <input type="number" name="proposed_duration_seconds"
-               value="{{ narrative.proposed_duration_seconds or '' }}"
+               value="{{ narrative.proposed_duration_seconds if narrative.proposed_duration_seconds is not none else '' }}"
                class="text-gray-400 text-sm bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none w-20 ml-1"
                placeholder="0">
     </div>
@@ -27,7 +21,7 @@
                 hx-put="/api/narratives/{{ narrative.narrative_id }}"
                 hx-target="#narrative-{{ narrative.narrative_id }}"
                 hx-swap="outerHTML"
-                hx-vals='js:{"title": this.closest("[id^=narrative-]").querySelector("[name=title]")?.value ?? "", "description": this.closest("[id^=narrative-]").querySelector("[name=description]")?.value ?? "", "proposed_duration_seconds": parseFloat(this.closest("[id^=narrative-]").querySelector("[name=proposed_duration_seconds]")?.value) || null}'>
+                hx-vals='js:{"title": this.closest("[id^=narrative-]").querySelector("[name=title]")?.value ?? "", "description": this.closest("[id^=narrative-]").querySelector("[name=description]")?.value ?? "", "proposed_duration_seconds": (v => v !== '' && !isNaN(parseFloat(v)) ? parseFloat(v) : null)(this.closest("[id^=narrative-]").querySelector("[name=proposed_duration_seconds]")?.value)}'>
             Save
         </button>
         <button class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded text-xs font-medium"

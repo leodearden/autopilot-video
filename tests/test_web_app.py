@@ -193,6 +193,31 @@ def _read_app_js() -> str:
     return js_path.read_text()
 
 
+def _brace_match_from(source: str, start: int, label: str) -> str:
+    """Extract a brace-delimited block from *source* starting at index *start*.
+
+    *start* must point at an opening ``{``.  The function walks forward counting
+    brace depth and returns ``source[start:end]`` (braces included) once the
+    matching closing ``}`` is found.
+
+    Raises :class:`AssertionError` with a message containing *label* if
+    ``source[start]`` is not ``{`` or if the braces are unbalanced.
+    """
+    assert 0 <= start < len(source), f"start {start} out of range for {label}"
+    assert source[start] == "{", f"expected '{{' at position {start} in {label}"
+    brace_depth = 0
+    for i in range(start, len(source)):
+        if source[i] == "{":
+            brace_depth += 1
+        elif source[i] == "}":
+            brace_depth -= 1
+            if brace_depth == 0:
+                return source[start : i + 1]
+    raise AssertionError(
+        f"unbalanced braces in {label} (depth {brace_depth} after scan)"
+    )
+
+
 def _extract_listener_body(js_source: str, event_type: str) -> str:
     """Extract the body of a source.addEventListener callback by brace-matching.
 
@@ -217,21 +242,7 @@ def _extract_listener_body(js_source: str, event_type: str) -> str:
     body_start = js_source.find("{", func_start)
     assert body_start != -1, f"opening brace not found in {event_type} listener"
 
-    brace_depth = 0
-    body_end = body_start
-    for i in range(body_start, len(js_source)):
-        if js_source[i] == "{":
-            brace_depth += 1
-        elif js_source[i] == "}":
-            brace_depth -= 1
-            if brace_depth == 0:
-                body_end = i + 1
-                break
-
-    assert brace_depth == 0, (
-        f"unbalanced braces in {event_type} listener (depth {brace_depth} after scan)"
-    )
-    return js_source[body_start:body_end]
+    return _brace_match_from(js_source, body_start, f"{event_type} listener")
 
 
 def _extract_function_body(js_source: str, func_name: str) -> str:
@@ -244,28 +255,13 @@ def _extract_function_body(js_source: str, func_name: str) -> str:
     Raises :class:`AssertionError` if *func_name* is not found or if the
     braces are not balanced (malformed JS).
     """
-    marker = f"function {func_name}"
-    func_start = js_source.find(marker)
-    assert func_start != -1, f"{func_name} function not found in source"
+    match = re.search(rf'\bfunction\s+{re.escape(func_name)}\b', js_source)
+    assert match is not None, f"{func_name} function not found in source"
 
-    body_start = js_source.find("{", func_start)
+    body_start = js_source.find("{", match.end())
     assert body_start != -1, f"opening brace not found for {func_name}"
 
-    brace_depth = 0
-    body_end = body_start
-    for i in range(body_start, len(js_source)):
-        if js_source[i] == "{":
-            brace_depth += 1
-        elif js_source[i] == "}":
-            brace_depth -= 1
-            if brace_depth == 0:
-                body_end = i + 1
-                break
-
-    assert brace_depth == 0, (
-        f"unbalanced braces in {func_name} (depth {brace_depth} after scan)"
-    )
-    return js_source[body_start:body_end]
+    return _brace_match_from(js_source, body_start, func_name)
 
 
 class TestExtractFunctionBody:
@@ -295,6 +291,26 @@ class TestExtractFunctionBody:
         with pytest.raises(AssertionError):
             _extract_function_body(js, "broken")
 
+    def test_does_not_match_prefix_name_collision(self) -> None:
+        """Searching for 'makeStageHandler' must not match 'makeStageHandlerV2'."""
+        js = (
+            "function makeStageHandlerV2() { return 2; }\n"
+            "function makeStageHandler() { return 1; }"
+        )
+        body = _extract_function_body(js, "makeStageHandler")
+        assert body == "{ return 1; }"
+
+    def test_targets_correct_function_among_multiple(self) -> None:
+        """Each function in a multi-function source can be individually targeted."""
+        js = (
+            "function alpha() { return 1; }\n"
+            "function beta() { return 2; }\n"
+            "function gamma() { return 3; }"
+        )
+        assert _extract_function_body(js, "beta") == "{ return 2; }"
+        assert _extract_function_body(js, "alpha") == "{ return 1; }"
+        assert _extract_function_body(js, "gamma") == "{ return 3; }"
+
 
 class TestExtractListenerBody:
     """Tests for the _extract_listener_body helper hardening."""
@@ -309,39 +325,59 @@ class TestExtractListenerBody:
             _extract_listener_body(malformed_js, "broken_event")
 
 
+class TestBraceMatchFrom:
+    """Tests for the _brace_match_from helper."""
+
+    def test_extracts_simple_braced_block(self) -> None:
+        """Extracts a simple braced block from a known start index."""
+        result = _brace_match_from("x { a; }", 2, "simple")
+        assert result == "{ a; }"
+
+    def test_handles_nested_braces(self) -> None:
+        """Correctly brace-matches when there are nested braces."""
+        source = "{ if (x) { y; } }"
+        result = _brace_match_from(source, 0, "nested")
+        assert result == source
+
+    def test_raises_on_unbalanced_braces(self) -> None:
+        """Raises AssertionError when braces are not balanced."""
+        with pytest.raises(AssertionError, match="unbalanced"):
+            _brace_match_from("{ open { but no close", 0, "broken")
+
+    def test_label_appears_in_error_message(self) -> None:
+        """Error message includes the label for context."""
+        with pytest.raises(AssertionError, match="test-block"):
+            _brace_match_from("{ broken", 0, "test-block")
+
+    def test_unbalanced_error_includes_depth(self) -> None:
+        """Error message from unbalanced braces includes 'depth' with a number."""
+        with pytest.raises(AssertionError, match=r"depth \d+"):
+            _brace_match_from("{ open { but no close", 0, "depth-check")
+
+    def test_raises_on_out_of_range_start(self) -> None:
+        """Raises AssertionError with 'out of range' for invalid start indices."""
+        source = "{ ok }"
+        # start == len(source)
+        with pytest.raises(AssertionError, match="out of range"):
+            _brace_match_from(source, len(source), "at-len")
+        # start > len(source)
+        with pytest.raises(AssertionError, match="out of range"):
+            _brace_match_from(source, len(source) + 5, "beyond-len")
+        # negative start
+        with pytest.raises(AssertionError, match="out of range"):
+            _brace_match_from(source, -1, "negative")
+        # empty source
+        with pytest.raises(AssertionError, match="out of range"):
+            _brace_match_from("", 0, "empty")
+
+
 class TestSSEErrorHandling:
     """Tests for SSE notification error handling in app.js."""
 
     def test_sse_notification_listener_has_try_catch(self) -> None:
         """The SSE notification listener wraps JSON.parse in try/catch."""
-        js_path = Path(__file__).resolve().parent.parent / "autopilot" / "web" / "static" / "app.js"
-        js_source = js_path.read_text()
-
-        # Find the notification listener block
-        listener_start = js_source.find("addEventListener('notification'")
-        assert listener_start != -1, "notification event listener not found in app.js"
-
-        # Extract the listener function body (from the opening brace after 'function'
-        # to its matching closing brace)
-        func_start = js_source.find("function", listener_start)
-        assert func_start != -1, "function keyword not found in notification listener"
-
-        body_start = js_source.find("{", func_start)
-        assert body_start != -1, "opening brace not found in notification listener"
-
-        # Extract the listener body
-        brace_depth = 0
-        body_end = body_start
-        for i in range(body_start, len(js_source)):
-            if js_source[i] == "{":
-                brace_depth += 1
-            elif js_source[i] == "}":
-                brace_depth -= 1
-                if brace_depth == 0:
-                    body_end = i + 1
-                    break
-
-        listener_body = js_source[body_start:body_end]
+        js_source = _read_app_js()
+        listener_body = _extract_listener_body(js_source, "notification")
 
         # Assert try/catch wraps the JSON.parse
         assert "try" in listener_body, "try block not found in notification listener"
@@ -386,6 +422,10 @@ class TestSSEHandlerFactory:
         assert "refreshStageCard" in factory_body, (
             "refreshStageCard call not found in makeStageHandler"
         )
+        assert "if (refreshCard)" in factory_body, (
+            "conditional guard 'if (refreshCard)' not found in makeStageHandler. "
+            "refreshStageCard must only be called when the refreshCard param is true."
+        )
 
     def test_setup_dashboard_sse_uses_factory(self) -> None:
         """setupDashboardSSE uses makeStageHandler for all 3 event types."""
@@ -402,6 +442,13 @@ class TestSSEHandlerFactory:
         js_source = _read_app_js()
         assert "makeStageHandler('stage_error'" in js_source, (
             "stage_error handler does not use makeStageHandler"
+        )
+        assert (
+            "makeStageHandler('stage_error', 'Error in {stage} stage', 'error', 6000, false)"
+            in js_source
+        ), (
+            "stage_error factory call does not match expected 5-param signature: "
+            "('stage_error', 'Error in {stage} stage', 'error', 6000, false)"
         )
 
 
@@ -425,23 +472,16 @@ class TestSSEHandlerFactory:
         else_brace_start = factory_body.find("{", else_pos + 1)
         assert else_brace_start != -1, "opening brace of else block not found"
 
-        brace_depth = 0
-        else_end = else_brace_start
-        for i in range(else_brace_start, len(factory_body)):
-            if factory_body[i] == "{":
-                brace_depth += 1
-            elif factory_body[i] == "}":
-                brace_depth -= 1
-                if brace_depth == 0:
-                    else_end = i + 1
-                    break
-
-        else_body = factory_body[else_brace_start:else_end]
+        else_body = _brace_match_from(factory_body, else_brace_start, "else block")
 
         # The else branch must call showToast for fallback toast on missing stage
         assert "showToast" in else_body, (
             "showToast call not found in makeStageHandler else branch (missing-stage path). "
             "Error-level SSE events with no stage field should still show a fallback toast."
+        )
+        assert "'unknown'" in else_body, (
+            "'unknown' fallback string not found in makeStageHandler else branch. "
+            "When stage is missing, '{stage}' must be replaced by 'unknown' in the toast."
         )
 
 
@@ -455,6 +495,15 @@ class TestSSERunHandlerRobustness:
         assert "try" in body, "try block not found in run_completed handler"
         assert "catch" in body, "catch block not found in run_completed handler"
         assert "console.error" in body, "console.error not found in run_completed catch block"
+        assert "'Pipeline run completed!'" in body, (
+            "toast message 'Pipeline run completed!' not found in run_completed handler"
+        )
+        assert "'success'" in body, (
+            "toast type 'success' not found in run_completed handler"
+        )
+        assert "6000" in body, (
+            "toast duration 6000 not found in run_completed handler"
+        )
 
     def test_run_failed_has_try_catch(self) -> None:
         """run_failed handler wraps its body in try/catch."""
@@ -463,6 +512,15 @@ class TestSSERunHandlerRobustness:
         assert "try" in body, "try block not found in run_failed handler"
         assert "catch" in body, "catch block not found in run_failed handler"
         assert "console.error" in body, "console.error not found in run_failed catch block"
+        assert "'Pipeline run failed'" in body, (
+            "toast message 'Pipeline run failed' not found in run_failed handler"
+        )
+        assert "'error'" in body, (
+            "toast type 'error' not found in run_failed handler"
+        )
+        assert "8000" in body, (
+            "toast duration 8000 not found in run_failed handler"
+        )
 
 
 class TestDashboardSSEEventCoverage:

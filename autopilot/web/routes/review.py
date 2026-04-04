@@ -14,21 +14,11 @@ from pydantic import BaseModel, ConfigDict
 from starlette.responses import FileResponse, Response
 
 from autopilot.db import CatalogDB
-from autopilot.web.deps import render_partial
+from autopilot.web.deps import get_db, is_htmx, render_partial
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def _get_db(request: Request) -> CatalogDB:
-    """Create a CatalogDB connection from the app's db_path."""
-    return CatalogDB(request.app.state.db_path)
-
-
-def _is_htmx(request: Request) -> bool:
-    """Check if the request is from HTMX."""
-    return request.headers.get("hx-request") == "true"
 
 
 _REVIEW_LINKS: dict[str, str] = {
@@ -42,7 +32,7 @@ _REVIEW_LINKS: dict[str, str] = {
 @router.get("/review")
 def review_hub(request: Request) -> HTMLResponse:
     """Render the review hub page with waiting gate summaries."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         gates = db.get_all_gates()
         waiting_gates = []
@@ -96,7 +86,7 @@ def review_hub(request: Request) -> HTMLResponse:
 @router.get("/review/narratives")
 def narratives_page(request: Request) -> HTMLResponse:
     """Render the narrative review page with all narratives."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         narratives_raw = db.list_narratives()
         narratives = [_parse_narrative(dict(n)) for n in narratives_raw]
@@ -124,7 +114,7 @@ def api_list_narratives(
     request: Request, status: str | None = None,
 ) -> list[dict[str, object]]:
     """Return all narratives as a JSON list, optionally filtered by status."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         return db.list_narratives(status=status)
     finally:
@@ -159,7 +149,7 @@ def _parse_narrative(row: dict[str, object]) -> dict[str, object]:
 @router.get("/api/narratives/{narrative_id}", response_model=None)
 def api_get_narrative(request: Request, narrative_id: str) -> Response:
     """Return a single narrative by ID with parsed cluster IDs."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         row = db.get_narrative(narrative_id)
     finally:
@@ -167,7 +157,7 @@ def api_get_narrative(request: Request, narrative_id: str) -> Response:
     if row is None:
         raise HTTPException(status_code=404, detail="Narrative not found")
     parsed = _parse_narrative(row)
-    if _is_htmx(request):
+    if is_htmx(request):
         edit_mode = request.query_params.get("edit") == "1"
         template = (
             "partials/narrative_edit_form.html"
@@ -182,7 +172,7 @@ def _narrative_status_action(
     request: Request, narrative_id: str, status: str,
 ) -> Response:
     """Set a narrative's status and return updated narrative or HTML partial."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         row = db.get_narrative(narrative_id)
         if row is None:
@@ -195,7 +185,7 @@ def _narrative_status_action(
     if updated is None:
         raise HTTPException(status_code=404, detail="Narrative not found")
     parsed = _parse_narrative(updated)
-    if _is_htmx(request):
+    if is_htmx(request):
         return render_partial(request, "partials/narrative_card.html", narrative=parsed)
     return JSONResponse(content=parsed)
 
@@ -233,7 +223,7 @@ def api_update_narrative(
     request: Request, narrative_id: str, body: NarrativeUpdate,
 ) -> Response:
     """Update editable fields of a narrative."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         row = db.get_narrative(narrative_id)
         if row is None:
@@ -248,7 +238,7 @@ def api_update_narrative(
     if updated is None:
         raise HTTPException(status_code=404, detail="Narrative not found")
     parsed = _parse_narrative(updated)
-    if _is_htmx(request):
+    if is_htmx(request):
         return render_partial(request, "partials/narrative_card.html", narrative=parsed)
     return JSONResponse(content=parsed)
 
@@ -292,7 +282,7 @@ def _parse_cluster(row: dict[str, object]) -> dict[str, Any]:
 @router.get("/review/clusters")
 def clusters_page(request: Request) -> HTMLResponse:
     """Render the cluster review page with all clusters."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         rows = db.get_activity_clusters()
         clusters = [_parse_cluster(r) for r in rows]
@@ -317,7 +307,7 @@ def clusters_page(request: Request) -> HTMLResponse:
 @router.get("/api/clusters")
 def api_list_clusters(request: Request) -> list[dict[str, Any]]:
     """Return all activity clusters as a JSON list with parsed clip_ids."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         rows = db.get_activity_clusters()
         return [_parse_cluster(r) for r in rows]
@@ -328,7 +318,7 @@ def api_list_clusters(request: Request) -> list[dict[str, Any]]:
 @router.get("/api/clusters/{cluster_id}")
 def api_get_cluster(request: Request, cluster_id: str) -> dict[str, Any]:
     """Return a single cluster by ID with parsed clip_ids."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         row = db.get_activity_cluster(cluster_id)
     finally:
@@ -350,7 +340,7 @@ def _update_and_respond_cluster(
     if updated is None:
         raise HTTPException(status_code=404, detail="Cluster not found")
     parsed = _parse_cluster(updated)
-    if _is_htmx(request):
+    if is_htmx(request):
         return render_partial(request, "partials/cluster_card.html", cluster=parsed)
     return JSONResponse(content=parsed)
 
@@ -369,7 +359,7 @@ def api_relabel_cluster(
     request: Request, cluster_id: str, body: ClusterRelabel,
 ) -> Response:
     """Update label/description of a cluster."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         updates = body.model_dump(exclude_unset=True)
         if updates:
@@ -385,7 +375,7 @@ def api_relabel_cluster(
 @router.post("/api/clusters/{cluster_id}/exclude", response_model=None)
 def api_exclude_cluster(request: Request, cluster_id: str) -> Response:
     """Mark a cluster as excluded."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         affected = db.update_activity_cluster(cluster_id, excluded=1)
         if affected == 0:
@@ -413,7 +403,7 @@ def api_merge_clusters(
         raise HTTPException(
             status_code=422, detail="At least 2 cluster_ids required",
         )
-    db = _get_db(request)
+    db = get_db(request)
     try:
         # Batch-load all clusters (eliminates N+1 per-cluster queries)
         clusters_by_id = db.get_activity_clusters_by_ids(body.cluster_ids)
@@ -478,7 +468,7 @@ def api_merge_clusters(
 @router.post("/api/narratives/bulk-approve")
 def api_bulk_approve(request: Request, body: BulkApproveRequest) -> dict[str, int]:
     """Approve multiple narratives at once, returning actual count of rows updated."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         affected = sum(db.update_narrative_status(nid, "approved") for nid in body.ids)
         db.conn.commit()
@@ -516,7 +506,7 @@ def api_get_render(
     request: Request, narrative_id: str,
 ) -> dict[str, object]:
     """Return render data for a narrative with parsed validation."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         edit_plan = db.get_edit_plan(narrative_id)
         if edit_plan is None:
@@ -539,7 +529,7 @@ def api_stream_video(
 
     Starlette's FileResponse handles Range headers natively for seeking.
     """
-    db = _get_db(request)
+    db = get_db(request)
     try:
         edit_plan = db.get_edit_plan(narrative_id)
     finally:
@@ -555,7 +545,7 @@ def api_stream_video(
 @router.get("/api/uploads")
 def api_list_uploads(request: Request) -> list[dict[str, object]]:
     """Return all uploads as a JSON list with narrative titles."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         return db.list_uploads()
     finally:
@@ -565,7 +555,7 @@ def api_list_uploads(request: Request) -> list[dict[str, object]]:
 @router.get("/review/render")
 def render_index_page(request: Request) -> HTMLResponse:
     """List narratives with edit plans and links to individual review pages."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         edit_plans = db.list_edit_plans()
     finally:
@@ -585,7 +575,7 @@ def render_review_page(
     request: Request, narrative_id: str,
 ) -> HTMLResponse:
     """Render the render review page for a single narrative."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         narrative = db.get_narrative(narrative_id)
         if narrative is None:
@@ -637,7 +627,7 @@ def render_review_page(
 @router.get("/review/scripts")
 def scripts_page(request: Request) -> HTMLResponse:
     """Render the script review page listing narratives with their scripts."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         narratives = db.list_narratives()
         scripts: list[dict[str, object]] = []
@@ -687,7 +677,7 @@ def renders_redirect(request: Request) -> RedirectResponse:
 @router.get("/review/uploads")
 def uploads_page(request: Request) -> HTMLResponse:
     """Render the uploads status page listing all YouTube uploads."""
-    db = _get_db(request)
+    db = get_db(request)
     try:
         uploads = db.list_uploads()
     finally:
