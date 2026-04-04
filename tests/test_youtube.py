@@ -191,6 +191,10 @@ class TestBuildUploadMetadata:
 
     def test_tags_from_activity_labels_and_detections(self, catalog_db, youtube_config):
         """Tags combine activity cluster labels and detected object classes."""
+        # Insert activity clusters before the narrative that references them
+        catalog_db.insert_activity_cluster("c1", label="hiking")
+        catalog_db.insert_activity_cluster("c2", label="camping")
+
         self._setup_media_with_detections(
             catalog_db,
             [
@@ -217,8 +221,6 @@ class TestBuildUploadMetadata:
             ],
             activity_cluster_ids=["c1", "c2"],
         )
-        catalog_db.insert_activity_cluster("c1", label="hiking")
-        catalog_db.insert_activity_cluster("c2", label="camping")
 
         meta = _build_upload_metadata("n1", catalog_db, youtube_config)
         tags = meta["snippet"]["tags"]
