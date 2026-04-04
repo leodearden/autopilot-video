@@ -5438,6 +5438,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 303,
+        "title": "Fix test robustness and call-convention resilience in mutation test",
+        "description": "In tests/test_render_router.py:\n1. Replace the bare dict key lookup `{...}[cid]` at line 1262-1265 with `.get(cid)` or an explicit `pytest.fail(f'Unexpected get_media call: {cid!r}')` so unexpected clip_id values produce diagnostic failures instead of cryptic KeyErrors.\n2. At lines 1290-1291, replace `mock_rs.call_args_list[0][0][0]` positional indexing with a helper that checks `args[0] if args else kwargs.get('edl_entry')`, plus an assert that the result is not None, to survive router switching to keyword-call convention.\n\nmemory_hints:\n- search: \"mutation test get_media side_effect render_simple call_args\"\n- entity: \"test_render_router\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5450,7 +5461,7 @@
       ],
       "created": "2026-04-04T18:20:37.505Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:20:37.507Z"
+      "updated": "2026-04-04T18:20:42.353Z"
     }
   }
 }
