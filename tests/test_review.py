@@ -1048,3 +1048,17 @@ class TestEditFormZeroDuration:
         assert 'value="None"' not in response.text
         # Duration input should have an empty value attribute
         assert 'name="proposed_duration_seconds"' in response.text
+
+    def test_edit_form_js_does_not_use_falsy_or_null(
+        self, zero_duration_client: TestClient,
+    ) -> None:
+        """hx-vals JS uses explicit NaN/empty check, not '|| null' for duration."""
+        response = zero_duration_client.get(
+            "/api/narratives/n-zero?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        # The hx-vals should NOT use the falsy '|| null' pattern for duration
+        assert "|| null" not in response.text
+        # Should use explicit NaN check instead
+        assert "isNaN" in response.text
