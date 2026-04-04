@@ -759,13 +759,16 @@ def _run_edl(
                 otio_path.parent.mkdir(parents=True, exist_ok=True)
                 otio_export.export_otio(edl, otio_path, db)
 
-            assert db.get_edit_plan(nid) is not None, (
-                "generate_edl() must persist edl_json before upsert_edit_plan"
-            )
-            db.upsert_edit_plan(nid, otio_path=str(otio_path))
-            successes += 1
         except Exception:
             logger.exception("EDL generation failed for narrative %s", nid)
+            continue
+
+        if db.get_edit_plan(nid) is None:
+            raise RuntimeError(
+                "generate_edl() must persist edl_json before upsert_edit_plan"
+            )
+        db.upsert_edit_plan(nid, otio_path=str(otio_path))
+        successes += 1
 
     if approved and successes == 0 and skipped == 0:
         raise RuntimeError("All narratives failed EDL generation")
