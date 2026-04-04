@@ -3763,6 +3763,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 192,
+        "title": "Strengthen and expand fade approximation test assertions and coverage",
+        "description": "In tests/test_otio_export.py:\n1. In the (post-parametrization) fade metadata test, add `assert 'SMPTE_Dissolve' in approx` after the `len > 0` check to verify the string communicates the correct semantic.\n2. In the same test, add `assert transitions[0].transition_type == 'SMPTE_Dissolve'` to verify the actual OTIO type mapping.\n3. Before every `video_tracks[0]` index, add `assert len(video_tracks) >= 1, 'expected at least one video track'`; similarly guard `transitions[0]` accesses with a descriptive assertion.\n4. Add a new test `test_mixed_transitions_only_fades_get_approximation_metadata` with three clips, one 'crossfade' at position 0 and one 'fade_in' at position 1. Assert exactly one transition has the approximation key and it is the fade_in.\n\nmemory_hints: search for \"fade approximation metadata\" test patterns; get_entity for \"_FADE_APPROXIMATION_TYPES\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -3775,7 +3786,7 @@
       ],
       "created": "2026-04-04T09:05:36.157Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T09:05:36.166Z"
+      "updated": "2026-04-04T09:05:41.261Z"
     }
   }
 }
