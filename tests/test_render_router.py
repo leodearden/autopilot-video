@@ -1567,3 +1567,28 @@ class TestClipIdValidation:
         # Should use slow path (render_complex), not fast path
         mock_rc.assert_called_once()
         mock_rs.assert_not_called()
+
+    def test_no_assert_used_for_clip_id_guard(self) -> None:
+        """route_and_render must not use assert for runtime guards.
+
+        Under ``python -O`` assert statements are stripped, silently
+        removing safety checks.  This test parses the function source
+        with the ``ast`` module and verifies that **no** ``ast.Assert``
+        nodes exist in the function body.
+        """
+        import ast
+
+        from autopilot.render.router import route_and_render
+
+        source = inspect.getsource(route_and_render)
+        tree = ast.parse(source)
+
+        asserts = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Assert)
+        ]
+        assert asserts == [], (
+            f"route_and_render contains {len(asserts)} assert statement(s); "
+            "use explicit 'if … raise RoutingError(…)' guards instead"
+        )
