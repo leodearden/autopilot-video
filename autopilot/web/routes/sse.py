@@ -28,6 +28,7 @@ VALID_EVENT_TYPES: tuple[str, ...] = (
     "gate_skipped",
     "run_completed",
     "run_failed",
+    "notification",
 )
 
 router = APIRouter()
