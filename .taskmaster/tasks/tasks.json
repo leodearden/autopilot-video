@@ -3948,7 +3948,12 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T09:15:25.709Z"
+        "updatedAt": "2026-04-04T09:15:25.709Z",
+        "metadata": {
+          "modules": [
+            "tests/test_youtube.py"
+          ]
+        }
       },
       {
         "id": 203,
