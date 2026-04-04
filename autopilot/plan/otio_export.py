@@ -51,12 +51,15 @@ def _tc_to_rational_time(tc: str, fps: float) -> "otio.opentime.RationalTime":
 
 _DEFAULT_FPS = 30.0
 
-# EDL transition type -> OTIO transition type mapping
+# EDL transition type -> OTIO transition type mapping.
+# Keys must match the prompt schema's allowed transition types (excluding 'cut',
+# which is implicit and produces no Transition object).
+# See edit_planner.md for the canonical enum: crossfade, cut, fade_in, fade_out, dissolve.
 _TRANSITION_TYPE_MAP = {
     "crossfade": "SMPTE_Dissolve",
     "dissolve": "SMPTE_Dissolve",
-    "wipe": "SMPTE_Dissolve",
-    # 'cut' is implicit (no Transition object)
+    "fade_in": "SMPTE_Dissolve",
+    "fade_out": "SMPTE_Dissolve",
 }
 
 
