@@ -5543,6 +5543,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 312,
+        "title": "Clean up TestHandleDryRun test structure",
+        "description": "In tests/test_cli.py around lines 628-666: (1) Remove the `with runner.isolated_filesystem():` block (and its extra blank line) from `test_returns_true_and_echoes_when_dry_run` so all three tests are structurally uniform. (2) Extract the shared CliRunner + @click.command + invoke boilerplate into a module- or class-level helper function, e.g. `def _invoke_dry_run(dry_run: bool, stages: str) -> Result`, so each test body reduces to one call + one assertion.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5555,7 +5566,7 @@
       ],
       "created": "2026-04-04T18:24:58.240Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:24:58.624Z"
+      "updated": "2026-04-04T18:25:01.813Z"
     }
   }
 }
