@@ -1109,7 +1109,7 @@ class TestEdlStage:
     def test_edl_stores_validation_result(
         self, mock_edl, mock_validator, mock_otio, minimal_config
     ):
-        """_run_edl stores validation result via db.upsert_edit_plan."""
+        """_run_edl upsert only passes otio_path; generate_edl() handles edl_json and validation_json."""
         from autopilot.orchestrator import _run_edl
 
         db = MagicMock()
@@ -1124,6 +1124,10 @@ class TestEdlStage:
         _run_edl(config=minimal_config, db=db)
 
         db.upsert_edit_plan.assert_called_once()
+        call_args = db.upsert_edit_plan.call_args
+        assert call_args.args == ("n1",), "Only narrative_id should be positional"
+        assert "otio_path" in call_args.kwargs
+        assert "validation_json" not in call_args.kwargs
 
     @patch("autopilot.plan.otio_export")
     @patch("autopilot.plan.validator")
@@ -4307,6 +4311,7 @@ class TestNarrateJobTracking:
         mock_narratives.propose_narratives.return_value = []
         mock_narratives.format_for_review.return_value = ""
         db = MagicMock()
+        db.list_narratives.return_value = []  # no checkpoint hit
 
         _run_narrate(
             config=minimal_config,
@@ -4336,6 +4341,7 @@ class TestNarrateJobTracking:
         mock_narratives.propose_narratives.return_value = []
         mock_narratives.format_for_review.return_value = ""
         db = MagicMock()
+        db.list_narratives.return_value = []  # no checkpoint hit
 
         _run_narrate(config=minimal_config, db=db)
 
@@ -5324,6 +5330,7 @@ class TestGateBackwardsCompat:
             )
         ]
         mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
+        mock_db.list_narratives.return_value = []  # no checkpoint hit
 
         results = orch.run(config=MagicMock(), db=mock_db)
 
@@ -5346,6 +5353,7 @@ class TestGateBackwardsCompat:
             mock_narratives.propose_narratives.return_value = [narr]
             mock_narratives.format_for_review.return_value = "review text"
             db = MagicMock()
+            db.list_narratives.return_value = []  # no checkpoint hit
 
             review_fn = MagicMock(return_value=["n1"])
             _run_narrate(config=MagicMock(), db=db, human_review_fn=review_fn)
