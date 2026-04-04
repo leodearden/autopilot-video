@@ -4503,10 +4503,11 @@
         "description": "Three related fixture hygiene tasks: (1) Add `scope='function'` explicitly to `@pytest.fixture()` on `mock_db` in tests/test_orchestrator.py so intent is self-documenting. (2) Move `mock_db` to tests/conftest.py alongside the existing `catalog_db` fixture so it's available to future test modules covering narrate/gate surfaces. (3) Add a comment above `TestNarrateResume` (around line 975) explaining that its inline `db = MagicMock()` with non-empty `list_narratives` is intentional — it tests the checkpoint-hit scenario, unlike `mock_db` which models the fresh/no-checkpoint precondition.\n\nMemory hints: search for \"mock_db fixture\" and \"conftest.py fixtures\" for context on existing fixture placement conventions.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T14:09:45.152Z"
       },
       {
         "id": "238",
@@ -4733,7 +4734,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:09:41.608Z",
+      "lastModified": "2026-04-04T14:09:45.156Z",
       "taskCount": 257,
       "completedCount": 173,
       "tags": [
