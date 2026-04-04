@@ -199,10 +199,8 @@ class TestEDLLoading:
         mock_rs.assert_called_once()
         rendered_clip = mock_rs.call_args[0][0]
         assert rendered_clip["clip_id"] == "clip_1"
-        # Regression guard: source_path must be a real path, not MagicMock garbage
-        assert rendered_clip["source_path"].startswith("/"), (
-            f"source_path is garbage: {rendered_clip['source_path']}"
-        )
+        # Regression guard: source_path must be the resolved mock value
+        assert rendered_clip["source_path"] == "/fake/source.mp4"
 
 
 # ---------------------------------------------------------------------------
