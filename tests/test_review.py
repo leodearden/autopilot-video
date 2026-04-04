@@ -1244,3 +1244,43 @@ class TestEditFormNullTitleDescription:
         )
         assert match is not None, "description textarea not found"
         assert match.group(1) == ""
+
+    def test_update_null_title_description_roundtrip(
+        self, null_title_desc_client: TestClient,
+    ) -> None:
+        """Empty title/description survive a save→render roundtrip.
+
+        Covers server-side persistence and edit-form rendering only.
+        """
+        # PUT empty title and description via JSON API
+        put_resp = null_title_desc_client.put(
+            "/api/narratives/n-null-title",
+            json={"title": "", "description": ""},
+        )
+        assert put_resp.status_code == 200
+        assert put_resp.json()["title"] == ""
+        assert put_resp.json()["description"] == ""
+
+        # GET edit form and verify both fields render empty
+        get_resp = null_title_desc_client.get(
+            "/api/narratives/n-null-title?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert get_resp.status_code == 200
+
+        # Title input should have empty value
+        title_match = re.search(
+            r'<input[^>]*name="title"[^>]*>',
+            get_resp.text,
+        )
+        assert title_match is not None, "title input not found"
+        assert 'value=""' in title_match.group(0)
+
+        # Description textarea should be empty
+        desc_match = re.search(
+            r'<textarea[^>]*name="description"[^>]*>(.*?)</textarea>',
+            get_resp.text,
+            re.DOTALL,
+        )
+        assert desc_match is not None, "description textarea not found"
+        assert desc_match.group(1) == ""
