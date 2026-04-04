@@ -5777,6 +5777,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 330,
+        "title": "Strengthen null-guard tests: no-warning assertions and position verification",
+        "description": "In `tests/test_otio_export.py`: (1) Add `caplog` to `test_null_duration_uses_default` and `test_null_position_uses_default` and assert no WARNING is emitted, consistent with the `test_null_transition_type_falls_back_to_smpte_dissolve` pattern. (2) In `test_null_position_uses_default`, after `_assert_clip_transition_clip`, verify `track_items[0].name == 'v1'` and `track_items[2].name == 'v2'` to confirm the transition is inserted between the correct clips. Suggestions [8] and [9].\n\nmemory_hints:\n- search: \"OTIO null guard test caplog warning assertion pattern\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5789,7 +5800,7 @@
       ],
       "created": "2026-04-04T19:10:15.972Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T19:10:26.120Z"
+      "updated": "2026-04-04T19:10:31.422Z"
     }
   }
 }
