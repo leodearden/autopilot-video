@@ -9,6 +9,8 @@ from unittest.mock import MagicMock
 import opentimelineio as otio
 import pytest
 
+from autopilot.plan.otio_export import _TRANSITION_TYPE_MAP
+
 # -- Step 1: Public API surface tests -----------------------------------------
 
 
@@ -390,8 +392,6 @@ class TestTransitionMapKeys:
         fade_out, dissolve.  'cut' is implicit (no Transition object), so the
         map must contain exactly {crossfade, dissolve, fade_in, fade_out}.
         """
-        from autopilot.plan.otio_export import _TRANSITION_TYPE_MAP
-
         expected_keys = {"crossfade", "dissolve", "fade_in", "fade_out"}
         assert set(_TRANSITION_TYPE_MAP.keys()) == expected_keys
 
@@ -399,8 +399,9 @@ class TestTransitionMapKeys:
 class TestTransitionMapping:
     """Verify EDL transitions map to OTIO Transition objects."""
 
-    def test_crossfade_creates_smpte_dissolve(self, tmp_path):
-        """EDL transition type 'crossfade' creates SMPTE_Dissolve between clips."""
+    @pytest.mark.parametrize("transition_type", ["crossfade", "fade_in", "fade_out", "dissolve"])
+    def test_transition_creates_smpte_dissolve(self, tmp_path, transition_type):
+        """EDL transition type creates SMPTE_Dissolve with correct name and positioning."""
         from autopilot.plan.otio_export import export_otio
 
         edl = _minimal_edl(
@@ -420,7 +421,7 @@ class TestTransitionMapping:
             ],
             transitions=[
                 {
-                    "type": "crossfade",
+                    "type": transition_type,
                     "duration": 1.0,
                     "position": 0,
                 },
@@ -435,6 +436,7 @@ class TestTransitionMapping:
         transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
         assert len(transitions) == 1
         assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
+        assert transitions[0].name == transition_type
 
         # Verify transition is positioned BETWEEN the two clips
         track_items = list(video_tracks[0])
@@ -522,138 +524,6 @@ class TestTransitionMapping:
         video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
         transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
         assert len(transitions) == 0
-
-    def test_fade_in_creates_smpte_dissolve(self, tmp_path):
-        """EDL transition type 'fade_in' creates SMPTE_Dissolve with name='fade_in'."""
-        from autopilot.plan.otio_export import export_otio
-
-        edl = _minimal_edl(
-            clips=[
-                {
-                    "clip_id": "v1",
-                    "in_timecode": "00:00:00.000",
-                    "out_timecode": "00:00:10.000",
-                    "track": 1,
-                },
-                {
-                    "clip_id": "v2",
-                    "in_timecode": "00:00:10.000",
-                    "out_timecode": "00:00:20.000",
-                    "track": 1,
-                },
-            ],
-            transitions=[
-                {
-                    "type": "fade_in",
-                    "duration": 1.0,
-                    "position": 0,
-                },
-            ],
-        )
-        output = tmp_path / "test.otio"
-        db = _mock_db_for_clips()
-        export_otio(edl, output, db)
-
-        tl = otio.adapters.read_from_file(str(output))
-        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
-        transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
-        assert len(transitions) == 1
-        assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
-        assert transitions[0].name == "fade_in"
-
-        # Verify transition is positioned BETWEEN the two clips
-        track_items = list(video_tracks[0])
-        assert isinstance(track_items[0], otio.schema.Clip)
-        assert isinstance(track_items[1], otio.schema.Transition)
-        assert isinstance(track_items[2], otio.schema.Clip)
-
-    def test_fade_out_creates_smpte_dissolve(self, tmp_path):
-        """EDL transition type 'fade_out' creates SMPTE_Dissolve with name='fade_out'."""
-        from autopilot.plan.otio_export import export_otio
-
-        edl = _minimal_edl(
-            clips=[
-                {
-                    "clip_id": "v1",
-                    "in_timecode": "00:00:00.000",
-                    "out_timecode": "00:00:10.000",
-                    "track": 1,
-                },
-                {
-                    "clip_id": "v2",
-                    "in_timecode": "00:00:10.000",
-                    "out_timecode": "00:00:20.000",
-                    "track": 1,
-                },
-            ],
-            transitions=[
-                {
-                    "type": "fade_out",
-                    "duration": 1.0,
-                    "position": 0,
-                },
-            ],
-        )
-        output = tmp_path / "test.otio"
-        db = _mock_db_for_clips()
-        export_otio(edl, output, db)
-
-        tl = otio.adapters.read_from_file(str(output))
-        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
-        transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
-        assert len(transitions) == 1
-        assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
-        assert transitions[0].name == "fade_out"
-
-        # Verify transition is positioned BETWEEN the two clips
-        track_items = list(video_tracks[0])
-        assert isinstance(track_items[0], otio.schema.Clip)
-        assert isinstance(track_items[1], otio.schema.Transition)
-        assert isinstance(track_items[2], otio.schema.Clip)
-
-    def test_dissolve_creates_smpte_dissolve(self, tmp_path):
-        """EDL transition type 'dissolve' creates SMPTE_Dissolve with name='dissolve'."""
-        from autopilot.plan.otio_export import export_otio
-
-        edl = _minimal_edl(
-            clips=[
-                {
-                    "clip_id": "v1",
-                    "in_timecode": "00:00:00.000",
-                    "out_timecode": "00:00:10.000",
-                    "track": 1,
-                },
-                {
-                    "clip_id": "v2",
-                    "in_timecode": "00:00:10.000",
-                    "out_timecode": "00:00:20.000",
-                    "track": 1,
-                },
-            ],
-            transitions=[
-                {
-                    "type": "dissolve",
-                    "duration": 1.0,
-                    "position": 0,
-                },
-            ],
-        )
-        output = tmp_path / "test.otio"
-        db = _mock_db_for_clips()
-        export_otio(edl, output, db)
-
-        tl = otio.adapters.read_from_file(str(output))
-        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
-        transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
-        assert len(transitions) == 1
-        assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
-        assert transitions[0].name == "dissolve"
-
-        # Verify transition is positioned BETWEEN the two clips
-        track_items = list(video_tracks[0])
-        assert isinstance(track_items[0], otio.schema.Clip)
-        assert isinstance(track_items[1], otio.schema.Transition)
-        assert isinstance(track_items[2], otio.schema.Clip)
 
     def test_unknown_transition_type_falls_back_to_smpte_dissolve(self, tmp_path):
         """Unrecognized transition type (e.g. 'wipe') falls back to SMPTE_Dissolve."""
