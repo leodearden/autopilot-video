@@ -3927,15 +3927,16 @@
         "description": "In tests/test_web_app.py, function `_read_app_js` (lines 190-193): add `@functools.lru_cache(maxsize=None)` decorator (and `import functools` at the top if not already present) so the file is read only once per process. At least 7 test methods currently trigger a fresh disk read each.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:15:12.825Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T09:15:12.641Z",
+      "lastModified": "2026-04-04T09:15:12.825Z",
       "taskCount": 201,
       "completedCount": 144,
       "tags": [
