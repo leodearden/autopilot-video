@@ -4435,10 +4435,11 @@
         "description": "Two improvements to tests/test_youtube.py:\n\n1. **Replace MagicMock with real YouTubeConfig in `youtube_config` fixture** (line 85-88): The fixture uses `MagicMock(privacy_status='unlisted', default_category='22')` instead of instantiating the real `YouTubeConfig` dataclass from `autopilot.config`. MagicMock silently passes any attribute access, hiding regressions if the config interface changes. Replace with: `from autopilot.config import YouTubeConfig` then `return YouTubeConfig(privacy_status='unlisted', default_category='22')`.\n\n2. **Update parametrized test docstring** (line 248): The merged `test_tags_empty_when_detections_lack_class_key` has a generic docstring that conflates two distinct failure modes. Update to: \"Detections using the old 'class_name' key (regression guard) or missing 'class' entirely produce no tags.\"\n\nmemory_hints: search for \"YouTubeConfig dataclass fields\" and \"test fixture patterns conftest\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T14:07:48.729Z"
       },
       {
         "id": "234",
@@ -4699,7 +4700,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:07:48.100Z",
+      "lastModified": "2026-04-04T14:07:48.729Z",
       "taskCount": 255,
       "completedCount": 173,
       "tags": [
