@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from autopilot.config import YouTubeConfig
 from autopilot.upload.youtube import _build_upload_metadata
 
 # ---------------------------------------------------------------------------
@@ -85,7 +86,7 @@ def _setup_google_mocks():
 @pytest.fixture
 def youtube_config():
     """Default YouTube upload config used by most metadata tests."""
-    return MagicMock(privacy_status="unlisted", default_category="22")
+    return YouTubeConfig(privacy_status="unlisted", default_category="22")
 
 
 class TestLoadCredentials:
@@ -246,7 +247,8 @@ class TestBuildUploadMetadata:
     def test_tags_empty_when_detections_lack_class_key(
         self, catalog_db, youtube_config, detections_json
     ):
-        """Detections without a 'class' key produce no tags."""
+        """Detections using the old 'class_name' key (regression guard) or
+        missing 'class' entirely produce no tags."""
         self._setup_media_with_detections(
             catalog_db,
             [("m1", 0, json.dumps(detections_json))],
@@ -289,6 +291,14 @@ class TestBuildUploadMetadata:
         meta = _build_upload_metadata("n1", catalog_db, config)
         assert meta["snippet"]["categoryId"] == "19"
         assert meta["status"]["privacyStatus"] == "private"
+
+    def test_youtube_config_fixture_is_real_dataclass(self, youtube_config):
+        """The youtube_config fixture returns a real YouTubeConfig, not a mock."""
+        from autopilot.config import YouTubeConfig
+
+        assert isinstance(youtube_config, YouTubeConfig)
+        assert youtube_config.privacy_status == "unlisted"
+        assert youtube_config.default_category == "22"
 
 
 # ---------------------------------------------------------------------------
