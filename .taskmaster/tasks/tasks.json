@@ -3581,6 +3581,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 183,
+        "title": "Reduce test setup duplication with _make_db() helper",
+        "description": "Clean up repeated boilerplate in tests/test_render_router.py:\n1. Introduce a _make_db() factory (parallel to _make_config/_make_edl) that returns a MagicMock pre-configured with db.get_media.return_value = {'file_path': '/fake/source.mp4'}, db.get_edit_plan=None, db.get_narrative=None, db.get_transcript=None. Replace the ~15 copy-paste sites across all test classes.\n2. Merge test_db_get_media_called_for_clip_without_source_path and test_resolved_source_path_passed_to_renderer (lines 930-987) into a single test that asserts both db.get_media.assert_called_with('clip_1') and rendered_clip['source_path'] == '/resolved/clip.mp4', since they share 100% identical setup.\n3. Remove the dead db.get_media.return_value = {'file_path': '/fake/source.mp4'} assignment at line 1074 in test_multiple_clips_each_resolved, which is immediately superseded by the side_effect assignment at line 1082.\n4. Either keep a default source_path in _make_edl and introduce a separate _make_edl_no_source_path used only by TestSourcePathResolution, or add a _SENTINEL default that triggers an assertion failure if db.get_media is unconfigured — preventing silent MagicMock objects as source_path values in unrelated tests.\n\nmemory_hints:\n- search: \"test_render_router _make_edl _make_config helper pattern\"\n- entity: \"test_render_router\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -3593,7 +3604,7 @@
       ],
       "created": "2026-04-04T08:26:53.132Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T08:26:53.134Z"
+      "updated": "2026-04-04T08:27:02.055Z"
     }
   }
 }
