@@ -411,7 +411,7 @@ class TestIngestStage:
     def test_ingest_calls_scan_directory(
         self, mock_scanner, mock_normalizer, mock_dedup, minimal_config
     ):
-        """_run_ingest calls scanner.scan_directory with config.input_dir."""
+        """_run_ingest calls scanner.scan_directory with config.processing.num_cpu_workers."""
         from autopilot.orchestrator import _run_ingest
 
         mock_file = MagicMock()
@@ -422,7 +422,28 @@ class TestIngestStage:
         _run_ingest(config=minimal_config, db=db)
 
         mock_scanner.scan_directory.assert_called_once_with(
-            minimal_config.input_dir, max_workers=None
+            minimal_config.input_dir, max_workers=12
+        )
+
+    @patch("autopilot.ingest.dedup")
+    @patch("autopilot.ingest.normalizer")
+    @patch("autopilot.ingest.scanner")
+    def test_ingest_passes_custom_num_cpu_workers(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config
+    ):
+        """_run_ingest passes a custom num_cpu_workers value to scan_directory."""
+        from autopilot.orchestrator import _run_ingest
+
+        minimal_config.processing.num_cpu_workers = 4
+        mock_file = MagicMock()
+        mock_file.file_path = Path("/fake/video.mp4")
+        mock_scanner.scan_directory.return_value = [mock_file]
+        db = MagicMock()
+
+        _run_ingest(config=minimal_config, db=db)
+
+        mock_scanner.scan_directory.assert_called_once_with(
+            minimal_config.input_dir, max_workers=4
         )
 
     @patch("autopilot.ingest.dedup")
