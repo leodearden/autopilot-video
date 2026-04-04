@@ -335,3 +335,26 @@ class TestSSEEventTypes:
 
         for etype in self.ALL_EVENT_TYPES:
             assert etype in VALID_EVENT_TYPES, f"'{etype}' missing from VALID_EVENT_TYPES"
+
+
+# ---------------------------------------------------------------------------
+# TestSseDepsImportRefactor — task-137 step-3
+# ---------------------------------------------------------------------------
+
+class TestSseDepsImportRefactor:
+    """Verify sse.py uses get_db from deps and private copy is removed."""
+
+    def test_no_private_get_db(self) -> None:
+        """_get_db should be removed from sse module."""
+        from autopilot.web.routes import sse
+        assert not hasattr(sse, "_get_db"), (
+            "_get_db should be removed in favor of get_db from deps"
+        )
+
+    def test_sse_get_db_is_deps_get_db(self) -> None:
+        """sse.get_db should be the same object as deps.get_db."""
+        from autopilot.web import deps
+        from autopilot.web.routes import sse
+        assert sse.get_db is deps.get_db, (
+            "sse.get_db should be imported from deps"
+        )
