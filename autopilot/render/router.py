@@ -239,7 +239,7 @@ def route_and_render(
         # -- Collect subtitle segments from per-clip transcripts ----------------
         all_subtitle_segs: list[dict] = []
         cumulative_offset = 0.0
-        for clip in clips:
+        for clip in resolved_clips:
             media_id = clip.get("clip_id", "")
             transcript = db.get_transcript(media_id)
             if transcript and transcript.get("segments_json"):
