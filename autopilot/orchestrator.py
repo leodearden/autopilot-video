@@ -1519,10 +1519,12 @@ class PipelineOrchestrator:
                 done_count = sum(
                     1 for r in results.values() if r.status == StageStatus.DONE
                 )
-                self._emit_notification(
-                    f"Pipeline finished. {done_count} of {len(order)} stages completed in {total_elapsed:.1f}s.",
-                    "success",
+                msg = (
+                    f"Pipeline finished. {done_count} of"
+                    f" {len(order)} stages completed"
+                    f" in {total_elapsed:.1f}s."
                 )
+                self._emit_notification(msg, "success")
 
         # Check budget
         if self.budget_seconds is not None and total_elapsed > self.budget_seconds:

@@ -89,7 +89,7 @@ class TestNotificationSSESetup:
         )
 
     def test_connectsse_no_duplicate_notification_listener(self) -> None:
-        """connectSSE should NOT have its own notification listener (handled by setupNotificationSSE)."""
+        """connectSSE must not duplicate the notification listener."""
         content = _APP_JS.read_text()
         func_start = content.find("function connectSSE")
         assert func_start != -1
@@ -98,6 +98,11 @@ class TestNotificationSSESetup:
         next_func = func_body.find("\nfunction ", 1)
         if next_func != -1:
             func_body = func_body[:next_func]
-        assert "addEventListener('notification'" not in func_body and \
-               'addEventListener("notification"' not in func_body, \
-               "connectSSE should NOT contain a notification listener (handled by setupNotificationSSE)"
+        has_listener = (
+            "addEventListener('notification'" in func_body
+            or 'addEventListener("notification"' in func_body
+        )
+        assert not has_listener, (
+            "connectSSE should NOT contain a notification"
+            " listener (handled by setupNotificationSSE)"
+        )
