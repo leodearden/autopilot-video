@@ -655,6 +655,50 @@ class TestTransitionMapping:
         assert isinstance(track_items[1], otio.schema.Transition)
         assert isinstance(track_items[2], otio.schema.Clip)
 
+    def test_unknown_transition_type_falls_back_to_smpte_dissolve(self, tmp_path):
+        """Unrecognized transition type (e.g. 'wipe') falls back to SMPTE_Dissolve."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "wipe",
+                    "duration": 1.0,
+                    "position": 0,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+        transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
+        assert len(transitions) == 1
+        assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
+        assert transitions[0].name == "wipe"
+
+        # Verify structural ordering: Clip / Transition / Clip
+        track_items = list(video_tracks[0])
+        assert isinstance(track_items[0], otio.schema.Clip)
+        assert isinstance(track_items[1], otio.schema.Transition)
+        assert isinstance(track_items[2], otio.schema.Clip)
+
 
 # -- Step 20: Multi-track transition isolation tests ---------------------------
 
