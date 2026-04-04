@@ -890,9 +890,12 @@ class CatalogDB:
         "status",
     })
 
-    def update_narrative(self, narrative_id: str, **kwargs: object) -> None:
-        """Update fields of a narrative by keyword arguments."""
-        self._execute_kwargs_update(
+    def update_narrative(self, narrative_id: str, **kwargs: object) -> int:
+        """Update fields of a narrative by keyword arguments.
+
+        Returns number of rows affected (0 if not found or no kwargs).
+        """
+        return self._execute_kwargs_update(
             "narratives", "narrative_id", narrative_id,
             self._NARRATIVE_ALLOWED_COLUMNS, "narrative", kwargs,
         )
@@ -1318,9 +1321,12 @@ class CatalogDB:
         "timeout_hours",
     })
 
-    def update_gate(self, stage: str, **kwargs: object) -> None:
-        """Update fields of a gate by keyword arguments."""
-        self._execute_kwargs_update(
+    def update_gate(self, stage: str, **kwargs: object) -> int:
+        """Update fields of a gate by keyword arguments.
+
+        Returns number of rows affected (0 if not found or no kwargs).
+        """
+        return self._execute_kwargs_update(
             "pipeline_gates", "stage", stage,
             self._GATE_ALLOWED_COLUMNS, "gate", kwargs,
         )
@@ -1392,9 +1398,12 @@ class CatalogDB:
         "run_id",
     })
 
-    def update_job(self, job_id: str, **kwargs: object) -> None:
-        """Update fields of a job by keyword arguments."""
-        self._execute_kwargs_update(
+    def update_job(self, job_id: str, **kwargs: object) -> int:
+        """Update fields of a job by keyword arguments.
+
+        Returns number of rows affected (0 if not found or no kwargs).
+        """
+        return self._execute_kwargs_update(
             "pipeline_jobs", "job_id", job_id,
             self._JOB_ALLOWED_COLUMNS, "job", kwargs,
         )
@@ -1525,9 +1534,12 @@ class CatalogDB:
         "budget_remaining_seconds",
     })
 
-    def update_run(self, run_id: str, **kwargs: object) -> None:
-        """Update fields of a run by keyword arguments."""
-        self._execute_kwargs_update(
+    def update_run(self, run_id: str, **kwargs: object) -> int:
+        """Update fields of a run by keyword arguments.
+
+        Returns number of rows affected (0 if not found or no kwargs).
+        """
+        return self._execute_kwargs_update(
             "pipeline_runs", "run_id", run_id,
             self._RUN_ALLOWED_COLUMNS, "run", kwargs,
         )
