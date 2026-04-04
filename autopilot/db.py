@@ -1507,15 +1507,29 @@ class CatalogDB:
         row = cur.fetchone()
         return dict(row) if row else None
 
+    _RUN_ALLOWED_COLUMNS: frozenset[str] = frozenset({
+        "started_at",
+        "finished_at",
+        "config_snapshot",
+        "current_stage",
+        "status",
+        "wall_clock_seconds",
+        "budget_remaining_seconds",
+    })
+
     def update_run(self, run_id: str, **kwargs: object) -> None:
         """Update fields of a run by keyword arguments."""
         if not kwargs:
             return
+        bad_keys = set(kwargs) - self._RUN_ALLOWED_COLUMNS
+        if bad_keys:
+            msg = f"Disallowed column(s) for run update: {sorted(bad_keys)}"
+            raise ValueError(msg)
         set_clause = ", ".join(f"{k} = ?" for k in kwargs)
         values = list(kwargs.values())
         values.append(run_id)
         self.conn.execute(
-            f"UPDATE pipeline_runs SET {set_clause} "  # noqa: S608
+            f"UPDATE pipeline_runs SET {set_clause} "  # noqa: S608 — column names validated above
             "WHERE run_id = ?",
             values,
         )
