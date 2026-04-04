@@ -4478,7 +4478,12 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T14:08:00.976Z"
+        "updatedAt": "2026-04-04T14:08:00.976Z",
+        "metadata": {
+          "modules": [
+            "tests/test_orchestrator.py"
+          ]
+        }
       },
       {
         "id": 236,
