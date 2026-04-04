@@ -3672,7 +3672,12 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:31:29.708Z"
+        "updatedAt": "2026-04-04T08:31:29.708Z",
+        "metadata": {
+          "modules": [
+            "tests/test_web_app.py"
+          ]
+        }
       },
       {
         "id": 188,
