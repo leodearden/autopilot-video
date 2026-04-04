@@ -1357,3 +1357,42 @@ class TestClipIdValidation:
         mock_rc.assert_not_called()
         # Should NOT call get_crop_path since clip_id is None
         db.get_crop_path.assert_not_called()
+
+    def test_source_path_no_clip_id_emits_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Clip with source_path but no clip_id should emit a warning about
+        missing clip_id that includes the clip index."""
+        import logging
+
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "source_path": "/some/video.mp4",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+                # no clip_id
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        config = _make_config()
+
+        with (
+            caplog.at_level(logging.WARNING, logger="autopilot.render.router"),
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run"),
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        # Should have logged a warning about the missing clip_id
+        warning_msgs = [r.message for r in caplog.records if r.levelno >= logging.WARNING]
+        assert any("no clip_id" in msg for msg in warning_msgs), (
+            f"Expected a warning about missing clip_id, got: {warning_msgs}"
+        )
+        # Warning should include the clip index for debugging
+        assert any("0" in msg and "clip_id" in msg for msg in warning_msgs)
