@@ -5699,6 +5699,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 323,
+        "title": "Harden TestNavLinkContract: status codes, nav parsing, and input guards",
+        "description": "TestNavLinkContract in tests/test_settings.py has several defensive gaps: it's in the wrong file, only catches 404s (not 500s), uses a fragile regex for nav parsing, lacks an existence check on base.html, and doesn't filter external URLs.",
+        "details": "Fix these specific issues (currently in tests/test_settings.py, TestNavLinkContract class):\n\n1. **Move to dedicated file:** Move TestNavLinkContract to `tests/test_navigation.py` — it tests all nav links in base.html, not just settings. Its current placement is misleading.\n\n2. **Catch all error status codes (line 70):** Change `if response.status_code == 404` to `if response.status_code >= 400` to catch 500s from broken route handlers.\n\n3. **Fix fragile nav regex (lines 56/63):** Replace `re.search(r'<nav\\b[^>]*>(.*?)</nav>', html, re.DOTALL)` — it silently truncates on nested or secondary nav elements. Use html.parser or re.findall over all nav blocks.\n\n4. **Add existence check (line 53):** Add `assert base_html.exists(), f'base.html not found at {base_html}'` before read_text() for a self-documenting failure message.\n\n5. **Filter external URLs (line 64):** Filter hrefs to relative URLs only (`[h for h in hrefs if h.startswith('/')]`) before iterating, to prevent TestClient attempting real outbound HTTP requests on external links.\n\n## Memory hints\n- search: \"TestNavLinkContract nav link test\"\n- search: \"base.html nav structure\"",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5711,7 +5722,7 @@
       ],
       "created": "2026-04-04T19:08:36.599Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T19:08:36.666Z"
+      "updated": "2026-04-04T19:08:44.503Z"
     }
   }
 }
