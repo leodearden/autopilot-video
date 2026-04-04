@@ -1236,4 +1236,11 @@ class TestEditFormNullTitleDescription:
         assert response.status_code == 200
         # Textarea content should be empty, not the string 'None'
         assert ">None</textarea>" not in response.text
-        assert 'name="description"' in response.text
+        # Extract the specific description textarea and verify it is empty
+        match = re.search(
+            r'<textarea[^>]*name="description"[^>]*>(.*?)</textarea>',
+            response.text,
+            re.DOTALL,
+        )
+        assert match is not None, "description textarea not found"
+        assert match.group(1) == ""
