@@ -124,14 +124,15 @@ function setupNotificationSSE(source) {
     source.addEventListener('notification', function(event) {
         try {
             var data = JSON.parse(event.data);
+            var msg = (data && typeof data.message === 'string') ? data.message : '(no message)';
             unreadCount++;
             updateNotificationBadge(unreadCount);
-            showToast(data.message, data.type || 'info');
+            showToast(msg, data.type || 'info');
 
             /* Browser Notification API (best-effort) */
             if (typeof Notification !== 'undefined') {
                 if (Notification.permission === 'granted') {
-                    new Notification('Autopilot Video', { body: data.message });
+                    new Notification('Autopilot Video', { body: msg });
                 } else if (Notification.permission !== 'denied') {
                     Notification.requestPermission();
                 }
