@@ -689,10 +689,51 @@ class TestDryRunZeroSideEffects:
                     assert result.exit_code == 0, (
                         f"{cmd_name} --dry-run failed: {result.output}"
                     )
-                    mock_load.assert_not_called()  # --dry-run should NOT call load_config
-                    mock_db_cls.assert_not_called()  # --dry-run should NOT instantiate CatalogDB
-                    mock_orch_cls.assert_not_called()  # --dry-run should NOT create orchestrator
+                    failures: list[str] = []
+                    if mock_load.called:
+                        failures.append(
+                            f"{cmd_name} --dry-run should NOT call load_config"
+                        )
+                    if mock_db_cls.called:
+                        failures.append(
+                            f"{cmd_name} --dry-run should NOT instantiate CatalogDB"
+                        )
+                    if mock_orch_cls.called:
+                        failures.append(
+                            f"{cmd_name} --dry-run should NOT instantiate PipelineOrchestrator"
+                        )
+                    assert not failures, "\n".join(failures)
 
+    def test_soft_assert_reports_all_failures(self) -> None:
+        """When all three side-effects fire, the failure-collector reports all three."""
+        cmd_name = "ingest"
+        mock_load = MagicMock()
+        mock_db_cls = MagicMock()
+        mock_orch_cls = MagicMock()
+
+        # Force all three mocks to appear called
+        mock_load.called = True
+        mock_db_cls.called = True
+        mock_orch_cls.called = True
+
+        # Build failures list using the same collector pattern
+        failures: list[str] = []
+        if mock_load.called:
+            failures.append(f"{cmd_name} --dry-run should NOT call load_config")
+        if mock_db_cls.called:
+            failures.append(
+                f"{cmd_name} --dry-run should NOT instantiate CatalogDB"
+            )
+        if mock_orch_cls.called:
+            failures.append(
+                f"{cmd_name} --dry-run should NOT instantiate PipelineOrchestrator"
+            )
+
+        assert len(failures) == 3
+        joined = "\n".join(failures)
+        assert "load_config" in joined
+        assert "CatalogDB" in joined
+        assert "PipelineOrchestrator" in joined
 
 
 class TestRunDryRunDelegation:
