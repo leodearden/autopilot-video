@@ -4058,6 +4058,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 211,
+        "title": "Strengthen validation test coverage: multi-column errors, schema drift, and parametrized rejection tests",
+        "description": "In tests/test_db_pipeline.py: (1) Consolidate the six near-identical `test_update_*_rejects_disallowed_columns` / `test_update_*_rejects_mix_of_valid_and_invalid` methods (lines ~180-196, ~330-346, ~558-577) into a single `@pytest.mark.parametrize` definition covering all three (or five) update methods. (2) Add a multi-column case per method that passes two disallowed columns simultaneously and asserts both names appear in the ValueError message — currently sorted(bad_keys) logic is untested for >1 bad key. (3) Add a parametrized PRAGMA test: for each of pipeline_gates, pipeline_jobs, pipeline_runs, query `PRAGMA table_info(<table>)`, collect non-PK column names, and assert every one appears in the corresponding _*_ALLOWED_COLUMNS frozenset — catches schema/allowlist drift immediately.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -4070,7 +4081,7 @@
       ],
       "created": "2026-04-04T13:06:55.969Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T13:07:09.639Z"
+      "updated": "2026-04-04T13:07:12.495Z"
     }
   }
 }
