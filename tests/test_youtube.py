@@ -229,6 +229,64 @@ class TestBuildUploadMetadata:
         assert "backpack" in tags
         assert "tent" in tags
 
+    def test_tags_empty_when_detections_use_old_class_name_key(self, catalog_db):
+        """Detections keyed with old 'class_name' field are ignored (regression guard)."""
+        from autopilot.upload.youtube import _build_upload_metadata
+
+        catalog_db.insert_narrative("n1", title="Title", description="desc")
+        catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
+        catalog_db.batch_insert_detections(
+            [
+                (
+                    "m1",
+                    0,
+                    json.dumps(
+                        [
+                            {"class_name": "person", "confidence": 0.9},
+                            {"class_name": "car", "confidence": 0.8},
+                        ]
+                    ),
+                ),
+            ]
+        )
+        config = MagicMock()
+        config.privacy_status = "unlisted"
+        config.default_category = "22"
+
+        meta = _build_upload_metadata("n1", catalog_db, config)
+        tags = meta["snippet"]["tags"]
+        assert "person" not in tags
+        assert "car" not in tags
+
+    def test_tags_exclude_empty_string_class(self, catalog_db):
+        """Empty-string class values are excluded; valid ones are kept."""
+        from autopilot.upload.youtube import _build_upload_metadata
+
+        catalog_db.insert_narrative("n1", title="Title", description="desc")
+        catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
+        catalog_db.batch_insert_detections(
+            [
+                (
+                    "m1",
+                    0,
+                    json.dumps(
+                        [
+                            {"class": "", "confidence": 0.9},
+                            {"class": "dog", "confidence": 0.8},
+                        ]
+                    ),
+                ),
+            ]
+        )
+        config = MagicMock()
+        config.privacy_status = "unlisted"
+        config.default_category = "22"
+
+        meta = _build_upload_metadata("n1", catalog_db, config)
+        tags = meta["snippet"]["tags"]
+        assert "" not in tags
+        assert "dog" in tags
+
     def test_uses_config_privacy_status_and_category(self, catalog_db):
         """Privacy and category come from YouTubeConfig."""
         from autopilot.upload.youtube import _build_upload_metadata
