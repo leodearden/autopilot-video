@@ -587,7 +587,7 @@ class TestDryRunSubcommands:
                 assert result.exit_code == 0, (
                     f"{cmd_name} --dry-run failed: {result.output}"
                 )
-                stage_func.assert_not_called(), (
+                assert not stage_func.called, (
                     f"{cmd_name} --dry-run should NOT call any stage function"
                 )
 
@@ -691,7 +691,7 @@ class TestDryRunZeroSideEffects:
                     assert result.exit_code == 0, (
                         f"{cmd_name} --dry-run failed: {result.output}"
                     )
-                    mock_load.assert_not_called(), (
+                    assert not mock_load.called, (
                         f"{cmd_name} --dry-run should NOT call load_config"
                     )
 
@@ -710,7 +710,7 @@ class TestDryRunZeroSideEffects:
                     assert result.exit_code == 0, (
                         f"{cmd_name} --dry-run failed: {result.output}"
                     )
-                    mock_db_cls.assert_not_called(), (
+                    assert not mock_db_cls.called, (
                         f"{cmd_name} --dry-run should NOT instantiate CatalogDB"
                     )
 
@@ -729,7 +729,7 @@ class TestDryRunZeroSideEffects:
                     assert result.exit_code == 0, (
                         f"{cmd_name} --dry-run failed: {result.output}"
                     )
-                    mock_orch_cls.assert_not_called(), (
+                    assert not mock_orch_cls.called, (
                         f"{cmd_name} --dry-run should NOT instantiate PipelineOrchestrator"
                     )
 
@@ -791,37 +791,3 @@ class TestRunDryRunDelegation:
                 mock_orch.run.assert_called_once()
                 call_kwargs = mock_orch.run.call_args[1]
                 assert call_kwargs["dry_run"] is True
-
-
-class TestTupleAssertionBugVerification:
-    """Scratch test proving the tuple assertion pattern is broken.
-
-    This class will be removed after confirming the bug — it exists only to
-    demonstrate that `mock.assert_not_called(), (f"msg")` silently discards the
-    custom error message.
-    """
-
-    def test_tuple_pattern_loses_custom_message(self) -> None:
-        """The comma-separated pattern raises AssertionError WITHOUT the custom message."""
-        mock = MagicMock()
-        mock()  # Call the mock so assert_not_called() should fail
-
-        with pytest.raises(AssertionError) as exc_info:
-            mock.assert_not_called(), (
-                f"This message should appear but DOES NOT"
-            )
-
-        # The bug: the custom message is NOT in the AssertionError because
-        # the comma creates a tuple, so the string is never used as a message.
-        assert "This message should appear but DOES NOT" not in str(exc_info.value)
-
-    def test_correct_pattern_includes_custom_message(self) -> None:
-        """The correct pattern `assert not mock.called, msg` includes the message."""
-        mock = MagicMock()
-        mock()  # Call the mock so assert should fail
-
-        with pytest.raises(AssertionError) as exc_info:
-            assert not mock.called, "This message SHOULD appear"
-
-        # The correct pattern: the custom message IS in the AssertionError.
-        assert "This message SHOULD appear" in str(exc_info.value)
