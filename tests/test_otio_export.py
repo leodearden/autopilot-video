@@ -646,8 +646,8 @@ class TestTransitionMapping:
 
         # Verify WARNING log mentions None
         warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-        assert any("None" in msg for msg in warning_messages), (
-            f"Expected a WARNING containing 'None', got: {warning_messages}"
+        assert any("None, falling back" in msg for msg in warning_messages), (
+            f"Expected a WARNING containing 'None, falling back', got: {warning_messages}"
         )
 
 
