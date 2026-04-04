@@ -5915,6 +5915,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 338,
+        "title": "Extract shared seeding helper to eliminate duplicated fixture setup",
+        "description": "In tests/test_review.py, extract a module-level helper `_build_zero_duration_app(db_path: str) -> FastAPI` that contains the shared seeding logic (CatalogDB setup, init_default_gates(), and the two _seed_narrative calls for n-zero and n-none). Refactor `zero_duration_app` (class-scoped, uses `tmp_path_factory`) and `_roundtrip_app` (function-scoped, uses `tmp_path`) to each call this helper with their respective `db_path`. The scope difference and tmp_path mechanism become the only meaningful difference between the two fixtures.\n\nMemory hints: search \"task 224 zero-duration fixture scope optimization\" for parent task context; search \"task 109 conftest fixture consolidation\" for related fixture work.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5927,7 +5938,7 @@
       ],
       "created": "2026-04-04T23:07:46.399Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T23:07:46.403Z"
+      "updated": "2026-04-04T23:07:52.812Z"
     }
   }
 }
