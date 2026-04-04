@@ -647,7 +647,7 @@ class TestDryRunZeroSideEffects:
                     )
                     mock_load.assert_not_called()  # --dry-run should NOT call load_config
                     mock_db_cls.assert_not_called()  # --dry-run should NOT instantiate CatalogDB
-                    mock_orch_cls.assert_not_called()  # --dry-run should NOT instantiate PipelineOrchestrator
+                    mock_orch_cls.assert_not_called()  # --dry-run should NOT create orchestrator
 
 
 

@@ -10,7 +10,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-
 _TEST_CLI_PATH = Path(__file__).with_name("test_cli.py")
 
 
