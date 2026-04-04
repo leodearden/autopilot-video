@@ -72,3 +72,30 @@ class TestUpdateNarrativeRowcount:
         _seed_narrative(db, "n-1")
         result = db.update_narrative("n-1")
         assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# TestUpdateGateRowcount — task-278 step-3
+# ---------------------------------------------------------------------------
+
+class TestUpdateGateRowcount:
+    """Tests that update_gate returns int rowcount."""
+
+    def test_returns_1_for_existing_gate(self, db: CatalogDB) -> None:
+        """update_gate returns 1 when updating an existing gate row."""
+        db.init_default_gates()
+        db.conn.commit()
+        result = db.update_gate("classify", mode="auto")
+        assert result == 1
+
+    def test_returns_0_for_nonexistent_gate(self, db: CatalogDB) -> None:
+        """update_gate returns 0 for a non-existent stage."""
+        result = db.update_gate("nonexistent", mode="auto")
+        assert result == 0
+
+    def test_returns_0_for_empty_kwargs(self, db: CatalogDB) -> None:
+        """update_gate returns 0 for empty kwargs (early return)."""
+        db.init_default_gates()
+        db.conn.commit()
+        result = db.update_gate("classify")
+        assert result == 0
