@@ -5654,10 +5654,11 @@
         "description": "In autopilot/upload/youtube.py line 102, replace db.get_activity_clusters() (full table scan + manual dict construction) with db.get_activity_clusters_by_ids(cluster_ids) which already exists and uses a WHERE IN query. Update the loop to use the new return shape (dict keyed by cluster_id).",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T19:05:14.995Z"
       },
       {
         "id": "320",
@@ -5684,7 +5685,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T19:05:09.522Z",
+      "lastModified": "2026-04-04T19:05:14.995Z",
       "taskCount": 321,
       "completedCount": 197,
       "tags": [
