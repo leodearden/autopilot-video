@@ -1217,8 +1217,13 @@ class TestEditFormNullTitleDescription:
         assert response.status_code == 200
         # Title input should render with an empty value, not the string 'None'
         assert 'value="None"' not in response.text
-        assert 'value=""' in response.text
-        assert 'name="title"' in response.text
+        # Extract the specific title input and verify its value is empty
+        match = re.search(
+            r'<input[^>]*name="title"[^>]*>',
+            response.text,
+        )
+        assert match is not None, "title input not found"
+        assert 'value=""' in match.group(0)
 
     def test_edit_form_renders_empty_for_none_description(
         self, null_title_desc_client: TestClient,
