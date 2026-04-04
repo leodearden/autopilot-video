@@ -3873,6 +3873,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 198,
+        "title": "Expand _brace_match_from test coverage (precondition + dedup)",
+        "description": "In tests/test_web_app.py, class TestBraceMatchFrom (lines 309-331): (1) Add a test `test_raises_when_start_not_at_brace` that calls `_brace_match_from('abc', 1, 'no-brace')` and asserts `AssertionError` matching `\"expected '{'\"`. (2) Merge or differentiate `test_raises_on_unbalanced_braces` and `test_label_appears_in_error_message` — either combine into one assertion or use distinct inputs (e.g. depth-1 vs depth-3 unclosed brace) so the two tests exercise meaningfully different scenarios.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -3885,7 +3896,7 @@
       ],
       "created": "2026-04-04T09:12:45.701Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T09:12:45.717Z"
+      "updated": "2026-04-04T09:12:50.123Z"
     }
   }
 }
