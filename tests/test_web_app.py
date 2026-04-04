@@ -386,6 +386,10 @@ class TestSSEHandlerFactory:
         assert "refreshStageCard" in factory_body, (
             "refreshStageCard call not found in makeStageHandler"
         )
+        assert "if (refreshCard)" in factory_body, (
+            "conditional guard 'if (refreshCard)' not found in makeStageHandler. "
+            "refreshStageCard must only be called when the refreshCard param is true."
+        )
 
     def test_setup_dashboard_sse_uses_factory(self) -> None:
         """setupDashboardSSE uses makeStageHandler for all 3 event types."""
