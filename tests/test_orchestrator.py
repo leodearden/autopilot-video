@@ -943,6 +943,76 @@ class TestNarrateStage:
         db.update_narrative_status.assert_any_call("n2", "rejected")
 
 
+class TestNarrateResume:
+    """Tests for _run_narrate checkpoint/resume logic."""
+
+    @patch("autopilot.organize.narratives")
+    def test_narrate_skips_when_approved_narratives_exist(self, mock_narratives, minimal_config):
+        """_run_narrate skips LLM proposal when approved narratives already exist and force=False."""
+        from autopilot.orchestrator import _run_narrate
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1", "status": "approved"},
+            {"narrative_id": "n2", "status": "approved"},
+        ]
+
+        _run_narrate(config=minimal_config, db=db)
+
+        mock_narratives.propose_narratives.assert_not_called()
+
+    @patch("autopilot.organize.narratives")
+    def test_narrate_logs_resume_message(self, mock_narratives, minimal_config, caplog):
+        """_run_narrate logs 'Resuming NARRATE: N approved narratives already exist, skipping'."""
+        from autopilot.orchestrator import _run_narrate
+
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1", "status": "approved"},
+            {"narrative_id": "n2", "status": "approved"},
+            {"narrative_id": "n3", "status": "approved"},
+        ]
+
+        with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
+            _run_narrate(config=minimal_config, db=db)
+
+        assert any(
+            "Resuming NARRATE" in r.message and "3" in r.message for r in caplog.records
+        )
+
+    @patch("autopilot.organize.narratives")
+    def test_narrate_force_repropose_even_with_existing(self, mock_narratives, minimal_config):
+        """_run_narrate with force=True re-proposes even when approved narratives exist."""
+        from autopilot.orchestrator import _run_narrate
+
+        mock_narratives.build_master_storyboard.return_value = "sb"
+        mock_narratives.propose_narratives.return_value = []
+        mock_narratives.format_for_review.return_value = ""
+        db = MagicMock()
+        db.list_narratives.return_value = [
+            {"narrative_id": "n1", "status": "approved"},
+        ]
+
+        _run_narrate(config=minimal_config, db=db, force=True)
+
+        mock_narratives.propose_narratives.assert_called_once()
+
+    @patch("autopilot.organize.narratives")
+    def test_narrate_proceeds_when_no_approved_narratives(self, mock_narratives, minimal_config):
+        """_run_narrate proceeds normally when no approved narratives exist (first-time run)."""
+        from autopilot.orchestrator import _run_narrate
+
+        mock_narratives.build_master_storyboard.return_value = "sb"
+        mock_narratives.propose_narratives.return_value = []
+        mock_narratives.format_for_review.return_value = ""
+        db = MagicMock()
+        db.list_narratives.return_value = []
+
+        _run_narrate(config=minimal_config, db=db)
+
+        mock_narratives.propose_narratives.assert_called_once()
+
+
 class TestScriptStage:
     """Tests for the real _run_script stage function."""
 
