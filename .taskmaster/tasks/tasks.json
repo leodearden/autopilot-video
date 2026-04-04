@@ -3280,11 +3280,11 @@
         "description": "In tests/test_web_app.py: (1) Fix `_extract_function_body` (line ~247-248): after `find(f'function {func_name}')`, verify the character immediately following `func_name` is not alphanumeric or `_` (word-boundary check), or switch to `re.search(rf'\\bfunction\\s+{re.escape(func_name)}\\b', js_source)`. (2) Add a regression test: `js = 'function makeStageHandlerV2() { return 2; }\\nfunction makeStageHandler() { return 1; }'; body = _extract_function_body(js, 'makeStageHandler'); assert '{ return 1; }' in body`. (3) Add a multi-function test verifying correct targeting when the target is not the first function in source.",
         "details": "Follow-up from task 151 review (robustness + test coverage). Currently safe because function names in app.js happen to be unique and non-prefix-of-each-other, but the helper has no guard. Memory hints: search for \"_extract_function_body\" and \"task 151 test helpers\".",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:19:31.898Z",
+        "updatedAt": "2026-04-04T09:13:15.345Z",
         "metadata": {
           "modules": [
             "tests/test_web_app.py"
@@ -3921,7 +3921,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T09:13:14.271Z",
+      "lastModified": "2026-04-04T09:13:15.345Z",
       "taskCount": 201,
       "completedCount": 144,
       "tags": [
