@@ -5721,6 +5721,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 325,
+        "title": "test_notifications.py assertion gaps",
+        "description": "Strengthen four test assertions in tests/test_notifications.py:\n\n1. **Fix fragile slice in test_notification_handler_guards_data_message** (line ~113): Change `func_body.find(\"notification\")` to `func_body.find(\"addEventListener('notification'\")` so the slice starts at the actual listener, not the function name.\n2. **Assert return in guard block** (line ~187): In test_notification_handler_guards_data_object_before_side_effects, add `return_idx = func_body.find('return', guard_idx); assert return_idx != -1 and return_idx < unread_idx` to verify the guard contains a return statement.\n3. **Assert onerror assignment** (line ~169): In test_sse_reconnect_gap_documented, add an assertion that `source.onerror` is assigned inside connectSSE.\n4. **Assert guard-before-set ordering** (line ~141): In test_permission_requested_flag_guards_request_permission, add `assert func_body.find('!_permissionRequested') < func_body.find('_permissionRequested = true')` to ensure the check guards the set.\n\nMemory hints: search for \"test_notifications\" and \"notification test assertions\" in project context.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5733,7 +5744,7 @@
       ],
       "created": "2026-04-04T19:08:36.599Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T19:08:47.880Z"
+      "updated": "2026-04-04T19:08:53.697Z"
     }
   }
 }
