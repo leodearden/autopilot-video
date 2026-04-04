@@ -56,6 +56,12 @@ class TestStatusBadgeMacro:
         assert "bg-purple-900" in html
         assert "text-purple-300" in html
 
+    def test_empty_string_status(self) -> None:
+        html = _render_badge("")
+        assert "unknown" in html
+        assert "bg-purple-900" in html
+        assert "text-purple-300" in html
+
     def test_status_text_displayed(self) -> None:
         html = _render_badge("approved")
         assert "approved" in html
