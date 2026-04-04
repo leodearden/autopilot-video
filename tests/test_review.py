@@ -964,3 +964,14 @@ class TestGetNarrativeEditHTMX:
         assert "application/json" in response.headers["content-type"]
         data = response.json()
         assert data["title"] == "Morning Walk"
+
+    def test_narrative_card_edit_button_uses_edit_param(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """The Edit button in the read-only card includes ?edit=1 in its hx-get URL."""
+        response = seeded_client.get(
+            "/api/narratives/n-1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "edit=1" in response.text
