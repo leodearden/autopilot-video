@@ -10,6 +10,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from autopilot.upload.youtube import _build_upload_metadata
+
 # ---------------------------------------------------------------------------
 # Public API surface tests
 # ---------------------------------------------------------------------------
@@ -151,8 +153,6 @@ class TestBuildUploadMetadata:
 
     def test_builds_title_from_narrative(self, catalog_db):
         """Title comes from narrative title in DB."""
-        from autopilot.upload.youtube import _build_upload_metadata
-
         catalog_db.insert_narrative("n1", title="My Great Video", description="desc")
         config = MagicMock()
         config.privacy_status = "unlisted"
@@ -163,8 +163,6 @@ class TestBuildUploadMetadata:
 
     def test_builds_description_from_script(self, catalog_db):
         """Description includes narrative description and script content."""
-        from autopilot.upload.youtube import _build_upload_metadata
-
         catalog_db.insert_narrative("n1", title="Title", description="Narrative desc")
         catalog_db.upsert_narrative_script(
             "n1",
@@ -179,8 +177,6 @@ class TestBuildUploadMetadata:
 
     def test_tags_from_activity_labels_and_detections(self, catalog_db):
         """Tags combine activity cluster labels and detected object classes."""
-        from autopilot.upload.youtube import _build_upload_metadata
-
         catalog_db.insert_narrative(
             "n1",
             title="Title",
@@ -231,8 +227,6 @@ class TestBuildUploadMetadata:
 
     def test_tags_empty_when_detections_use_old_class_name_key(self, catalog_db):
         """Detections keyed with old 'class_name' field are ignored (regression guard)."""
-        from autopilot.upload.youtube import _build_upload_metadata
-
         catalog_db.insert_narrative("n1", title="Title", description="desc")
         catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
         catalog_db.batch_insert_detections(
@@ -261,8 +255,6 @@ class TestBuildUploadMetadata:
 
     def test_tags_empty_when_detection_has_no_class_key(self, catalog_db):
         """Detections with no 'class' key at all produce no tags."""
-        from autopilot.upload.youtube import _build_upload_metadata
-
         catalog_db.insert_narrative("n1", title="Title", description="desc")
         catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
         catalog_db.batch_insert_detections(
@@ -289,8 +281,6 @@ class TestBuildUploadMetadata:
 
     def test_tags_exclude_empty_string_class(self, catalog_db):
         """Empty-string class values are excluded; valid ones are kept."""
-        from autopilot.upload.youtube import _build_upload_metadata
-
         catalog_db.insert_narrative("n1", title="Title", description="desc")
         catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
         catalog_db.batch_insert_detections(
@@ -318,8 +308,6 @@ class TestBuildUploadMetadata:
 
     def test_uses_config_privacy_status_and_category(self, catalog_db):
         """Privacy and category come from YouTubeConfig."""
-        from autopilot.upload.youtube import _build_upload_metadata
-
         catalog_db.insert_narrative("n1", title="Title", description="desc")
         config = MagicMock()
         config.privacy_status = "private"
