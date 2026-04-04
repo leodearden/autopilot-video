@@ -360,8 +360,13 @@ class TestIdempotency:
             scheduler,
         )
 
-        # Scheduler should NOT be called for model loading
+        # Scheduler should NOT be called: classification skipped because events already exist
         scheduler.model.assert_not_called()
+        scheduler.assert_not_called()
+
+        # DB postcondition: both pre-existing events remain, no extra rows written
+        events = catalog_db.get_audio_events_for_range("vid1", 0.0, 10.0)
+        assert len(events) == 2
 
     def test_processes_when_no_events(self, catalog_db):
         """Proceed with classification when no events exist."""
