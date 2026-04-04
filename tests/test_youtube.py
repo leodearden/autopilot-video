@@ -177,20 +177,26 @@ class TestBuildUploadMetadata:
         assert "Narrative desc" in meta["snippet"]["description"]
 
     def _setup_media_with_detections(
-        self, catalog_db, detections_json, *, activity_cluster_ids_json=None
+        self, catalog_db, detections_json, *, activity_cluster_ids: list[str] | None = None
     ):
         """Set up a narrative + media + detections for metadata tests."""
         catalog_db.insert_narrative(
             "n1",
             title="Title",
             description="desc",
-            activity_cluster_ids_json=activity_cluster_ids_json,
+            activity_cluster_ids_json=(
+                json.dumps(activity_cluster_ids) if activity_cluster_ids is not None else None
+            ),
         )
         catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
         catalog_db.batch_insert_detections(detections_json)
 
     def test_tags_from_activity_labels_and_detections(self, catalog_db, youtube_config):
         """Tags combine activity cluster labels and detected object classes."""
+        # Insert activity clusters before the narrative that references them
+        catalog_db.insert_activity_cluster("c1", label="hiking")
+        catalog_db.insert_activity_cluster("c2", label="camping")
+
         self._setup_media_with_detections(
             catalog_db,
             [
@@ -215,10 +221,8 @@ class TestBuildUploadMetadata:
                     ),
                 ),
             ],
-            activity_cluster_ids_json=json.dumps(["c1", "c2"]),
+            activity_cluster_ids=["c1", "c2"],
         )
-        catalog_db.insert_activity_cluster("c1", label="hiking")
-        catalog_db.insert_activity_cluster("c2", label="camping")
 
         meta = _build_upload_metadata("n1", catalog_db, youtube_config)
         tags = meta["snippet"]["tags"]
@@ -280,6 +284,25 @@ class TestBuildUploadMetadata:
         tags = meta["snippet"]["tags"]
         assert "" not in tags
         assert tags == ["dog"]
+
+    def test_setup_helper_encodes_cluster_ids_as_json(self, catalog_db, youtube_config):
+        """Helper encodes activity_cluster_ids list as JSON string in the DB."""
+        self._setup_media_with_detections(
+            catalog_db,
+            [("m1", 0, json.dumps([{"class": "x", "confidence": 0.9}]))],
+            activity_cluster_ids=["x1"],
+        )
+        narrative = catalog_db.get_narrative("n1")
+        assert narrative["activity_cluster_ids_json"] == json.dumps(["x1"])
+
+    def test_setup_helper_omitted_cluster_ids_stores_none(self, catalog_db, youtube_config):
+        """When activity_cluster_ids is omitted, the DB stores None."""
+        self._setup_media_with_detections(
+            catalog_db,
+            [("m1", 0, json.dumps([{"class": "x", "confidence": 0.9}]))],
+        )
+        narrative = catalog_db.get_narrative("n1")
+        assert narrative["activity_cluster_ids_json"] is None
 
     def test_uses_config_privacy_status_and_category(self, catalog_db):
         """Privacy and category come from YouTubeConfig."""
