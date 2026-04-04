@@ -52,6 +52,52 @@ class CatalogDB:
         else:
             self.conn.rollback()
 
+    def _validate_update_kwargs(
+        self, allowed: frozenset[str], kwargs: dict[str, object], entity: str
+    ) -> None:
+        """Raise *ValueError* if *kwargs* contains keys outside *allowed*.
+
+        Parameters
+        ----------
+        allowed:
+            The frozenset of column names permitted for this update.
+        kwargs:
+            The keyword arguments passed to the update method.
+        entity:
+            A human-readable label (e.g. ``"gate"``, ``"job"``) used in the
+            error message.
+        """
+        bad_keys = set(kwargs) - allowed
+        if bad_keys:
+            msg = f"Disallowed column(s) for {entity} update: {sorted(bad_keys)}"
+            raise ValueError(msg)
+
+    def _execute_kwargs_update(
+        self,
+        table: str,
+        pk_col: str,
+        pk_val: object,
+        allowed: frozenset[str],
+        entity: str,
+        kwargs: dict[str, object],
+    ) -> int:
+        """Validate, build, and execute a kwargs-based UPDATE statement.
+
+        Returns the number of rows affected (0 when *kwargs* is empty or the
+        primary-key value is not found).
+        """
+        if not kwargs:
+            return 0
+        self._validate_update_kwargs(allowed, kwargs, entity)
+        set_clause = ", ".join(f"{k} = ?" for k in kwargs)
+        values = [*kwargs.values(), pk_val]
+        cur = self.conn.execute(
+            f"UPDATE {table} SET {set_clause} WHERE {pk_col} = ?",  # noqa: S608 — column names validated against allowlist
+            values,
+        )
+        rc = cur.rowcount
+        return rc if rc >= 0 else 0
+
     def _create_schema(self) -> None:
         """Create all 19 catalog tables if they don't already exist."""
         self.conn.executescript(
@@ -774,21 +820,10 @@ class CatalogDB:
 
         Returns number of rows affected (0 if not found or no kwargs).
         """
-        if not kwargs:
-            return 0
-        bad_keys = set(kwargs) - self._CLUSTER_ALLOWED_COLUMNS
-        if bad_keys:
-            msg = f"Disallowed column(s) for cluster update: {sorted(bad_keys)}"
-            raise ValueError(msg)
-        set_clause = ", ".join(f"{k} = ?" for k in kwargs)
-        values = list(kwargs.values())
-        values.append(cluster_id)
-        cur = self.conn.execute(
-            f"UPDATE activity_clusters SET {set_clause} "  # noqa: S608
-            "WHERE cluster_id = ?",
-            values,
+        return self._execute_kwargs_update(
+            "activity_clusters", "cluster_id", cluster_id,
+            self._CLUSTER_ALLOWED_COLUMNS, "cluster", kwargs,
         )
-        return cur.rowcount
 
     def delete_activity_cluster(self, cluster_id: str) -> None:
         """Delete a single activity cluster by id."""
@@ -856,20 +891,14 @@ class CatalogDB:
         "status",
     })
 
-    def update_narrative(self, narrative_id: str, **kwargs: object) -> None:
-        """Update fields of a narrative by keyword arguments."""
-        if not kwargs:
-            return
-        bad_keys = set(kwargs) - self._NARRATIVE_ALLOWED_COLUMNS
-        if bad_keys:
-            msg = f"Disallowed column(s) for narrative update: {sorted(bad_keys)}"
-            raise ValueError(msg)
-        set_clause = ", ".join(f"{k} = ?" for k in kwargs)
-        values = list(kwargs.values())
-        values.append(narrative_id)
-        self.conn.execute(
-            f"UPDATE narratives SET {set_clause} WHERE narrative_id = ?",  # noqa: S608 — column names validated above
-            values,
+    def update_narrative(self, narrative_id: str, **kwargs: object) -> int:
+        """Update fields of a narrative by keyword arguments.
+
+        Returns number of rows affected (0 if not found or no kwargs).
+        """
+        return self._execute_kwargs_update(
+            "narratives", "narrative_id", narrative_id,
+            self._NARRATIVE_ALLOWED_COLUMNS, "narrative", kwargs,
         )
 
     def list_narratives(self, status: str | None = None) -> list[dict[str, object]]:
@@ -1293,21 +1322,14 @@ class CatalogDB:
         "timeout_hours",
     })
 
-    def update_gate(self, stage: str, **kwargs: object) -> None:
-        """Update fields of a gate by keyword arguments."""
-        if not kwargs:
-            return
-        bad_keys = set(kwargs) - self._GATE_ALLOWED_COLUMNS
-        if bad_keys:
-            msg = f"Disallowed column(s) for gate update: {sorted(bad_keys)}"
-            raise ValueError(msg)
-        set_clause = ", ".join(f"{k} = ?" for k in kwargs)
-        values = list(kwargs.values())
-        values.append(stage)
-        self.conn.execute(
-            f"UPDATE pipeline_gates SET {set_clause} "  # noqa: S608 — column names validated above
-            "WHERE stage = ?",
-            values,
+    def update_gate(self, stage: str, **kwargs: object) -> int:
+        """Update fields of a gate by keyword arguments.
+
+        Returns number of rows affected (0 if not found or no kwargs).
+        """
+        return self._execute_kwargs_update(
+            "pipeline_gates", "stage", stage,
+            self._GATE_ALLOWED_COLUMNS, "gate", kwargs,
         )
 
     # -- pipeline_jobs CRUD ----------------------------------------------------
@@ -1377,21 +1399,14 @@ class CatalogDB:
         "run_id",
     })
 
-    def update_job(self, job_id: str, **kwargs: object) -> None:
-        """Update fields of a job by keyword arguments."""
-        if not kwargs:
-            return
-        bad_keys = set(kwargs) - self._JOB_ALLOWED_COLUMNS
-        if bad_keys:
-            msg = f"Disallowed column(s) for job update: {sorted(bad_keys)}"
-            raise ValueError(msg)
-        set_clause = ", ".join(f"{k} = ?" for k in kwargs)
-        values = list(kwargs.values())
-        values.append(job_id)
-        self.conn.execute(
-            f"UPDATE pipeline_jobs SET {set_clause} "  # noqa: S608 — column names validated above
-            "WHERE job_id = ?",
-            values,
+    def update_job(self, job_id: str, **kwargs: object) -> int:
+        """Update fields of a job by keyword arguments.
+
+        Returns number of rows affected (0 if not found or no kwargs).
+        """
+        return self._execute_kwargs_update(
+            "pipeline_jobs", "job_id", job_id,
+            self._JOB_ALLOWED_COLUMNS, "job", kwargs,
         )
 
     def list_jobs(
@@ -1466,6 +1481,8 @@ class CatalogDB:
 
     def prune_events(self, *, hours: int = 24) -> None:
         """Delete events older than *hours* hours."""
+        if hours <= 0:
+            raise ValueError(f"hours must be positive, got {hours}")
         self.conn.execute(
             "DELETE FROM pipeline_events WHERE created_at < datetime('now', ?)",
             (f"-{hours} hours",),
@@ -1518,21 +1535,14 @@ class CatalogDB:
         "budget_remaining_seconds",
     })
 
-    def update_run(self, run_id: str, **kwargs: object) -> None:
-        """Update fields of a run by keyword arguments."""
-        if not kwargs:
-            return
-        bad_keys = set(kwargs) - self._RUN_ALLOWED_COLUMNS
-        if bad_keys:
-            msg = f"Disallowed column(s) for run update: {sorted(bad_keys)}"
-            raise ValueError(msg)
-        set_clause = ", ".join(f"{k} = ?" for k in kwargs)
-        values = list(kwargs.values())
-        values.append(run_id)
-        self.conn.execute(
-            f"UPDATE pipeline_runs SET {set_clause} "  # noqa: S608 — column names validated above
-            "WHERE run_id = ?",
-            values,
+    def update_run(self, run_id: str, **kwargs: object) -> int:
+        """Update fields of a run by keyword arguments.
+
+        Returns number of rows affected (0 if not found or no kwargs).
+        """
+        return self._execute_kwargs_update(
+            "pipeline_runs", "run_id", run_id,
+            self._RUN_ALLOWED_COLUMNS, "run", kwargs,
         )
 
     def get_current_run(self) -> dict[str, object] | None:

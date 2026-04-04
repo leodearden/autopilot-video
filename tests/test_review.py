@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -908,6 +909,7 @@ class TestGetNarrativeEditHTMX:
         assert 'name="title"' in response.text
         assert 'name="description"' in response.text
         assert 'name="proposed_duration_seconds"' in response.text
+        assert 'id="narrative-n-1"' in response.text  # outerHTML swap target
 
     def test_get_htmx_edit_prepopulates_values(
         self, seeded_client: TestClient,
@@ -919,6 +921,7 @@ class TestGetNarrativeEditHTMX:
         )
         assert "Morning Walk" in response.text
         assert "A walk in the park" in response.text
+        assert "120" in response.text  # proposed_duration_seconds pre-populated
 
     def test_get_htmx_edit_has_save_button(
         self, seeded_client: TestClient,
@@ -953,9 +956,23 @@ class TestGetNarrativeEditHTMX:
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
         assert "Morning Walk" in response.text
-        # Read-only card has Approve button, not input fields
+        # Read-only card has Approve button with HTMX wiring, not input fields
         assert "Approve" in response.text
+        assert "hx-post" in response.text
         assert 'name="title"' not in response.text
+
+    def test_get_htmx_edit_param_non_one_returns_card(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """GET /api/narratives/n-1?edit=0 with HX-Request returns read-only card, not form."""
+        response = seeded_client.get(
+            "/api/narratives/n-1?edit=0",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "Morning Walk" in response.text
+        assert 'name="title"' not in response.text  # no form inputs → read-only card
 
     def test_get_no_htmx_returns_json(self, seeded_client: TestClient) -> None:
         """GET /api/narratives/n-1 without HX-Request returns JSON."""
@@ -975,6 +992,13 @@ class TestGetNarrativeEditHTMX:
         )
         assert response.status_code == 200
         assert "edit=1" in response.text
+
+    def test_get_json_not_found_returns_404(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """GET /api/narratives/nonexistent (no HX-Request) returns 404."""
+        response = seeded_client.get("/api/narratives/nonexistent")
+        assert response.status_code == 404
 
     def test_get_htmx_edit_not_found_returns_404(
         self, seeded_client: TestClient,
@@ -1083,27 +1107,35 @@ class TestEditFormZeroDuration:
         assert response.status_code == 200
         # The input value should be empty, not the string 'None'
         assert 'value="None"' not in response.text
-        # Duration input should have an empty value attribute
-        assert 'name="proposed_duration_seconds"' in response.text
+        # Extract the specific duration input and verify its value is empty
+        match = re.search(
+            r'<input[^>]*name="proposed_duration_seconds"[^>]*>',
+            response.text,
+        )
+        assert match is not None, "proposed_duration_seconds input not found"
+        assert 'value=""' in match.group(0)
 
     def test_edit_form_js_does_not_use_falsy_or_null(
         self, zero_duration_client: TestClient,
     ) -> None:
-        """hx-vals JS uses explicit NaN/empty check, not '|| null' for duration."""
+        """Edit form template must not use the dangerous ``v || null`` JS pattern."""
         response = zero_duration_client.get(
             "/api/narratives/n-zero?edit=1",
             headers={"HX-Request": "true"},
         )
         assert response.status_code == 200
-        # The hx-vals should NOT use the falsy '|| null' pattern for duration
         assert "|| null" not in response.text
-        # Should use explicit NaN check instead
-        assert "isNaN" in response.text
 
     def test_update_zero_duration_roundtrip(
         self, zero_duration_client: TestClient,
     ) -> None:
-        """Zero duration survives a save→render roundtrip via JSON API + edit form."""
+        """Zero duration survives a save→render roundtrip via JSON API + edit form.
+
+        Covers server-side persistence and edit-form rendering only. The
+        TestClient sends JSON directly and does not execute the browser-side
+        hx-vals JS; see test_edit_form_js_does_not_use_falsy_or_null for
+        template JS regression coverage.
+        """
         # PUT zero duration via JSON API
         put_resp = zero_duration_client.put(
             "/api/narratives/n-zero",
@@ -1119,3 +1151,67 @@ class TestEditFormZeroDuration:
         )
         assert get_resp.status_code == 200
         assert 'value="0"' in get_resp.text or 'value="0.0"' in get_resp.text
+
+
+# ---------------------------------------------------------------------------
+# Null-title/description fixtures — task-223
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def null_title_desc_app(tmp_path: Path) -> FastAPI:
+    """App with narratives seeded with title=None and description=None."""
+    db_path = str(tmp_path / "catalog.db")
+    with CatalogDB(db_path) as _db:
+        _db.init_default_gates()
+        _seed_narrative(
+            _db, "n-null-title",
+            title=None,
+            description="Has Desc",
+        )
+        _seed_narrative(
+            _db, "n-null-desc",
+            title="Has Title",
+            description=None,
+        )
+    return create_app(db_path)
+
+
+@pytest.fixture
+def null_title_desc_client(null_title_desc_app: FastAPI) -> TestClient:
+    """TestClient for the null-title/description app."""
+    return TestClient(null_title_desc_app)
+
+
+# ---------------------------------------------------------------------------
+# TestEditFormNullTitleDescription — task-223 step-1
+# ---------------------------------------------------------------------------
+
+class TestEditFormNullTitleDescription:
+    """Tests for edit form rendering of None title and description values."""
+
+    def test_edit_form_renders_empty_for_none_title(
+        self, null_title_desc_client: TestClient,
+    ) -> None:
+        """Edit form for narrative with title=None shows value="" not value="None"."""
+        response = null_title_desc_client.get(
+            "/api/narratives/n-null-title?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        # Title input should render with an empty value, not the string 'None'
+        assert 'value="None"' not in response.text
+        assert 'value=""' in response.text
+        assert 'name="title"' in response.text
+
+    def test_edit_form_renders_empty_for_none_description(
+        self, null_title_desc_client: TestClient,
+    ) -> None:
+        """Edit form for narrative with description=None shows empty textarea."""
+        response = null_title_desc_client.get(
+            "/api/narratives/n-null-desc?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        # Textarea content should be empty, not the string 'None'
+        assert ">None</textarea>" not in response.text
+        assert 'name="description"' in response.text

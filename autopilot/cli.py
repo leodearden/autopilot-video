@@ -97,6 +97,9 @@ def _setup_context(
 def _handle_dry_run(dry_run: bool, stages: str) -> bool:
     """Check dry-run flag and echo the planned stages if active.
 
+    Note:
+        Intended for use within a Click command callback.
+
     Returns:
         True if dry-run is active (caller should return immediately),
         False otherwise.

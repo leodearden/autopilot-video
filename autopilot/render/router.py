@@ -134,14 +134,27 @@ def route_and_render(
         work_dir = Path(work_dir_str)
 
         for i, clip in enumerate(clips):
-            clip_id = clip.get("clip_id", f"clip_{i}")
+            # Guard-first: validate clip_id presence before any assignment.
+            # clip_id is str|None — None means the clip has no ID in the EDL.
+            clip_id: str | None = clip.get("clip_id")
 
-            # Resolve source_path from DB when not already present in clip
-            if "source_path" not in clip:
-                if "clip_id" not in clip:
+            if clip_id is None:
+                if "source_path" not in clip:
                     raise RoutingError(
                         f"Clip at index {i} has no clip_id and no source_path"
                     )
+                # Clip with source_path but no clip_id is allowed — skip
+                # crop/transcript lookups; log for visibility.
+                logger.warning(
+                    "Clip at index %d has no clip_id; crop and transcript "
+                    "lookups will be skipped",
+                    i,
+                )
+
+            # Resolve source_path from DB when not already present in clip
+            if "source_path" not in clip:
+                # clip_id is guaranteed non-None here (guard above raises otherwise)
+                assert clip_id is not None
                 media = db.get_media(clip_id)
                 if media is None:
                     raise RoutingError(
@@ -156,40 +169,50 @@ def route_and_render(
 
             resolved_clips.append(clip)
             classification = _classify_clip(clip, crop_modes)
+
+            if classification == "slow" and clip_id is None:
+                raise RoutingError(
+                    f"Clip at index {i} has overlay requiring "
+                    f"slow path but no clip_id for crop lookup"
+                )
+
             segment_path = work_dir / f"segment_{i:04d}.mp4"
 
-            # Load crop_path from DB when applicable
+            # Load crop_path from DB when applicable (only when clip_id exists)
             crop_path = None
-            media_id = clip_id  # clip_id in EDL == media_id in DB
-            cm_entry = crop_meta.get(clip_id, {})
             target_aspect = getattr(config, "primary_aspect", "16:9")
 
-            if classification == "slow":
-                # Slow-path clips require crop data
-                subject_track_id = cm_entry.get("subject_track_id", 0)
-                crop_record = db.get_crop_path(
-                    media_id,
-                    target_aspect,
-                    subject_track_id,
-                )
-                if crop_record is None:
-                    raise RoutingError(f"No crop data for slow-path clip {clip_id}")
-                path_data = crop_record.get("path_data")
-                if not path_data:
-                    raise RoutingError(f"crop_record has empty/null path_data for clip {clip_id}")
-                crop_path = np.array(path_data, dtype=np.float64)
-            elif crop_modes.get(clip_id):
-                # Fast-path clips may have optional static crop
-                subject_track_id = cm_entry.get("subject_track_id", 0)
-                crop_record = db.get_crop_path(
-                    media_id,
-                    target_aspect,
-                    subject_track_id,
-                )
-                if crop_record is not None:
+            if clip_id is not None:
+                media_id = clip_id  # clip_id in EDL == media_id in DB
+                cm_entry = crop_meta.get(clip_id, {})
+
+                if classification == "slow":
+                    # Slow-path clips require crop data
+                    subject_track_id = cm_entry.get("subject_track_id", 0)
+                    crop_record = db.get_crop_path(
+                        media_id,
+                        target_aspect,
+                        subject_track_id,
+                    )
+                    if crop_record is None:
+                        raise RoutingError(f"No crop data for slow-path clip {clip_id}")
                     path_data = crop_record.get("path_data")
-                    if path_data is not None:
-                        crop_path = np.array(path_data, dtype=np.float64)
+                    if not path_data:
+                        msg = f"crop_record has empty/null path_data for clip {clip_id}"
+                        raise RoutingError(msg)
+                    crop_path = np.array(path_data, dtype=np.float64)
+                elif crop_modes.get(clip_id):
+                    # Fast-path clips may have optional static crop
+                    subject_track_id = cm_entry.get("subject_track_id", 0)
+                    crop_record = db.get_crop_path(
+                        media_id,
+                        target_aspect,
+                        subject_track_id,
+                    )
+                    if crop_record is not None:
+                        path_data = crop_record.get("path_data")
+                        if path_data is not None:
+                            crop_path = np.array(path_data, dtype=np.float64)
 
             try:
                 if classification == "fast":
@@ -240,8 +263,8 @@ def route_and_render(
         all_subtitle_segs: list[dict] = []
         cumulative_offset = 0.0
         for clip in resolved_clips:
-            media_id = clip.get("clip_id", "")
-            transcript = db.get_transcript(media_id)
+            media_id: str | None = clip.get("clip_id")
+            transcript = db.get_transcript(media_id) if media_id is not None else None
             if transcript and transcript.get("segments_json"):
                 try:
                     clip_segs = json.loads(str(transcript["segments_json"]))

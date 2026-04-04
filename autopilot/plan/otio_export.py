@@ -63,6 +63,7 @@ _DEFAULT_FPS = 30.0
 # ['approximation'] to detect this semantic gap programmatically.
 # TODO: Implement proper fade-to/from-black via otio.schema.Effect with an
 # opacity keyframe ramp, replacing the SMPTE_Dissolve approximation.
+# Types not in this map emit a WARNING and fall back to SMPTE_Dissolve (see _insert_transitions).
 _TRANSITION_TYPE_MAP = {
     "crossfade": "SMPTE_Dissolve",
     "dissolve": "SMPTE_Dissolve",
@@ -160,7 +161,7 @@ def _insert_transitions(
         half_dur = otio.opentime.RationalTime.from_seconds(duration_secs / 2.0, fps)
 
         transition = otio.schema.Transition(
-            name=trans_type,
+            name=trans_type or "",
             transition_type=otio_type,
             in_offset=half_dur,
             out_offset=half_dur,
