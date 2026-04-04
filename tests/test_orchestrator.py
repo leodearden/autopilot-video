@@ -54,6 +54,18 @@ EXPECTED_DEPS = {
 }
 
 
+@pytest.fixture()
+def mock_db():
+    """Return a fresh MagicMock with list_narratives.return_value = [].
+
+    Opt-in fixture for narrate/gate tests that need a mock DB with the
+    'no existing narratives' precondition pre-set.
+    """
+    db = MagicMock()
+    db.list_narratives.return_value = []
+    return db
+
+
 class TestMockDbFixture:
     """Validates the mock_db fixture contract."""
 
