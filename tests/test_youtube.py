@@ -215,7 +215,7 @@ class TestBuildUploadMetadata:
                     ),
                 ),
             ],
-            activity_cluster_ids_json=json.dumps(["c1", "c2"]),
+            activity_cluster_ids=["c1", "c2"],
         )
         catalog_db.insert_activity_cluster("c1", label="hiking")
         catalog_db.insert_activity_cluster("c2", label="camping")
