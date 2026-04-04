@@ -3549,11 +3549,11 @@
         "description": "In tests/test_youtube.py, add a test (or parametrize `test_tags_empty_when_detections_use_old_class_name_key`) to cover a detection dict that has no `class` key at all — e.g. `[{'confidence': 0.9}]`. Assert the result produces no detection tags. This makes explicit that `d.get('class')` silently ignores not just wrong-named keys but also absent keys, preventing a future refactor from inadvertently treating these cases differently.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:45:38.880Z",
+        "updatedAt": "2026-04-04T09:08:11.694Z",
         "metadata": {
           "modules": [
             "tests/test_youtube.py"
@@ -3840,9 +3840,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T09:08:00.549Z",
+      "lastModified": "2026-04-04T09:08:11.713Z",
       "taskCount": 196,
-      "completedCount": 142,
+      "completedCount": 143,
       "tags": [
         "master"
       ]
