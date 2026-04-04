@@ -559,59 +559,6 @@ class TestTransitionMapping:
         transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
         assert len(transitions) == 0
 
-    def test_unknown_transition_type_falls_back_and_warns(self, tmp_path, caplog):
-        """Unrecognized transition type (e.g. 'wipe') falls back to SMPTE_Dissolve and warns."""
-        import logging
-
-        from autopilot.plan.otio_export import export_otio
-
-        edl = _minimal_edl(
-            clips=[
-                {
-                    "clip_id": "v1",
-                    "in_timecode": "00:00:00.000",
-                    "out_timecode": "00:00:10.000",
-                    "track": 1,
-                },
-                {
-                    "clip_id": "v2",
-                    "in_timecode": "00:00:10.000",
-                    "out_timecode": "00:00:20.000",
-                    "track": 1,
-                },
-            ],
-            transitions=[
-                {
-                    "type": "wipe",
-                    "duration": 1.0,
-                    "position": 0,
-                },
-            ],
-        )
-        output = tmp_path / "test.otio"
-        db = _mock_db_for_clips()
-
-        with caplog.at_level(logging.WARNING, logger="autopilot.plan.otio_export"):
-            export_otio(edl, output, db)
-
-        tl = otio.adapters.read_from_file(str(output))
-        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
-
-        # Use structural helper to verify Clip/Transition/Clip and get items
-        track_items = self._assert_clip_transition_clip(video_tracks[0])
-
-        # Derive transitions from the single iteration
-        transitions = [item for item in track_items if isinstance(item, otio.schema.Transition)]
-        assert len(transitions) == 1
-        assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
-        assert transitions[0].name == "wipe"
-
-        # Verify WARNING log was emitted for unrecognized type
-        warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-        assert any("wipe" in msg for msg in warning_messages), (
-            f"Expected a WARNING containing 'wipe', got: {warning_messages}"
-        )
-
     def test_unknown_transition_type_falls_back_to_smpte_dissolve(self, tmp_path):
         """Unrecognized transition type 'wipe' falls back to SMPTE_Dissolve structure."""
         from autopilot.plan.otio_export import export_otio
