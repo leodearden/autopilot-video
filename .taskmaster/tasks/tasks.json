@@ -4401,10 +4401,11 @@
         "description": "In tests/test_web_app.py lines 357-371, replace the single test method containing four sequential pytest.raises blocks with a parametrized test so each boundary case is independently reported. Use:\n  @pytest.mark.parametrize('source,start,label', [\n      ('{ ok }', 6, 'at-len'),\n      ('{ ok }', 11, 'beyond-len'),\n      ('{ ok }', -1, 'negative'),\n      ('', 0, 'empty'),\n  ])\n  def test_raises_on_out_of_range_start(self, source, start, label) -> None:\n      with pytest.raises(AssertionError, match='out of range'):\n          _brace_match_from(source, start, label)\n\nmemory_hints: search for \"pytest parametrize test_raises_on_out_of_range_start\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T14:06:51.501Z"
       },
       {
         "id": "232",
@@ -4687,7 +4688,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:06:51.244Z",
+      "lastModified": "2026-04-04T14:06:51.502Z",
       "taskCount": 255,
       "completedCount": 173,
       "tags": [
