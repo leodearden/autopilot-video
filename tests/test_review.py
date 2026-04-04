@@ -896,3 +896,26 @@ class TestGetNarrativeEditHTMX:
         )
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
+
+    def test_get_htmx_edit_contains_input_fields(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """HTMX edit response contains input fields for title, description, duration."""
+        response = seeded_client.get(
+            "/api/narratives/n-1?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert 'name="title"' in response.text
+        assert 'name="description"' in response.text
+        assert 'name="proposed_duration_seconds"' in response.text
+
+    def test_get_htmx_edit_prepopulates_values(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """HTMX edit response prepopulates fields with current narrative values."""
+        response = seeded_client.get(
+            "/api/narratives/n-1?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert "Morning Walk" in response.text
+        assert "A walk in the park" in response.text
