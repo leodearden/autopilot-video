@@ -154,6 +154,64 @@ def _make_edl(clips: list[dict] | None = None, **kwargs: object) -> dict:
     return edl
 
 
+_UNSET = object()
+
+
+def _make_db(
+    edl: dict | None = None,
+    media: dict | None | object = _UNSET,
+) -> MagicMock:
+    """Create a MagicMock database with standard return values pre-configured.
+
+    Parameters
+    ----------
+    edl:
+        When not None, ``get_edit_plan`` returns ``{"edl_json": json.dumps(edl)}``.
+    media:
+        When provided (even as ``None``), ``get_media.return_value`` is set to the
+        given value.  When omitted (sentinel default), ``get_media`` is left as an
+        unconfigured MagicMock attribute.
+    """
+    db = MagicMock()
+    if edl is not None:
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+    db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+    db.get_transcript.return_value = None
+    if media is not _UNSET:
+        db.get_media.return_value = media
+    return db
+
+
+class TestMakeDbHelper:
+    """Meta-tests for the _make_db() test helper itself."""
+
+    def test_returns_mock_with_narrative_and_transcript(self) -> None:
+        db = _make_db()
+        assert db.get_narrative.return_value == {"narrative_id": "n1", "title": "Test"}
+        assert db.get_transcript.return_value is None
+
+    def test_edl_sets_edit_plan(self) -> None:
+        edl = _make_edl()
+        db = _make_db(edl=edl)
+        plan = db.get_edit_plan.return_value
+        assert "edl_json" in plan
+        assert json.loads(plan["edl_json"]) == edl
+
+    def test_media_sets_get_media(self) -> None:
+        media = {"file_path": "/fake/source.mp4"}
+        db = _make_db(media=media)
+        assert db.get_media.return_value == media
+
+    def test_media_none_sets_get_media_to_none(self) -> None:
+        db = _make_db(media=None)
+        assert db.get_media.return_value is None
+
+    def test_no_media_leaves_get_media_unconfigured(self) -> None:
+        db = _make_db()
+        # get_media should be an unconfigured MagicMock (return_value is a MagicMock)
+        assert isinstance(db.get_media.return_value, MagicMock)
+
+
 # ---------------------------------------------------------------------------
 # EDL loading
 # ---------------------------------------------------------------------------
@@ -938,11 +996,7 @@ class TestSourcePathResolution:
             }
         ]
         edl = _make_edl(clips=clips)
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
-        db.get_media.return_value = {"file_path": "/resolved/clip.mp4"}
+        db = _make_db(edl=edl, media={"file_path": "/resolved/clip.mp4"})
         config = _make_config()
 
         with (
@@ -967,11 +1021,7 @@ class TestSourcePathResolution:
             }
         ]
         edl = _make_edl(clips=clips)
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
-        db.get_media.return_value = {"file_path": "/resolved/clip.mp4"}
+        db = _make_db(edl=edl, media={"file_path": "/resolved/clip.mp4"})
         config = _make_config()
 
         with (
@@ -997,10 +1047,7 @@ class TestSourcePathResolution:
             }
         ]
         edl = _make_edl(clips=clips)
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_media.return_value = None
+        db = _make_db(edl=edl, media=None)
         config = _make_config()
 
         with (
@@ -1030,11 +1077,7 @@ class TestSourcePathResolution:
                 {"clip_id": "clip_1", "mode": "auto_subject", "subject_track_id": 0}
             ],
         )
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
-        db.get_media.return_value = {"file_path": "/resolved/slow_clip.mp4"}
+        db = _make_db(edl=edl, media={"file_path": "/resolved/slow_clip.mp4"})
         db.get_crop_path.return_value = {"path_data": crop_data.tolist()}
         config = _make_config()
 
@@ -1063,11 +1106,7 @@ class TestSourcePathResolution:
             }
         ]
         edl = _make_edl(clips=clips)
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
-        db.get_media.return_value = {"file_path": Path("/resolved/clip.mp4")}
+        db = _make_db(edl=edl, media={"file_path": Path("/resolved/clip.mp4")})
         config = _make_config()
 
         with (
@@ -1094,10 +1133,7 @@ class TestSourcePathResolution:
             }
         ]
         edl = _make_edl(clips=clips)
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_media.return_value = {}
+        db = _make_db(edl=edl, media={})
         config = _make_config()
 
         with (
@@ -1127,16 +1163,8 @@ class TestSourcePathResolution:
             },
         ]
         edl = _make_edl(clips=clips)
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
-
-        def _get_media(media_id: str):
-            return {"file_path": f"/resolved/{media_id}.mp4"}
-
-        db.get_media.side_effect = _get_media
+        db = _make_db(edl=edl)
+        db.get_media.side_effect = lambda mid: {"file_path": f"/resolved/{mid}.mp4"}
         config = _make_config()
 
         with (
@@ -1165,11 +1193,7 @@ class TestSourcePathResolution:
             }
         ]
         edl = _make_edl(clips=clips)
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         config = _make_config()
 
         with (
@@ -1195,10 +1219,7 @@ class TestSourcePathResolution:
             }
         ]
         edl = _make_edl(clips=clips)
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         config = _make_config()
 
         with (
@@ -1221,11 +1242,7 @@ class TestSourcePathResolution:
             }
         ]
         edl = _make_edl(clips=clips)
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
-        db.get_media.return_value = {"media_id": "clip_1"}  # no file_path key
+        db = _make_db(edl=edl, media={"media_id": "clip_1"})
         config = _make_config()
 
         with (
@@ -1248,11 +1265,7 @@ class TestSourcePathResolution:
             }
         ]
         edl = _make_edl(clips=clips)
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
-        db.get_media.return_value = {"file_path": "/resolved/clip.mp4"}
+        db = _make_db(edl=edl, media={"file_path": "/resolved/clip.mp4"})
         config = _make_config()
 
         # Capture the deserialized clips to verify they aren't mutated
