@@ -218,15 +218,6 @@ class TestGatesCRUD:
         assert gate is not None
         assert gate["mode"] == "auto"  # unchanged
 
-    def test_update_gate_rejects_mix_of_valid_and_invalid(self, catalog_db):
-        """update_gate() raises ValueError when valid+invalid columns are mixed."""
-        catalog_db.init_default_gates()
-        with pytest.raises(ValueError, match="Disallowed column"):
-            catalog_db.update_gate("ingest", mode="manual", evil_col="bad")
-        # Ensure the valid column was NOT applied
-        gate = catalog_db.get_gate("ingest")
-        assert gate is not None
-        assert gate["mode"] == "auto"
 
 
 # -- Jobs CRUD tests --------------------------------------------------------
@@ -360,15 +351,6 @@ class TestJobsCRUD:
         counts = catalog_db.count_jobs_by_status("ingest", run_id="r1")
         assert counts == {"done": 1, "pending": 1}
 
-    def test_update_job_rejects_mix_of_valid_and_invalid(self, catalog_db):
-        """update_job() raises ValueError when valid+invalid columns are mixed."""
-        catalog_db.insert_job("j31", "ingest", "media_import")
-        with pytest.raises(ValueError, match="Disallowed column"):
-            catalog_db.update_job("j31", status="done", hacked="yes")
-        # Ensure the valid column was NOT applied
-        job = catalog_db.get_job("j31")
-        assert job is not None
-        assert job["status"] == "pending"
 
 
 # -- Events CRUD tests ------------------------------------------------------
@@ -600,15 +582,6 @@ class TestRunsCRUD:
         assert len(runs) == 3
         assert [r["run_id"] for r in runs] == ["r11", "r12", "r10"]
 
-    def test_update_run_rejects_mix_of_valid_and_invalid(self, catalog_db):
-        """update_run() raises ValueError when valid+invalid columns are mixed."""
-        catalog_db.insert_run("r21", started_at="2026-01-01T00:00:00")
-        with pytest.raises(ValueError, match="Disallowed column"):
-            catalog_db.update_run("r21", status="completed", injected="bad")
-        # Ensure the valid column was NOT applied
-        run = catalog_db.get_run("r21")
-        assert run is not None
-        assert run["status"] == "running"
 
 
 # -- Parametrized update-column validation tests ------------------------------
