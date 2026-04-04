@@ -3366,6 +3366,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 172,
+        "title": "Strengthen NARRATE checkpoint test assertions",
+        "description": "In tests/test_orchestrator.py, three assertion gaps to fix: (1) In test_narrate_skips_when_approved_narratives_exist (line 955): add db.list_narratives.assert_called_once_with('approved') and mock_narratives.build_master_storyboard.assert_not_called(). (2) In test_narrate_logs_resume_message (line 970): add db.list_narratives.assert_called_once_with('approved'). (3) In test_narrate_force_repropose_even_with_existing (line 989): add db.list_narratives.assert_not_called() to verify the checkpoint query is bypassed when force=True.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -3378,7 +3389,7 @@
       ],
       "created": "2026-04-04T08:20:12.751Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T08:20:19.084Z"
+      "updated": "2026-04-04T08:20:23.557Z"
     }
   }
 }
