@@ -364,23 +364,7 @@ class TestSSEHandlerFactory:
     def test_make_stage_handler_has_try_catch(self) -> None:
         """makeStageHandler contains try/catch error handling."""
         js_source = _read_app_js()
-        # Extract the makeStageHandler function body
-        func_start = js_source.find("function makeStageHandler")
-        assert func_start != -1, "makeStageHandler not found"
-
-        body_start = js_source.find("{", func_start)
-        brace_depth = 0
-        body_end = body_start
-        for i in range(body_start, len(js_source)):
-            if js_source[i] == "{":
-                brace_depth += 1
-            elif js_source[i] == "}":
-                brace_depth -= 1
-                if brace_depth == 0:
-                    body_end = i + 1
-                    break
-
-        factory_body = js_source[body_start:body_end]
+        factory_body = _extract_function_body(js_source, "makeStageHandler")
         assert "try" in factory_body, "try block not found in makeStageHandler"
         assert "catch" in factory_body, "catch block not found in makeStageHandler"
         assert "console.error" in factory_body, (
@@ -390,22 +374,7 @@ class TestSSEHandlerFactory:
     def test_make_stage_handler_has_console_warn_for_missing_stage(self) -> None:
         """makeStageHandler logs console.warn when data.stage is falsy."""
         js_source = _read_app_js()
-        func_start = js_source.find("function makeStageHandler")
-        assert func_start != -1, "makeStageHandler not found"
-
-        body_start = js_source.find("{", func_start)
-        brace_depth = 0
-        body_end = body_start
-        for i in range(body_start, len(js_source)):
-            if js_source[i] == "{":
-                brace_depth += 1
-            elif js_source[i] == "}":
-                brace_depth -= 1
-                if brace_depth == 0:
-                    body_end = i + 1
-                    break
-
-        factory_body = js_source[body_start:body_end]
+        factory_body = _extract_function_body(js_source, "makeStageHandler")
         assert "console.warn" in factory_body, (
             "console.warn for missing stage field not found in makeStageHandler"
         )
@@ -413,22 +382,7 @@ class TestSSEHandlerFactory:
     def test_make_stage_handler_calls_refresh_stage_card(self) -> None:
         """makeStageHandler calls refreshStageCard when stage is present."""
         js_source = _read_app_js()
-        func_start = js_source.find("function makeStageHandler")
-        assert func_start != -1, "makeStageHandler not found"
-
-        body_start = js_source.find("{", func_start)
-        brace_depth = 0
-        body_end = body_start
-        for i in range(body_start, len(js_source)):
-            if js_source[i] == "{":
-                brace_depth += 1
-            elif js_source[i] == "}":
-                brace_depth -= 1
-                if brace_depth == 0:
-                    body_end = i + 1
-                    break
-
-        factory_body = js_source[body_start:body_end]
+        factory_body = _extract_function_body(js_source, "makeStageHandler")
         assert "refreshStageCard" in factory_body, (
             "refreshStageCard call not found in makeStageHandler"
         )
@@ -436,24 +390,7 @@ class TestSSEHandlerFactory:
     def test_setup_dashboard_sse_uses_factory(self) -> None:
         """setupDashboardSSE uses makeStageHandler for all 3 event types."""
         js_source = _read_app_js()
-
-        # Extract setupDashboardSSE body
-        func_start = js_source.find("function setupDashboardSSE")
-        assert func_start != -1, "setupDashboardSSE not found"
-
-        body_start = js_source.find("{", func_start)
-        brace_depth = 0
-        body_end = body_start
-        for i in range(body_start, len(js_source)):
-            if js_source[i] == "{":
-                brace_depth += 1
-            elif js_source[i] == "}":
-                brace_depth -= 1
-                if brace_depth == 0:
-                    body_end = i + 1
-                    break
-
-        dashboard_body = js_source[body_start:body_end]
+        dashboard_body = _extract_function_body(js_source, "setupDashboardSSE")
 
         for event_type in ("stage_started", "stage_completed", "job_progress"):
             assert f"makeStageHandler('{event_type}'" in dashboard_body, (
@@ -478,23 +415,7 @@ class TestSSEHandlerFactory:
         """
         js_source = _read_app_js()
 
-        # Extract the full makeStageHandler function body
-        func_start = js_source.find("function makeStageHandler")
-        assert func_start != -1, "makeStageHandler not found"
-
-        body_start = js_source.find("{", func_start)
-        brace_depth = 0
-        body_end = body_start
-        for i in range(body_start, len(js_source)):
-            if js_source[i] == "{":
-                brace_depth += 1
-            elif js_source[i] == "}":
-                brace_depth -= 1
-                if brace_depth == 0:
-                    body_end = i + 1
-                    break
-
-        factory_body = js_source[body_start:body_end]
+        factory_body = _extract_function_body(js_source, "makeStageHandler")
 
         # Locate the else branch (the missing-stage path)
         else_pos = factory_body.find("} else {")
