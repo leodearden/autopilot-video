@@ -5030,11 +5030,16 @@
         "description": "In `tests/test_review.py`, replace `assert '|| null' not in response.text` with `assert not re.search(r'\\|\\|\\s*null', response.text)` to cover `||null` without space. Also add `assert '|| undefined' not in response.text` (or fold into the regex) to cover the other common falsy-coercion form for zero. Optionally scope the check to the hx-vals attribute region rather than the full response body to prevent spurious failures from unrelated content.\n\nMemory hints: search \"zero duration coercion bug history\", get_entity \"narrative_edit_form.html\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T23:08:14.573Z"
+        "updatedAt": "2026-04-04T23:12:37.267Z",
+        "metadata": {
+          "modules": [
+            "tests/test_review.py"
+          ]
+        }
       },
       {
         "id": "267",
@@ -6004,7 +6009,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T23:12:16.367Z",
+      "lastModified": "2026-04-04T23:12:37.267Z",
       "taskCount": 344,
       "completedCount": 207,
       "tags": [
