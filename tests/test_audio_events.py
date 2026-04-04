@@ -575,7 +575,7 @@ class TestClassification:
         """events_json is list of top_k dicts per window."""
         self._run_classification(catalog_db, 3.0)
 
-        events = catalog_db.get_audio_events_for_range("vid1", 0.0, 10.0)
+        events = catalog_db.get_audio_events_for_media("vid1")
         assert len(events) == 3
         for ev in events:
             parsed = json.loads(str(ev["events_json"]))
@@ -585,7 +585,7 @@ class TestClassification:
         """top_k=3 -> 3 events per window in DB."""
         self._run_classification(catalog_db, 2.0, top_k=3)
 
-        events = catalog_db.get_audio_events_for_range("vid1", 0.0, 10.0)
+        events = catalog_db.get_audio_events_for_media("vid1")
         for ev in events:
             parsed = json.loads(str(ev["events_json"]))
             assert len(parsed) == 3
