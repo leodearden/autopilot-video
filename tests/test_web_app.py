@@ -374,11 +374,19 @@ class TestSSEHandlerFactory:
                 f"setupDashboardSSE does not use makeStageHandler for '{event_type}'"
             )
 
-    def test_stage_error_uses_factory(self) -> None:
-        """stage_error handler uses makeStageHandler with toast parameters."""
+    def test_stage_error_handled_via_notification(self) -> None:
+        """stage_error is handled server-side via notification events, not client-side."""
         js_source = _read_app_js()
-        assert "makeStageHandler('stage_error'" in js_source, (
-            "stage_error handler does not use makeStageHandler"
+        # The unified notification handler in setupNotificationSSE handles all
+        # user-facing notifications including stage errors.
+        func_start = js_source.find("function setupNotificationSSE")
+        assert func_start != -1
+        func_body = js_source[func_start:]
+        next_func = func_body.find("\nfunction ", 1)
+        if next_func != -1:
+            func_body = func_body[:next_func]
+        assert "addEventListener('notification'" in func_body, (
+            "setupNotificationSSE should handle unified notification events"
         )
 
 
@@ -441,21 +449,18 @@ class TestSSEHandlerFactory:
 class TestSSERunHandlerRobustness:
     """Tests that run_completed and run_failed handlers have try/catch."""
 
-    def test_run_completed_has_try_catch(self) -> None:
-        """run_completed handler wraps its body in try/catch."""
-        js_source = _read_app_js()
-        body = _extract_listener_body(js_source, "run_completed")
-        assert "try" in body, "try block not found in run_completed handler"
-        assert "catch" in body, "catch block not found in run_completed handler"
-        assert "console.error" in body, "console.error not found in run_completed catch block"
+    def test_notification_handler_has_try_catch(self) -> None:
+        """The unified notification handler wraps its body in try/catch.
 
-    def test_run_failed_has_try_catch(self) -> None:
-        """run_failed handler wraps its body in try/catch."""
+        run_completed and run_failed are now handled server-side via notification
+        events. The notification handler in setupNotificationSSE must have
+        error handling to avoid silently dropping events.
+        """
         js_source = _read_app_js()
-        body = _extract_listener_body(js_source, "run_failed")
-        assert "try" in body, "try block not found in run_failed handler"
-        assert "catch" in body, "catch block not found in run_failed handler"
-        assert "console.error" in body, "console.error not found in run_failed catch block"
+        body = _extract_listener_body(js_source, "notification")
+        assert "try" in body, "try block not found in notification handler"
+        assert "catch" in body, "catch block not found in notification handler"
+        assert "console.error" in body, "console.error not found in notification catch block"
 
 
 class TestDashboardSSEEventCoverage:
@@ -478,8 +483,8 @@ class TestDashboardSSEEventCoverage:
     }
 
     # Legacy SSE listeners in app.js that are not in VALID_EVENT_TYPES.
-    # 'notification' handler exists but the server never emits this event type.
-    _LEGACY_SSE_LISTENERS: frozenset[str] = frozenset({"notification"})
+    # Currently empty — 'notification' was promoted to VALID_EVENT_TYPES.
+    _LEGACY_SSE_LISTENERS: frozenset[str] = frozenset()
 
     def test_all_dashboard_event_types_handled(self) -> None:
         """Every VALID_EVENT_TYPE (except job-level and server-only) has a listener in app.js."""
