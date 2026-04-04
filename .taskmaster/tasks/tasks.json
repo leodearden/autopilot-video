@@ -4043,10 +4043,11 @@
         "description": "In autopilot/db.py at the top of `prune_events()` (around line 1467), add: `if hours <= 0: raise ValueError(f'hours must be positive, got {hours}')`. Without this, hours=0 produces '-0 hours' (SQLite no-op) and hours=-5 produces '--5 hours' (invalid modifier → datetime() returns NULL → WHERE clause is always false → zero rows deleted with no error or diagnostic).",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T13:07:25.039Z"
       },
       {
         "id": "210",
@@ -4084,7 +4085,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T13:07:24.915Z",
+      "lastModified": "2026-04-04T13:07:25.039Z",
       "taskCount": 212,
       "completedCount": 151,
       "tags": [
