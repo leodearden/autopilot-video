@@ -2977,7 +2977,17 @@
         "status": "pending",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/plan/otio_export.py",
+            "tests/test_otio_export.py"
+          ],
+          "modules": [
+            "autopilot/plan",
+            "tests"
+          ]
+        }
       },
       {
         "id": 149,
@@ -2988,7 +2998,17 @@
         "status": "pending",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/web/static/app.js",
+            "tests/test_web_app.py"
+          ],
+          "modules": [
+            "autopilot/web",
+            "tests"
+          ]
+        }
       },
       {
         "id": 150,
