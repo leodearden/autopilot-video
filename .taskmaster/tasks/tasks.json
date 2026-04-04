@@ -4879,11 +4879,11 @@
         "description": "Three reviewers independently flagged the same issue: `assert clip_id is not None` on line 156 of autopilot/render/router.py is stripped by Python's `-O` flag, allowing `db.get_media(None)` to be called silently. Replace it with: `if clip_id is None: raise RoutingError(f'Internal error: clip {i} reached DB lookup without clip_id')`. This is the only required change in the file for this group.\n\nmemory_hints:\n- search: \"assert clip_id RoutingError production guard router.py\"\n- entity: \"render_router\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T14:12:48.828Z",
+        "updatedAt": "2026-04-04T23:05:42.606Z",
         "metadata": {
           "modules": [
             "autopilot/render/router.py",
@@ -5908,7 +5908,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T23:05:42.421Z",
+      "lastModified": "2026-04-04T23:05:42.606Z",
       "taskCount": 336,
       "completedCount": 205,
       "tags": [
