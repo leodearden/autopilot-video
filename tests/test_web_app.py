@@ -386,6 +386,10 @@ class TestSSEHandlerFactory:
         assert "refreshStageCard" in factory_body, (
             "refreshStageCard call not found in makeStageHandler"
         )
+        assert "if (refreshCard)" in factory_body, (
+            "conditional guard 'if (refreshCard)' not found in makeStageHandler. "
+            "refreshStageCard must only be called when the refreshCard param is true."
+        )
 
     def test_setup_dashboard_sse_uses_factory(self) -> None:
         """setupDashboardSSE uses makeStageHandler for all 3 event types."""
@@ -402,6 +406,13 @@ class TestSSEHandlerFactory:
         js_source = _read_app_js()
         assert "makeStageHandler('stage_error'" in js_source, (
             "stage_error handler does not use makeStageHandler"
+        )
+        assert (
+            "makeStageHandler('stage_error', 'Error in {stage} stage', 'error', 6000, false)"
+            in js_source
+        ), (
+            "stage_error factory call does not match expected 5-param signature: "
+            "('stage_error', 'Error in {stage} stage', 'error', 6000, false)"
         )
 
 
@@ -443,6 +454,10 @@ class TestSSEHandlerFactory:
             "showToast call not found in makeStageHandler else branch (missing-stage path). "
             "Error-level SSE events with no stage field should still show a fallback toast."
         )
+        assert "'unknown'" in else_body, (
+            "'unknown' fallback string not found in makeStageHandler else branch. "
+            "When stage is missing, '{stage}' must be replaced by 'unknown' in the toast."
+        )
 
 
 class TestSSERunHandlerRobustness:
@@ -455,6 +470,15 @@ class TestSSERunHandlerRobustness:
         assert "try" in body, "try block not found in run_completed handler"
         assert "catch" in body, "catch block not found in run_completed handler"
         assert "console.error" in body, "console.error not found in run_completed catch block"
+        assert "'Pipeline run completed!'" in body, (
+            "toast message 'Pipeline run completed!' not found in run_completed handler"
+        )
+        assert "'success'" in body, (
+            "toast type 'success' not found in run_completed handler"
+        )
+        assert "6000" in body, (
+            "toast duration 6000 not found in run_completed handler"
+        )
 
     def test_run_failed_has_try_catch(self) -> None:
         """run_failed handler wraps its body in try/catch."""
@@ -463,6 +487,15 @@ class TestSSERunHandlerRobustness:
         assert "try" in body, "try block not found in run_failed handler"
         assert "catch" in body, "catch block not found in run_failed handler"
         assert "console.error" in body, "console.error not found in run_failed catch block"
+        assert "'Pipeline run failed'" in body, (
+            "toast message 'Pipeline run failed' not found in run_failed handler"
+        )
+        assert "'error'" in body, (
+            "toast type 'error' not found in run_failed handler"
+        )
+        assert "8000" in body, (
+            "toast duration 8000 not found in run_failed handler"
+        )
 
 
 class TestDashboardSSEEventCoverage:
