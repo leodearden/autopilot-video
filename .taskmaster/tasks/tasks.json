@@ -4569,6 +4569,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 249,
+        "title": "Create generic status_badge macro and migrate inline badge patterns project-wide",
+        "description": "Create a generic status_badge(status, color_map, extra_classes='') macro that accepts a color mapping dict. Migrate all 6+ templates with inline bg-X-900/text-X-300 badge patterns to use it. Files: new or generalized macro, plus pipeline/index.html, pipeline/stages.html, pipeline/jobs.html, media/detail.html, partials/media_row.html, review/scripts.html, review/renders.html, review/uploads.html, review/hub.html.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -4581,7 +4592,7 @@
       ],
       "created": "2026-04-04T13:40:24.627Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T13:41:10.636Z"
+      "updated": "2026-04-04T13:41:12.901Z"
     }
   }
 }
