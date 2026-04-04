@@ -532,6 +532,24 @@ class TestRunsCRUD:
         assert len(runs) == 3
         assert [r["run_id"] for r in runs] == ["r11", "r12", "r10"]
 
+    def test_update_run_rejects_disallowed_columns(self, catalog_db):
+        """update_run() raises ValueError for unknown columns."""
+        catalog_db.insert_run("r20", started_at="2026-01-01T00:00:00")
+        with pytest.raises(ValueError, match="injected"):
+            catalog_db.update_run("r20", injected="bad")
+        with pytest.raises(ValueError, match="evil"):
+            catalog_db.update_run("r20", evil="yes")
+
+    def test_update_run_rejects_mix_of_valid_and_invalid(self, catalog_db):
+        """update_run() raises ValueError when valid+invalid columns are mixed."""
+        catalog_db.insert_run("r21", started_at="2026-01-01T00:00:00")
+        with pytest.raises(ValueError, match="Disallowed column"):
+            catalog_db.update_run("r21", status="completed", injected="bad")
+        # Ensure the valid column was NOT applied
+        run = catalog_db.get_run("r21")
+        assert run is not None
+        assert run["status"] == "running"
+
 
 # -- Cross-table integration tests ------------------------------------------
 
