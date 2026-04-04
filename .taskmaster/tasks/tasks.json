@@ -5871,6 +5871,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 335,
+        "title": "Extract shared db mock setup in TestResolvedClipsList to a helper factory",
+        "description": "In tests/test_render_router.py, the three methods in TestResolvedClipsList (~lines 1603, 1666, 1720) each repeat the same db MagicMock wiring: get_edit_plan, get_narrative, get_transcript, get_media (with the same `lambda mid: {'file_path': f'/resolved/{mid}.mp4'}` lambda), and `config = _make_config()`. Extract a `_make_db(edl, ...)` module-level helper (mirroring `_make_edl` and `_make_config`) that returns a wired MagicMock. This reduces maintenance surface when the router's setup contract changes.\n\nmemory_hints:\n- search: \"TestResolvedClipsList db mock setup helper factory\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5883,7 +5894,7 @@
       ],
       "created": "2026-04-04T23:03:59.794Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T23:03:59.795Z"
+      "updated": "2026-04-04T23:04:04.380Z"
     }
   }
 }
