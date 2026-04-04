@@ -438,6 +438,7 @@ class TestTransitionMapping:
 
         # Verify transition is positioned BETWEEN the two clips
         track_items = list(video_tracks[0])
+        assert len(track_items) == 3
         assert isinstance(track_items[0], otio.schema.Clip)
         assert isinstance(track_items[1], otio.schema.Transition)
         assert isinstance(track_items[2], otio.schema.Clip)
@@ -478,6 +479,7 @@ class TestTransitionMapping:
 
         # Verify transition is positioned between clips
         track_items = list(video_tracks[0])
+        assert len(track_items) == 3
         assert isinstance(track_items[1], otio.schema.Transition)
 
         # Transition has in_offset + out_offset = total duration
@@ -563,6 +565,7 @@ class TestTransitionMapping:
 
         # Verify transition is positioned BETWEEN the two clips
         track_items = list(video_tracks[0])
+        assert len(track_items) == 3
         assert isinstance(track_items[0], otio.schema.Clip)
         assert isinstance(track_items[1], otio.schema.Transition)
         assert isinstance(track_items[2], otio.schema.Clip)
