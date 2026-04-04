@@ -1307,6 +1307,52 @@ class TestEdlStage:
     @patch("autopilot.plan.otio_export")
     @patch("autopilot.plan.validator")
     @patch("autopilot.plan.edl")
+    def test_edl_asserts_generate_persisted(
+        self, mock_edl, mock_validator, mock_otio, minimal_config
+    ):
+        """When generate_edl returns but doesn't persist, assertion guard fires."""
+        from autopilot.orchestrator import _run_edl
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_narrative_script.return_value = {"scenes": []}
+        # checkpoint returns None (process this narrative),
+        # assertion guard also returns None (generate_edl didn't persist)
+        db.get_edit_plan.side_effect = [None, None]
+        mock_edl.generate_edl.return_value = {"timeline": []}
+        mock_otio.export_otio.return_value = Path("/out/timeline.otio")
+
+        # Single narrative fails → RuntimeError("All narratives failed")
+        with pytest.raises(RuntimeError, match="All narratives failed"):
+            _run_edl(config=minimal_config, db=db)
+
+        # upsert_edit_plan should NOT have been called (assertion fired before it)
+        db.upsert_edit_plan.assert_not_called()
+
+    @patch("autopilot.plan.otio_export")
+    @patch("autopilot.plan.validator")
+    @patch("autopilot.plan.edl")
+    def test_edl_contract_guard_allows_persisted(
+        self, mock_edl, mock_validator, mock_otio, minimal_config
+    ):
+        """When generate_edl persists edl_json, assertion guard passes and upsert proceeds."""
+        from autopilot.orchestrator import _run_edl
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_narrative_script.return_value = {"scenes": []}
+        # checkpoint returns None (process), assertion guard returns truthy dict
+        db.get_edit_plan.side_effect = [None, {"edl_json": "{}"}]
+        mock_edl.generate_edl.return_value = {"timeline": []}
+        mock_otio.export_otio.return_value = Path("/out/timeline.otio")
+
+        _run_edl(config=minimal_config, db=db)
+
+        db.upsert_edit_plan.assert_called_once()
+
+    @patch("autopilot.plan.otio_export")
+    @patch("autopilot.plan.validator")
+    @patch("autopilot.plan.edl")
     def test_edl_upsert_only_passes_otio_path(
         self, mock_edl, mock_validator, mock_otio, minimal_config
     ):
