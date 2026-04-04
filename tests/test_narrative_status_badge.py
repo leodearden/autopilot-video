@@ -51,6 +51,13 @@ class TestStatusBadgeMacro:
         assert "bg-blue-900" in html
         assert "text-blue-300" in html
 
+    def test_planned_indigo(self) -> None:
+        html = _render_badge("planned")
+        assert "bg-indigo-900" in html
+        assert "text-indigo-300" in html
+        assert "bg-purple-900" not in html
+        assert "text-purple-300" not in html
+
     def test_unknown_status_purple(self) -> None:
         html = _render_badge("draft")
         assert "bg-purple-900" in html
