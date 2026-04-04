@@ -229,9 +229,16 @@ class TestBuildUploadMetadata:
         assert "backpack" in tags
         assert "tent" in tags
 
-    def _setup_media_with_detections(self, catalog_db, detections_json):
+    def _setup_media_with_detections(
+        self, catalog_db, detections_json, *, activity_cluster_ids_json=None
+    ):
         """Set up a narrative + media + detections for metadata tests."""
-        catalog_db.insert_narrative("n1", title="Title", description="desc")
+        catalog_db.insert_narrative(
+            "n1",
+            title="Title",
+            description="desc",
+            activity_cluster_ids_json=activity_cluster_ids_json,
+        )
         catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
         catalog_db.batch_insert_detections(detections_json)
 
