@@ -132,6 +132,10 @@ function setupNotificationSSE(source) {
     source.addEventListener('notification', function(event) {
         try {
             var data = JSON.parse(event.data);
+            if (!data || typeof data !== 'object') {
+                console.warn('SSE notification: unexpected payload', event.data);
+                return;
+            }
             var msg = (data && typeof data.message === 'string') ? data.message : '(no message)';
             unreadCount++;
             updateNotificationBadge(unreadCount);
