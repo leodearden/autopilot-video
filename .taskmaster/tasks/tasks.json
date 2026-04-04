@@ -3138,11 +3138,11 @@
         "description": "In tests/test_otio_export.py lines 386-414 (TestTransitionMapKeys), remove the three redundant individual tests: test_map_contains_fade_in, test_map_contains_fade_out, and test_map_does_not_contain_wipe. These are strict subsets of test_map_keys_match_prompt_schema, which already asserts exact set equality against {crossfade, dissolve, fade_in, fade_out}. Keeping only the exact-equality test removes maintenance surface without losing any coverage.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:10:20.549Z"
+        "updatedAt": "2026-04-04T08:13:16.040Z"
       },
       {
         "id": "156",
@@ -3211,9 +3211,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:13:11.173Z",
+      "lastModified": "2026-04-04T08:13:16.040Z",
       "taskCount": 159,
-      "completedCount": 125,
+      "completedCount": 126,
       "tags": [
         "master"
       ]
