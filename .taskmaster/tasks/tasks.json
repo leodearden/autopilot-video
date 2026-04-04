@@ -5965,6 +5965,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 342,
+        "title": "Extract clusters-by-ids spy into shared conftest fixture",
+        "description": "The batch-spy pattern for get_activity_clusters_by_ids is duplicated between tests/test_youtube.py (line ~388) and tests/test_cluster_review.py (_install_batch_spy, line ~918). Both capture call args and delegate to the original method.\n\nExtract into a shared helper in tests/conftest.py (e.g. install_clusters_by_ids_spy(monkeypatch)) and update both test files to use it. This continues the conftest consolidation work from task 109.\n\nmemory_hints: search \"conftest fixture consolidation\" and get_entity \"Task 109\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5977,7 +5988,7 @@
       ],
       "created": "2026-04-04T23:10:23.776Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T23:10:23.779Z"
+      "updated": "2026-04-04T23:10:28.737Z"
     }
   }
 }
