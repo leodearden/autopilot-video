@@ -234,6 +234,27 @@ class TestBuildUploadMetadata:
         assert "backpack" in tags
         assert "tent" in tags
 
+    def test_tags_missing_activity_clusters_gracefully_degrades(
+        self, catalog_db, youtube_config
+    ):
+        """Missing cluster IDs are silently skipped; detection tags still appear."""
+        self._setup_media_with_detections(
+            catalog_db,
+            [
+                (
+                    "m1",
+                    0,
+                    json.dumps([{"class": "person", "confidence": 0.9}]),
+                ),
+            ],
+            activity_cluster_ids=["nonexistent_c1"],
+        )
+
+        meta = _build_upload_metadata("n1", catalog_db, youtube_config)
+        tags = meta["snippet"]["tags"]
+        assert "person" in tags
+        assert len(tags) == 1
+
     @pytest.mark.parametrize(
         "detections_json",
         [
