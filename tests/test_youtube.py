@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from autopilot.config import YouTubeConfig
 from autopilot.upload.youtube import _build_upload_metadata
 
 # ---------------------------------------------------------------------------
@@ -85,7 +86,7 @@ def _setup_google_mocks():
 @pytest.fixture
 def youtube_config():
     """Default YouTube upload config used by most metadata tests."""
-    return MagicMock(privacy_status="unlisted", default_category="22")
+    return YouTubeConfig(privacy_status="unlisted", default_category="22")
 
 
 class TestLoadCredentials:
