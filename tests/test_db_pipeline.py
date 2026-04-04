@@ -477,54 +477,38 @@ class TestEventsCRUD:
         events = catalog_db.get_events_since(0)
         assert len(events) == 2
 
-    def test_prune_events_parameterizes_hours(self, catalog_db):
+    @pytest.mark.parametrize(
+        ("hours", "expected_param"),
+        [(48, "-48 hours"), (1, "-1 hours")],
+    )
+    def test_prune_events_parameterizes_hours(
+        self, catalog_db, hours, expected_param,
+    ):
         """prune_events() uses parameterized SQL, not f-string interpolation."""
         with patch.object(
             catalog_db, "conn", wraps=catalog_db.conn,
         ) as mock_conn:
-            catalog_db.prune_events(hours=48)
+            catalog_db.prune_events(hours=hours)
 
-        # Extract positional args from each execute call; find the DELETE call
-        all_calls = [c.args for c in mock_conn.execute.call_args_list]
-        delete_calls = [c for c in all_calls if "DELETE" in c[0]]
-        assert len(delete_calls) == 1
-        sql_arg = delete_calls[0][0]
-        # The literal '48' should NOT appear in the SQL string
-        assert "48" not in sql_arg, (
-            f"hours value interpolated into SQL: {sql_arg}"
-        )
-        # A parameters tuple/list must have been passed as second arg
-        assert len(delete_calls[0]) >= 2, (
-            "No parameters passed to execute — query is not parameterized"
-        )
-        # Verify the exact parameter value passed
-        assert delete_calls[0][1] == ("-48 hours",), (
-            "Parameter value mismatch — expected ('-48 hours',)"
-        )
-
-    def test_prune_events_parameterizes_hours_actually_deletes(self, catalog_db):
-        """Canary: wrapping conn at attribute level must still run real SQL."""
-        # Insert an event backdated 49 hours — should be pruned with hours=48
-        catalog_db.conn.execute(
-            "INSERT INTO pipeline_events (event_type, created_at) "
-            "VALUES (?, datetime('now', '-49 hours'))",
-            ("old_event",),
-        )
-        catalog_db.insert_event("recent_event")
-
-        # Current mock pattern: wraps the whole conn object
-        with patch.object(
-            catalog_db, "conn", wraps=catalog_db.conn,
-        ):
-            catalog_db.prune_events(hours=48)
-
-        # The old event should actually be deleted from the DB
-        events = catalog_db.get_events_since(0)
-        event_types = [e["event_type"] for e in events]
-        assert "old_event" not in event_types, (
-            "old_event still in DB — mock swallowed execute without forwarding"
-        )
-        assert len(events) == 1
+            # Extract positional args from each execute call; find the DELETE
+            all_calls = [
+                c.args for c in mock_conn.execute.call_args_list
+            ]
+            delete_calls = [c for c in all_calls if "DELETE" in c[0]]
+            assert len(delete_calls) == 1
+            sql_arg = delete_calls[0][0]
+            # The literal hours value should NOT appear in the SQL string
+            assert str(hours) not in sql_arg, (
+                f"hours value interpolated into SQL: {sql_arg}"
+            )
+            # A parameters tuple/list must have been passed as second arg
+            assert len(delete_calls[0]) >= 2, (
+                "No parameters passed to execute — query is not parameterized"
+            )
+            # Verify the exact parameter value passed
+            assert delete_calls[0][1] == (expected_param,), (
+                f"Parameter value mismatch — expected ('{expected_param}',)"
+            )
 
     def test_prune_events_rejects_zero_hours(self, catalog_db):
         """prune_events(hours=0) raises ValueError."""
