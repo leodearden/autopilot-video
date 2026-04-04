@@ -3470,6 +3470,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 176,
+        "title": "Add len assertion before all structural ordering checks in OTIO tests",
+        "description": "In tests/test_otio_export.py, at every location that does track_items[0]/[1]/[2] isinstance checks, add `assert len(track_items) == 3` immediately before the index-based checks. This makes the Clip/Transition/Clip invariant explicit and produces a clear AssertionError (not an opaque IndexError) when insertion logic produces the wrong number of items. Note: if the structural helper from the dedup task is implemented first, the len check should be inside the helper.\n\nmemory_hints:\n- search: \"OTIO test structural helper _assert_clip_transition_clip\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -3482,7 +3493,7 @@
       ],
       "created": "2026-04-04T08:23:42.903Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T08:23:49.253Z"
+      "updated": "2026-04-04T08:23:54.201Z"
     }
   }
 }
