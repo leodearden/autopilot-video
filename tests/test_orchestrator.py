@@ -1231,10 +1231,9 @@ class TestEdlStage:
         mock_otio.export_otio.assert_called_once()
 
     @patch("autopilot.plan.otio_export")
-    @patch("autopilot.plan.validator")
     @patch("autopilot.plan.edl")
     def test_edl_stores_validation_result(
-        self, mock_edl, mock_validator, mock_otio, minimal_config
+        self, mock_edl, mock_otio, minimal_config
     ):
         """_run_edl upsert only passes otio_path; generate_edl() handles edl/validation."""
         from autopilot.orchestrator import _run_edl
@@ -1242,10 +1241,8 @@ class TestEdlStage:
         db = MagicMock()
         db.list_narratives.return_value = [{"narrative_id": "n1"}]
         db.get_narrative_script.return_value = {"scenes": []}
-        db.get_edit_plan.return_value = None
+        db.get_edit_plan.side_effect = [None, {"edl_json": "{}"}]
         mock_edl.generate_edl.return_value = {"timeline": []}
-        val_result = MagicMock(passed=True)
-        mock_validator.validate_edl.return_value = val_result
         mock_otio.export_otio.return_value = Path("/out/timeline.otio")
 
         _run_edl(config=minimal_config, db=db)
@@ -1257,9 +1254,8 @@ class TestEdlStage:
         assert "validation_json" not in call_args.kwargs
 
     @patch("autopilot.plan.otio_export")
-    @patch("autopilot.plan.validator")
     @patch("autopilot.plan.edl")
-    def test_edl_continues_on_failure(self, mock_edl, mock_validator, mock_otio, minimal_config):
+    def test_edl_continues_on_failure(self, mock_edl, mock_otio, minimal_config):
         """One narrative fails EDL, others still processed."""
         from autopilot.orchestrator import _run_edl
         from autopilot.plan.edl import EdlError
@@ -1270,12 +1266,13 @@ class TestEdlStage:
             {"narrative_id": "n2"},
         ]
         db.get_narrative_script.return_value = {"scenes": []}
-        db.get_edit_plan.return_value = None
+        # n1: checkpoint (None) then generate_edl raises → no assertion call
+        # n2: checkpoint (None) then assertion guard (truthy dict)
+        db.get_edit_plan.side_effect = [None, None, {"edl_json": "{}"}]
         mock_edl.generate_edl.side_effect = [
             EdlError("fail"),
             {"timeline": []},
         ]
-        mock_validator.validate_edl.return_value = MagicMock(passed=True)
         mock_otio.export_otio.return_value = Path("/out/timeline.otio")
 
         _run_edl(config=minimal_config, db=db)
@@ -1284,10 +1281,9 @@ class TestEdlStage:
         assert mock_edl.generate_edl.call_count == 2
 
     @patch("autopilot.plan.otio_export")
-    @patch("autopilot.plan.validator")
     @patch("autopilot.plan.edl")
     def test_edl_raises_if_all_narratives_fail(
-        self, mock_edl, mock_validator, mock_otio, minimal_config
+        self, mock_edl, mock_otio, minimal_config
     ):
         """If every narrative fails EDL, stage raises RuntimeError."""
         from autopilot.orchestrator import _run_edl
@@ -1305,10 +1301,9 @@ class TestEdlStage:
             _run_edl(config=minimal_config, db=db)
 
     @patch("autopilot.plan.otio_export")
-    @patch("autopilot.plan.validator")
     @patch("autopilot.plan.edl")
     def test_edl_asserts_generate_persisted(
-        self, mock_edl, mock_validator, mock_otio, minimal_config
+        self, mock_edl, mock_otio, minimal_config
     ):
         """When generate_edl returns but doesn't persist, assertion guard fires."""
         from autopilot.orchestrator import _run_edl
@@ -1330,10 +1325,9 @@ class TestEdlStage:
         db.upsert_edit_plan.assert_not_called()
 
     @patch("autopilot.plan.otio_export")
-    @patch("autopilot.plan.validator")
     @patch("autopilot.plan.edl")
     def test_edl_contract_guard_allows_persisted(
-        self, mock_edl, mock_validator, mock_otio, minimal_config
+        self, mock_edl, mock_otio, minimal_config
     ):
         """When generate_edl persists edl_json, assertion guard passes and upsert proceeds."""
         from autopilot.orchestrator import _run_edl
@@ -1349,35 +1343,6 @@ class TestEdlStage:
         _run_edl(config=minimal_config, db=db)
 
         db.upsert_edit_plan.assert_called_once()
-
-    @patch("autopilot.plan.otio_export")
-    @patch("autopilot.plan.validator")
-    @patch("autopilot.plan.edl")
-    def test_edl_upsert_only_passes_otio_path(
-        self, mock_edl, mock_validator, mock_otio, minimal_config
-    ):
-        """_run_edl upsert_edit_plan only passes otio_path, not edl_json or validation_json.
-
-        generate_edl() already persists edl_json and a rich validation_json.
-        The orchestrator should only add otio_path after OTIO export.
-        """
-        from autopilot.orchestrator import _run_edl
-
-        db = MagicMock()
-        db.list_narratives.return_value = [{"narrative_id": "n1"}]
-        db.get_narrative_script.return_value = {"scenes": []}
-        db.get_edit_plan.return_value = None
-        mock_edl.generate_edl.return_value = {"timeline": []}
-        mock_validator.validate_edl.return_value = MagicMock(passed=True)
-
-        _run_edl(config=minimal_config, db=db)
-
-        db.upsert_edit_plan.assert_called_once()
-        call_args = db.upsert_edit_plan.call_args
-        # Should only pass narrative_id and otio_path
-        assert call_args.args == ("n1",), f"Expected only nid positional arg, got {call_args.args}"
-        assert "otio_path" in call_args.kwargs, "otio_path kwarg missing"
-        assert "validation_json" not in call_args.kwargs, "validation_json should not be passed"
 
 
 class TestSourceStage:
