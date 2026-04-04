@@ -3130,11 +3130,11 @@
         "description": "In autopilot/plan/otio_export.py lines 54-63, update the _TRANSITION_TYPE_MAP comment to explicitly acknowledge that fade_in and fade_out are approximated as SMPTE_Dissolve (a cross-dissolve requiring two overlapping clips) because OTIO lacks a native fade-to-black Transition type. The comment currently says keys 'must match the prompt schema' but does not warn that the visual rendering will be a cross-dissolve rather than a true fade-to-black. Either add a clear approximation note with a TODO for proper opacity-based fades, or implement fade_in/fade_out as OTIO Effects on the adjacent clip instead.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:13:11.173Z",
+        "updatedAt": "2026-04-04T08:24:15.474Z",
         "metadata": {
           "modules": [
             "autopilot/plan/otio_export.py",
@@ -3507,7 +3507,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:24:15.351Z",
+      "lastModified": "2026-04-04T08:24:15.474Z",
       "taskCount": 178,
       "completedCount": 132,
       "tags": [
