@@ -987,7 +987,6 @@ class TestGetNarrativeEditHTMX:
         assert response.status_code == 404
 
 
-# ---------------------------------------------------------------------------
 # TestDepsImportRefactor — task-137 step-1
 # ---------------------------------------------------------------------------
 
@@ -1023,3 +1022,100 @@ class TestDepsImportRefactor:
         assert review.is_htmx is deps.is_htmx, (
             "review.is_htmx should be imported from deps"
         )
+
+
+# ---------------------------------------------------------------------------
+# Zero-duration fixtures — task-167
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def zero_duration_app(tmp_path: Path) -> FastAPI:
+    """App with narratives seeded with proposed_duration_seconds=0 and None."""
+    db_path = str(tmp_path / "catalog.db")
+    with CatalogDB(db_path) as _db:
+        _db.init_default_gates()
+        _seed_narrative(
+            _db, "n-zero",
+            title="Zero Duration",
+            proposed_duration_seconds=0,
+        )
+        _seed_narrative(
+            _db, "n-none",
+            title="No Duration",
+            proposed_duration_seconds=None,
+        )
+    return create_app(db_path)
+
+
+@pytest.fixture
+def zero_duration_client(zero_duration_app: FastAPI) -> TestClient:
+    """TestClient for the zero-duration app."""
+    return TestClient(zero_duration_app)
+
+
+# ---------------------------------------------------------------------------
+# TestEditFormZeroDuration — task-167 step-1
+# ---------------------------------------------------------------------------
+
+class TestEditFormZeroDuration:
+    """Tests for edit form rendering of zero and None duration values."""
+
+    def test_edit_form_renders_zero_duration(
+        self, zero_duration_client: TestClient,
+    ) -> None:
+        """Edit form for narrative with proposed_duration_seconds=0 shows value="0"."""
+        response = zero_duration_client.get(
+            "/api/narratives/n-zero?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        # DB stores REAL, so 0 renders as "0" or "0.0" — either is acceptable
+        assert 'value="0"' in response.text or 'value="0.0"' in response.text
+
+    def test_edit_form_renders_empty_for_none_duration(
+        self, zero_duration_client: TestClient,
+    ) -> None:
+        """Edit form for narrative with proposed_duration_seconds=None shows empty value."""
+        response = zero_duration_client.get(
+            "/api/narratives/n-none?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        # The input value should be empty, not the string 'None'
+        assert 'value="None"' not in response.text
+        # Duration input should have an empty value attribute
+        assert 'name="proposed_duration_seconds"' in response.text
+
+    def test_edit_form_js_does_not_use_falsy_or_null(
+        self, zero_duration_client: TestClient,
+    ) -> None:
+        """hx-vals JS uses explicit NaN/empty check, not '|| null' for duration."""
+        response = zero_duration_client.get(
+            "/api/narratives/n-zero?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        # The hx-vals should NOT use the falsy '|| null' pattern for duration
+        assert "|| null" not in response.text
+        # Should use explicit NaN check instead
+        assert "isNaN" in response.text
+
+    def test_update_zero_duration_roundtrip(
+        self, zero_duration_client: TestClient,
+    ) -> None:
+        """Zero duration survives a save→render roundtrip via JSON API + edit form."""
+        # PUT zero duration via JSON API
+        put_resp = zero_duration_client.put(
+            "/api/narratives/n-zero",
+            json={"proposed_duration_seconds": 0},
+        )
+        assert put_resp.status_code == 200
+        assert put_resp.json()["proposed_duration_seconds"] == 0
+
+        # GET edit form and verify zero is rendered, not blank
+        get_resp = zero_duration_client.get(
+            "/api/narratives/n-zero?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert get_resp.status_code == 200
+        assert 'value="0"' in get_resp.text or 'value="0.0"' in get_resp.text
