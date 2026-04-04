@@ -230,6 +230,19 @@ class TestBuildUploadMetadata:
         assert "backpack" in tags
         assert "tent" in tags
 
+    def test_tags_empty_when_activity_clusters_missing(
+        self, catalog_db, youtube_config
+    ):
+        """Dangling cluster IDs in the narrative are silently skipped."""
+        self._setup_media_with_detections(
+            catalog_db,
+            [],
+            activity_cluster_ids_json=json.dumps(["nonexistent"]),
+        )
+        # Do NOT insert any activity clusters — the ID is dangling.
+        meta = _build_upload_metadata("n1", catalog_db, youtube_config)
+        assert meta["snippet"]["tags"] == []
+
     @pytest.mark.parametrize(
         "detections_json",
         [
