@@ -464,18 +464,16 @@ class TestSSEHandlerFactory:
 class TestSSERunHandlerRobustness:
     """Tests that run_completed and run_failed handlers have try/catch."""
 
-    def test_run_completed_has_try_catch(self) -> None:
+    def test_run_completed_has_try_catch(self, app_js_source: str) -> None:
         """run_completed handler wraps its body in try/catch."""
-        js_source = _read_app_js()
-        body = _extract_listener_body(js_source, "run_completed")
+        body = _extract_listener_body(app_js_source, "run_completed")
         assert "try" in body, "try block not found in run_completed handler"
         assert "catch" in body, "catch block not found in run_completed handler"
         assert "console.error" in body, "console.error not found in run_completed catch block"
 
-    def test_run_failed_has_try_catch(self) -> None:
+    def test_run_failed_has_try_catch(self, app_js_source: str) -> None:
         """run_failed handler wraps its body in try/catch."""
-        js_source = _read_app_js()
-        body = _extract_listener_body(js_source, "run_failed")
+        body = _extract_listener_body(app_js_source, "run_failed")
         assert "try" in body, "try block not found in run_failed handler"
         assert "catch" in body, "catch block not found in run_failed handler"
         assert "console.error" in body, "console.error not found in run_failed catch block"
