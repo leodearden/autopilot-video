@@ -409,6 +409,33 @@ class TestTransitionMapping:
         assert isinstance(items[2], otio.schema.Clip)
         return items
 
+    @staticmethod
+    def _wipe_edl():
+        """Return a minimal EDL with two clips and a single 'wipe' transition."""
+        return _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "wipe",
+                    "duration": 1.0,
+                    "position": 0,
+                },
+            ],
+        )
+
     @pytest.mark.parametrize("transition_type", ["crossfade", "fade_in", "fade_out", "dissolve"])
     def test_transition_creates_smpte_dissolve(self, tmp_path, transition_type):
         """EDL transition type creates SMPTE_Dissolve with correct name and positioning."""
