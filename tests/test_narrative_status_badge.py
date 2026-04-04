@@ -50,6 +50,18 @@ class TestStatusBadgeMacro:
         assert "bg-purple-900" in html
         assert "text-purple-300" in html
 
+    def test_none_status(self) -> None:
+        html = _render_badge(None)  # type: ignore[arg-type]
+        assert "unknown" in html
+        assert "bg-purple-900" in html
+        assert "text-purple-300" in html
+
+    def test_empty_string_status(self) -> None:
+        html = _render_badge("")
+        assert "unknown" in html
+        assert "bg-purple-900" in html
+        assert "text-purple-300" in html
+
     def test_status_text_displayed(self) -> None:
         html = _render_badge("approved")
         assert "approved" in html
@@ -120,5 +132,14 @@ class TestReviewNarrativesBadge:
 
     def test_source_uses_macro_import(self) -> None:
         source_path = TEMPLATES_DIR / "review" / "narratives.html"
+        source = source_path.read_text()
+        assert "{% from 'macros/narrative_status_badge.html' import status_badge %}" in source
+
+
+class TestReviewScriptsBadge:
+    """Verify review/scripts.html uses the shared status_badge macro."""
+
+    def test_source_uses_macro_import(self) -> None:
+        source_path = TEMPLATES_DIR / "review" / "scripts.html"
         source = source_path.read_text()
         assert "{% from 'macros/narrative_status_badge.html' import status_badge %}" in source

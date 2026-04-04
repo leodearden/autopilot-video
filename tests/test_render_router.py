@@ -1279,3 +1279,291 @@ class TestSourcePathResolution:
         # But the renderer should still have received the resolved source_path
         rendered_clip = mock_rs.call_args[0][0]
         assert rendered_clip["source_path"] == "/resolved/clip.mp4"
+
+
+# ---------------------------------------------------------------------------
+# clip_id validation and fallback policy (guard-first pattern)
+# ---------------------------------------------------------------------------
+
+
+class TestClipIdValidation:
+    """Verify clip_id validation uses guard-first pattern (no synthetic fallback)."""
+
+    def test_no_clip_id_no_source_path_raises_without_synthetic_id(self) -> None:
+        """Clip with no clip_id and no source_path: RoutingError should NOT
+        contain a synthetic 'clip_0' — the guard must fire before any fallback."""
+        from autopilot.render.router import RoutingError, route_and_render
+
+        clips = [
+            {
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+                # no clip_id, no source_path
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple"),
+            patch("subprocess.run"),
+            pytest.raises(RoutingError, match="Clip at index 0 has no clip_id") as exc_info,
+        ):
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        # The error must NOT contain a synthetic ID like 'clip_0'
+        assert "clip_0" not in str(exc_info.value)
+
+    def test_source_path_no_clip_id_renders_fast_without_crop_lookup(self) -> None:
+        """Clip with source_path but no clip_id should render via fast path.
+
+        No RoutingError should be raised, and db.get_crop_path should NOT
+        be called — crop metadata lookup is skipped for clips without clip_id.
+        """
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "source_path": "/some/video.mp4",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+                # no clip_id
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("autopilot.render.router.render_complex") as mock_rc,
+            patch("subprocess.run"),
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            # Should NOT raise RoutingError
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        # Should use fast path (render_simple), not slow path
+        mock_rs.assert_called_once()
+        mock_rc.assert_not_called()
+        # Should NOT call get_crop_path since clip_id is None
+        db.get_crop_path.assert_not_called()
+
+    def test_source_path_no_clip_id_emits_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Clip with source_path but no clip_id should emit a warning about
+        missing clip_id that includes the clip index."""
+        import logging
+
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "source_path": "/some/video.mp4",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+                # no clip_id
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        config = _make_config()
+
+        with (
+            caplog.at_level(logging.WARNING, logger="autopilot.render.router"),
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run"),
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        # Should have logged a warning about the missing clip_id
+        warning_msgs = [r.message for r in caplog.records if r.levelno >= logging.WARNING]
+        assert any("no clip_id" in msg for msg in warning_msgs), (
+            f"Expected a warning about missing clip_id, got: {warning_msgs}"
+        )
+        # Warning should include the clip index for debugging
+        assert any("0" in msg and "clip_id" in msg for msg in warning_msgs)
+
+    def test_transcript_lookup_skipped_when_no_clip_id(self) -> None:
+        """Subtitle loop should NOT call db.get_transcript for clips without
+        clip_id. Only clips with a real clip_id get transcript lookups."""
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "source_path": "/some/video.mp4",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+                # no clip_id — transcript lookup should be skipped
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run"),
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        # db.get_transcript should NOT have been called at all — the only
+        # clip has no clip_id, so there's nothing to look up.
+        db.get_transcript.assert_not_called()
+
+    def test_mixed_edl_clip_with_and_without_clip_id(self) -> None:
+        """Mixed EDL: clip WITH clip_id gets full crop+transcript lookup;
+        clip WITHOUT clip_id (but with source_path) gets neither.
+        Both should render successfully."""
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "clip_id": "real_clip",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:05.000",
+                "track": 1,
+            },
+            {
+                "source_path": "/inline/video.mp4",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:05.000",
+                "track": 1,
+                # no clip_id
+            },
+        ]
+        segments = [{"start": 0.0, "end": 2.0, "text": "Hello"}]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_media.return_value = {"file_path": "/resolved/real_clip.mp4"}
+
+        def _get_transcript(media_id: str):
+            if media_id == "real_clip":
+                return {"segments_json": json.dumps(segments)}
+            return None
+
+        db.get_transcript.side_effect = _get_transcript
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run"),
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            # Should NOT raise
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        # render_simple called twice — once for each clip
+        assert mock_rs.call_count == 2
+
+        # First clip (with clip_id) should have resolved source_path
+        clip_0 = mock_rs.call_args_list[0][0][0]
+        assert clip_0["source_path"] == "/resolved/real_clip.mp4"
+
+        # Second clip (without clip_id) should have its original source_path
+        clip_1 = mock_rs.call_args_list[1][0][0]
+        assert clip_1["source_path"] == "/inline/video.mp4"
+
+        # db.get_transcript should be called ONLY for the clip with clip_id
+        transcript_calls = [c[0][0] for c in db.get_transcript.call_args_list]
+        assert "real_clip" in transcript_calls
+        # Should NOT have been called with empty string or synthetic id
+        assert "" not in transcript_calls
+        assert "clip_1" not in transcript_calls
+
+        # db.get_crop_path should NOT be called for the clip without clip_id
+        # (only called if clip has clip_id AND crop_modes has an entry)
+        # With empty crop_modes, neither clip triggers crop lookup
+        db.get_crop_path.assert_not_called()
+
+    @pytest.mark.parametrize("overlay", ["pip", "split_screen"])
+    def test_slow_path_no_clip_id_raises_routing_error(self, overlay: str) -> None:
+        """Clip with overlay forcing slow path but no clip_id should raise
+        RoutingError — crop data cannot be loaded without a clip_id."""
+        from autopilot.render.router import RoutingError, route_and_render
+
+        clips = [
+            {
+                "source_path": "/some/video.mp4",
+                "overlay": overlay,
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+                # no clip_id
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple"),
+            patch("autopilot.render.router.render_complex"),
+            patch("subprocess.run"),
+            pytest.raises(
+                RoutingError,
+                match="overlay requiring slow path but no clip_id",
+            ),
+        ):
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+    def test_slow_path_with_clip_id_succeeds(self) -> None:
+        """Clip WITH clip_id and overlay='pip' should route to slow path
+        successfully — the guard must not block valid slow-path clips."""
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "clip_id": "c1",
+                "overlay": "pip",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }
+        ]
+        crop_modes = [{"clip_id": "c1", "mode": "auto_subject"}]
+        edl = _make_edl(clips=clips, crop_modes=crop_modes)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_media.return_value = {"file_path": "/resolved/c1.mp4"}
+        db.get_crop_path.return_value = {
+            "path_data": [[0.0, 0.0, 100.0, 100.0]],
+        }
+        db.get_transcript.return_value = None
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("autopilot.render.router.render_complex") as mock_rc,
+            patch("subprocess.run"),
+        ):
+            mock_rc.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        # Should use slow path (render_complex), not fast path
+        mock_rc.assert_called_once()
+        mock_rs.assert_not_called()

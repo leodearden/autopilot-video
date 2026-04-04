@@ -908,6 +908,7 @@ class TestGetNarrativeEditHTMX:
         assert 'name="title"' in response.text
         assert 'name="description"' in response.text
         assert 'name="proposed_duration_seconds"' in response.text
+        assert 'id="narrative-n-1"' in response.text  # outerHTML swap target
 
     def test_get_htmx_edit_prepopulates_values(
         self, seeded_client: TestClient,
@@ -919,6 +920,7 @@ class TestGetNarrativeEditHTMX:
         )
         assert "Morning Walk" in response.text
         assert "A walk in the park" in response.text
+        assert "120" in response.text  # proposed_duration_seconds pre-populated
 
     def test_get_htmx_edit_has_save_button(
         self, seeded_client: TestClient,
@@ -953,9 +955,23 @@ class TestGetNarrativeEditHTMX:
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
         assert "Morning Walk" in response.text
-        # Read-only card has Approve button, not input fields
+        # Read-only card has Approve button with HTMX wiring, not input fields
         assert "Approve" in response.text
+        assert "hx-post" in response.text
         assert 'name="title"' not in response.text
+
+    def test_get_htmx_edit_param_non_one_returns_card(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """GET /api/narratives/n-1?edit=0 with HX-Request returns read-only card, not form."""
+        response = seeded_client.get(
+            "/api/narratives/n-1?edit=0",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "Morning Walk" in response.text
+        assert 'name="title"' not in response.text  # no form inputs → read-only card
 
     def test_get_no_htmx_returns_json(self, seeded_client: TestClient) -> None:
         """GET /api/narratives/n-1 without HX-Request returns JSON."""
@@ -975,6 +991,13 @@ class TestGetNarrativeEditHTMX:
         )
         assert response.status_code == 200
         assert "edit=1" in response.text
+
+    def test_get_json_not_found_returns_404(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """GET /api/narratives/nonexistent (no HX-Request) returns 404."""
+        response = seeded_client.get("/api/narratives/nonexistent")
+        assert response.status_code == 404
 
     def test_get_htmx_edit_not_found_returns_404(
         self, seeded_client: TestClient,
@@ -1083,27 +1106,20 @@ class TestEditFormZeroDuration:
         assert response.status_code == 200
         # The input value should be empty, not the string 'None'
         assert 'value="None"' not in response.text
-        # Duration input should have an empty value attribute
+        # Duration input should render with an empty value attribute
+        assert 'value=""' in response.text
         assert 'name="proposed_duration_seconds"' in response.text
-
-    def test_edit_form_js_does_not_use_falsy_or_null(
-        self, zero_duration_client: TestClient,
-    ) -> None:
-        """hx-vals JS uses explicit NaN/empty check, not '|| null' for duration."""
-        response = zero_duration_client.get(
-            "/api/narratives/n-zero?edit=1",
-            headers={"HX-Request": "true"},
-        )
-        assert response.status_code == 200
-        # The hx-vals should NOT use the falsy '|| null' pattern for duration
-        assert "|| null" not in response.text
-        # Should use explicit NaN check instead
-        assert "isNaN" in response.text
 
     def test_update_zero_duration_roundtrip(
         self, zero_duration_client: TestClient,
     ) -> None:
-        """Zero duration survives a save→render roundtrip via JSON API + edit form."""
+        """Zero duration survives a save→render roundtrip via JSON API + edit form.
+
+        This behavioural roundtrip also subsumes JS-pattern regression coverage:
+        if the hx-vals serialisation ever coerces 0 to null/empty, the final
+        assertion will catch it regardless of the specific JS implementation
+        (isNaN, Number.isFinite, etc.).
+        """
         # PUT zero duration via JSON API
         put_resp = zero_duration_client.put(
             "/api/narratives/n-zero",

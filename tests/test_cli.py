@@ -587,7 +587,7 @@ class TestDryRunSubcommands:
                 assert result.exit_code == 0, (
                     f"{cmd_name} --dry-run failed: {result.output}"
                 )
-                stage_func.assert_not_called(), (
+                assert not stage_func.called, (
                     f"{cmd_name} --dry-run should NOT call any stage function"
                 )
 
@@ -630,16 +630,15 @@ class TestHandleDryRun:
     def test_returns_true_and_echoes_when_dry_run(self) -> None:
         """_handle_dry_run(True, ...) returns True and echoes '[DRY-RUN] Would execute: ...'."""
         runner = CliRunner()
-        with runner.isolated_filesystem():
 
-            @click.command()
-            def dummy() -> None:
-                result = _handle_dry_run(True, "INGEST")
-                assert result is True
+        @click.command()
+        def dummy() -> None:
+            result = _handle_dry_run(True, "INGEST")
+            assert result is True
 
-            result = runner.invoke(dummy)
-            assert result.exit_code == 0, f"Unexpected error: {result.output}"
-            assert "[DRY-RUN] Would execute: INGEST" in result.output
+        result = runner.invoke(dummy)
+        assert result.exit_code == 0, f"Unexpected error: {result.output}"
+        assert "[DRY-RUN] Would execute: INGEST" in result.output
 
     def test_returns_true_with_multiple_stages(self) -> None:
         """_handle_dry_run echoes all stage names when multiple are provided."""
@@ -677,50 +676,12 @@ class TestDryRunZeroSideEffects:
     """
 
     @pytest.mark.parametrize("cmd_name", list(SUBCOMMAND_STAGES.keys()))
-    def test_dry_run_does_not_call_load_config(self, cmd_name: str) -> None:
-        """'<cmd> --dry-run' does NOT call load_config."""
+    def test_dry_run_no_side_effects(self, cmd_name: str) -> None:
+        """'<cmd> --dry-run' does NOT call load_config, CatalogDB, or PipelineOrchestrator."""
         runner = CliRunner()
 
         with patch("autopilot.cli.load_config") as mock_load:
-            with patch("autopilot.cli.CatalogDB"):
-                with patch("autopilot.cli.PipelineOrchestrator"):
-                    result = runner.invoke(
-                        main,
-                        ["--config", "dummy.yaml", cmd_name, "--dry-run"],
-                    )
-                    assert result.exit_code == 0, (
-                        f"{cmd_name} --dry-run failed: {result.output}"
-                    )
-                    mock_load.assert_not_called(), (
-                        f"{cmd_name} --dry-run should NOT call load_config"
-                    )
-
-    @pytest.mark.parametrize("cmd_name", list(SUBCOMMAND_STAGES.keys()))
-    def test_dry_run_does_not_call_catalog_db(self, cmd_name: str) -> None:
-        """'<cmd> --dry-run' does NOT instantiate CatalogDB."""
-        runner = CliRunner()
-
-        with patch("autopilot.cli.load_config"):
             with patch("autopilot.cli.CatalogDB") as mock_db_cls:
-                with patch("autopilot.cli.PipelineOrchestrator"):
-                    result = runner.invoke(
-                        main,
-                        ["--config", "dummy.yaml", cmd_name, "--dry-run"],
-                    )
-                    assert result.exit_code == 0, (
-                        f"{cmd_name} --dry-run failed: {result.output}"
-                    )
-                    mock_db_cls.assert_not_called(), (
-                        f"{cmd_name} --dry-run should NOT instantiate CatalogDB"
-                    )
-
-    @pytest.mark.parametrize("cmd_name", list(SUBCOMMAND_STAGES.keys()))
-    def test_dry_run_does_not_instantiate_orchestrator(self, cmd_name: str) -> None:
-        """'<cmd> --dry-run' does NOT instantiate PipelineOrchestrator."""
-        runner = CliRunner()
-
-        with patch("autopilot.cli.load_config"):
-            with patch("autopilot.cli.CatalogDB"):
                 with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
                     result = runner.invoke(
                         main,
@@ -729,9 +690,16 @@ class TestDryRunZeroSideEffects:
                     assert result.exit_code == 0, (
                         f"{cmd_name} --dry-run failed: {result.output}"
                     )
-                    mock_orch_cls.assert_not_called(), (
+                    assert not mock_load.called, (
+                        f"{cmd_name} --dry-run should NOT call load_config"
+                    )
+                    assert not mock_db_cls.called, (
+                        f"{cmd_name} --dry-run should NOT instantiate CatalogDB"
+                    )
+                    assert not mock_orch_cls.called, (
                         f"{cmd_name} --dry-run should NOT instantiate PipelineOrchestrator"
                     )
+
 
 
 class TestRunDryRunDelegation:
@@ -789,5 +757,5 @@ class TestRunDryRunDelegation:
                 )
                 assert result.exit_code == 0, f"run --dry-run failed: {result.output}"
                 mock_orch.run.assert_called_once()
-                call_kwargs = mock_orch.run.call_args[1]
+                call_kwargs = mock_orch.run.call_args.kwargs
                 assert call_kwargs["dry_run"] is True
