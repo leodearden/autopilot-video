@@ -257,6 +257,7 @@ class TestBuildUploadMetadata:
         tags = meta["snippet"]["tags"]
         assert "person" not in tags
         assert "car" not in tags
+        assert tags == []
 
     def test_tags_exclude_empty_string_class(self, catalog_db):
         """Empty-string class values are excluded; valid ones are kept."""
