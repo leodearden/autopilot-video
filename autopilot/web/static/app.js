@@ -134,7 +134,11 @@ function setupNotificationSSE(source) {
                 if (Notification.permission === 'granted') {
                     new Notification('Autopilot Video', { body: msg });
                 } else if (Notification.permission !== 'denied') {
-                    Notification.requestPermission();
+                    Notification.requestPermission().then(function(perm) {
+                        if (perm === 'granted') {
+                            new Notification('Autopilot Video', { body: msg });
+                        }
+                    });
                 }
             }
         } catch (e) {
