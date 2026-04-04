@@ -3906,6 +3906,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 201,
+        "title": "Cache _read_app_js() to avoid repeated disk reads",
+        "description": "In tests/test_web_app.py, function `_read_app_js` (lines 190-193): add `@functools.lru_cache(maxsize=None)` decorator (and `import functools` at the top if not already present) so the file is read only once per process. At least 7 test methods currently trigger a fresh disk read each.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -3918,7 +3929,7 @@
       ],
       "created": "2026-04-04T09:12:45.701Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T09:12:57.322Z"
+      "updated": "2026-04-04T09:13:00.567Z"
     }
   }
 }
