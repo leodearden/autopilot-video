@@ -958,6 +958,19 @@ class TestGetNarrativeEditHTMX:
         assert "Approve" in response.text
         assert 'name="title"' not in response.text
 
+    def test_get_htmx_edit_param_non_one_returns_card(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """GET /api/narratives/n-1?edit=0 with HX-Request returns read-only card, not form."""
+        response = seeded_client.get(
+            "/api/narratives/n-1?edit=0",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "Morning Walk" in response.text
+        assert 'name="title"' not in response.text  # no form inputs → read-only card
+
     def test_get_no_htmx_returns_json(self, seeded_client: TestClient) -> None:
         """GET /api/narratives/n-1 without HX-Request returns JSON."""
         response = seeded_client.get("/api/narratives/n-1")
