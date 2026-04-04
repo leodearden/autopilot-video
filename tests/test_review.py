@@ -1060,6 +1060,16 @@ def zero_duration_client(zero_duration_app: FastAPI) -> TestClient:
 class TestEditFormZeroDuration:
     """Tests for edit form rendering of zero and None duration values."""
 
+    def test_fixture_is_class_scoped(self, request: pytest.FixtureRequest) -> None:
+        """Guard: zero_duration_client must be class-scoped for perf."""
+        fixturedefs = request._fixturemanager.getfixturedefs(
+            "zero_duration_client", request.node,
+        )
+        assert fixturedefs is not None, "zero_duration_client fixture not found"
+        assert fixturedefs[-1].scope == "class", (
+            f"Expected class scope, got {fixturedefs[-1].scope}"
+        )
+
     def test_edit_form_renders_zero_duration(
         self, zero_duration_client: TestClient,
     ) -> None:
