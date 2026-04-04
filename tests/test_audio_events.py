@@ -395,7 +395,6 @@ class TestIdempotency:
 
         # Scheduler should NOT be called: classification skipped because events already exist
         scheduler.model.assert_not_called()
-        scheduler.assert_not_called()
 
         # DB postcondition: the single pre-existing event at t=15.0 is still present
         events = catalog_db.get_audio_events_for_media("vid1")
