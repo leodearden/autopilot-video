@@ -1972,11 +1972,11 @@
         "description": "Task 51 (notifications) is marked done but the implementation is incomplete. app.js has a `notification` event listener but the server never emits this event type (not in VALID_EVENT_TYPES). The notification bell badge in base.html is always hidden.",
         "details": "## Current state\n- app.js line 35: `source.addEventListener('notification', ...)` handler exists — parses data.message and data.type, calls showToast()\n- sse.py VALID_EVENT_TYPES: 11 types, \"notification\" NOT included\n- base.html: notification bell icon with badge that has class \"hidden\" — no JS ever removes it\n- Orchestrator emits stage/gate/job events but nothing typed as \"notification\"\n\n## Fix needed\n1. Add \"notification\" to VALID_EVENT_TYPES in sse.py\n2. Emit notification events from orchestrator for key moments:\n   - gate_waiting → notification \"Pipeline paused at {stage}. Review required.\"\n   - stage_error → notification \"Stage {stage} failed: {error}\"\n   - run_completed → notification \"Pipeline finished. {summary}\"\n   - run_failed → notification \"Pipeline failed at {stage}\"\n3. Wire bell badge: track unread notification count in JS, show/hide badge, show count\n4. Optional: browser Notification API integration (request permission, show native notifications for gate_waiting)\n5. Add tests: verify notification events are emitted, verify bell badge JS logic\n\n## Memory hints\n- PRD: docs/prd-web-console.md — \"Notifications\" section (feature 8) lists event→notification mapping",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T13:05:47.092Z",
+        "updatedAt": "2026-04-04T13:06:28.873Z",
         "metadata": {
           "files": [
             "autopilot/web/routes/sse.py",
@@ -4018,7 +4018,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T13:06:28.777Z",
+      "lastModified": "2026-04-04T13:06:28.873Z",
       "taskCount": 206,
       "completedCount": 150,
       "tags": [
