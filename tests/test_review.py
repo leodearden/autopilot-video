@@ -956,3 +956,11 @@ class TestGetNarrativeEditHTMX:
         # Read-only card has Approve button, not input fields
         assert "Approve" in response.text
         assert 'name="title"' not in response.text
+
+    def test_get_no_htmx_returns_json(self, seeded_client: TestClient) -> None:
+        """GET /api/narratives/n-1 without HX-Request returns JSON."""
+        response = seeded_client.get("/api/narratives/n-1")
+        assert response.status_code == 200
+        assert "application/json" in response.headers["content-type"]
+        data = response.json()
+        assert data["title"] == "Morning Walk"
