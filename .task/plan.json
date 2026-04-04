@@ -1,0 +1,117 @@
+{
+  "task_id": "103",
+  "title": "Wire notification SSE events: emit from server, connect to bell badge",
+  "files": [
+    "autopilot/web/routes/sse.py",
+    "autopilot/orchestrator.py",
+    "autopilot/web/static/app.js",
+    "tests/test_sse.py",
+    "tests/test_notifications.py",
+    "tests/test_orchestrator.py"
+  ],
+  "modules": [
+    "autopilot/web/routes",
+    "autopilot/web/static",
+    "autopilot",
+    "tests"
+  ],
+  "analysis": "The notification plumbing is half-built. Client-side: app.js has a dead 'notification' event listener in connectSSE() (line 35) that would work if the server ever emitted this event type. setupNotificationSSE() already handles gate_waiting/approved/skipped for badge counting and stage_error/run_completed/run_failed for toasts via native event types — but this creates a dual system. Server-side: sse.py VALID_EVENT_TYPES (lines 18-31) has 12 types but 'notification' is absent. orchestrator.py emits native events (gate_waiting at line 1175, stage_error at 1411, run_completed at 1479, run_failed at 1474) but never a 'notification' event.\n\nFix: (1) Add 'notification' to VALID_EVENT_TYPES. (2) Add _emit_notification() helper to orchestrator that emits event_type='notification' with {message, type} payload; call it alongside the 4 key native events. (3) Refactor app.js: remove the dead notification listener from connectSSE(), replace setupNotificationSSE() internals with a single 'notification' event handler that manages both badge count and toasts. Add bell click to clear unread count. (4) Optional: browser Notification API for gate_waiting. Existing base.html bell/badge markup and app.css badge styles require no changes.",
+  "prerequisites": [],
+  "steps": [
+    {
+      "id": "step-1",
+      "type": "test",
+      "description": "In tests/test_sse.py, add 'notification' to the ALL_EVENT_TYPES list (line 292-305) and update the docstring on test_all_event_types_forwarded from '12' to '13'. Also update test_valid_event_types_constant_defined implicitly (it iterates ALL_EVENT_TYPES). Tests FAIL because 'notification' is not yet in VALID_EVENT_TYPES.",
+      "status": "pending",
+      "commit": null
+    },
+    {
+      "id": "step-2",
+      "type": "impl",
+      "description": "In autopilot/web/routes/sse.py, add 'notification' as the last entry in the VALID_EVENT_TYPES tuple (after 'run_failed', line 31). Step-1 tests now PASS.",
+      "status": "pending",
+      "commit": null
+    },
+    {
+      "id": "step-3",
+      "type": "test",
+      "description": "In tests/test_orchestrator.py, add class TestNotificationEvents after TestRunFinalization (~line 3319) with 4 tests: (a) test_notification_emitted_on_stage_error — run pipeline with INGEST raising RuntimeError('boom'), filter insert_event calls for event_type='notification', assert one has payload message containing 'INGEST' and 'failed' and type='error'. (b) test_notification_emitted_on_run_completed — run pipeline with all stages passing, assert one notification with message containing 'finished' and type='success'. (c) test_notification_emitted_on_run_failed — run with ANALYZE raising ValueError, assert one notification with message containing 'Pipeline failed' and type='error'. (d) test_notification_emitted_on_gate_waiting — directly call _check_gate_inner() with mock db returning pause-mode gate then approved on poll, patch time.sleep to no-op, assert notification with message containing 'paused' and 'Review required' and type='info'. All 4 tests FAIL because _emit_notification does not exist.",
+      "status": "pending",
+      "commit": null
+    },
+    {
+      "id": "step-4",
+      "type": "impl",
+      "description": "In autopilot/orchestrator.py: (a) Add _emit_notification(self, message, ntype='info', stage=None) helper after _emit_event (line 1245) that calls self._emit_event('notification', stage=stage, payload={'message': message, 'type': ntype}). (b) After gate_waiting emission (line 1175), add self._emit_notification(f'Pipeline paused at {stage_name}. Review required.', 'info', stage=stage_name). (c) After stage_error emission (line 1414-1415), add self._emit_notification(f'Stage {stage_name} failed: {exc}', 'error', stage=stage_name). (d) After run_completed emission (line 1481-1482), compute done_count from results, add self._emit_notification(f'Pipeline finished. {done_count} of {len(order)} stages completed in {total_elapsed:.1f}s.', 'success'). (e) After run_failed emission (line 1476-1477), add self._emit_notification(f'Pipeline failed at {\", \".join(sorted(errored_stages))}', 'error'). Step-3 tests now PASS.",
+      "status": "pending",
+      "commit": null
+    },
+    {
+      "id": "step-5",
+      "type": "test",
+      "description": "Rewrite tests/test_notifications.py: (a) Keep TestNotificationSSESetup class. (b) Replace test_has_gate_waiting_handler, test_has_gate_approved_handler, test_has_gate_skipped_handler with test_setup_listens_for_notification_event — assert setupNotificationSSE body contains addEventListener('notification'. (c) Keep test_has_update_notification_badge and test_notification_badge_shows_and_hides as-is. (d) Replace test_stage_error_shows_toast and test_run_completed_shows_toast with test_notification_handler_calls_show_toast — find the notification listener inside setupNotificationSSE and assert showToast is called within it. (e) Add test_bell_click_clears_badge — assert setupNotificationSSE body contains 'notification-bell' and addEventListener('click' and updateNotificationBadge(0). (f) Add test_connectsse_no_duplicate_notification_listener — assert connectSSE function body does NOT contain addEventListener('notification'. Tests FAIL because app.js still has old structure.",
+      "status": "pending",
+      "commit": null
+    },
+    {
+      "id": "step-6",
+      "type": "impl",
+      "description": "Refactor autopilot/web/static/app.js: (a) In connectSSE() (lines 35-42), remove the source.addEventListener('notification', ...) block — this is now handled by setupNotificationSSE. (b) Replace setupNotificationSSE() body (lines 130-171) with: var unreadCount = 0; a 'notification' event listener that JSON-parses data, increments unreadCount, calls updateNotificationBadge(unreadCount), and calls showToast(data.message, data.type); a bell click handler (getElementById 'notification-bell', addEventListener 'click') that resets unreadCount to 0 and calls updateNotificationBadge(0); and optionally, browser Notification API — if Notification.permission is 'granted', create new Notification('Autopilot Video', {body: data.message}), else if not 'denied', call Notification.requestPermission(). Step-5 tests now PASS.",
+      "status": "pending",
+      "commit": null
+    },
+    {
+      "id": "step-7",
+      "type": "test",
+      "description": "Run full test suite: pytest tests/test_sse.py tests/test_notifications.py tests/test_orchestrator.py tests/test_web_app.py to verify all tests pass and no regressions in related test files.",
+      "status": "pending",
+      "commit": null
+    }
+  ],
+  "design_decisions": [
+    {
+      "decision": "Emit 'notification' as a separate event type alongside native events (gate_waiting, stage_error, etc.) rather than replacing them",
+      "rationale": "Native events serve dashboard/card-refresh purposes (setupDashboardSSE listens for stage_started/completed/job_progress). The 'notification' event is specifically for user-facing notifications (badge + toast). This separation of concerns avoids coupling dashboard rendering to notification display logic."
+    },
+    {
+      "decision": "Unread badge counts all notification events, cleared by bell click — no paired increment/decrement",
+      "rationale": "The current gate_waiting++/gate_approved-- approach only tracks gate-related counts and can desync on reconnection. A simpler 'increment on any notification, clear on bell click' model is standard UX, easier to reason about, and covers all notification types (errors, completions) not just gates."
+    },
+    {
+      "decision": "Remove the dead notification listener from connectSSE() and consolidate in setupNotificationSSE()",
+      "rationale": "Having notification handling in both connectSSE() and setupNotificationSSE() would cause duplicate processing when both are active (which they always are — DOMContentLoaded calls both). Single handler in setupNotificationSSE avoids double toasts."
+    },
+    {
+      "decision": "Browser Notification API integration in the notification handler applies to all notification events, not just gate_waiting",
+      "rationale": "Task marks this as optional and suggests gate_waiting specifically, but the implementation is the same 3 lines regardless of filtering. All notification events are worth showing as browser notifications when the tab is backgrounded."
+    },
+    {
+      "decision": "The _emit_notification helper wraps _emit_event rather than duplicating DB logic",
+      "rationale": "Keeps the notification emission consistent with all other events — same resilience wrapper (try/except in _emit_event), same DB insert path, same SSE delivery mechanism. No new code paths to test independently."
+    }
+  ],
+  "reuse": [
+    {
+      "what": "_emit_event() method",
+      "where": "autopilot/orchestrator.py:1220-1245",
+      "how": "_emit_notification is a thin wrapper calling _emit_event('notification', ...) — reuses existing serialization, DB insert, and error handling."
+    },
+    {
+      "what": "TestStageTransitionEvents / TestRunFinalization test pattern",
+      "where": "tests/test_orchestrator.py:3161-3318",
+      "how": "New TestNotificationEvents follows identical pattern: create PipelineOrchestrator, mock stage funcs, run(), filter insert_event calls by event_type='notification'."
+    },
+    {
+      "what": "Static JS source analysis test pattern",
+      "where": "tests/test_notifications.py:7-73",
+      "how": "Updated tests continue reading app.js source and asserting presence of key patterns (addEventListener, function names, class references)."
+    },
+    {
+      "what": "showToast() and updateNotificationBadge() functions",
+      "where": "autopilot/web/static/app.js:9-23 and 113-122",
+      "how": "Both functions are already implemented correctly. The refactored notification handler simply calls them — no changes needed to their implementations."
+    }
+  ],
+  "_session_id": "103-architect",
+  "_created_at": "2026-04-04T14:30:00.000000+00:00"
+}
