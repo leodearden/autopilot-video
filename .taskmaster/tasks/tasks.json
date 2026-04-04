@@ -3019,7 +3019,23 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/cli.py",
+            "autopilot/config.py",
+            "autopilot/ingest/scanner.py",
+            "autopilot/analyze/objects.py",
+            "tests/test_cli.py",
+            "tests/test_config.py"
+          ],
+          "modules": [
+            "autopilot",
+            "autopilot/ingest",
+            "autopilot/analyze",
+            "tests"
+          ]
+        }
       },
       {
         "id": 151,
