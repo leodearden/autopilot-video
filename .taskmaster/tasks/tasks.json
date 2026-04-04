@@ -4036,6 +4036,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 209,
+        "title": "Guard prune_events() against non-positive hours values",
+        "description": "In autopilot/db.py at the top of `prune_events()` (around line 1467), add: `if hours <= 0: raise ValueError(f'hours must be positive, got {hours}')`. Without this, hours=0 produces '-0 hours' (SQLite no-op) and hours=-5 produces '--5 hours' (invalid modifier → datetime() returns NULL → WHERE clause is always false → zero rows deleted with no error or diagnostic).",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -4048,7 +4059,7 @@
       ],
       "created": "2026-04-04T13:06:55.969Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T13:07:01.294Z"
+      "updated": "2026-04-04T13:07:04.852Z"
     }
   }
 }
