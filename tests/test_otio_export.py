@@ -1322,3 +1322,56 @@ class TestIntegration:
         row = cur.fetchone()
         assert row is not None
         assert row["otio_path"] == str(output)
+
+
+# -- Fade approximation metadata tests -----------------------------------------
+
+
+class TestFadeApproximationMetadata:
+    """Verify fade_in/fade_out transitions carry approximation metadata."""
+
+    def test_fade_in_transition_has_approximation_metadata(self, tmp_path):
+        """fade_in Transition object has metadata['autopilot']['approximation'] string."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "fade_in",
+                    "duration": 1.0,
+                    "position": 0,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+        transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
+        assert len(transitions) == 1
+
+        approx = transitions[0].metadata.get("autopilot", {}).get("approximation")
+        assert approx is not None, "fade_in transition should have approximation metadata"
+        assert isinstance(approx, str) and len(approx) > 0
+
+    def test_fade_approximation_types_contains_fade_in(self):
+        """_FADE_APPROXIMATION_TYPES includes 'fade_in'."""
+        from autopilot.plan.otio_export import _FADE_APPROXIMATION_TYPES
+
+        assert "fade_in" in _FADE_APPROXIMATION_TYPES
