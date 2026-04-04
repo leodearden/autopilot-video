@@ -222,46 +222,28 @@ class TestBuildUploadMetadata:
         assert "backpack" in tags
         assert "tent" in tags
 
-    def test_tags_empty_when_detections_use_old_class_name_key(self, catalog_db, youtube_config):
-        """Detections keyed with old 'class_name' field are ignored (regression guard)."""
+    @pytest.mark.parametrize(
+        "detections_json",
+        [
+            [
+                {"class_name": "person", "confidence": 0.9},
+                {"class_name": "car", "confidence": 0.8},
+            ],
+            [
+                {"confidence": 0.9},
+                {"bbox": [0, 0, 100, 100]},
+            ],
+        ],
+        ids=["old_class_name_key", "no_class_key"],
+    )
+    def test_tags_empty_when_detections_lack_class_key(
+        self, catalog_db, youtube_config, detections_json
+    ):
+        """Detections without a 'class' key produce no tags."""
         catalog_db.insert_narrative("n1", title="Title", description="desc")
         catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
         catalog_db.batch_insert_detections(
-            [
-                (
-                    "m1",
-                    0,
-                    json.dumps(
-                        [
-                            {"class_name": "person", "confidence": 0.9},
-                            {"class_name": "car", "confidence": 0.8},
-                        ]
-                    ),
-                ),
-            ]
-        )
-
-        meta = _build_upload_metadata("n1", catalog_db, youtube_config)
-        tags = meta["snippet"]["tags"]
-        assert tags == []
-
-    def test_tags_empty_when_detection_has_no_class_key(self, catalog_db, youtube_config):
-        """Detections with no 'class' key at all produce no tags."""
-        catalog_db.insert_narrative("n1", title="Title", description="desc")
-        catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
-        catalog_db.batch_insert_detections(
-            [
-                (
-                    "m1",
-                    0,
-                    json.dumps(
-                        [
-                            {"confidence": 0.9},
-                            {"bbox": [0, 0, 100, 100]},
-                        ]
-                    ),
-                ),
-            ]
+            [("m1", 0, json.dumps(detections_json))]
         )
 
         meta = _build_upload_metadata("n1", catalog_db, youtube_config)
