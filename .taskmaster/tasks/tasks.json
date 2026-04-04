@@ -5047,11 +5047,16 @@
         "description": "In `TestEditFormZeroDuration` in `tests/test_review.py`, add a class-scoped (or function-scoped) pytest fixture `zero_duration_edit_response` that performs `zero_duration_client.get('/api/narratives/n-zero?edit=1', headers={'HX-Request': 'true'})` and asserts `status_code == 200`. Both `test_edit_form_renders_empty_for_none_duration` (once adapted to use n-none) and `test_edit_form_js_does_not_use_pipe_pipe_null` should receive it as a parameter, eliminating the 4-line duplication.\n\nMemory hints: search \"conftest.py fixture consolidation test_review.py\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T23:12:41.572Z"
+        "updatedAt": "2026-04-04T23:16:47.765Z",
+        "metadata": {
+          "modules": [
+            "tests/test_review.py"
+          ]
+        }
       },
       {
         "id": "268",
@@ -6139,7 +6144,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T23:16:47.152Z",
+      "lastModified": "2026-04-04T23:16:47.765Z",
       "taskCount": 354,
       "completedCount": 210,
       "tags": [
