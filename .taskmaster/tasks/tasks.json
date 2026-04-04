@@ -4736,11 +4736,11 @@
         "description": "Create a generic status_badge(status, color_map, extra_classes='') macro that accepts a color mapping dict. Migrate all 6+ templates with inline bg-X-900/text-X-300 badge patterns to use it. Files: new or generalized macro, plus pipeline/index.html, pipeline/stages.html, pipeline/jobs.html, media/detail.html, partials/media_row.html, review/scripts.html, review/renders.html, review/uploads.html, review/hub.html.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:10:42.033Z",
+        "updatedAt": "2026-04-04T18:21:45.908Z",
         "metadata": {
           "modules": [
             "autopilot/web/templates/macros",
@@ -5525,7 +5525,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:21:45.818Z",
+      "lastModified": "2026-04-04T18:21:45.908Z",
       "taskCount": 309,
       "completedCount": 191,
       "tags": [
