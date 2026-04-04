@@ -1220,15 +1220,14 @@ class TestEdlStage:
         db = MagicMock()
         db.list_narratives.return_value = [{"narrative_id": "n1"}]
         db.get_narrative_script.return_value = {"scenes": []}
-        db.get_edit_plan.return_value = None
+        db.get_edit_plan.side_effect = [None, {"edl_json": "{}"}]
         mock_edl.generate_edl.return_value = {"timeline": []}
-        mock_validator.validate_edl.return_value = MagicMock(passed=True)
         mock_otio.export_otio.return_value = Path("/out/timeline.otio")
 
         _run_edl(config=minimal_config, db=db)
 
         mock_edl.generate_edl.assert_called_once()
-        mock_validator.validate_edl.assert_called_once()
+        mock_validator.validate_edl.assert_not_called()
         mock_otio.export_otio.assert_called_once()
 
     @patch("autopilot.plan.otio_export")
