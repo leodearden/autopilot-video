@@ -919,6 +919,7 @@ class TestGetNarrativeEditHTMX:
         )
         assert "Morning Walk" in response.text
         assert "A walk in the park" in response.text
+        assert "120" in response.text  # proposed_duration_seconds pre-populated
 
     def test_get_htmx_edit_has_save_button(
         self, seeded_client: TestClient,
