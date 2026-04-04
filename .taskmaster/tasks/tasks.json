@@ -6113,6 +6113,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 353,
+        "title": "Move 'import ast' to module-level imports in test_render_router",
+        "description": "In tests/test_render_router.py: move `import ast` from inside the test method body (currently around line 1601) to the module-level import block alongside `import inspect` (around line 5–6). Remove the in-method import.\n\nmemory_hints:\n- search: \"import placement convention test files\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -6125,7 +6136,7 @@
       ],
       "created": "2026-04-04T23:16:16.824Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T23:16:24.850Z"
+      "updated": "2026-04-04T23:16:27.586Z"
     }
   }
 }
