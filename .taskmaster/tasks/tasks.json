@@ -3355,6 +3355,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 171,
+        "title": "Improve NARRATE checkpoint robustness and documentation",
+        "description": "Three related improvements to _run_narrate in autopilot/orchestrator.py: (1) Add a comment above the checkpoint block (line 588) explaining why stage-level skipping is appropriate here vs per-item in EDL/SCRIPT. (2) Add db.count_narratives(status) to autopilot/db.py returning SELECT COUNT(*) and use it in the checkpoint instead of list_narratives() which fetches all payload columns unnecessarily. (3) Scope the checkpoint to run_id when provided, or at minimum enhance the log message to warn that existing narratives may be from a prior run and that force=True is needed to re-run NARRATE.\n\nmemory_hints:\n- search: \"NARRATE checkpoint stage-level vs per-item\"\n- search: \"checkpoint/resume uses existing DB tables\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -3367,7 +3378,7 @@
       ],
       "created": "2026-04-04T08:20:12.751Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T08:20:12.752Z"
+      "updated": "2026-04-04T08:20:19.084Z"
     }
   }
 }
