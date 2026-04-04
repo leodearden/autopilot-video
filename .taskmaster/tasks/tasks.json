@@ -3124,6 +3124,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 156,
+        "title": "Fix inline import and strengthen UTC assertion in test_youtube.py",
+        "description": "In tests/test_youtube.py: (1) Move `from datetime import datetime` at line 328 out of the test method body and add `from datetime import datetime, timezone, timedelta` to the top-level imports section (alongside `import json`, `import sys`, etc.). (2) Replace the assertion at line 330 (`assert ts.tzinfo is not None or upload_rec['uploaded_at'].endswith('+00:00')`) with two assertions: `assert ts.tzinfo is not None, 'uploaded_at must be timezone-aware'` and `assert ts.utcoffset() == timedelta(0), 'uploaded_at must be UTC'`. The `or` branch is dead code because `fromisoformat` on a `+00:00` string always yields a timezone-aware datetime; the stronger form also catches non-UTC timezone-aware timestamps.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -3136,7 +3147,7 @@
       ],
       "created": "2026-04-04T08:10:04.376Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T08:10:08.815Z"
+      "updated": "2026-04-04T08:10:11.557Z"
     }
   }
 }
