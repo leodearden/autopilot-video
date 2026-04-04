@@ -255,11 +255,11 @@ def _extract_function_body(js_source: str, func_name: str) -> str:
     Raises :class:`AssertionError` if *func_name* is not found or if the
     braces are not balanced (malformed JS).
     """
-    marker = f"function {func_name}"
-    func_start = js_source.find(marker)
-    assert func_start != -1, f"{func_name} function not found in source"
+    match = re.search(rf'\bfunction\s+{re.escape(func_name)}\b', js_source)
+    assert match is not None, f"{func_name} function not found in source"
+    func_start = match.start()
 
-    body_start = js_source.find("{", func_start)
+    body_start = js_source.find("{", match.end())
     assert body_start != -1, f"opening brace not found for {func_name}"
 
     return _brace_match_from(js_source, body_start, func_name)
