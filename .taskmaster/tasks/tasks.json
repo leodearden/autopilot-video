@@ -5355,10 +5355,11 @@
         "description": "In tests/test_otio_export.py in test_null_transition_type_falls_back_to_smpte_dissolve: (1) add `assert transitions[0].name == ''` after the transition_type assertion to pin the direct effect of `name=trans_type or ''`; (2) tighten the warning assertion from `any('None' in msg ...)` to `any('None, falling back' in msg ...)` to avoid matching any warning that happens to contain the word 'None'. Covers suggestions [5], [2], and [8] from the review.\n\nmemory_hints:\n- search: \"OTIO null transition type test assertions name warning\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T18:18:29.511Z"
       },
       {
         "id": "297",
@@ -5418,7 +5419,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:18:29.406Z",
+      "lastModified": "2026-04-04T18:18:29.511Z",
       "taskCount": 301,
       "completedCount": 190,
       "tags": [
