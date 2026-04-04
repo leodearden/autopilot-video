@@ -142,7 +142,12 @@ def route_and_render(
                     raise RoutingError(
                         f"No media record for clip {clip_id!r} — cannot resolve source_path"
                     )
-                clip["source_path"] = str(media["file_path"])
+                file_path = media.get("file_path")
+                if file_path is None:
+                    raise RoutingError(
+                        f"Media record for clip {clip_id!r} has no file_path"
+                    )
+                clip["source_path"] = str(file_path)
 
             classification = _classify_clip(clip, crop_modes)
             segment_path = work_dir / f"segment_{i:04d}.mp4"
