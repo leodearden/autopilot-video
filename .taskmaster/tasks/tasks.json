@@ -6045,6 +6045,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 348,
+        "title": "Remove redundant TestFixtureSanity class",
+        "description": "In tests/test_web_app.py, delete the entire `TestFixtureSanity` class (lines 391–404):\n- `test_app_js_source_returns_string` only checks `'function' in app_js_source`, which is weaker than `TestSSEHandlerFactory.test_make_stage_handler_defined` (checks `'function makeStageHandler'`).\n- `test_make_stage_handler_body_contains_try_catch` asserts `'try'` and `'catch'`, which is verbatim duplicated by `TestSSEHandlerFactory.test_make_stage_handler_has_try_catch` (which additionally checks `console.error`).\nIf any fixture breaks, all downstream tests fail immediately — these meta-tests add noise, not signal.\n\nMemory hints: search for \"TestFixtureSanity\" and \"task 162 fixture caching\".",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -6057,7 +6068,7 @@
       ],
       "created": "2026-04-04T23:14:22.169Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T23:14:22.172Z"
+      "updated": "2026-04-04T23:14:26.374Z"
     }
   }
 }
