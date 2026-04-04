@@ -3467,11 +3467,16 @@
         "description": "In tests/test_otio_export.py: (1) Replace `[r.message for r in caplog.records if r.levelno == logging.WARNING]` with `caplog.messages` or `r.getMessage()` — avoids the non-standard LogRecord.message attribute. (2) Strengthen the check from `'wipe' in msg` to also verify 'Unrecognized' or 'falling back' is present to pin the actual contract. (3) If the two wipe tests remain separate, also add `assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve` in test_unknown_transition_type_emits_warning so it validates the behavioral outcome, not just the side-effect.\n\nmemory_hints:\n- search: \"pytest caplog LogRecord message convention\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:24:15.602Z"
+        "updatedAt": "2026-04-04T08:26:17.329Z",
+        "metadata": {
+          "modules": [
+            "tests/test_otio_export.py"
+          ]
+        }
       },
       {
         "id": "176",
@@ -3533,7 +3538,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:24:28.959Z",
+      "lastModified": "2026-04-04T08:26:17.329Z",
       "taskCount": 180,
       "completedCount": 133,
       "tags": [
