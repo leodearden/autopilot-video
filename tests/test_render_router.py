@@ -199,10 +199,8 @@ class TestEDLLoading:
         mock_rs.assert_called_once()
         rendered_clip = mock_rs.call_args[0][0]
         assert rendered_clip["clip_id"] == "clip_1"
-        # Regression guard: source_path must be a real path, not MagicMock garbage
-        assert rendered_clip["source_path"].startswith("/"), (
-            f"source_path is garbage: {rendered_clip['source_path']}"
-        )
+        # Regression guard: source_path must be the resolved mock value
+        assert rendered_clip["source_path"] == "/fake/source.mp4"
 
 
 # ---------------------------------------------------------------------------
@@ -1050,6 +1048,65 @@ class TestSourcePathResolution:
 
         rendered_clip = mock_rc.call_args[0][0]
         assert rendered_clip["source_path"] == "/resolved/slow_clip.mp4"
+        db.get_media.assert_called_with("clip_1")
+
+    def test_source_path_coerced_from_pathlib_path(self) -> None:
+        """When db.get_media returns a Path object for file_path, it should be coerced to str."""
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "clip_id": "clip_1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        db.get_media.return_value = {"file_path": Path("/resolved/clip.mp4")}
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run"),
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        rendered_clip = mock_rs.call_args[0][0]
+        assert rendered_clip["source_path"] == "/resolved/clip.mp4"
+        assert isinstance(rendered_clip["source_path"], str)
+
+    def test_missing_file_path_key_raises_routing_error(self) -> None:
+        """When db.get_media returns a dict without file_path, RoutingError should be raised."""
+        from autopilot.render.router import RoutingError, route_and_render
+
+        clips = [
+            {
+                "clip_id": "clip_1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_media.return_value = {}
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple"),
+            patch("autopilot.render.router.render_complex"),
+            patch("subprocess.run"),
+        ):
+            with pytest.raises(RoutingError, match="file_path"):
+                route_and_render("n1", db, config, Path("/tmp/test_output"))
 
     def test_multiple_clips_each_resolved(self) -> None:
         """Each clip without source_path should trigger its own db.get_media call."""
