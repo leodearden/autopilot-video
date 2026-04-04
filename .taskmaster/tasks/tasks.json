@@ -3960,12 +3960,13 @@
         "description": "Quick fixes in TestIdempotency class (tests/test_audio_events.py):\n\n1. **Comment asymmetry (line 328):** Update comment from `# Scheduler should NOT be called for model loading` to `# Scheduler should NOT be called: classification skipped because events already exist` to match the paired test at line 363.\n\n2. **Postcondition range queries (lines 334, 368):** Replace `catalog_db.get_audio_events_for_range(\"vid1\", 0.0, 10.0)` with `catalog_db.get_audio_events_for_media(\"vid1\")` in both idempotency tests. The `get_audio_events_for_media` method exists on CatalogDB (db.py:652) and fetches all rows without a range bound. This eliminates the implicit coupling to fixture timestamps and ensures spurious writes at any timestamp are caught. The rest of the test suite uses 100.0 as upper bound (lines 586, 726); using the unbounded method is even cleaner.\n\nmemory_hints:\n- search: \"get_audio_events_for_media postcondition\"\n- search: \"TestIdempotency test patterns\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [
           "193"
         ],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T13:02:17.428Z"
       },
       {
         "id": "204",
@@ -3993,7 +3994,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T13:02:17.371Z",
+      "lastModified": "2026-04-04T13:02:17.428Z",
       "taskCount": 205,
       "completedCount": 147,
       "tags": [
