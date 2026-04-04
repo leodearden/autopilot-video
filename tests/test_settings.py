@@ -5,8 +5,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
-
 
 class TestSettingsPage:
     """Tests for the GET /settings endpoint."""
