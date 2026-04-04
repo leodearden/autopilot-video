@@ -636,6 +636,7 @@ class TestTransitionMapping:
         transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
         assert len(transitions) == 1
         assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
+        assert transitions[0].name == ""
 
         # Verify structural ordering: Clip / Transition / Clip
         track_items = list(video_tracks[0])
@@ -645,8 +646,8 @@ class TestTransitionMapping:
 
         # Verify WARNING log mentions None
         warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-        assert any("None" in msg for msg in warning_messages), (
-            f"Expected a WARNING containing 'None', got: {warning_messages}"
+        assert any("None, falling back" in msg for msg in warning_messages), (
+            f"Expected a WARNING containing 'None, falling back', got: {warning_messages}"
         )
 
 
