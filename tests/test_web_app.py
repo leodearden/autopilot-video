@@ -292,6 +292,15 @@ class TestExtractFunctionBody:
         with pytest.raises(AssertionError):
             _extract_function_body(js, "broken")
 
+    def test_does_not_match_prefix_name_collision(self) -> None:
+        """Searching for 'makeStageHandler' must not match 'makeStageHandlerV2'."""
+        js = (
+            "function makeStageHandlerV2() { return 2; }\n"
+            "function makeStageHandler() { return 1; }"
+        )
+        body = _extract_function_body(js, "makeStageHandler")
+        assert body == "{ return 1; }"
+
 
 class TestExtractListenerBody:
     """Tests for the _extract_listener_body helper hardening."""
