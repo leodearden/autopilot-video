@@ -3753,11 +3753,11 @@
         "description": "In autopilot/plan/otio_export.py:\n1. Change `_FADE_APPROXIMATION_TYPES = {\"fade_in\", \"fade_out\"}` (line 76) to `_FADE_APPROXIMATION_TYPES: frozenset[str] = frozenset({\"fade_in\", \"fade_out\"})` so mutation fails loudly.\n2. Add a module-level assertion `assert _FADE_APPROXIMATION_TYPES <= _TRANSITION_TYPE_MAP.keys()` immediately after the definition to enforce the subset invariant at import time.\n3. Extract the approximation string literal from lines 173-178 into a module-level constant `_FADE_APPROXIMATION_MSG` and reference it in the metadata dict, making it a single source of truth that tests can also import.\n\nmemory_hints: search for \"_FADE_APPROXIMATION_TYPES\" and \"_TRANSITION_TYPE_MAP\" usage; get_entity for \"otio_export.py\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T09:07:59.432Z",
+        "updatedAt": "2026-04-04T23:03:58.852Z",
         "metadata": {
           "modules": [
             "autopilot/plan/otio_export.py",
@@ -5864,7 +5864,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T23:03:58.769Z",
+      "lastModified": "2026-04-04T23:03:58.852Z",
       "taskCount": 333,
       "completedCount": 203,
       "tags": [
