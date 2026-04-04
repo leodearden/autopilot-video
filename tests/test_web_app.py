@@ -454,6 +454,10 @@ class TestSSEHandlerFactory:
             "showToast call not found in makeStageHandler else branch (missing-stage path). "
             "Error-level SSE events with no stage field should still show a fallback toast."
         )
+        assert "'unknown'" in else_body, (
+            "'unknown' fallback string not found in makeStageHandler else branch. "
+            "When stage is missing, '{stage}' must be replaced by 'unknown' in the toast."
+        )
 
 
 class TestSSERunHandlerRobustness:
