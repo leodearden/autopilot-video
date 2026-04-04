@@ -4109,11 +4109,16 @@
         "description": "In tests/test_web_app.py, task 163 added `test_does_not_match_prefix_name_collision` but left several coverage gaps. Fix:\n\n1. **Reversed order test** (line ~294-301): Add assertion with reversed declaration order — place `function makeStageHandler()` before `function makeStageHandlerV2()` and verify the result is the same. This exercises the word-boundary fix in both orderings.\n\n2. **Reverse lookup test**: Verify that `_extract_function_body(js, 'makeStageHandlerV2')` returns correctly when `makeStageHandler` also exists in source. Ensures the longer name isn't swallowed by the shorter one.\n\n3. **Suffix collision test**: Add a test with source containing `function makeStageHandler() { return 1; }` and verify that `_extract_function_body(js, 'Handler')` raises `AssertionError`, confirming the leading `\\b` word boundary is enforced.\n\n4. **Fix stale substring check** (line ~374-377): In `TestSSEHandlerFactory.test_make_stage_handler_defined`, replace `assert \"function makeStageHandler\" in js_source` with a call to `_extract_function_body(js_source, 'makeStageHandler')` (asserting it doesn't raise), matching the pattern used by the other tests in the same class.\n\nMemory hints: search for \"task 163 word-boundary\", \"_extract_function_body test coverage\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T13:18:24.334Z"
+        "updatedAt": "2026-04-04T13:20:09.343Z",
+        "metadata": {
+          "modules": [
+            "tests/test_web_app.py"
+          ]
+        }
       },
       {
         "id": "213",
@@ -4386,7 +4391,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T13:19:42.571Z",
+      "lastModified": "2026-04-04T13:20:09.343Z",
       "taskCount": 234,
       "completedCount": 161,
       "tags": [
