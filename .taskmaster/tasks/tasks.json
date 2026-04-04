@@ -5223,11 +5223,11 @@
         "description": "In autopilot/web/static/app.js, make four related fixes to the notification event handler (around lines 129-135): (1) Chain .then(perm => { if (perm==='granted') new Notification(...); }) on Notification.requestPermission() so the triggering notification is not silently dropped. (2) Add a module-level _permissionRequested flag so rapid notification events don't accumulate pending permission dialogs. (3) Guard data.message with a null/type check before passing to showToast and Notification: var msg = (data && typeof data.message === 'string') ? data.message : '(no message)'. (4) Add a comment documenting the SSE reconnect gap (events emitted during disconnection window are lost; Last-Event-ID replay would be the robust fix).",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:15:12.435Z"
+        "updatedAt": "2026-04-04T19:09:11.657Z"
       },
       {
         "id": "286",
@@ -5747,9 +5747,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T19:09:07.258Z",
+      "lastModified": "2026-04-04T19:09:11.657Z",
       "taskCount": 326,
-      "completedCount": 199,
+      "completedCount": 200,
       "tags": [
         "master"
       ]
