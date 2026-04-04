@@ -5003,10 +5003,11 @@
         "description": "In `tests/test_review.py`, rename `test_edit_form_js_does_not_use_falsy_or_null` to something concrete like `test_edit_form_js_does_not_use_pipe_pipe_null`. Update the docstring to explicitly state that `: null` in a ternary is intentional and correct, and only the `|| null` falsy short-circuit coercion is banned. This is a documentation/naming fix with no logic changes.\n\nMemory hints: search \"behavioral tests vs implementation-detail assertions convention\", get_entity \"narrative_edit_form.html\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T23:02:30.824Z"
       },
       {
         "id": "266",
@@ -5831,7 +5832,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T23:02:30.656Z",
+      "lastModified": "2026-04-04T23:02:30.824Z",
       "taskCount": 331,
       "completedCount": 203,
       "tags": [
