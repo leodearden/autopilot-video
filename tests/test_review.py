@@ -985,3 +985,32 @@ class TestGetNarrativeEditHTMX:
             headers={"HX-Request": "true"},
         )
         assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Zero-duration fixtures — task-167
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def zero_duration_app(tmp_path: Path) -> FastAPI:
+    """App with narratives seeded with proposed_duration_seconds=0 and None."""
+    db_path = str(tmp_path / "catalog.db")
+    with CatalogDB(db_path) as _db:
+        _db.init_default_gates()
+        _seed_narrative(
+            _db, "n-zero",
+            title="Zero Duration",
+            proposed_duration_seconds=0,
+        )
+        _seed_narrative(
+            _db, "n-none",
+            title="No Duration",
+            proposed_duration_seconds=None,
+        )
+    return create_app(db_path)
+
+
+@pytest.fixture
+def zero_duration_client(zero_duration_app: FastAPI) -> TestClient:
+    """TestClient for the zero-duration app."""
+    return TestClient(zero_duration_app)
