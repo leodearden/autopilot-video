@@ -4062,10 +4062,11 @@
         "description": "In tests/test_web_app.py, `_extract_listener_body` (line ~221-245) still uses plain `str.find()` for locating event type names, while the sibling `_extract_function_body` was upgraded to a `re.search()` + word-boundary strategy in task 163. Align the helpers for consistency.\n\nSpecifically:\n1. Replace `js_source.find(f\"addEventListener('{event_type}'\"` with `re.search(rf\"addEventListener\\('{re.escape(event_type)}'\", js_source)` and advance from `match.end()`.\n2. The `find(\"function\", listener_start)` call (line ~239) is fine as-is — it searches for the keyword \"function\" (not a named function), so word-boundary semantics don't apply the same way.\n3. Note: the brace-matching deduplication has already been done via `_brace_match_from` — no need to extract that again.\n\nMemory hints: search for \"_extract_listener_body\", \"task 163 regex hardening\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T13:08:26.210Z"
       },
       {
         "id": "211",
@@ -4114,7 +4115,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T13:08:26.105Z",
+      "lastModified": "2026-04-04T13:08:26.211Z",
       "taskCount": 214,
       "completedCount": 154,
       "tags": [
