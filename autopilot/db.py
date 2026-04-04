@@ -819,18 +819,10 @@ class CatalogDB:
 
         Returns number of rows affected (0 if not found or no kwargs).
         """
-        if not kwargs:
-            return 0
-        self._validate_update_kwargs(self._CLUSTER_ALLOWED_COLUMNS, kwargs, "cluster")
-        set_clause = ", ".join(f"{k} = ?" for k in kwargs)
-        values = list(kwargs.values())
-        values.append(cluster_id)
-        cur = self.conn.execute(
-            f"UPDATE activity_clusters SET {set_clause} "  # noqa: S608
-            "WHERE cluster_id = ?",
-            values,
+        return self._execute_kwargs_update(
+            "activity_clusters", "cluster_id", cluster_id,
+            self._CLUSTER_ALLOWED_COLUMNS, "cluster", kwargs,
         )
-        return cur.rowcount
 
     def delete_activity_cluster(self, cluster_id: str) -> None:
         """Delete a single activity cluster by id."""
@@ -900,15 +892,9 @@ class CatalogDB:
 
     def update_narrative(self, narrative_id: str, **kwargs: object) -> None:
         """Update fields of a narrative by keyword arguments."""
-        if not kwargs:
-            return
-        self._validate_update_kwargs(self._NARRATIVE_ALLOWED_COLUMNS, kwargs, "narrative")
-        set_clause = ", ".join(f"{k} = ?" for k in kwargs)
-        values = list(kwargs.values())
-        values.append(narrative_id)
-        self.conn.execute(
-            f"UPDATE narratives SET {set_clause} WHERE narrative_id = ?",  # noqa: S608 — column names validated above
-            values,
+        self._execute_kwargs_update(
+            "narratives", "narrative_id", narrative_id,
+            self._NARRATIVE_ALLOWED_COLUMNS, "narrative", kwargs,
         )
 
     def list_narratives(self, status: str | None = None) -> list[dict[str, object]]:
@@ -1334,16 +1320,9 @@ class CatalogDB:
 
     def update_gate(self, stage: str, **kwargs: object) -> None:
         """Update fields of a gate by keyword arguments."""
-        if not kwargs:
-            return
-        self._validate_update_kwargs(self._GATE_ALLOWED_COLUMNS, kwargs, "gate")
-        set_clause = ", ".join(f"{k} = ?" for k in kwargs)
-        values = list(kwargs.values())
-        values.append(stage)
-        self.conn.execute(
-            f"UPDATE pipeline_gates SET {set_clause} "  # noqa: S608 — column names validated above
-            "WHERE stage = ?",
-            values,
+        self._execute_kwargs_update(
+            "pipeline_gates", "stage", stage,
+            self._GATE_ALLOWED_COLUMNS, "gate", kwargs,
         )
 
     # -- pipeline_jobs CRUD ----------------------------------------------------
@@ -1415,16 +1394,9 @@ class CatalogDB:
 
     def update_job(self, job_id: str, **kwargs: object) -> None:
         """Update fields of a job by keyword arguments."""
-        if not kwargs:
-            return
-        self._validate_update_kwargs(self._JOB_ALLOWED_COLUMNS, kwargs, "job")
-        set_clause = ", ".join(f"{k} = ?" for k in kwargs)
-        values = list(kwargs.values())
-        values.append(job_id)
-        self.conn.execute(
-            f"UPDATE pipeline_jobs SET {set_clause} "  # noqa: S608 — column names validated above
-            "WHERE job_id = ?",
-            values,
+        self._execute_kwargs_update(
+            "pipeline_jobs", "job_id", job_id,
+            self._JOB_ALLOWED_COLUMNS, "job", kwargs,
         )
 
     def list_jobs(
@@ -1555,16 +1527,9 @@ class CatalogDB:
 
     def update_run(self, run_id: str, **kwargs: object) -> None:
         """Update fields of a run by keyword arguments."""
-        if not kwargs:
-            return
-        self._validate_update_kwargs(self._RUN_ALLOWED_COLUMNS, kwargs, "run")
-        set_clause = ", ".join(f"{k} = ?" for k in kwargs)
-        values = list(kwargs.values())
-        values.append(run_id)
-        self.conn.execute(
-            f"UPDATE pipeline_runs SET {set_clause} "  # noqa: S608 — column names validated above
-            "WHERE run_id = ?",
-            values,
+        self._execute_kwargs_update(
+            "pipeline_runs", "run_id", run_id,
+            self._RUN_ALLOWED_COLUMNS, "run", kwargs,
         )
 
     def get_current_run(self) -> dict[str, object] | None:
