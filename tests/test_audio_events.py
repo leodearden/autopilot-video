@@ -305,39 +305,6 @@ class TestExtractTopK:
 class TestIdempotency:
     """Tests for audio event idempotency check."""
 
-    def test_scheduler_direct_call_is_vacuous(self, catalog_db):
-        """Prove scheduler() is never called by production code.
-
-        Temporary test: scheduler.call_count == 0 holds trivially in the
-        skip path, demonstrating that scheduler.assert_not_called() adds
-        no value over scheduler.model.assert_not_called().
-        """
-        from autopilot.analyze.audio_events import classify_audio_events
-
-        catalog_db.insert_media("vid1", "/tmp/vid1.wav")
-        with catalog_db:
-            catalog_db.batch_insert_audio_events(
-                [
-                    ("vid1", 0.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
-                ]
-            )
-
-        scheduler = MagicMock()
-        classify_audio_events(
-            "vid1",
-            Path("/tmp/vid1.wav"),
-            catalog_db,
-            scheduler,
-        )
-
-        # Production code calls scheduler.model(), never scheduler() directly.
-        # Therefore scheduler.call_count is always 0 — the assertion is vacuous.
-        assert scheduler.call_count == 0, (
-            f"Expected scheduler() never called directly, got {scheduler.call_count} calls"
-        )
-        # The meaningful assertion is on the .model attribute:
-        scheduler.model.assert_not_called()
-
     def test_skip_when_events_exist(self, catalog_db):
         """Skip classification when audio events already exist."""
         from autopilot.analyze.audio_events import classify_audio_events
@@ -394,7 +361,6 @@ class TestIdempotency:
 
         # Scheduler should NOT be called: classification skipped because events already exist
         scheduler.model.assert_not_called()
-        scheduler.assert_not_called()
 
         # DB postcondition: both pre-existing events remain, no extra rows written
         events = catalog_db.get_audio_events_for_media("vid1")
