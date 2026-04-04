@@ -1527,3 +1527,9 @@ class TestFadeApproximationMetadata:
         from autopilot.plan.otio_export import _FADE_APPROXIMATION_TYPES
 
         assert _FADE_APPROXIMATION_TYPES == {"fade_in", "fade_out"}
+
+    def test_fade_approximation_types_is_frozenset(self):
+        """_FADE_APPROXIMATION_TYPES is a frozenset (immutable)."""
+        from autopilot.plan.otio_export import _FADE_APPROXIMATION_TYPES
+
+        assert isinstance(_FADE_APPROXIMATION_TYPES, frozenset)
