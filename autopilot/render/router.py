@@ -134,6 +134,16 @@ def route_and_render(
 
         for i, clip in enumerate(clips):
             clip_id = clip.get("clip_id", f"clip_{i}")
+
+            # Resolve source_path from DB when not already present in clip
+            if "source_path" not in clip:
+                media = db.get_media(clip_id)
+                if media is None:
+                    raise RoutingError(
+                        f"No media record for clip {clip_id!r} — cannot resolve source_path"
+                    )
+                clip["source_path"] = str(media["file_path"])
+
             classification = _classify_clip(clip, crop_modes)
             segment_path = work_dir / f"segment_{i:04d}.mp4"
 
