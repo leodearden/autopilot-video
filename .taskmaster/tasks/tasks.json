@@ -5766,6 +5766,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 329,
+        "title": "Clarify cut-filter test and cover dead-code path at line 151",
+        "description": "In `tests/test_otio_export.py`, the `test_cut_filtered_before_type_lookup` test verifies pre-existing line-128 filter behavior, not the changed `get('type', '')` default at line 151. (1) Add a short docstring explaining the shared `position=0` is intentional and that the test is a regression guard for the early-filter logic. (2) Optionally add a new unit test that directly calls `_insert_transitions` with a `trans_data` dict missing the `type` key to exercise the line-151 default in isolation. Suggestions [2] and [7].\n\nmemory_hints:\n- search: \"test_cut_filtered_before_type_lookup test purpose\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5778,7 +5789,7 @@
       ],
       "created": "2026-04-04T19:10:15.972Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T19:10:20.262Z"
+      "updated": "2026-04-04T19:10:26.120Z"
     }
   }
 }
