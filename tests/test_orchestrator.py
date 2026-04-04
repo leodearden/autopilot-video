@@ -2796,12 +2796,10 @@ class TestEdlResume:
     """Tests for _run_edl checkpoint/resume logic."""
 
     @patch("autopilot.plan.otio_export")
-    @patch("autopilot.plan.validator")
     @patch("autopilot.plan.edl")
     def test_edl_skips_narrative_with_existing_edit_plan(
         self,
         mock_edl,
-        mock_validator,
         mock_otio,
         minimal_config,
     ):
@@ -2814,12 +2812,14 @@ class TestEdlResume:
             {"narrative_id": "n2"},
         ]
         db.get_narrative_script.return_value = {"scenes": []}
-        # n1 already has an edit plan with edl_json, n2 does not
-        db.get_edit_plan.side_effect = lambda nid: (
-            {"narrative_id": "n1", "edl_json": '{"timeline": []}'} if nid == "n1" else None
-        )
+        # checkpoint n1 → truthy (skipped), checkpoint n2 → None (processed),
+        # guard n2 → truthy (passes)
+        db.get_edit_plan.side_effect = [
+            {"narrative_id": "n1", "edl_json": '{"timeline": []}'},
+            None,
+            {"edl_json": "{}"},
+        ]
         mock_edl.generate_edl.return_value = {"timeline": []}
-        mock_validator.validate_edl.return_value = MagicMock(passed=True)
 
         _run_edl(config=minimal_config, db=db)
 
@@ -2827,12 +2827,10 @@ class TestEdlResume:
         assert mock_edl.generate_edl.call_count == 1
 
     @patch("autopilot.plan.otio_export")
-    @patch("autopilot.plan.validator")
     @patch("autopilot.plan.edl")
     def test_edl_logs_resume_counts(
         self,
         mock_edl,
-        mock_validator,
         mock_otio,
         minimal_config,
         caplog,
@@ -2847,12 +2845,15 @@ class TestEdlResume:
             {"narrative_id": "n3"},
         ]
         db.get_narrative_script.return_value = {"scenes": []}
-        # n1 and n2 already have edit plans
-        db.get_edit_plan.side_effect = lambda nid: (
-            {"narrative_id": nid, "edl_json": '{"timeline": []}'} if nid in ("n1", "n2") else None
-        )
+        # checkpoint n1 → truthy (skipped), checkpoint n2 → truthy (skipped),
+        # checkpoint n3 → None (processed), guard n3 → truthy (passes)
+        db.get_edit_plan.side_effect = [
+            {"narrative_id": "n1", "edl_json": '{"timeline": []}'},
+            {"narrative_id": "n2", "edl_json": '{"timeline": []}'},
+            None,
+            {"edl_json": "{}"},
+        ]
         mock_edl.generate_edl.return_value = {"timeline": []}
-        mock_validator.validate_edl.return_value = MagicMock(passed=True)
 
         with caplog.at_level(logging.INFO, logger="autopilot.orchestrator"):
             _run_edl(config=minimal_config, db=db)
@@ -2860,12 +2861,10 @@ class TestEdlResume:
         assert any("Resuming EDL" in r.message and "2/3" in r.message for r in caplog.records)
 
     @patch("autopilot.plan.otio_export")
-    @patch("autopilot.plan.validator")
     @patch("autopilot.plan.edl")
     def test_edl_force_regenerates_all(
         self,
         mock_edl,
-        mock_validator,
         mock_otio,
         minimal_config,
     ):
@@ -2878,10 +2877,9 @@ class TestEdlResume:
             {"narrative_id": "n2"},
         ]
         db.get_narrative_script.return_value = {"scenes": []}
-        # Both already have edit plans
+        # force=True skips checkpoint, but guard still fires for each narrative
         db.get_edit_plan.return_value = {"narrative_id": "n1", "edl_json": '{"timeline": []}'}
         mock_edl.generate_edl.return_value = {"timeline": []}
-        mock_validator.validate_edl.return_value = MagicMock(passed=True)
 
         _run_edl(config=minimal_config, db=db, force=True)
 
