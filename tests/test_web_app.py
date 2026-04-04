@@ -223,6 +223,40 @@ def _extract_listener_body(js_source: str, event_type: str) -> str:
     return js_source[body_start:body_end]
 
 
+def _extract_function_body(js_source: str, func_name: str) -> str:
+    """Extract the body of a named ``function`` declaration by brace-matching.
+
+    Locates ``function <func_name>`` in *js_source*, finds its opening ``{``,
+    and brace-matches to the corresponding closing ``}``.  Returns the
+    outermost ``{ ... }`` block (braces included).
+
+    Raises :class:`AssertionError` if *func_name* is not found or if the
+    braces are not balanced (malformed JS).
+    """
+    marker = f"function {func_name}"
+    func_start = js_source.find(marker)
+    assert func_start != -1, f"{func_name} function not found in source"
+
+    body_start = js_source.find("{", func_start)
+    assert body_start != -1, f"opening brace not found for {func_name}"
+
+    brace_depth = 0
+    body_end = body_start
+    for i in range(body_start, len(js_source)):
+        if js_source[i] == "{":
+            brace_depth += 1
+        elif js_source[i] == "}":
+            brace_depth -= 1
+            if brace_depth == 0:
+                body_end = i + 1
+                break
+
+    assert brace_depth == 0, (
+        f"unbalanced braces in {func_name} (depth {brace_depth} after scan)"
+    )
+    return js_source[body_start:body_end]
+
+
 class TestExtractFunctionBody:
     """Tests for the _extract_function_body helper."""
 
