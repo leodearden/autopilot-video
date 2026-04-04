@@ -3479,10 +3479,11 @@
         "description": "In tests/test_otio_export.py, at every location that does track_items[0]/[1]/[2] isinstance checks, add `assert len(track_items) == 3` immediately before the index-based checks. This makes the Clip/Transition/Clip invariant explicit and produces a clear AssertionError (not an opaque IndexError) when insertion logic produces the wrong number of items. Note: if the structural helper from the dedup task is implemented first, the len check should be inside the helper.\n\nmemory_hints:\n- search: \"OTIO test structural helper _assert_clip_transition_clip\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T08:24:15.652Z"
       },
       {
         "id": "177",
@@ -3509,7 +3510,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:24:15.602Z",
+      "lastModified": "2026-04-04T08:24:15.652Z",
       "taskCount": 178,
       "completedCount": 132,
       "tags": [
