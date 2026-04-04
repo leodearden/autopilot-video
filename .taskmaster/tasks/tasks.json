@@ -5210,6 +5210,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 286,
+        "title": "Sanitize exception message in _emit_notification stage_error call",
+        "description": "In autopilot/orchestrator.py line 1450, change the raw f'Stage {stage_name} failed: {exc}' to truncate or sanitize the exception: e.g. f'Stage {stage_name} failed: {type(exc).__name__}: {str(exc)[:120]}'. This prevents file paths, credentials fragments, or multi-line tracebacks from appearing in user-facing toast/browser notifications.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5222,7 +5233,7 @@
       ],
       "created": "2026-04-04T18:12:47.315Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:12:54.449Z"
+      "updated": "2026-04-04T18:12:57.014Z"
     }
   }
 }
