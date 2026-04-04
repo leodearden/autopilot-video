@@ -487,6 +487,15 @@ class TestSSERunHandlerRobustness:
         assert "try" in body, "try block not found in run_failed handler"
         assert "catch" in body, "catch block not found in run_failed handler"
         assert "console.error" in body, "console.error not found in run_failed catch block"
+        assert "'Pipeline run failed'" in body, (
+            "toast message 'Pipeline run failed' not found in run_failed handler"
+        )
+        assert "'error'" in body, (
+            "toast type 'error' not found in run_failed handler"
+        )
+        assert "8000" in body, (
+            "toast duration 8000 not found in run_failed handler"
+        )
 
 
 class TestDashboardSSEEventCoverage:
