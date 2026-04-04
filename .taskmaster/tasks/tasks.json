@@ -4207,6 +4207,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 222,
+        "title": "Template JS quality: hoist parseFloat and add isFinite guard",
+        "description": "In `autopilot/web/templates/partials/narrative_edit_form.html` line ~24, refactor the hx-vals IIFE from:\n`(v => v !== '' && !isNaN(parseFloat(v)) ? parseFloat(v) : null)(...)`\nto:\n`(v => { const n = parseFloat(v); return v !== '' && !isNaN(n) && isFinite(n) ? n : null })(...)`\nThis eliminates the redundant double `parseFloat` call and adds an `isFinite` guard to prevent `Infinity` (e.g. from `1e308`) from being silently coerced to `null` by `JSON.stringify`.\n\nMemory hints: search \"zero-value falsy handling Jinja JS convention\" for related norms.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -4219,7 +4230,7 @@
       ],
       "created": "2026-04-04T13:11:20.056Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T13:11:20.057Z"
+      "updated": "2026-04-04T13:11:25.080Z"
     }
   }
 }
