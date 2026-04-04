@@ -268,6 +268,23 @@ def _extract_function_body(js_source: str, func_name: str) -> str:
     return js_source[body_start:body_end]
 
 
+def _assert_toast_params(
+    body: str, message: str, toast_type: str, duration: int
+) -> None:
+    """Assert that *body* contains a ``showToast(message, type, duration)`` call.
+
+    Uses the full call-string pattern (e.g.
+    ``showToast('Pipeline run completed!', 'success', 6000)``) to avoid false
+    positives from bare substring matches.
+    """
+    expected = f"showToast('{message}', '{toast_type}', {duration})"
+    assert expected in body, (
+        f"Expected showToast call not found in handler body.\n"
+        f"  expected: {expected}\n"
+        f"  body excerpt: {body[:300]}"
+    )
+
+
 class TestExtractFunctionBody:
     """Tests for the _extract_function_body helper."""
 
@@ -470,15 +487,7 @@ class TestSSERunHandlerRobustness:
         assert "try" in body, "try block not found in run_completed handler"
         assert "catch" in body, "catch block not found in run_completed handler"
         assert "console.error" in body, "console.error not found in run_completed catch block"
-        assert "'Pipeline run completed!'" in body, (
-            "toast message 'Pipeline run completed!' not found in run_completed handler"
-        )
-        assert "'success'" in body, (
-            "toast type 'success' not found in run_completed handler"
-        )
-        assert "6000" in body, (
-            "toast duration 6000 not found in run_completed handler"
-        )
+        _assert_toast_params(body, "Pipeline run completed!", "success", 6000)
 
     def test_run_failed_has_try_catch(self) -> None:
         """run_failed handler wraps its body in try/catch."""
@@ -487,15 +496,7 @@ class TestSSERunHandlerRobustness:
         assert "try" in body, "try block not found in run_failed handler"
         assert "catch" in body, "catch block not found in run_failed handler"
         assert "console.error" in body, "console.error not found in run_failed catch block"
-        assert "'Pipeline run failed'" in body, (
-            "toast message 'Pipeline run failed' not found in run_failed handler"
-        )
-        assert "'error'" in body, (
-            "toast type 'error' not found in run_failed handler"
-        )
-        assert "8000" in body, (
-            "toast duration 8000 not found in run_failed handler"
-        )
+        _assert_toast_params(body, "Pipeline run failed", "error", 8000)
 
 
 class TestDashboardSSEEventCoverage:
