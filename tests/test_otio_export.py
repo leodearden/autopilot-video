@@ -605,6 +605,12 @@ class TestTransitionMapping:
         assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
         assert transitions[0].name == "fade_out"
 
+        # Verify transition is positioned BETWEEN the two clips
+        track_items = list(video_tracks[0])
+        assert isinstance(track_items[0], otio.schema.Clip)
+        assert isinstance(track_items[1], otio.schema.Transition)
+        assert isinstance(track_items[2], otio.schema.Clip)
+
     def test_dissolve_creates_smpte_dissolve(self, tmp_path):
         """EDL transition type 'dissolve' creates SMPTE_Dissolve with name='dissolve'."""
         from autopilot.plan.otio_export import export_otio
