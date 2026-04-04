@@ -4255,10 +4255,11 @@
         "description": "Three concrete bugs/fragilities in tests/test_cli.py need fixing:\n1. Lines 694-696, 713-715, 732-734: `mock_x.assert_not_called(), (f\"...\")` silently discards the custom failure message (comma creates a tuple, second element is discarded). Replace with `assert not mock_x.called, f\"...\"` at all three sites.\n2. Line 792: `call_args[1]` legacy tuple indexing — replace with `mock_orch.run.call_args.kwargs` (available since Python 3.8).\n3. Line 633: remove the `with runner.isolated_filesystem():` wrapper from `test_returns_true_and_echoes_when_dry_run`; no filesystem ops occur there.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T13:14:17.280Z"
       },
       {
         "id": "226",
@@ -4285,7 +4286,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T13:14:17.192Z",
+      "lastModified": "2026-04-04T13:14:17.280Z",
       "taskCount": 227,
       "completedCount": 157,
       "tags": [
