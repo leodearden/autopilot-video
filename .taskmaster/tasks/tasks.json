@@ -2858,7 +2858,7 @@
         "description": "CRITICAL: render_simple() and render_complex() require edl_entry[\"source_path\"], but generate_edl() produces clips with clip_id/in_timecode/out_timecode/track only. The render router must resolve clip_id to file_path via db.get_media() before passing clips to renderers. Currently any real render run crashes with KeyError/RenderError. Tests paper over this by manually constructing EDL dicts that include source_path.",
         "details": "Files: render/router.py:174-177, render/ffmpeg_render.py:64, render/moviepy_render.py:96\n\nFix: In render/router.py, before calling render_simple/render_complex, resolve each clip's source_path:\n  media = db.get_media(clip_id)\n  clip[\"source_path\"] = media[\"file_path\"]\n\nAlso update test data in test_render_router.py to verify this resolution works end-to-end rather than manually injecting source_path.\n\nmemory_hints:\n- search: \"render pipeline source_path EDL clip resolution\"\n- entity: \"render_router\", \"ffmpeg_render\"",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "high",
         "subtasks": [],
@@ -2876,7 +2876,8 @@
             "autopilot",
             "tests"
           ]
-        }
+        },
+        "updatedAt": "2026-04-04T08:00:53.333Z"
       },
       {
         "id": "144",
@@ -3099,7 +3100,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:00:53.245Z",
+      "lastModified": "2026-04-04T08:00:53.334Z",
       "taskCount": 153,
       "completedCount": 123,
       "tags": [
