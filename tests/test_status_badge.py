@@ -153,7 +153,10 @@ class TestPipelineIndexBadges:
         env = _make_env()
         html = env.get_template("pipeline/index.html").render(
             page_title="Pipeline",
-            run={"run_id": "r-1", "status": "running", "current_stage": "ingest", "started_at": "now"},
+            run={
+                "run_id": "r-1", "status": "running",
+                "current_stage": "ingest", "started_at": "now",
+            },
             stages=[],
             runs=[],
         )
@@ -163,7 +166,10 @@ class TestPipelineIndexBadges:
         env = _make_env()
         html = env.get_template("pipeline/index.html").render(
             page_title="Pipeline",
-            run={"run_id": "r-1", "status": "completed", "current_stage": None, "started_at": "now"},
+            run={
+                "run_id": "r-1", "status": "completed",
+                "current_stage": None, "started_at": "now",
+            },
             stages=[],
             runs=[],
         )
@@ -183,8 +189,14 @@ class TestPipelineIndexBadges:
         env = _make_env()
         html = env.get_template("pipeline/index.html").render(
             page_title="Pipeline",
-            run={"run_id": "r-1", "status": "running", "current_stage": "ingest", "started_at": "now"},
-            stages=[{"name": "ingest", "status": "done", "done": 3, "total": 3, "gate_mode": "auto"}],
+            run={
+                "run_id": "r-1", "status": "running",
+                "current_stage": "ingest", "started_at": "now",
+            },
+            stages=[{
+                "name": "ingest", "status": "done",
+                "done": 3, "total": 3, "gate_mode": "auto",
+            }],
             runs=[],
         )
         assert "bg-green-900" in html
@@ -193,8 +205,14 @@ class TestPipelineIndexBadges:
         env = _make_env()
         html = env.get_template("pipeline/index.html").render(
             page_title="Pipeline",
-            run={"run_id": "r-1", "status": "running", "current_stage": "ingest", "started_at": "now"},
-            stages=[{"name": "render", "status": "waiting", "done": 0, "total": 2, "gate_mode": "manual"}],
+            run={
+                "run_id": "r-1", "status": "running",
+                "current_stage": "ingest", "started_at": "now",
+            },
+            stages=[{
+                "name": "render", "status": "waiting",
+                "done": 0, "total": 2, "gate_mode": "manual",
+            }],
             runs=[],
         )
         assert "bg-amber-900" in html
@@ -370,7 +388,10 @@ class TestReviewRendersBadge:
         env = _make_env()
         html = env.get_template("review/renders.html").render(
             page_title="Render Review",
-            narrative={"narrative_id": "n-1", "title": "T", "description": "D", "status": "approved"},
+            narrative={
+                "narrative_id": "n-1", "title": "T",
+                "description": "D", "status": "approved",
+            },
             edit_plan={"validation": {"passes": True}},
             has_render=False, scenes=[],
         )
@@ -380,7 +401,10 @@ class TestReviewRendersBadge:
         env = _make_env()
         html = env.get_template("review/renders.html").render(
             page_title="Render Review",
-            narrative={"narrative_id": "n-1", "title": "T", "description": "D", "status": "approved"},
+            narrative={
+                "narrative_id": "n-1", "title": "T",
+                "description": "D", "status": "approved",
+            },
             edit_plan={"validation": {"passes": False}},
             has_render=False, scenes=[],
         )
@@ -397,6 +421,9 @@ class TestReviewHubBadge:
     def test_waiting_badge_amber(self) -> None:
         env = _make_env()
         html = env.get_template("review/hub.html").render(
-            waiting_gates=[{"stage": "render", "link": "/review/render", "pending_count": 2, "pending_label": "items"}],
+            waiting_gates=[{
+                "stage": "render", "link": "/review/render",
+                "pending_count": 2, "pending_label": "items",
+            }],
         )
         assert "bg-amber-900" in html
