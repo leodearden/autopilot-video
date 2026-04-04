@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -1106,19 +1107,34 @@ class TestEditFormZeroDuration:
         assert response.status_code == 200
         # The input value should be empty, not the string 'None'
         assert 'value="None"' not in response.text
-        # Duration input should render with an empty value attribute
-        assert 'value=""' in response.text
-        assert 'name="proposed_duration_seconds"' in response.text
+        # Extract the specific duration input and verify its value is empty
+        match = re.search(
+            r'<input[^>]*name="proposed_duration_seconds"[^>]*>',
+            response.text,
+        )
+        assert match is not None, "proposed_duration_seconds input not found"
+        assert 'value=""' in match.group(0)
+
+    def test_edit_form_js_does_not_use_falsy_or_null(
+        self, zero_duration_client: TestClient,
+    ) -> None:
+        """Edit form template must not use the dangerous ``v || null`` JS pattern."""
+        response = zero_duration_client.get(
+            "/api/narratives/n-zero?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "|| null" not in response.text
 
     def test_update_zero_duration_roundtrip(
         self, zero_duration_client: TestClient,
     ) -> None:
         """Zero duration survives a save→render roundtrip via JSON API + edit form.
 
-        This behavioural roundtrip also subsumes JS-pattern regression coverage:
-        if the hx-vals serialisation ever coerces 0 to null/empty, the final
-        assertion will catch it regardless of the specific JS implementation
-        (isNaN, Number.isFinite, etc.).
+        Covers server-side persistence and edit-form rendering only. The
+        TestClient sends JSON directly and does not execute the browser-side
+        hx-vals JS; see test_edit_form_js_does_not_use_falsy_or_null for
+        template JS regression coverage.
         """
         # PUT zero duration via JSON API
         put_resp = zero_duration_client.put(
