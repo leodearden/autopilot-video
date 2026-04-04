@@ -4582,10 +4582,11 @@
         "description": "Task 225 introduced `call_args.kwargs` at test_cli.py:791, but the rest of the test suite (50+ occurrences across 10 files) uses the legacy tuple-index style `call_args[1]`. This creates an inconsistent mix.\n\nMigrate all `call_args[0]` → `call_args.args` and `call_args[1]` → `call_args.kwargs` across the test suite. The named-attribute form is more explicit, self-documenting, and robust (doesn't break if positional args are added). Available since Python 3.8.\n\nFiles to check: test_cli.py (lines 149, 187, 205, 510, 526, 791), test_orchestrator.py, test_gpu_scheduler.py, test_asr.py, and other test files using call_args tuple indexing.\n\nmemory_hints: search for \"call_args access pattern\" and \"test suite modernization\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T14:12:57.297Z"
       },
       {
         "id": "243",
@@ -4826,7 +4827,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:12:56.919Z",
+      "lastModified": "2026-04-04T14:12:57.299Z",
       "taskCount": 262,
       "completedCount": 177,
       "tags": [
