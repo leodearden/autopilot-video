@@ -18,8 +18,8 @@ def _render_badge(status: str, extra_classes: str = "") -> str:
     template = env.get_template("macros/narrative_status_badge.html")
     module = template.module
     if extra_classes:
-        return module.status_badge(status, extra_classes)
-    return module.status_badge(status)
+        return module.status_badge(status, extra_classes)  # type: ignore[reportAttributeAccessIssue]
+    return module.status_badge(status)  # type: ignore[reportAttributeAccessIssue]
 
 
 class TestStatusBadgeMacro:
