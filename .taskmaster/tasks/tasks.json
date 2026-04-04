@@ -2712,7 +2712,7 @@
         "description": "autopilot/web/routes/review.py defines `_get_db` (line 20-22) and `_is_htmx` (line 25-27) that are byte-for-byte identical to `get_db` and `is_htmx` in autopilot/web/deps.py. Replace the local definitions with `from autopilot.web.deps import get_db, is_htmx` and update all ~15 call-sites in review.py (rename _get_db → get_db, _is_htmx → is_htmx). Also apply the same cleanup to sse.py which has the same pre-existing duplicate.\n\nmemory_hints: search \"_get_db _is_htmx deps.py duplicate\", entity \"deps.py\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
@@ -2729,7 +2729,8 @@
             "autopilot/web",
             "tests"
           ]
-        }
+        },
+        "updatedAt": "2026-04-04T08:20:33.773Z"
       },
       {
         "id": "138",
@@ -3397,7 +3398,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:20:33.708Z",
+      "lastModified": "2026-04-04T08:20:33.773Z",
       "taskCount": 173,
       "completedCount": 129,
       "tags": [
