@@ -4348,10 +4348,11 @@
         "description": "Two small fixes in autopilot/db.py prune_events() (around line 1467):\n\n1. **Float rejection**: The current guard `if hours <= 0` doesn't catch non-integer values like `hours=0.5`. SQLite's `datetime('now', '-0.5 hours')` returns NULL, making the WHERE clause always-false — zero rows deleted with no error. Add `isinstance(hours, int)` check.\n\n2. **ValueError style**: The inline `raise ValueError(f\"hours must be positive, got {hours}\")` doesn't follow the local convention used in all 5 other ValueError raises in db.py (lines 782, 866, 1303, 1387, 1530), which assign to `msg` first. Align with: `msg = f\"hours must be positive, got {hours}\"; raise ValueError(msg)`.\n\nSuggested fix:\n```python\nif not isinstance(hours, int) or hours <= 0:\n    msg = f\"hours must be a positive integer, got {hours!r}\"\n    raise ValueError(msg)\n```\n\nUpdate tests in tests/test_db_pipeline.py to add a case for float input (e.g., `hours=0.5`).\n\nmemory_hints:\n- search: \"db.py ValueError msg variable pattern convention\"\n- search: \"prune_events guard validation\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T14:05:12.622Z"
       },
       {
         "id": "229",
@@ -4612,7 +4613,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:05:12.558Z",
+      "lastModified": "2026-04-04T14:05:12.622Z",
       "taskCount": 250,
       "completedCount": 171,
       "tags": [
