@@ -3821,10 +3821,11 @@
         "description": "Clean up repeated boilerplate in tests/test_youtube.py TestBuildUploadMetadata class (continuation of Task 109 fixture consolidation that covered other test files but not this one).\n\nItems to address:\n1. **Extract shared config fixture** — The 3-line `config = MagicMock(); config.privacy_status = 'unlisted'; config.default_category = '22'` block is duplicated ~7 times. Extract as a pytest fixture (either in conftest.py or as a class-scoped fixture).\n2. **Hoist repeated import** — `from autopilot.upload.youtube import _build_upload_metadata` appears inside every test method. Move to module-level import.\n3. **Parametrize similar empty-tag tests** — `test_tags_empty_when_detections_use_old_class_name_key` and `test_tags_empty_when_detection_has_no_class_key` are structurally identical, differing only in detection payload. Combine via `@pytest.mark.parametrize`.\n4. **Fix naming inconsistency** — Rename `test_tags_empty_when_detection_has_no_class_key` to use plural 'detections' to match the sibling test's naming convention.\n5. **Normalize assertion style** — Remove redundant negative membership checks in `test_tags_empty_when_detections_use_old_class_name_key` (lines 258-259) since line 260 already asserts `tags == []`.\n\nmemory_hints: search for \"Task 109 fixture consolidation\" and \"test file deduplication conventions\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:08:13.296Z"
       },
       {
         "id": "196",
@@ -3840,7 +3841,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T09:08:11.713Z",
+      "lastModified": "2026-04-04T09:08:13.300Z",
       "taskCount": 196,
       "completedCount": 143,
       "tags": [
