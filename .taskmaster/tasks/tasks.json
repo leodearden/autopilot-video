@@ -6173,6 +6173,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 358,
+        "title": "Improve test_status_badge.py efficiency and coverage",
+        "description": "Several gaps in tests/test_status_badge.py: (1) Line 20 — _render_badge() constructs a new jinja2.Environment on every call; use the module-level _make_env() helper (already defined at line 138) to share one environment across all ~20 unit test invocations; (2) TestPipelineJobsBadges (lines 249-287) — add test_running_badge_blue covering status='running' → bg-blue-900; (3) TestLabelParameter — add test for label='' (empty string) to document that the macro renders a blank badge; (4) TestReviewRendersBadge (lines 387-411) — add assertions for label text: assert 'passes: True' in html and assert 'passes: False' in html; (5) TestMediaDetailBadge and TestMediaRowBadge — add assert 'py-0.5' in html to each test to catch accidental removal of the extra_classes argument.\n\nmemory_hints: search \"test_status_badge.py test coverage\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -6185,7 +6196,7 @@
       ],
       "created": "2026-04-04T23:17:38.103Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T23:17:51.947Z"
+      "updated": "2026-04-04T23:17:59.049Z"
     }
   }
 }
