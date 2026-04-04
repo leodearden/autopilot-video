@@ -699,6 +699,46 @@ class TestTransitionMapping:
         assert isinstance(track_items[1], otio.schema.Transition)
         assert isinstance(track_items[2], otio.schema.Clip)
 
+    def test_unknown_transition_type_emits_warning(self, tmp_path, caplog):
+        """Unrecognized transition type emits a WARNING log message."""
+        import logging
+
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "wipe",
+                    "duration": 1.0,
+                    "position": 0,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+
+        with caplog.at_level(logging.WARNING, logger="autopilot.plan.otio_export"):
+            export_otio(edl, output, db)
+
+        warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("wipe" in msg for msg in warning_messages), (
+            f"Expected a WARNING containing 'wipe', got: {warning_messages}"
+        )
+
 
 # -- Step 20: Multi-track transition isolation tests ---------------------------
 
