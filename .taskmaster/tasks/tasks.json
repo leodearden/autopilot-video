@@ -4753,10 +4753,11 @@
         "description": "Three precision improvements in tests/test_review.py TestGetNarrativeEditHTMX:\n\n1. **Line 923**: `assert \"120\" in response.text` is a bare substring that could match CSS classes, URLs, etc. Change to `assert 'value=\"120\"' in response.text` (or `value=\"120.0\"` — check how the template renders proposed_duration_seconds) to verify the input field value attribute specifically.\n\n2. **Line 960**: `assert \"hx-post\" in response.text` only checks that some hx-post attribute exists anywhere. Change to `assert 'hx-post=\"/api/narratives/n-1/approve\"' in response.text` to pin the exact target URL.\n\n3. **Line ~957-960**: The hx-post assertion only passes because n-1 has status=\"proposed\" (the Approve button is only rendered for proposed narratives). Add a comment `# hx-post present because n-1 status='proposed'` or add `assert \"proposed\" in response.text` before the hx-post check to make the dependency visible.\n\nMemory hints: search \"assertion precision HTMX tests\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T14:20:49.747Z"
       },
       {
         "id": "253",
@@ -5006,7 +5007,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:20:47.747Z",
+      "lastModified": "2026-04-04T14:20:49.748Z",
       "taskCount": 273,
       "completedCount": 179,
       "tags": [
