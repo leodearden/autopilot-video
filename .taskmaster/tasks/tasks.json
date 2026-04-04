@@ -4523,10 +4523,11 @@
         "description": "In tests/test_otio_export.py lines 402-410: (1) Rename `_assert_clip_transition_clip` to `_assert_and_get_track_items` (or similar) so the return value is signalled by the name — update all 5+ call sites accordingly. (2) Add f-string messages to the three bare assertions inside the helper: `assert len(items) == 3, f'Expected 3 track items, got {len(items)}: {items}'`, and similarly for the two isinstance checks.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T14:10:13.388Z"
       },
       {
         "id": "239",
@@ -4777,7 +4778,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:10:12.807Z",
+      "lastModified": "2026-04-04T14:10:13.390Z",
       "taskCount": 260,
       "completedCount": 174,
       "tags": [
