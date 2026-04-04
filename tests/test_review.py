@@ -1014,3 +1014,36 @@ def zero_duration_app(tmp_path: Path) -> FastAPI:
 def zero_duration_client(zero_duration_app: FastAPI) -> TestClient:
     """TestClient for the zero-duration app."""
     return TestClient(zero_duration_app)
+
+
+# ---------------------------------------------------------------------------
+# TestEditFormZeroDuration — task-167 step-1
+# ---------------------------------------------------------------------------
+
+class TestEditFormZeroDuration:
+    """Tests for edit form rendering of zero and None duration values."""
+
+    def test_edit_form_renders_zero_duration(
+        self, zero_duration_client: TestClient,
+    ) -> None:
+        """Edit form for narrative with proposed_duration_seconds=0 shows value="0"."""
+        response = zero_duration_client.get(
+            "/api/narratives/n-zero?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert 'value="0"' in response.text
+
+    def test_edit_form_renders_empty_for_none_duration(
+        self, zero_duration_client: TestClient,
+    ) -> None:
+        """Edit form for narrative with proposed_duration_seconds=None shows empty value."""
+        response = zero_duration_client.get(
+            "/api/narratives/n-none?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        # The input value should be empty, not the string 'None'
+        assert 'value="None"' not in response.text
+        # Duration input should have an empty value attribute
+        assert 'name="proposed_duration_seconds"' in response.text
