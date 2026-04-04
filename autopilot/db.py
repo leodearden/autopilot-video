@@ -1534,9 +1534,12 @@ class CatalogDB:
         "budget_remaining_seconds",
     })
 
-    def update_run(self, run_id: str, **kwargs: object) -> None:
-        """Update fields of a run by keyword arguments."""
-        self._execute_kwargs_update(
+    def update_run(self, run_id: str, **kwargs: object) -> int:
+        """Update fields of a run by keyword arguments.
+
+        Returns number of rows affected (0 if not found or no kwargs).
+        """
+        return self._execute_kwargs_update(
             "pipeline_runs", "run_id", run_id,
             self._RUN_ALLOWED_COLUMNS, "run", kwargs,
         )
