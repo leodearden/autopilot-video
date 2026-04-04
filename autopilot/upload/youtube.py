@@ -117,8 +117,8 @@ def _build_upload_metadata(
                 try:
                     dets = json.loads(str(det_json))
                     for d in dets:
-                        if d.get("class_name"):
-                            class_names.add(d["class_name"])
+                        if d.get("class"):
+                            class_names.add(d["class"])
                 except (json.JSONDecodeError, TypeError):
                     pass
     tags.extend(sorted(class_names))
