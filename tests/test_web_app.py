@@ -324,6 +324,12 @@ class TestFixtureSanity:
         assert len(app_js_source) > 0
         assert "function" in app_js_source
 
+    def test_make_stage_handler_body_contains_try_catch(self, make_stage_handler_body: str) -> None:
+        """make_stage_handler_body fixture returns a string containing 'try' and 'catch'."""
+        assert isinstance(make_stage_handler_body, str)
+        assert "try" in make_stage_handler_body
+        assert "catch" in make_stage_handler_body
+
 
 class TestSSEErrorHandling:
     """Tests for SSE notification error handling in app.js."""
