@@ -5532,6 +5532,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 311,
+        "title": "Extract _assert_warning_contains helper and use r.getMessage() in OTIO export tests",
+        "description": "In tests/test_otio_export.py, the warning-extraction-and-assertion pattern is duplicated across test_unknown_transition_type_emits_warning (line ~594) and test_null_transition_type_falls_back_to_smpte_dissolve (line ~648). Refactor:\n\n1. Extract a module-level helper:\n```python\ndef _assert_warning_contains(caplog, substring):\n    msgs = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]\n    assert any(substring in m for m in msgs), (\n        f\"Expected a WARNING containing {substring!r}, got: {msgs}\"\n    )\n```\n2. Replace both call sites with `_assert_warning_contains(caplog, \"wipe\")` and `_assert_warning_contains(caplog, \"None, falling back\")`.\n3. Use `r.getMessage()` instead of `r.message` in the helper — this is the stable, documented LogRecord API.\n4. Update the stale comment at line ~647 from \"Verify WARNING log mentions None\" to something like \"Verify WARNING log contains the falling-back sentinel phrase\".\n\nmemory_hints:\n- search: \"OTIO test warning assertion helper caplog getMessage\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5544,7 +5555,7 @@
       ],
       "created": "2026-04-04T18:24:58.240Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:24:58.242Z"
+      "updated": "2026-04-04T18:24:58.624Z"
     }
   }
 }
