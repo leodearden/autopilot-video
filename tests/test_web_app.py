@@ -403,6 +403,13 @@ class TestSSEHandlerFactory:
         assert "makeStageHandler('stage_error'" in js_source, (
             "stage_error handler does not use makeStageHandler"
         )
+        assert (
+            "makeStageHandler('stage_error', 'Error in {stage} stage', 'error', 6000, false)"
+            in js_source
+        ), (
+            "stage_error factory call does not match expected 5-param signature: "
+            "('stage_error', 'Error in {stage} stage', 'error', 6000, false)"
+        )
 
 
     def test_make_stage_handler_shows_toast_on_missing_stage(self) -> None:
