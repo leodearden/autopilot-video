@@ -975,3 +975,13 @@ class TestGetNarrativeEditHTMX:
         )
         assert response.status_code == 200
         assert "edit=1" in response.text
+
+    def test_get_htmx_edit_not_found_returns_404(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """GET /api/narratives/nonexistent?edit=1 with HX-Request returns 404."""
+        response = seeded_client.get(
+            "/api/narratives/nonexistent?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 404
