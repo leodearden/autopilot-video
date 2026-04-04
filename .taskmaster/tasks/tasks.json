@@ -3752,7 +3752,13 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T09:05:34.534Z"
+        "updatedAt": "2026-04-04T09:05:34.534Z",
+        "metadata": {
+          "modules": [
+            "autopilot/plan/otio_export.py",
+            "tests/test_otio_export.py"
+          ]
+        }
       },
       {
         "id": 191,
@@ -3807,6 +3813,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 195,
+        "title": "Deduplicate test_youtube.py TestBuildUploadMetadata boilerplate",
+        "description": "Clean up repeated boilerplate in tests/test_youtube.py TestBuildUploadMetadata class (continuation of Task 109 fixture consolidation that covered other test files but not this one).\n\nItems to address:\n1. **Extract shared config fixture** — The 3-line `config = MagicMock(); config.privacy_status = 'unlisted'; config.default_category = '22'` block is duplicated ~7 times. Extract as a pytest fixture (either in conftest.py or as a class-scoped fixture).\n2. **Hoist repeated import** — `from autopilot.upload.youtube import _build_upload_metadata` appears inside every test method. Move to module-level import.\n3. **Parametrize similar empty-tag tests** — `test_tags_empty_when_detections_use_old_class_name_key` and `test_tags_empty_when_detection_has_no_class_key` are structurally identical, differing only in detection payload. Combine via `@pytest.mark.parametrize`.\n4. **Fix naming inconsistency** — Rename `test_tags_empty_when_detection_has_no_class_key` to use plural 'detections' to match the sibling test's naming convention.\n5. **Normalize assertion style** — Remove redundant negative membership checks in `test_tags_empty_when_detections_use_old_class_name_key` (lines 258-259) since line 260 already asserts `tags == []`.\n\nmemory_hints: search for \"Task 109 fixture consolidation\" and \"test file deduplication conventions\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -3819,7 +3836,7 @@
       ],
       "created": "2026-04-04T09:07:52.270Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T09:07:52.285Z"
+      "updated": "2026-04-04T09:07:59.219Z"
     }
   }
 }
