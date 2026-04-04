@@ -1279,3 +1279,42 @@ class TestSourcePathResolution:
         # But the renderer should still have received the resolved source_path
         rendered_clip = mock_rs.call_args[0][0]
         assert rendered_clip["source_path"] == "/resolved/clip.mp4"
+
+
+# ---------------------------------------------------------------------------
+# clip_id validation and fallback policy (guard-first pattern)
+# ---------------------------------------------------------------------------
+
+
+class TestClipIdValidation:
+    """Verify clip_id validation uses guard-first pattern (no synthetic fallback)."""
+
+    def test_no_clip_id_no_source_path_raises_without_synthetic_id(self) -> None:
+        """Clip with no clip_id and no source_path: RoutingError should NOT
+        contain a synthetic 'clip_0' — the guard must fire before any fallback."""
+        from autopilot.render.router import RoutingError, route_and_render
+
+        clips = [
+            {
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+                # no clip_id, no source_path
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple"),
+            patch("subprocess.run"),
+            pytest.raises(RoutingError, match="Clip at index 0 has no clip_id") as exc_info,
+        ):
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        # The error must NOT contain a synthetic ID like 'clip_0'
+        assert "clip_0" not in str(exc_info.value)
