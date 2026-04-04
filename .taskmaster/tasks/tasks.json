@@ -4933,10 +4933,11 @@
         "description": "The status_badge macro in autopilot/web/templates/macros/narrative_status_badge.html explicitly maps 4 statuses (proposed, approved, rejected, scripted) but the system has a 5th known lifecycle status: 'planned' (set after EDL generation). It currently falls through to the purple 'unknown' fallback, giving no visual distinction between a legitimate 'planned' state and a truly unknown/bad status.\n\n**Changes needed:**\n1. Add an `elif status == 'planned'` branch with a semantically distinct color (e.g., `bg-indigo-900 text-indigo-300`) before the else clause in `autopilot/web/templates/macros/narrative_status_badge.html`.\n2. Add a `test_planned_indigo` test in `TestStatusBadgeMacro` in `tests/test_narrative_status_badge.py` that renders with status='planned' and asserts the correct CSS classes.\n\n**Memory hints:** search for \"narrative lifecycle statuses\" and \"planned status\" to confirm the full set of statuses.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T18:12:39.640Z"
       },
       {
         "id": "262",
@@ -5191,7 +5192,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:12:39.553Z",
+      "lastModified": "2026-04-04T18:12:39.640Z",
       "taskCount": 283,
       "completedCount": 185,
       "tags": [
