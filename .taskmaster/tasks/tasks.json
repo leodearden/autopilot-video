@@ -3425,15 +3425,16 @@
         "description": "In tests/test_orchestrator.py, extract a shared mock_db fixture (autouse or class-level) for TestNarrateStage, TestNarrateJobTracking, and TestGateBackwardsCompat that pre-sets db.list_narratives.return_value = [] by default. Individual tests that want the checkpoint to fire can override it explicitly. This eliminates the 8 copies of db.list_narratives.return_value = [] scattered across test bodies.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T08:22:31.305Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:22:31.244Z",
+      "lastModified": "2026-04-04T08:22:31.305Z",
       "taskCount": 173,
       "completedCount": 131,
       "tags": [
