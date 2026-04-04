@@ -1495,3 +1495,75 @@ class TestClipIdValidation:
         # (only called if clip has clip_id AND crop_modes has an entry)
         # With empty crop_modes, neither clip triggers crop lookup
         db.get_crop_path.assert_not_called()
+
+    @pytest.mark.parametrize("overlay", ["pip", "split_screen"])
+    def test_slow_path_no_clip_id_raises_routing_error(self, overlay: str) -> None:
+        """Clip with overlay forcing slow path but no clip_id should raise
+        RoutingError — crop data cannot be loaded without a clip_id."""
+        from autopilot.render.router import RoutingError, route_and_render
+
+        clips = [
+            {
+                "source_path": "/some/video.mp4",
+                "overlay": overlay,
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+                # no clip_id
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple"),
+            patch("autopilot.render.router.render_complex"),
+            patch("subprocess.run"),
+            pytest.raises(
+                RoutingError,
+                match="overlay requiring slow path but no clip_id",
+            ),
+        ):
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+    def test_slow_path_with_clip_id_succeeds(self) -> None:
+        """Clip WITH clip_id and overlay='pip' should route to slow path
+        successfully — the guard must not block valid slow-path clips."""
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "clip_id": "c1",
+                "overlay": "pip",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }
+        ]
+        crop_modes = [{"clip_id": "c1", "mode": "auto_subject"}]
+        edl = _make_edl(clips=clips, crop_modes=crop_modes)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_media.return_value = {"file_path": "/resolved/c1.mp4"}
+        db.get_crop_path.return_value = {
+            "path_data": [[0.0, 0.0, 100.0, 100.0]],
+        }
+        db.get_transcript.return_value = None
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("autopilot.render.router.render_complex") as mock_rc,
+            patch("subprocess.run"),
+        ):
+            mock_rc.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        # Should use slow path (render_complex), not fast path
+        mock_rc.assert_called_once()
+        mock_rs.assert_not_called()
