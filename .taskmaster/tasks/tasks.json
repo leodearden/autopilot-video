@@ -3583,11 +3583,11 @@
         "description": "Three related robustness issues in autopilot/render/router.py around the source_path resolution block (lines 135-145):\n1. Add a pre-check before the db.get_media call — if a clip has neither source_path nor clip_id, raise RoutingError(f'Clip at index {i} has no clip_id and no source_path') rather than silently using the synthetic f'clip_{i}' id and producing a confusing 'No media record for clip_0' error.\n2. After confirming media is not None, guard the file_path key access: use media.get('file_path') and raise RoutingError(f'Media record for clip {clip_id!r} is missing file_path') if absent, rather than letting a bare KeyError escape.\n3. Switch from in-place mutation clip['source_path'] = ... to a non-mutating rebind clip = {**clip, 'source_path': str(file_path)} for consistency with the rest of the function.\n\nmemory_hints:\n- search: \"render pipeline source_path resolution robustness RoutingError\"\n- entity: \"render_router\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:31:19.733Z",
+        "updatedAt": "2026-04-04T09:08:20.928Z",
         "metadata": {
           "modules": [
             "autopilot/render/router.py",
@@ -3844,7 +3844,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T09:08:20.256Z",
+      "lastModified": "2026-04-04T09:08:20.931Z",
       "taskCount": 196,
       "completedCount": 143,
       "tags": [
