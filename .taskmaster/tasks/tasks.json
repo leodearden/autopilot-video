@@ -5755,6 +5755,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 328,
+        "title": "Document dead/inconsistent `type` default at line 151",
+        "description": "In `autopilot/plan/otio_export.py` line 151, the default `''` for the `type` key is dead code — no entry without a `type` key can survive the line-128 cut-filter. Either revert to `'cut'` for consistency with line 128, or add a comment such as `# key always present here (cut-filtered above)` to explain the divergence. Suggestions [0] and [11].\n\nmemory_hints:\n- search: \"OTIO _insert_transitions type default dead code\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5767,7 +5778,7 @@
       ],
       "created": "2026-04-04T19:10:15.972Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T19:10:15.981Z"
+      "updated": "2026-04-04T19:10:20.262Z"
     }
   }
 }
