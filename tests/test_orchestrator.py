@@ -993,37 +993,33 @@ class TestNarrateStage:
     """Tests for the real _run_narrate stage function."""
 
     @patch("autopilot.organize.narratives")
-    def test_narrate_builds_storyboard(self, mock_narratives, minimal_config):
+    def test_narrate_builds_storyboard(self, mock_narratives, minimal_config, mock_db):
         """_run_narrate calls build_master_storyboard with db."""
         from autopilot.orchestrator import _run_narrate
 
         mock_narratives.build_master_storyboard.return_value = "storyboard text"
         mock_narratives.propose_narratives.return_value = []
         mock_narratives.format_for_review.return_value = ""
-        db = MagicMock()
-        db.list_narratives.return_value = []  # no checkpoint hit
 
-        _run_narrate(config=minimal_config, db=db)
+        _run_narrate(config=minimal_config, db=mock_db)
 
-        mock_narratives.build_master_storyboard.assert_called_once_with(db)
+        mock_narratives.build_master_storyboard.assert_called_once_with(mock_db)
 
     @patch("autopilot.organize.narratives")
-    def test_narrate_proposes_narratives(self, mock_narratives, minimal_config):
+    def test_narrate_proposes_narratives(self, mock_narratives, minimal_config, mock_db):
         """_run_narrate calls propose_narratives with storyboard, db, config."""
         from autopilot.orchestrator import _run_narrate
 
         mock_narratives.build_master_storyboard.return_value = "storyboard"
         mock_narratives.propose_narratives.return_value = []
         mock_narratives.format_for_review.return_value = ""
-        db = MagicMock()
-        db.list_narratives.return_value = []  # no checkpoint hit
 
-        _run_narrate(config=minimal_config, db=db)
+        _run_narrate(config=minimal_config, db=mock_db)
 
-        mock_narratives.propose_narratives.assert_called_once_with("storyboard", db, minimal_config)
+        mock_narratives.propose_narratives.assert_called_once_with("storyboard", mock_db, minimal_config)
 
     @patch("autopilot.organize.narratives")
-    def test_narrate_calls_human_review_callback(self, mock_narratives, minimal_config):
+    def test_narrate_calls_human_review_callback(self, mock_narratives, minimal_config, mock_db):
         """_run_narrate invokes human_review_fn with formatted text and narratives."""
         from autopilot.orchestrator import _run_narrate
 
@@ -1032,16 +1028,14 @@ class TestNarrateStage:
         mock_narratives.build_master_storyboard.return_value = "sb"
         mock_narratives.propose_narratives.return_value = [narr]
         mock_narratives.format_for_review.return_value = "review text"
-        db = MagicMock()
-        db.list_narratives.return_value = []  # no checkpoint hit
 
         review_fn = MagicMock(return_value=["n1"])
-        _run_narrate(config=minimal_config, db=db, human_review_fn=review_fn)
+        _run_narrate(config=minimal_config, db=mock_db, human_review_fn=review_fn)
 
         review_fn.assert_called_once_with("review text", [narr])
 
     @patch("autopilot.organize.narratives")
-    def test_narrate_auto_approves_when_no_callback(self, mock_narratives, minimal_config):
+    def test_narrate_auto_approves_when_no_callback(self, mock_narratives, minimal_config, mock_db):
         """Without human_review_fn all narratives get status='approved'."""
         from autopilot.orchestrator import _run_narrate
 
@@ -1050,15 +1044,13 @@ class TestNarrateStage:
         mock_narratives.build_master_storyboard.return_value = "sb"
         mock_narratives.propose_narratives.return_value = [narr]
         mock_narratives.format_for_review.return_value = ""
-        db = MagicMock()
-        db.list_narratives.return_value = []  # no checkpoint hit
 
-        _run_narrate(config=minimal_config, db=db)
+        _run_narrate(config=minimal_config, db=mock_db)
 
-        db.update_narrative_status.assert_any_call("n1", "approved")
+        mock_db.update_narrative_status.assert_any_call("n1", "approved")
 
     @patch("autopilot.organize.narratives")
-    def test_narrate_respects_review_rejections(self, mock_narratives, minimal_config):
+    def test_narrate_respects_review_rejections(self, mock_narratives, minimal_config, mock_db):
         """human_review_fn returns subset of IDs; rejected ones get status='rejected'."""
         from autopilot.orchestrator import _run_narrate
 
@@ -1069,15 +1061,13 @@ class TestNarrateStage:
         mock_narratives.build_master_storyboard.return_value = "sb"
         mock_narratives.propose_narratives.return_value = [narr1, narr2]
         mock_narratives.format_for_review.return_value = "review"
-        db = MagicMock()
-        db.list_narratives.return_value = []  # no checkpoint hit
 
         # Only approve n1, reject n2
         review_fn = MagicMock(return_value=["n1"])
-        _run_narrate(config=minimal_config, db=db, human_review_fn=review_fn)
+        _run_narrate(config=minimal_config, db=mock_db, human_review_fn=review_fn)
 
-        db.update_narrative_status.assert_any_call("n1", "approved")
-        db.update_narrative_status.assert_any_call("n2", "rejected")
+        mock_db.update_narrative_status.assert_any_call("n1", "approved")
+        mock_db.update_narrative_status.assert_any_call("n2", "rejected")
 
 
 class TestNarrateResume:
