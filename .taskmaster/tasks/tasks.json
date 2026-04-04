@@ -4119,10 +4119,11 @@
         "description": "In tests/test_audio_events.py, several test classes still use `get_audio_events_for_range(\"vid1\", 0.0, 10.0)` or `get_audio_events_for_range(\"vid1\", 0.0, 100.0)` as a proxy for \"fetch all events.\" Task 203 migrated the idempotency postcondition checks; this task covers the remaining call sites.\n\n**Call sites to migrate:**\n- Line ~542: TestClassificationOutput.test_stores_top_k_per_second — range(0.0, 10.0)\n- Line ~552: TestClassificationOutput.test_custom_top_k — range(0.0, 10.0)\n- Line ~586: TestDBStorage._run_and_get_events — range(0.0, 100.0)\n- Line ~726: TestErrorHandling.test_runtime_error_no_partial — range(0.0, 100.0)\n- Line ~853: TestFullPipeline.test_full_pipeline — range(0.0, 10.0)\n- Line ~905: TestFullPipeline.test_short_audio — range(0.0, 10.0)\n- Line ~913: TestFullPipeline.test_custom_top_k_integration — range(0.0, 10.0)\n\n**Do NOT migrate:**\n- Line ~609: TestDBStorage.test_retrievable_by_range — legitimately tests range filtering\n\n**Bonus:** Add one boundary regression test (e.g., `test_skip_when_events_exist_beyond_range`) that seeds an event at t=15.0, calls `classify_audio_events`, asserts scheduler is not called, and verifies `get_audio_events_for_media` returns the event. This makes the rationale for the unbounded method self-documenting.\n\nmemory_hints:\n- search: \"get_audio_events_for_media postcondition\"\n- search: \"classify_audio_events idempotency bug\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T13:19:40.043Z"
       },
       {
         "id": "214",
@@ -4382,7 +4383,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T13:19:39.891Z",
+      "lastModified": "2026-04-04T13:19:40.044Z",
       "taskCount": 234,
       "completedCount": 161,
       "tags": [
