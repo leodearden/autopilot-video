@@ -3650,6 +3650,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 188,
+        "title": "Fill refreshCard assertion gaps and document false-branch coverage gap",
+        "description": "In tests/test_web_app.py: (1) Add assertions in TestSSEHandlerFactory confirming that stage_started, stage_completed, and job_progress factory calls do NOT include a refreshCard=false argument (i.e. they use the default). (2) Add a comment in test_make_stage_handler_calls_refresh_stage_card noting that the if(refreshCard)=false behavioural path (i.e. that refreshStageCard is NOT called for stage_error handlers) is only statically verified and needs an integration/behavioural test.",
+        "details": "Follow-up from task 152 review suggestions. Currently only stage_error's refreshCard=false is asserted; the other event types lack symmetric assertions. The if(refreshCard) guard is tested for textual presence but not for actual runtime behavior.\n\nmemory_hints: search for \"refreshCard assertion\" and \"SSE handler factory tests\"",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -3662,7 +3673,7 @@
       ],
       "created": "2026-04-04T08:30:35.411Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T08:30:40.960Z"
+      "updated": "2026-04-04T08:30:46.165Z"
     }
   }
 }
