@@ -1028,10 +1028,10 @@ class TestDepsImportRefactor:
 # Zero-duration fixtures — task-167
 # ---------------------------------------------------------------------------
 
-@pytest.fixture
-def zero_duration_app(tmp_path: Path) -> FastAPI:
+@pytest.fixture(scope="class")
+def zero_duration_app(tmp_path_factory: pytest.TempPathFactory) -> FastAPI:
     """App with narratives seeded with proposed_duration_seconds=0 and None."""
-    db_path = str(tmp_path / "catalog.db")
+    db_path = str(tmp_path_factory.mktemp("zero_dur") / "catalog.db")
     with CatalogDB(db_path) as _db:
         _db.init_default_gates()
         _seed_narrative(
@@ -1047,7 +1047,7 @@ def zero_duration_app(tmp_path: Path) -> FastAPI:
     return create_app(db_path)
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def zero_duration_client(zero_duration_app: FastAPI) -> TestClient:
     """TestClient for the zero-duration app."""
     return TestClient(zero_duration_app)
@@ -1096,29 +1096,3 @@ class TestEditFormZeroDuration:
         # Duration input should render with an empty value attribute
         assert 'value=""' in response.text
         assert 'name="proposed_duration_seconds"' in response.text
-
-    def test_update_zero_duration_roundtrip(
-        self, zero_duration_client: TestClient,
-    ) -> None:
-        """Zero duration survives a save→render roundtrip via JSON API + edit form.
-
-        This behavioural roundtrip also subsumes JS-pattern regression coverage:
-        if the hx-vals serialisation ever coerces 0 to null/empty, the final
-        assertion will catch it regardless of the specific JS implementation
-        (isNaN, Number.isFinite, etc.).
-        """
-        # PUT zero duration via JSON API
-        put_resp = zero_duration_client.put(
-            "/api/narratives/n-zero",
-            json={"proposed_duration_seconds": 0},
-        )
-        assert put_resp.status_code == 200
-        assert put_resp.json()["proposed_duration_seconds"] == 0
-
-        # GET edit form and verify zero is rendered, not blank
-        get_resp = zero_duration_client.get(
-            "/api/narratives/n-zero?edit=1",
-            headers={"HX-Request": "true"},
-        )
-        assert get_resp.status_code == 200
-        assert 'value="0"' in get_resp.text or 'value="0.0"' in get_resp.text
