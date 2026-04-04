@@ -3974,10 +3974,11 @@
         "description": "Fix dry-run to be zero-side-effect by moving guard before DB/config setup",
         "details": "In autopilot/cli.py: The `if dry_run:` guard in all 6 subcommands (ingest, analyze, plan, edit, render, upload) is placed AFTER `_setup_context()`, which opens DB and loads config. Move it before. If `_handle_dry_run` helper already exists at cli.py:98, use it. Each subcommand becomes `if _handle_dry_run(dry_run, 'STAGE'): return` before the try block. Also add test for `run` command's dry-run path (delegates to orchestrator). Follow-up from task 150 review.",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T13:01:25.038Z"
       },
       {
         "id": "205",
@@ -3993,7 +3994,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T13:01:24.853Z",
+      "lastModified": "2026-04-04T13:01:25.038Z",
       "taskCount": 205,
       "completedCount": 147,
       "tags": [
