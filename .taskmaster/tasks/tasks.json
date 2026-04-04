@@ -5340,6 +5340,17 @@
         "dependencies": [],
         "priority": "high",
         "subtasks": []
+      },
+      {
+        "id": 296,
+        "title": "Strengthen null-type transition test: add name assertion and precise warning check",
+        "description": "In tests/test_otio_export.py in test_null_transition_type_falls_back_to_smpte_dissolve: (1) add `assert transitions[0].name == ''` after the transition_type assertion to pin the direct effect of `name=trans_type or ''`; (2) tighten the warning assertion from `any('None' in msg ...)` to `any('None, falling back' in msg ...)` to avoid matching any warning that happens to contain the word 'None'. Covers suggestions [5], [2], and [8] from the review.\n\nmemory_hints:\n- search: \"OTIO null transition type test assertions name warning\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5352,7 +5363,7 @@
       ],
       "created": "2026-04-04T18:17:36.986Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:17:36.988Z"
+      "updated": "2026-04-04T18:17:43.037Z"
     }
   }
 }
