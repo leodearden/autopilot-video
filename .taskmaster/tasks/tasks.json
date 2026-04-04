@@ -2953,7 +2953,20 @@
         "status": "pending",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/orchestrator.py",
+            "autopilot/organize/narratives.py",
+            "tests/test_orchestrator.py",
+            "tests/test_narratives.py"
+          ],
+          "modules": [
+            "autopilot",
+            "autopilot/organize",
+            "tests"
+          ]
+        }
       },
       {
         "id": 148,
