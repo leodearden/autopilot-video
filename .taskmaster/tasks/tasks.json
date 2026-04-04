@@ -4898,10 +4898,11 @@
         "description": "Three independent improvements to autopilot/render/router.py: (1) Hoist `target_aspect = getattr(config, 'primary_aspect', '16:9')` (line 181) above the `for i, clip in enumerate(clips):` loop — it is loop-invariant. (2) Extract the shared `subject_track_id = cm_entry.get('subject_track_id', 0)` and `crop_record = db.get_crop_path(media_id, target_aspect, subject_track_id)` lines (189-209) above the `if classification == 'slow': / elif crop_modes.get(clip_id):` branch, so each branch only handles its outcome. (3) Fix the error message at line 222: use `clip_label = clip_id if clip_id is not None else f'<index {i}>'` and `f'{classification}-path render failed for clip {clip_label}'` to correctly identify fast vs slow and avoid printing 'None'.\n\nmemory_hints:\n- search: \"target_aspect loop invariant crop_record duplication render router\"\n- entity: \"render_router\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T18:11:07.097Z"
       },
       {
         "id": "260",
@@ -5156,7 +5157,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:11:07.026Z",
+      "lastModified": "2026-04-04T18:11:07.097Z",
       "taskCount": 281,
       "completedCount": 185,
       "tags": [
