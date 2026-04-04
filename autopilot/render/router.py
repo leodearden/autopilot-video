@@ -152,8 +152,13 @@ def route_and_render(
 
             # Resolve source_path from DB when not already present in clip
             if "source_path" not in clip:
-                # clip_id is guaranteed non-None here (guard above raises otherwise)
-                assert clip_id is not None
+                # clip_id is guaranteed non-None here — the guard above raises
+                # RoutingError when clip_id is None and source_path is absent.
+                # Explicit raise (not assert) so python -O cannot strip it.
+                if clip_id is None:
+                    raise RoutingError(
+                        f"Internal error: clip {i} reached DB lookup without clip_id"
+                    )
                 media = db.get_media(clip_id)
                 if media is None:
                     raise RoutingError(
