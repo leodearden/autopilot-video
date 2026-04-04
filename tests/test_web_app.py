@@ -203,6 +203,7 @@ def _brace_match_from(source: str, start: int, label: str) -> str:
     Raises :class:`AssertionError` with a message containing *label* if
     ``source[start]`` is not ``{`` or if the braces are unbalanced.
     """
+    assert 0 <= start < len(source), f"start {start} out of range for {label}"
     assert source[start] == "{", f"expected '{{' at position {start} in {label}"
     brace_depth = 0
     for i in range(start, len(source)):
