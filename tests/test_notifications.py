@@ -88,6 +88,135 @@ class TestNotificationSSESetup:
             "Bell click handler should reset badge to 0"
         )
 
+    def test_notification_handler_guards_data_message(self) -> None:
+        """The notification handler must guard data.message with a typeof check
+        and provide a '(no message)' fallback so that undefined/null values
+        never reach showToast or Notification."""
+        content = _APP_JS.read_text()
+        func_start = content.find("function setupNotificationSSE")
+        assert func_start != -1
+        func_body = content[func_start:]
+        next_func = func_body.find("\nfunction ", 1)
+        if next_func != -1:
+            func_body = func_body[:next_func]
+
+        # There must be a typeof check on data.message
+        assert "typeof data.message" in func_body, (
+            "notification handler should check typeof data.message"
+        )
+        # There must be a '(no message)' fallback string
+        assert "(no message)" in func_body, (
+            "notification handler should have a '(no message)' fallback"
+        )
+        # showToast should NOT be called with raw data.message
+        # Instead it should use the guarded variable (msg)
+        notif_listener = func_body[func_body.find("notification"):]
+        assert "showToast(data.message" not in notif_listener, (
+            "showToast should use guarded msg variable, not raw data.message"
+        )
+
+    def test_request_permission_chains_then_with_granted_check(self) -> None:
+        """requestPermission() must be chained with .then() that creates a
+        Notification only when permission is 'granted'."""
+        content = _APP_JS.read_text()
+        func_start = content.find("function setupNotificationSSE")
+        assert func_start != -1
+        func_body = content[func_start:]
+        next_func = func_body.find("\nfunction ", 1)
+        if next_func != -1:
+            func_body = func_body[:next_func]
+
+        # requestPermission must be followed by .then(
+        assert "requestPermission().then(" in func_body, (
+            "requestPermission should be chained with .then() callback"
+        )
+        # The .then callback must check for 'granted'
+        perm_idx = func_body.find("requestPermission().then(")
+        assert perm_idx != -1
+        after_perm = func_body[perm_idx:]
+        assert "'granted'" in after_perm or '"granted"' in after_perm, (
+            ".then() callback should check permission === 'granted'"
+        )
+
+    def test_permission_requested_flag_guards_request_permission(self) -> None:
+        """A module-level _permissionRequested flag must exist before
+        setupNotificationSSE and be checked before calling requestPermission()
+        to prevent stacking permission dialogs on rapid SSE events."""
+        content = _APP_JS.read_text()
+
+        # _permissionRequested must be declared at module level,
+        # before setupNotificationSSE
+        flag_idx = content.find("_permissionRequested")
+        assert flag_idx != -1, "_permissionRequested flag not found in app.js"
+        func_idx = content.find("function setupNotificationSSE")
+        assert flag_idx < func_idx, (
+            "_permissionRequested should be declared before setupNotificationSSE"
+        )
+
+        # Inside setupNotificationSSE, the flag must guard requestPermission
+        func_body = content[func_idx:]
+        next_func = func_body.find("\nfunction ", 1)
+        if next_func != -1:
+            func_body = func_body[:next_func]
+        assert "_permissionRequested" in func_body, (
+            "setupNotificationSSE should check _permissionRequested flag"
+        )
+        # The flag should be set to true before/after calling requestPermission
+        assert "_permissionRequested = true" in func_body, (
+            "setupNotificationSSE should set _permissionRequested = true"
+        )
+
+    def test_sse_reconnect_gap_documented(self) -> None:
+        """connectSSE should have a comment documenting the SSE reconnect gap
+        and mentioning Last-Event-ID as the robust fix."""
+        content = _APP_JS.read_text()
+        func_start = content.find("function connectSSE")
+        assert func_start != -1
+        func_body = content[func_start:]
+        next_func = func_body.find("\nfunction ", 1)
+        if next_func != -1:
+            func_body = func_body[:next_func]
+
+        assert "reconnect" in func_body.lower() or "reconnection" in func_body.lower(), (
+            "connectSSE should document the reconnect gap"
+        )
+        assert "Last-Event-ID" in func_body, (
+            "connectSSE should mention Last-Event-ID as the robust fix"
+        )
+
+    def test_notification_handler_guards_data_object_before_side_effects(self) -> None:
+        """The notification handler must guard that data is a non-null object
+        immediately after JSON.parse, BEFORE unreadCount++ or updateNotificationBadge.
+        This prevents inconsistent UI state when JSON.parse yields null
+        (e.g. server sends 'data: null')."""
+        content = _APP_JS.read_text()
+        func_start = content.find("function setupNotificationSSE")
+        assert func_start != -1
+        func_body = content[func_start:]
+        next_func = func_body.find("\nfunction ", 1)
+        if next_func != -1:
+            func_body = func_body[:next_func]
+
+        # There must be a typeof data !== 'object' guard
+        assert "typeof data !== 'object'" in func_body or \
+               'typeof data !== "object"' in func_body, (
+            "notification handler should check typeof data !== 'object'"
+        )
+        # There must be a !data check (for null)
+        assert "!data" in func_body, (
+            "notification handler should check !data for null"
+        )
+        # The guard must appear BEFORE unreadCount++ to prevent side effects
+        guard_idx = func_body.find("typeof data")
+        unread_idx = func_body.find("unreadCount++")
+        assert guard_idx != -1 and unread_idx != -1, (
+            "Both guard and unreadCount++ should exist"
+        )
+        assert guard_idx < unread_idx, (
+            "data object guard must appear BEFORE unreadCount++ "
+            "to prevent badge increment on invalid payloads"
+        )
+
     def test_connectsse_no_duplicate_notification_listener(self) -> None:
         """connectSSE must not duplicate the notification listener."""
         content = _APP_JS.read_text()
