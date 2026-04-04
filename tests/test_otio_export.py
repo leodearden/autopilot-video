@@ -1551,3 +1551,51 @@ class TestFadeApproximationMetadata:
 
         source = inspect.getsource(mod)
         assert "_FADE_APPROXIMATION_TYPES <= _TRANSITION_TYPE_MAP.keys()" in source
+
+    def test_fade_approximation_msg_constant_exists(self):
+        """_FADE_APPROXIMATION_MSG is a non-empty string constant."""
+        from autopilot.plan.otio_export import _FADE_APPROXIMATION_MSG
+
+        assert isinstance(_FADE_APPROXIMATION_MSG, str)
+        assert len(_FADE_APPROXIMATION_MSG) > 0
+
+    def test_fade_approximation_metadata_matches_msg_constant(self, tmp_path):
+        """Exported fade_in transition metadata matches _FADE_APPROXIMATION_MSG exactly."""
+        from autopilot.plan.otio_export import _FADE_APPROXIMATION_MSG, export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "fade_in",
+                    "duration": 1.0,
+                    "position": 0,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+        transitions = [
+            item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)
+        ]
+        assert len(transitions) == 1
+
+        approx = transitions[0].metadata.get("autopilot", {}).get("approximation")
+        assert approx == _FADE_APPROXIMATION_MSG
