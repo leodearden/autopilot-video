@@ -4599,10 +4599,11 @@
         "description": "The 5 update methods (update_activity_cluster, update_narrative, update_gate, update_job, update_run) share an identical 4-line SQL-building pattern after validation: `set_clause = \", \".join(...)`, `values = list(kwargs.values())`, `values.append(pk)`, `conn.execute(...)`. Extract a `_execute_kwargs_update(self, table, pk_col, pk_val, allowed, entity, kwargs)` helper that encapsulates validation + SET clause construction + execution. Each public update method becomes a thin wrapper supplying table name, PK column, and allowed columns. This completes the DRY extraction started in task 207.\n\nMemory hints: search for \"validate_update_kwargs helper\" and \"CatalogDB update pattern\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T14:15:20.353Z"
       },
       {
         "id": "244",
@@ -4832,7 +4833,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:15:19.247Z",
+      "lastModified": "2026-04-04T14:15:20.359Z",
       "taskCount": 262,
       "completedCount": 177,
       "tags": [
