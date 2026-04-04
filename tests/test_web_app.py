@@ -213,10 +213,9 @@ def _brace_match_from(source: str, start: int, label: str) -> str:
             brace_depth -= 1
             if brace_depth == 0:
                 return source[start : i + 1]
-    assert brace_depth == 0, (
+    raise AssertionError(
         f"unbalanced braces in {label} (depth {brace_depth} after scan)"
     )
-    return source[start:]  # unreachable; keeps type-checkers happy
 
 
 def _extract_listener_body(js_source: str, event_type: str) -> str:
