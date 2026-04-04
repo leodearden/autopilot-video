@@ -3047,7 +3047,7 @@
         "description": "Extract _extract_function_body helper and fix silent failures in test_web_app.py",
         "details": "In tests/test_web_app.py: (1) Extract a module-level _extract_function_body(js_source, func_name) helper that locates 'function {func_name}', brace-matches its body, and returns it. Replace all 6 inlined brace-matching loops in TestSSEHandlerFactory with calls to this helper. (2) Add an assertion after the brace-matching loop in _extract_listener_body that brace_depth == 0, so malformed JS or extraction failures raise immediately instead of returning ''. (3) Add a docstring note to _extract_listener_body stating it only works for inline function listeners, not factory-pattern listeners like stage_error. Follow-up from task 111 review.",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
@@ -3058,7 +3058,8 @@
           "modules": [
             "tests"
           ]
-        }
+        },
+        "updatedAt": "2026-04-04T08:00:53.597Z"
       },
       {
         "id": "152",
@@ -3103,7 +3104,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:00:53.540Z",
+      "lastModified": "2026-04-04T08:00:53.597Z",
       "taskCount": 153,
       "completedCount": 123,
       "tags": [
