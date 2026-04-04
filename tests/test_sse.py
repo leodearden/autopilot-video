@@ -92,7 +92,7 @@ class TestSSEEventDelivery:
         sse_db.insert_event("stage_completed", stage="INGEST")
 
         async def _finite_gen(request):
-            db = sse_module._get_db(request)
+            db = sse_module.get_db(request)
             try:
                 events = db.get_events_since(0)
                 for ev in events:
@@ -117,7 +117,7 @@ class TestSSEEventDelivery:
         sse_db.insert_event("stage_started", stage="ANALYZE", job_id="j1")
 
         async def _finite_gen(request):
-            db = sse_module._get_db(request)
+            db = sse_module.get_db(request)
             try:
                 events = db.get_events_since(0)
                 for ev in events:
@@ -152,7 +152,7 @@ class TestSSEEventDelivery:
         )
 
         async def _finite_gen(request):
-            db = sse_module._get_db(request)
+            db = sse_module.get_db(request)
             try:
                 events = db.get_events_since(0)
                 for ev in events:
@@ -183,7 +183,7 @@ class TestSSEReconnection:
             sse_db.insert_event(f"event_{i}", stage="INGEST")
 
         async def _finite_gen(request):
-            db = sse_module._get_db(request)
+            db = sse_module.get_db(request)
             last_id = sse_module._get_last_event_id(request)
             try:
                 events = db.get_events_since(last_id)
@@ -209,7 +209,7 @@ class TestSSEReconnection:
             sse_db.insert_event(f"event_{i}", stage="INGEST")
 
         async def _finite_gen(request):
-            db = sse_module._get_db(request)
+            db = sse_module.get_db(request)
             last_id = sse_module._get_last_event_id(request)
             try:
                 events = db.get_events_since(last_id)
@@ -233,7 +233,7 @@ class TestSSEReconnection:
             sse_db.insert_event(f"event_{i}", stage="INGEST")
 
         async def _finite_gen(request):
-            db = sse_module._get_db(request)
+            db = sse_module.get_db(request)
             last_id = sse_module._get_last_event_id(request)
             try:
                 events = db.get_events_since(last_id)
@@ -302,17 +302,18 @@ class TestSSEEventTypes:
         "gate_skipped",
         "run_completed",
         "run_failed",
+        "notification",
     ]
 
     def test_all_event_types_forwarded(self, sse_db, sse_app) -> None:
-        """Each of the 12 event types is forwarded correctly via SSE."""
+        """Each of the 13 event types is forwarded correctly via SSE."""
         from autopilot.web.routes import sse as sse_module
 
         for etype in self.ALL_EVENT_TYPES:
             sse_db.insert_event(etype, stage="TEST")
 
         async def _finite_gen(request):
-            db = sse_module._get_db(request)
+            db = sse_module.get_db(request)
             try:
                 events = db.get_events_since(0)
                 for ev in events:
@@ -335,3 +336,26 @@ class TestSSEEventTypes:
 
         for etype in self.ALL_EVENT_TYPES:
             assert etype in VALID_EVENT_TYPES, f"'{etype}' missing from VALID_EVENT_TYPES"
+
+
+# ---------------------------------------------------------------------------
+# TestSseDepsImportRefactor — task-137 step-3
+# ---------------------------------------------------------------------------
+
+class TestSseDepsImportRefactor:
+    """Verify sse.py uses get_db from deps and private copy is removed."""
+
+    def test_no_private_get_db(self) -> None:
+        """_get_db should be removed from sse module."""
+        from autopilot.web.routes import sse
+        assert not hasattr(sse, "_get_db"), (
+            "_get_db should be removed in favor of get_db from deps"
+        )
+
+    def test_sse_get_db_is_deps_get_db(self) -> None:
+        """sse.get_db should be the same object as deps.get_db."""
+        from autopilot.web import deps
+        from autopilot.web.routes import sse
+        assert sse.get_db is deps.get_db, (
+            "sse.get_db should be imported from deps"
+        )

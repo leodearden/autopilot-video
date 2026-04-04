@@ -32,16 +32,13 @@ function connectSSE(url) {
 
     const source = new EventSource(url);
 
-    source.addEventListener('notification', function(event) {
-        try {
-            const data = JSON.parse(event.data);
-            showToast(data.message, data.type || 'info');
-        } catch (e) {
-            console.error('SSE notification parse error:', e, event.data);
-        }
-    });
-
     source.onerror = function() {
+        /*
+         * NOTE: Events emitted by the server during reconnection are lost.
+         * EventSource will auto-reconnect, but there is no replay mechanism.
+         * A robust fix would be to track Last-Event-ID and have the server
+         * replay missed events on reconnect.
+         */
         console.warn('SSE connection lost, will retry...');
     };
 
@@ -121,6 +118,8 @@ function updateNotificationBadge(count) {
     }
 }
 
+var _permissionRequested = false;
+
 /**
  * Set up SSE event listeners for notification bell updates.
  * Shows the badge when gate_waiting events arrive and hides it
@@ -128,46 +127,48 @@ function updateNotificationBadge(count) {
  * @param {EventSource} source - The SSE EventSource connection.
  */
 function setupNotificationSSE(source) {
-    var pendingCount = 0;
+    var unreadCount = 0;
 
-    source.addEventListener('gate_waiting', function(event) {
-        pendingCount++;
-        updateNotificationBadge(pendingCount);
+    source.addEventListener('notification', function(event) {
         try {
             var data = JSON.parse(event.data);
-            showToast('Gate waiting: ' + (data.stage || 'unknown'), 'info');
+            if (!data || typeof data !== 'object') {
+                console.warn('SSE notification: unexpected payload', event.data);
+                return;
+            }
+            var msg = (data && typeof data.message === 'string') ? data.message : '(no message)';
+            unreadCount++;
+            updateNotificationBadge(unreadCount);
+            showToast(msg, data.type || 'info');
+
+            /* Browser Notification API (best-effort) */
+            if (typeof Notification !== 'undefined') {
+                if (Notification.permission === 'granted') {
+                    new Notification('Autopilot Video', { body: msg });
+                } else if (Notification.permission !== 'denied') {
+                    if (!_permissionRequested) {
+                        _permissionRequested = true;
+                        Notification.requestPermission().then(function(perm) {
+                            if (perm === 'granted') {
+                                new Notification('Autopilot Video', { body: msg });
+                            }
+                        });
+                    }
+                }
+            }
         } catch (e) {
-            console.error('SSE gate_waiting parse error:', e);
+            console.error('SSE notification parse error:', e, event.data);
         }
     });
 
-    source.addEventListener('gate_approved', function() {
-        pendingCount = Math.max(0, pendingCount - 1);
-        updateNotificationBadge(pendingCount);
-    });
-
-    source.addEventListener('gate_skipped', function() {
-        pendingCount = Math.max(0, pendingCount - 1);
-        updateNotificationBadge(pendingCount);
-    });
-
-    source.addEventListener('stage_error', makeStageHandler('stage_error', 'Error in {stage} stage', 'error', 6000, false));
-
-    source.addEventListener('run_completed', function(event) {
-        try {
-            showToast('Pipeline run completed!', 'success', 6000);
-        } catch (e) {
-            console.error('SSE run_completed error:', e);
-        }
-    });
-
-    source.addEventListener('run_failed', function(event) {
-        try {
-            showToast('Pipeline run failed', 'error', 8000);
-        } catch (e) {
-            console.error('SSE run_failed error:', e);
-        }
-    });
+    /* Bell click clears unread count */
+    var bell = document.getElementById('notification-bell');
+    if (bell) {
+        bell.addEventListener('click', function() {
+            unreadCount = 0;
+            updateNotificationBadge(0);
+        });
+    }
 }
 
 /* Initialize on DOM ready */

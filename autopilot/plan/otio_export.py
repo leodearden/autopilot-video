@@ -55,12 +55,26 @@ _DEFAULT_FPS = 30.0
 # Keys must match the prompt schema's allowed transition types (excluding 'cut',
 # which is implicit and produces no Transition object).
 # See edit_planner.md for the canonical enum: crossfade, cut, fade_in, fade_out, dissolve.
+#
+# NOTE: fade_in and fade_out are approximated as SMPTE_Dissolve (cross-dissolve
+# between adjacent clips). True fade-from-black / fade-to-black are opacity-based
+# effects on a single clip, but OTIO has no native fade-to/from-black Transition
+# type. Downstream consumers should check transition.metadata['autopilot']
+# ['approximation'] to detect this semantic gap programmatically.
+# TODO: Implement proper fade-to/from-black via otio.schema.Effect with an
+# opacity keyframe ramp, replacing the SMPTE_Dissolve approximation.
+# Types not in this map emit a WARNING and fall back to SMPTE_Dissolve (see _insert_transitions).
 _TRANSITION_TYPE_MAP = {
     "crossfade": "SMPTE_Dissolve",
     "dissolve": "SMPTE_Dissolve",
     "fade_in": "SMPTE_Dissolve",
     "fade_out": "SMPTE_Dissolve",
 }
+
+# Transition types that are semantic approximations — see the NOTE above.
+# These types are mapped to SMPTE_Dissolve but are not true cross-dissolves;
+# Transition objects for these types carry approximation metadata.
+_FADE_APPROXIMATION_TYPES = {"fade_in", "fade_out"}
 
 
 def _get_media_info(clip_id: str, db: CatalogDB) -> tuple[str, float]:
@@ -117,7 +131,7 @@ def _insert_transitions(
         trans_track = trans_data.get("track", 1)
         if trans_track != track_num:
             continue  # skip transitions for other tracks
-        pos = trans_data.get("position", 0)
+        pos = trans_data.get("position") or 0
         transitions_by_pos[pos] = trans_data
 
     if not transitions_by_pos:
@@ -134,18 +148,35 @@ def _insert_transitions(
     # Insert transitions in reverse order to avoid index shifting
     for pos in sorted(transitions_by_pos.keys(), reverse=True):
         trans_data = transitions_by_pos[pos]
-        trans_type = trans_data.get("type", "cut")
-        duration_secs = float(trans_data.get("duration", 0.5))
+        trans_type = trans_data.get("type", "")
+        duration_secs = float(trans_data.get("duration") or 0.5)
 
-        otio_type = _TRANSITION_TYPE_MAP.get(trans_type, "SMPTE_Dissolve")
+        otio_type = _TRANSITION_TYPE_MAP.get(trans_type)
+        if otio_type is None:
+            logger.warning(
+                "Unrecognized transition type %r, falling back to SMPTE_Dissolve",
+                trans_type,
+            )
+            otio_type = "SMPTE_Dissolve"
         half_dur = otio.opentime.RationalTime.from_seconds(duration_secs / 2.0, fps)
 
         transition = otio.schema.Transition(
-            name=trans_type,
+            name=trans_type or "",
             transition_type=otio_type,
             in_offset=half_dur,
             out_offset=half_dur,
         )
+
+        # Tag approximated fade transitions so downstream consumers can detect
+        # that this is a cross-dissolve standing in for a true fade-to/from-black.
+        if trans_type in _FADE_APPROXIMATION_TYPES:
+            transition.metadata["autopilot"] = {
+                "approximation": (
+                    "Rendered as SMPTE_Dissolve (cross-dissolve between adjacent "
+                    "clips). True fade-to/from-black requires an opacity-based "
+                    "Effect on the clip."
+                ),
+            }
 
         # Insert after clip at 'position' (which is index position + 1 in the track
         # because we're inserting between clip[pos] and clip[pos+1])
