@@ -3215,10 +3215,11 @@
         "description": "In tests/test_web_app.py: (1) Extract a private `_brace_match_from(source: str, start: int, label: str) -> str` helper that performs the depth-counted brace scan from a known opening-brace index. (2) Refactor `_extract_listener_body` and `_extract_function_body` to delegate to it — each reduces to: locate marker → find `{` → call `_brace_match_from`. (3) Replace the inline brace-matching block in `test_sse_notification_listener_has_try_catch` with `_extract_listener_body(js_source, 'notification')`. (4) Replace the inline else-block extraction in `test_make_stage_handler_shows_toast_on_missing_stage` with `_brace_match_from(factory_body, else_brace_start, 'else block')`.",
         "details": "Follow-up from task 151 review. Consolidates 3+ copies of the identical brace-matching loop into a single shared helper. Memory hints: search for \"task 151 brace matching\" and \"task 111 SSE handler factory\".",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T08:17:55.294Z"
       },
       {
         "id": "161",
@@ -3267,7 +3268,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:17:55.175Z",
+      "lastModified": "2026-04-04T08:17:55.294Z",
       "taskCount": 164,
       "completedCount": 127,
       "tags": [
