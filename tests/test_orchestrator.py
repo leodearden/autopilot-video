@@ -1086,6 +1086,7 @@ class TestNarrateResume:
         assert any(
             "Resuming NARRATE" in r.message and "3" in r.message for r in caplog.records
         )
+        db.list_narratives.assert_called_once_with("approved")
 
     @patch("autopilot.organize.narratives")
     def test_narrate_force_repropose_even_with_existing(self, mock_narratives, minimal_config):
