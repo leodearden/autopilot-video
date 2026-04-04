@@ -399,6 +399,16 @@ class TestTransitionMapKeys:
 class TestTransitionMapping:
     """Verify EDL transitions map to OTIO Transition objects."""
 
+    @staticmethod
+    def _assert_clip_transition_clip(track):
+        """Assert track has Clip/Transition/Clip structure and return items list."""
+        items = list(track)
+        assert len(items) == 3
+        assert isinstance(items[0], otio.schema.Clip)
+        assert isinstance(items[1], otio.schema.Transition)
+        assert isinstance(items[2], otio.schema.Clip)
+        return items
+
     def test_crossfade_creates_smpte_dissolve(self, tmp_path):
         """EDL transition type 'crossfade' creates SMPTE_Dissolve between clips."""
         from autopilot.plan.otio_export import export_otio
