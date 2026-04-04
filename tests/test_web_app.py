@@ -274,6 +274,12 @@ def app_js_source() -> str:
     return _read_app_js()
 
 
+@pytest.fixture(scope="class")
+def make_stage_handler_body(app_js_source: str) -> str:
+    """Extract makeStageHandler body once per class that needs it."""
+    return _extract_function_body(app_js_source, "makeStageHandler")
+
+
 class TestExtractFunctionBody:
     """Tests for the _extract_function_body helper."""
 
