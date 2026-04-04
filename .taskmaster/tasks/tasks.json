@@ -4324,10 +4324,11 @@
         "description": "In tests/test_cli.py, replace the three separate parametrized methods in `TestDryRunZeroSideEffects` (lines 679-734) with a single `test_dry_run_no_side_effects` method that patches `autopilot.cli.load_config`, `autopilot.cli.CatalogDB`, and `autopilot.cli.PipelineOrchestrator` together and asserts all three `assert_not_called()` checks in one pass. This reduces 18 test cases to 6 and eliminates triple-invocation of the same CLI path per subcommand.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T14:03:51.912Z"
       },
       {
         "id": "227",
@@ -4599,7 +4600,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:03:51.836Z",
+      "lastModified": "2026-04-04T14:03:51.912Z",
       "taskCount": 249,
       "completedCount": 170,
       "tags": [
