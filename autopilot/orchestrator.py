@@ -767,12 +767,7 @@ def _run_edl(
                 otio_path.parent.mkdir(parents=True, exist_ok=True)
                 otio_export.export_otio(edl, otio_path, db)
 
-            db.upsert_edit_plan(
-                nid,
-                json.dumps(edl),
-                otio_path=str(otio_path),
-                validation_json=json.dumps({"passed": val_result.passed}),
-            )
+            db.upsert_edit_plan(nid, otio_path=str(otio_path))
             successes += 1
         except Exception:
             logger.exception("EDL generation failed for narrative %s", nid)
