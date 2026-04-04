@@ -434,6 +434,7 @@ def _run_analyze(
                                 scheduler,
                                 config.models,
                                 sparse=False,
+                                batch_size=config.processing.batch_size_yolo,
                             )
                     else:
                         objects.detect_objects(
@@ -443,6 +444,7 @@ def _run_analyze(
                             scheduler,
                             config.models,
                             sparse=False,
+                            batch_size=config.processing.batch_size_yolo,
                         )
                 if force or not db.has_faces(media_id):
                     if run_id is not None:
