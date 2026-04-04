@@ -886,7 +886,7 @@ class TestIntegration:
         """5s audio -> 5 rows, 5 events each, timestamps 0.0-4.0, sorted desc."""
         self._run_pipeline(catalog_db, 5.0)
 
-        events = catalog_db.get_audio_events_for_range("vid1", 0.0, 10.0)
+        events = catalog_db.get_audio_events_for_media("vid1")
         assert len(events) == 5
 
         timestamps = sorted(float(ev["timestamp_seconds"]) for ev in events)
@@ -938,7 +938,7 @@ class TestIntegration:
         """0.5s -> 1 row at t=0.0 with zero-padded window."""
         self._run_pipeline(catalog_db, 0.5)
 
-        events = catalog_db.get_audio_events_for_range("vid1", 0.0, 10.0)
+        events = catalog_db.get_audio_events_for_media("vid1")
         assert len(events) == 1
         assert float(events[0]["timestamp_seconds"]) == 0.0
 
@@ -946,7 +946,7 @@ class TestIntegration:
         """top_k=3 -> 3 events per window."""
         self._run_pipeline(catalog_db, 2.0, top_k=3)
 
-        events = catalog_db.get_audio_events_for_range("vid1", 0.0, 10.0)
+        events = catalog_db.get_audio_events_for_media("vid1")
         assert len(events) == 2
         for ev in events:
             parsed = json.loads(str(ev["events_json"]))
