@@ -1938,7 +1938,21 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-03T22:33:17.909Z"
+        "updatedAt": "2026-04-03T22:33:17.909Z",
+        "metadata": {
+          "files": [
+            "autopilot/web/templates/base.html",
+            "autopilot/web/app.py",
+            "autopilot/web/routes/settings.py",
+            "autopilot/web/templates/settings.html",
+            "tests/test_web_app.py"
+          ],
+          "modules": [
+            "autopilot/web",
+            "autopilot/web/templates",
+            "tests"
+          ]
+        }
       },
       {
         "id": 102,
@@ -2847,7 +2861,22 @@
         "status": "pending",
         "dependencies": [],
         "priority": "high",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/render/router.py",
+            "autopilot/plan/edl.py",
+            "autopilot/db.py",
+            "tests/test_render_router.py",
+            "tests/test_edl.py"
+          ],
+          "modules": [
+            "autopilot/render",
+            "autopilot/plan",
+            "autopilot",
+            "tests"
+          ]
+        }
       },
       {
         "id": 144,
