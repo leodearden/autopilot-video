@@ -443,6 +443,32 @@ class TestEventsCRUD:
         events = catalog_db.get_events_since(0)
         assert len(events) == 2
 
+    def test_prune_events_parameterizes_hours(self, catalog_db, monkeypatch):
+        """prune_events() uses parameterized SQL, not f-string interpolation."""
+        calls: list[tuple] = []
+        real_execute = catalog_db.conn.execute
+
+        def spy_execute(*args, **kwargs):
+            calls.append(args)
+            return real_execute(*args, **kwargs)
+
+        monkeypatch.setattr(catalog_db, "conn", type("FakeConn", (), {
+            "execute": staticmethod(spy_execute),
+        })())
+        catalog_db.prune_events(hours=48)
+        # Find the DELETE call
+        delete_calls = [c for c in calls if "DELETE" in c[0]]
+        assert len(delete_calls) == 1
+        sql_arg = delete_calls[0][0]
+        # The literal '48' should NOT appear in the SQL string
+        assert "48" not in sql_arg, (
+            f"hours value interpolated into SQL: {sql_arg}"
+        )
+        # A parameters tuple/list must have been passed as second arg
+        assert len(delete_calls[0]) >= 2, (
+            "No parameters passed to execute — query is not parameterized"
+        )
+
 
 # -- Runs CRUD tests --------------------------------------------------------
 
