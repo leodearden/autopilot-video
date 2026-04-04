@@ -5243,6 +5243,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 289,
+        "title": "Strengthen notification-related test assertions for coverage and precision",
+        "description": "Make four assertion improvements across the test suite: (1) In test_notifications.py, narrow the showToast assertion (line 62) to the body of the notification callback only, not anywhere in setupNotificationSSE, using brace-matching to avoid false passes from the bell-click handler. (2) In test_web_app.py test_stage_error_handled_via_notification (line 445), replace the duplicate addEventListener('notification') assertion with unique coverage — e.g. assert 'stage_error' no longer appears as a direct event listener in app.js, confirming the consolidation. (3) In tests/test_sse.py line 302, add a test that emits a notification event with known payload {\"message\": \"test\", \"type\": \"info\"} and asserts those exact fields arrive via the SSE stream. (4) In tests/test_orchestrator.py test_notification_emitted_on_run_completed, add assertions for stage count and duration format: re.search(r'\\d+ of \\d+ stages', message) and duration suffix 's.'.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5255,7 +5266,7 @@
       ],
       "created": "2026-04-04T18:12:47.315Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:13:09.206Z"
+      "updated": "2026-04-04T18:13:16.787Z"
     }
   }
 }
