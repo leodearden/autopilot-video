@@ -1284,15 +1284,28 @@ class CatalogDB:
         cur = self.conn.execute("SELECT * FROM pipeline_gates ORDER BY stage")
         return [dict(row) for row in cur.fetchall()]
 
+    _GATE_ALLOWED_COLUMNS: frozenset[str] = frozenset({
+        "mode",
+        "status",
+        "decided_at",
+        "decided_by",
+        "notes",
+        "timeout_hours",
+    })
+
     def update_gate(self, stage: str, **kwargs: object) -> None:
         """Update fields of a gate by keyword arguments."""
         if not kwargs:
             return
+        bad_keys = set(kwargs) - self._GATE_ALLOWED_COLUMNS
+        if bad_keys:
+            msg = f"Disallowed column(s) for gate update: {sorted(bad_keys)}"
+            raise ValueError(msg)
         set_clause = ", ".join(f"{k} = ?" for k in kwargs)
         values = list(kwargs.values())
         values.append(stage)
         self.conn.execute(
-            f"UPDATE pipeline_gates SET {set_clause} "  # noqa: S608
+            f"UPDATE pipeline_gates SET {set_clause} "  # noqa: S608 — column names validated above
             "WHERE stage = ?",
             values,
         )
