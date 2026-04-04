@@ -401,6 +401,18 @@ class TestTransitionMapKeys:
 
         assert "wipe" not in _TRANSITION_TYPE_MAP
 
+    def test_map_keys_match_prompt_schema(self):
+        """_TRANSITION_TYPE_MAP keys exactly match prompt schema non-cut types.
+
+        The edit_planner.md prompt schema defines: crossfade, cut, fade_in,
+        fade_out, dissolve.  'cut' is implicit (no Transition object), so the
+        map must contain exactly {crossfade, dissolve, fade_in, fade_out}.
+        """
+        from autopilot.plan.otio_export import _TRANSITION_TYPE_MAP
+
+        expected_keys = {"crossfade", "dissolve", "fade_in", "fade_out"}
+        assert set(_TRANSITION_TYPE_MAP.keys()) == expected_keys
+
 
 class TestTransitionMapping:
     """Verify EDL transitions map to OTIO Transition objects."""
