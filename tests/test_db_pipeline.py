@@ -474,6 +474,11 @@ class TestEventsCRUD:
         with pytest.raises(ValueError, match="positive"):
             catalog_db.prune_events(hours=0)
 
+    def test_prune_events_rejects_negative_hours(self, catalog_db):
+        """prune_events(hours=-5) raises ValueError mentioning the value."""
+        with pytest.raises(ValueError, match="-5"):
+            catalog_db.prune_events(hours=-5)
+
 
 # -- Runs CRUD tests --------------------------------------------------------
 
