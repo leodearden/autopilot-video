@@ -3366,11 +3366,11 @@
         "description": "The 5-way `{% if narrative.status == 'approved' %}...` badge block is duplicated verbatim in three templates:\n- `autopilot/web/templates/partials/narrative_card.html` (lines 4–11)\n- `autopilot/web/templates/partials/narrative_edit_form.html` (lines 6–13)\n- `autopilot/web/templates/review/narratives.html` (lines 26–33)\n\nCreate `autopilot/web/templates/macros/narrative_status_badge.html` with a `status_badge(status)` macro and replace all three inline blocks with `{% from 'macros/narrative_status_badge.html' import status_badge %}{{ status_badge(narrative.status) }}`. Resolves review suggestion [4] from task 100 review cycle.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:19:46.454Z"
+        "updatedAt": "2026-04-04T08:45:38.804Z"
       },
       {
         "id": "169",
@@ -3689,9 +3689,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:45:27.383Z",
+      "lastModified": "2026-04-04T08:45:38.804Z",
       "taskCount": 188,
-      "completedCount": 137,
+      "completedCount": 138,
       "tags": [
         "master"
       ]
