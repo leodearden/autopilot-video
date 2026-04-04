@@ -3135,6 +3135,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 157,
+        "title": "Consolidate duplicate transition integration tests with @pytest.mark.parametrize",
+        "description": "In tests/test_otio_export.py, consolidate the four structurally-identical transition tests (test_crossfade_creates_smpte_dissolve, test_fade_in_creates_smpte_dissolve, test_fade_out_creates_smpte_dissolve, test_dissolve_creates_smpte_dissolve) into a single @pytest.mark.parametrize('transition_type', ['crossfade', 'fade_in', 'fade_out', 'dissolve']) test. Also move the repeated inline import of _TRANSITION_TYPE_MAP from the four methods of TestTransitionMapKeys to module level alongside other imports.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -3147,7 +3158,7 @@
       ],
       "created": "2026-04-04T08:10:04.376Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T08:10:11.557Z"
+      "updated": "2026-04-04T08:10:12.388Z"
     }
   }
 }
