@@ -3090,7 +3090,7 @@
         "description": "Add missing assertions for toast parameters, conditional guards, and fallback strings in SSE handler tests",
         "details": "In tests/test_web_app.py: (1) test_stage_error_uses_factory: assert the full makeStageHandler call signature including toastMsg, toastType, toastDuration, refreshCard params. (2) test_make_stage_handler_calls_refresh_stage_card: assert 'if (refreshCard)' guard wraps the refreshStageCard call. (3) test_make_stage_handler_shows_toast_on_missing_stage: assert 'unknown' appears in the else_body. (4) TestSSERunHandlerRobustness: add assertions for toast message text ('Pipeline run completed!' / 'Pipeline run failed'), toast types ('success' / 'error'), and durations (6000, 8000). Follow-up from task 111 review.",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
@@ -3102,7 +3102,7 @@
             "tests"
           ]
         },
-        "updatedAt": "2026-04-04T08:21:06.038Z"
+        "updatedAt": "2026-04-04T08:30:53.454Z"
       },
       {
         "id": "153",
@@ -3665,9 +3665,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:30:47.181Z",
+      "lastModified": "2026-04-04T08:30:53.454Z",
       "taskCount": 188,
-      "completedCount": 135,
+      "completedCount": 136,
       "tags": [
         "master"
       ]
