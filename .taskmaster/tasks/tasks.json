@@ -3084,7 +3084,17 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/web/static/app.js",
+            "tests/test_web_app.py"
+          ],
+          "modules": [
+            "autopilot/web",
+            "tests"
+          ]
+        }
       }
     ],
     "metadata": {
