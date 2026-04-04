@@ -4026,11 +4026,11 @@
         "description": "In autopilot/db.py, introduce a private helper method `_validate_update_kwargs(self, allowed: frozenset, kwargs: dict, entity: str) -> None` that encapsulates the repeated 3-line validation block (bad_keys check + ValueError). Replace all five call-sites in update_gate (~line 1300), update_job (~line 1384), update_run (~line 1521), and the pre-existing update_narrative and update_activity_cluster methods.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T13:09:53.669Z",
+        "updatedAt": "2026-04-04T13:15:40.168Z",
         "metadata": {
           "modules": [
             "autopilot/db.py",
@@ -4342,7 +4342,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T13:15:40.072Z",
+      "lastModified": "2026-04-04T13:15:40.168Z",
       "taskCount": 232,
       "completedCount": 159,
       "tags": [
