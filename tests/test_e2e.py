@@ -135,13 +135,17 @@ class TestEndToEnd:
         mock_script.generate_script.return_value = {"scenes": [{"id": "s1"}]}
 
         # ---- EDL mocks ----
-        mock_edl.generate_edl.return_value = {
+        edl_result = {
             "timeline": [{"clip": "c1"}],
             "target_duration_seconds": 300,
         }
-        val_result = MagicMock()
-        val_result.passed = True
-        mock_validator.validate_edl.return_value = val_result
+
+        def _generate_edl_side_effect(nid, db, llm_config):
+            # Simulate generate_edl persisting edl_json (satisfies assertion guard)
+            db.upsert_edit_plan(nid, json.dumps(edl_result))
+            return edl_result
+
+        mock_edl.generate_edl.side_effect = _generate_edl_side_effect
         mock_otio.export_otio.return_value = Path("/fake/timeline.otio")
 
         # ---- SOURCE mocks ----
@@ -224,7 +228,6 @@ class TestEndToEnd:
         mock_narratives.propose_narratives.assert_called_once()
         mock_script.generate_script.assert_called_once()
         mock_edl.generate_edl.assert_called_once()
-        mock_validator.validate_edl.assert_called_once()
         mock_otio.export_otio.assert_called_once()
         mock_resolve.resolve_edl_assets.assert_called_once()
         mock_router.route_and_render.assert_called_once()
