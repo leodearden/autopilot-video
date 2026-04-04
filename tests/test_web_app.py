@@ -339,15 +339,20 @@ class TestBraceMatchFrom:
         result = _brace_match_from(source, 0, "nested")
         assert result == source
 
+    def test_raises_when_start_not_at_brace(self) -> None:
+        """Raises AssertionError when source[start] is not '{'."""
+        with pytest.raises(AssertionError, match=r"expected '\{'"):
+            _brace_match_from("abc", 1, "no-brace")
+
     def test_raises_on_unbalanced_braces(self) -> None:
-        """Raises AssertionError when braces are not balanced."""
-        with pytest.raises(AssertionError, match="unbalanced"):
-            _brace_match_from("{ open { but no close", 0, "broken")
+        """Raises AssertionError for shallow (depth-1) unbalanced braces."""
+        with pytest.raises(AssertionError, match=r"unbalanced.*depth 1"):
+            _brace_match_from("{ unclosed", 0, "shallow")
 
     def test_label_appears_in_error_message(self) -> None:
-        """Error message includes the label for context."""
-        with pytest.raises(AssertionError, match="test-block"):
-            _brace_match_from("{ broken", 0, "test-block")
+        """Error message includes the label for deeply-nested (depth-3) unclosed braces."""
+        with pytest.raises(AssertionError, match=r"deep-block.*depth 3"):
+            _brace_match_from("{ { { deep", 0, "deep-block")
 
     def test_unbalanced_error_includes_depth(self) -> None:
         """Error message from unbalanced braces includes 'depth' with a number."""
