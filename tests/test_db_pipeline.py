@@ -149,6 +149,32 @@ class TestPipelineSchema:
         cols = [row[2] for row in cur.fetchall()]
         assert cols == ["created_at"]
 
+    @pytest.mark.parametrize(
+        "table, allowed_attr",
+        [
+            ("pipeline_gates", "_GATE_ALLOWED_COLUMNS"),
+            ("pipeline_jobs", "_JOB_ALLOWED_COLUMNS"),
+            ("pipeline_runs", "_RUN_ALLOWED_COLUMNS"),
+        ],
+        ids=["gates", "jobs", "runs"],
+    )
+    def test_non_pk_columns_match_allowlist(
+        self, catalog_db: CatalogDB, table: str, allowed_attr: str
+    ) -> None:
+        """Non-PK columns in the schema == the update allowlist frozenset.
+
+        Catches drift in either direction: a column added to the CREATE TABLE
+        but not the frozenset, or a stale frozenset entry for a removed column.
+        """
+        cur = catalog_db.conn.execute(f"PRAGMA table_info({table})")  # noqa: S608
+        non_pk_cols = {row[1] for row in cur.fetchall() if row[5] == 0}
+        allowed: frozenset[str] = getattr(catalog_db, allowed_attr)
+        assert non_pk_cols == allowed, (
+            f"Schema drift detected for {table}:\n"
+            f"  in schema but not allowlist: {non_pk_cols - allowed}\n"
+            f"  in allowlist but not schema: {allowed - non_pk_cols}"
+        )
+
 
 # -- Gates CRUD tests -------------------------------------------------------
 
