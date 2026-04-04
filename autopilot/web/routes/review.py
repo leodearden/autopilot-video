@@ -156,8 +156,8 @@ def _parse_narrative(row: dict[str, object]) -> dict[str, object]:
     return result
 
 
-@router.get("/api/narratives/{narrative_id}")
-def api_get_narrative(request: Request, narrative_id: str) -> dict[str, object]:
+@router.get("/api/narratives/{narrative_id}", response_model=None)
+def api_get_narrative(request: Request, narrative_id: str) -> Response:
     """Return a single narrative by ID with parsed cluster IDs."""
     db = _get_db(request)
     try:
@@ -166,7 +166,16 @@ def api_get_narrative(request: Request, narrative_id: str) -> dict[str, object]:
         db.close()
     if row is None:
         raise HTTPException(status_code=404, detail="Narrative not found")
-    return _parse_narrative(row)
+    parsed = _parse_narrative(row)
+    if _is_htmx(request):
+        edit_mode = request.query_params.get("edit") == "1"
+        template = (
+            "partials/narrative_edit_form.html"
+            if edit_mode
+            else "partials/narrative_card.html"
+        )
+        return render_partial(request, template, narrative=parsed)
+    return JSONResponse(content=parsed)
 
 
 def _narrative_status_action(
