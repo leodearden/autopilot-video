@@ -1016,7 +1016,9 @@ class TestNarrateStage:
 
         _run_narrate(config=minimal_config, db=mock_db)
 
-        mock_narratives.propose_narratives.assert_called_once_with("storyboard", mock_db, minimal_config)
+        mock_narratives.propose_narratives.assert_called_once_with(
+            "storyboard", mock_db, minimal_config
+        )
 
     @patch("autopilot.organize.narratives")
     def test_narrate_calls_human_review_callback(self, mock_narratives, minimal_config, mock_db):
