@@ -908,6 +908,7 @@ class TestGetNarrativeEditHTMX:
         assert 'name="title"' in response.text
         assert 'name="description"' in response.text
         assert 'name="proposed_duration_seconds"' in response.text
+        assert 'id="narrative-n-1"' in response.text  # outerHTML swap target
 
     def test_get_htmx_edit_prepopulates_values(
         self, seeded_client: TestClient,
@@ -919,6 +920,7 @@ class TestGetNarrativeEditHTMX:
         )
         assert "Morning Walk" in response.text
         assert "A walk in the park" in response.text
+        assert "120" in response.text  # proposed_duration_seconds pre-populated
 
     def test_get_htmx_edit_has_save_button(
         self, seeded_client: TestClient,
@@ -953,9 +955,23 @@ class TestGetNarrativeEditHTMX:
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
         assert "Morning Walk" in response.text
-        # Read-only card has Approve button, not input fields
+        # Read-only card has Approve button with HTMX wiring, not input fields
         assert "Approve" in response.text
+        assert "hx-post" in response.text
         assert 'name="title"' not in response.text
+
+    def test_get_htmx_edit_param_non_one_returns_card(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """GET /api/narratives/n-1?edit=0 with HX-Request returns read-only card, not form."""
+        response = seeded_client.get(
+            "/api/narratives/n-1?edit=0",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "Morning Walk" in response.text
+        assert 'name="title"' not in response.text  # no form inputs → read-only card
 
     def test_get_no_htmx_returns_json(self, seeded_client: TestClient) -> None:
         """GET /api/narratives/n-1 without HX-Request returns JSON."""
@@ -975,6 +991,13 @@ class TestGetNarrativeEditHTMX:
         )
         assert response.status_code == 200
         assert "edit=1" in response.text
+
+    def test_get_json_not_found_returns_404(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """GET /api/narratives/nonexistent (no HX-Request) returns 404."""
+        response = seeded_client.get("/api/narratives/nonexistent")
+        assert response.status_code == 404
 
     def test_get_htmx_edit_not_found_returns_404(
         self, seeded_client: TestClient,
