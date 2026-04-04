@@ -4660,10 +4660,11 @@
         "description": "In tests/test_audio_events.py, remove `scheduler.assert_not_called()` from `test_skip_when_events_exist` (line 330) and `test_skip_when_events_exist_at_nonzero_timestamp` (line 365). Production code only calls `scheduler.model(...)`, never `scheduler()` directly, so these assertions are vacuous. The meaningful assertion `scheduler.model.assert_not_called()` on the lines above already covers correctness. Aligns with the pattern at line 440 in TestInputValidation.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T14:16:20.401Z"
       },
       {
         "id": "247",
@@ -4859,7 +4860,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:16:20.050Z",
+      "lastModified": "2026-04-04T14:16:20.402Z",
       "taskCount": 262,
       "completedCount": 177,
       "tags": [
