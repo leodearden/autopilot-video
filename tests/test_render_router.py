@@ -960,3 +960,30 @@ class TestSourcePathResolution:
 
         rendered_clip = mock_rs.call_args[0][0]
         assert rendered_clip["source_path"] == "/resolved/clip.mp4"
+
+    def test_missing_media_raises_routing_error(self) -> None:
+        """When db.get_media returns None, RoutingError should be raised."""
+        from autopilot.render.router import RoutingError, route_and_render
+
+        clips = [
+            {
+                "clip_id": "clip_1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_media.return_value = None
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple"),
+            patch("autopilot.render.router.render_complex"),
+            patch("subprocess.run"),
+        ):
+            with pytest.raises(RoutingError, match="No media record"):
+                route_and_render("n1", db, config, Path("/tmp/test_output"))
