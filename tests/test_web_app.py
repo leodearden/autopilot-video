@@ -257,7 +257,6 @@ def _extract_function_body(js_source: str, func_name: str) -> str:
     """
     match = re.search(rf'\bfunction\s+{re.escape(func_name)}\b', js_source)
     assert match is not None, f"{func_name} function not found in source"
-    func_start = match.start()
 
     body_start = js_source.find("{", match.end())
     assert body_start != -1, f"opening brace not found for {func_name}"
