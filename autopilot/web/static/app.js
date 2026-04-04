@@ -112,6 +112,8 @@ function updateNotificationBadge(count) {
     }
 }
 
+var _permissionRequested = false;
+
 /**
  * Set up SSE event listeners for notification bell updates.
  * Shows the badge when gate_waiting events arrive and hides it
@@ -134,11 +136,14 @@ function setupNotificationSSE(source) {
                 if (Notification.permission === 'granted') {
                     new Notification('Autopilot Video', { body: msg });
                 } else if (Notification.permission !== 'denied') {
-                    Notification.requestPermission().then(function(perm) {
-                        if (perm === 'granted') {
-                            new Notification('Autopilot Video', { body: msg });
-                        }
-                    });
+                    if (!_permissionRequested) {
+                        _permissionRequested = true;
+                        Notification.requestPermission().then(function(perm) {
+                            if (perm === 'granted') {
+                                new Notification('Autopilot Video', { body: msg });
+                            }
+                        });
+                    }
                 }
             }
         } catch (e) {
