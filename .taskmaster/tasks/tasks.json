@@ -5554,6 +5554,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 313,
+        "title": "Strengthen _handle_dry_run docstring contract language",
+        "description": "In autopilot/cli.py around line 101, change the Note text from 'Intended for use within a Click command callback.' to firmer prescriptive language such as 'Must be called from within a Click command or group callback.' This preserves the design constraint without the now-incorrect 'Requires an active Click context' phrasing.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5566,7 +5577,7 @@
       ],
       "created": "2026-04-04T18:24:58.240Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:25:01.813Z"
+      "updated": "2026-04-04T18:25:04.083Z"
     }
   }
 }
