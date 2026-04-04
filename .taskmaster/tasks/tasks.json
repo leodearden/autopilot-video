@@ -4845,10 +4845,11 @@
         "description": "In tests/test_cli.py, the consolidated `test_dry_run_no_side_effects` method (class TestDryRunZeroSideEffects) uses three sequential `assert not mock.called` checks. If the first assertion fails, pytest stops and the remaining two are never evaluated, masking whether CatalogDB or PipelineOrchestrator were also incorrectly called.\n\nReplace the sequential assertions with a failure-collector pattern that evaluates all three conditions and reports all failures in a single AssertionError:\n\n```python\nfailures = []\nif mock_load.called:\n    failures.append(f'{cmd_name} --dry-run should NOT call load_config')\nif mock_db_cls.called:\n    failures.append(f'{cmd_name} --dry-run should NOT instantiate CatalogDB')\nif mock_orch_cls.called:\n    failures.append(f'{cmd_name} --dry-run should NOT instantiate PipelineOrchestrator')\nassert not failures, '\\n'.join(failures)\n```\n\nMemory hints: search for \"TestDryRunZeroSideEffects consolidation\" and \"task 226 test consolidation\".",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T18:10:42.120Z"
       },
       {
         "id": "257",
@@ -5150,7 +5151,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:10:42.037Z",
+      "lastModified": "2026-04-04T18:10:42.120Z",
       "taskCount": 281,
       "completedCount": 185,
       "tags": [
