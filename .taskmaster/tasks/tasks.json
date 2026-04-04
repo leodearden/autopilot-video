@@ -3836,15 +3836,16 @@
         "description": "Three related improvements to source_path resolution error handling in autopilot/render/router.py and its tests:\n\n1. **Add explicit-None edge case test**: `test_missing_file_path_key_raises_routing_error` covers `db.get_media.return_value = {}` (missing key) but not `{\"file_path\": None}` (explicit null). Add a companion test `test_explicit_null_file_path_raises_routing_error` that sets `db.get_media.return_value = {\"file_path\": None}` and asserts RoutingError is raised. Both cases hit the same `media.get(\"file_path\") is None` guard at router.py:145-148.\n\n2. **Tighten assertion match pattern**: In `test_missing_file_path_key_raises_routing_error` (line 1108), change `match=\"file_path\"` to `match=r\"has no file_path\"` to avoid false matches against the \"No media record\" RoutingError.\n\n3. **Distinguish missing-key vs None-value in error message** (router.py:145-149): Replace the single check with:\n   ```python\n   if \"file_path\" not in media:\n       raise RoutingError(f\"file_path key missing from media record for clip {clip_id!r}\")\n   if media[\"file_path\"] is None:\n       raise RoutingError(f\"file_path is null in media record for clip {clip_id!r}\")\n   ```\n   This aids debugging when the root cause differs (DB schema bug vs intentional null).\n\nmemory_hints:\n- search: \"RoutingError file_path source_path resolution\"\n- entity: \"render_router\", \"RoutingError\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:08:55.316Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T09:08:54.231Z",
+      "lastModified": "2026-04-04T09:08:55.320Z",
       "taskCount": 196,
       "completedCount": 143,
       "tags": [
