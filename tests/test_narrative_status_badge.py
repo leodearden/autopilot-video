@@ -89,3 +89,27 @@ class TestNarrativeCardBadge:
         source_path = TEMPLATES_DIR / "partials" / "narrative_card.html"
         source = source_path.read_text()
         assert "{% from 'macros/narrative_status_badge.html' import status_badge %}" in source
+
+
+class TestNarrativeEditFormBadge:
+    """Verify narrative_edit_form.html uses the shared status_badge macro with extra classes."""
+
+    def test_renders_proposed_badge_with_extra_classes(self) -> None:
+        env = jinja2.Environment(
+            loader=jinja2.FileSystemLoader(str(TEMPLATES_DIR)),
+            autoescape=True,
+        )
+        template = env.get_template("partials/narrative_edit_form.html")
+        html = template.render(narrative={
+            "narrative_id": "n-2",
+            "status": "proposed",
+            "title": "Edit Test",
+            "description": "desc",
+        })
+        assert "bg-amber-900" in html
+        assert "ml-2" in html
+
+    def test_source_uses_macro_import(self) -> None:
+        source_path = TEMPLATES_DIR / "partials" / "narrative_edit_form.html"
+        source = source_path.read_text()
+        assert "{% from 'macros/narrative_status_badge.html' import status_badge %}" in source
