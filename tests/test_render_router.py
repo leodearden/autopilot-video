@@ -1396,3 +1396,35 @@ class TestClipIdValidation:
         )
         # Warning should include the clip index for debugging
         assert any("0" in msg and "clip_id" in msg for msg in warning_msgs)
+
+    def test_transcript_lookup_skipped_when_no_clip_id(self) -> None:
+        """Subtitle loop should NOT call db.get_transcript for clips without
+        clip_id. Only clips with a real clip_id get transcript lookups."""
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "source_path": "/some/video.mp4",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+                # no clip_id — transcript lookup should be skipped
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run"),
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        # db.get_transcript should NOT have been called at all — the only
+        # clip has no clip_id, so there's nothing to look up.
+        db.get_transcript.assert_not_called()
