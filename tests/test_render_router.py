@@ -1318,3 +1318,42 @@ class TestClipIdValidation:
 
         # The error must NOT contain a synthetic ID like 'clip_0'
         assert "clip_0" not in str(exc_info.value)
+
+    def test_source_path_no_clip_id_renders_fast_without_crop_lookup(self) -> None:
+        """Clip with source_path but no clip_id should render via fast path.
+
+        No RoutingError should be raised, and db.get_crop_path should NOT
+        be called — crop metadata lookup is skipped for clips without clip_id.
+        """
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "source_path": "/some/video.mp4",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+                # no clip_id
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("autopilot.render.router.render_complex") as mock_rc,
+            patch("subprocess.run"),
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            # Should NOT raise RoutingError
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        # Should use fast path (render_simple), not slow path
+        mock_rs.assert_called_once()
+        mock_rc.assert_not_called()
+        # Should NOT call get_crop_path since clip_id is None
+        db.get_crop_path.assert_not_called()
