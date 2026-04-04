@@ -479,6 +479,13 @@ class TestEventsCRUD:
         with pytest.raises(ValueError, match="-5"):
             catalog_db.prune_events(hours=-5)
 
+    def test_prune_events_accepts_positive_hours(self, catalog_db):
+        """prune_events(hours=1) does not raise for valid positive values."""
+        catalog_db.insert_event("recent_event")
+        catalog_db.prune_events(hours=1)  # should not raise
+        events = catalog_db.get_events_since(0)
+        assert len(events) == 1  # recent event is kept
+
 
 # -- Runs CRUD tests --------------------------------------------------------
 
