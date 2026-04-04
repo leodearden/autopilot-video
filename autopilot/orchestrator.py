@@ -585,6 +585,15 @@ def _run_narrate(
     """NARRATE stage: build storyboard, propose narratives, human review."""
     from autopilot.organize import narratives
 
+    if not force:
+        existing = db.list_narratives("approved")
+        if existing:
+            logger.info(
+                "Resuming NARRATE: %d approved narratives already exist, skipping",
+                len(existing),
+            )
+            return
+
     _jkw: dict[str, Any] = {"run_id": run_id, "emit_fn": emit_fn}
     if run_id is not None:
         with _track_job(db, "NARRATE", "build_storyboard", worker="cpu", **_jkw):

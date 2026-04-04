@@ -869,6 +869,7 @@ class TestNarrateStage:
         mock_narratives.propose_narratives.return_value = []
         mock_narratives.format_for_review.return_value = ""
         db = MagicMock()
+        db.list_narratives.return_value = []  # no checkpoint hit
 
         _run_narrate(config=minimal_config, db=db)
 
@@ -883,6 +884,7 @@ class TestNarrateStage:
         mock_narratives.propose_narratives.return_value = []
         mock_narratives.format_for_review.return_value = ""
         db = MagicMock()
+        db.list_narratives.return_value = []  # no checkpoint hit
 
         _run_narrate(config=minimal_config, db=db)
 
@@ -899,6 +901,7 @@ class TestNarrateStage:
         mock_narratives.propose_narratives.return_value = [narr]
         mock_narratives.format_for_review.return_value = "review text"
         db = MagicMock()
+        db.list_narratives.return_value = []  # no checkpoint hit
 
         review_fn = MagicMock(return_value=["n1"])
         _run_narrate(config=minimal_config, db=db, human_review_fn=review_fn)
@@ -916,6 +919,7 @@ class TestNarrateStage:
         mock_narratives.propose_narratives.return_value = [narr]
         mock_narratives.format_for_review.return_value = ""
         db = MagicMock()
+        db.list_narratives.return_value = []  # no checkpoint hit
 
         _run_narrate(config=minimal_config, db=db)
 
@@ -934,6 +938,7 @@ class TestNarrateStage:
         mock_narratives.propose_narratives.return_value = [narr1, narr2]
         mock_narratives.format_for_review.return_value = "review"
         db = MagicMock()
+        db.list_narratives.return_value = []  # no checkpoint hit
 
         # Only approve n1, reject n2
         review_fn = MagicMock(return_value=["n1"])
