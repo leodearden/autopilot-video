@@ -5232,6 +5232,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 288,
+        "title": "Fix TestNotificationEvents test consistency and assertion quality",
+        "description": "In tests/test_orchestrator.py, make four fixes to the TestNotificationEvents class: (1) Refactor test_notification_emitted_on_gate_waiting (line 3630) to use mock_db = MagicMock() and orch._db = mock_db, consistent with the three sibling tests, to eliminate real-DB coupling. (2) Extract a _notif_payloads(mock_db) helper that filters and pre-parses notification call payloads, replacing the four repeated filter+json.loads patterns. (3) Change 'or' to 'and' in the gate_waiting assertion (line 3657) so both 'paused' and 'Review required' are required. (4) Change len(error_notifs) >= 1 to == 1 (line 3581) to pin the exact emission count.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5244,7 +5255,7 @@
       ],
       "created": "2026-04-04T18:12:47.315Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:13:02.157Z"
+      "updated": "2026-04-04T18:13:09.206Z"
     }
   }
 }
