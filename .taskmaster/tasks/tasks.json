@@ -1460,9 +1460,7 @@
         "details": "",
         "testStrategy": "",
         "status": "pending",
-        "dependencies": [
-          "64"
-        ],
+        "dependencies": [],
         "priority": "low",
         "subtasks": [],
         "updatedAt": "2026-03-26T18:03:57.055Z",
