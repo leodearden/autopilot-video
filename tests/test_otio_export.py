@@ -630,6 +630,24 @@ class TestTransitionMapping:
         assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
         assert transitions[0].name == "wipe"
 
+    def test_unknown_transition_type_emits_warning(self, tmp_path, caplog):
+        """Unrecognized transition type 'wipe' emits a WARNING log message."""
+        import logging
+
+        from autopilot.plan.otio_export import export_otio
+
+        edl = self._wipe_edl()
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+
+        with caplog.at_level(logging.WARNING, logger="autopilot.plan.otio_export"):
+            export_otio(edl, output, db)
+
+        warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("wipe" in msg for msg in warning_messages), (
+            f"Expected a WARNING containing 'wipe', got: {warning_messages}"
+        )
+
 
 # -- Step 20: Multi-track transition isolation tests ---------------------------
 
