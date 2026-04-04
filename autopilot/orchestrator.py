@@ -224,7 +224,7 @@ def _run_ingest(
     """INGEST stage: scan directory, insert media, normalize audio, mark duplicates."""
     from autopilot.ingest import dedup, normalizer, scanner
 
-    files = scanner.scan_directory(config.input_dir, max_workers=None)
+    files = scanner.scan_directory(config.input_dir, max_workers=config.processing.num_cpu_workers)
     norm_dir = config.output_dir / "normalized"
     norm_dir.mkdir(parents=True, exist_ok=True)
 
@@ -434,6 +434,7 @@ def _run_analyze(
                                 scheduler,
                                 config.models,
                                 sparse=False,
+                                batch_size=config.processing.batch_size_yolo,
                             )
                     else:
                         objects.detect_objects(
@@ -443,6 +444,7 @@ def _run_analyze(
                             scheduler,
                             config.models,
                             sparse=False,
+                            batch_size=config.processing.batch_size_yolo,
                         )
                 if force or not db.has_faces(media_id):
                     if run_id is not None:
