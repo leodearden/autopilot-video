@@ -5758,10 +5758,11 @@
         "description": "In `autopilot/plan/otio_export.py` line 152, replace `float(trans_data.get('duration') or 0.5)` with an explicit None guard: `raw = trans_data.get('duration'); duration_secs = float(0.5 if raw is None else raw)`. This prevents an explicit `duration: 0` from silently becoming 0.5s. Suggestions [1], [3], [10] all report this same bug.\n\nmemory_hints:\n- search: \"OTIO transition duration zero falsy or idiom\"\n- search: \"Python or default falsy value coercion convention\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T19:11:20.977Z"
       },
       {
         "id": "328",
@@ -5810,7 +5811,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T19:11:20.125Z",
+      "lastModified": "2026-04-04T19:11:20.977Z",
       "taskCount": 331,
       "completedCount": 201,
       "tags": [
