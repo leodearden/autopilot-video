@@ -723,7 +723,9 @@ class TestHandleDryRunDocstring:
 
     def test_docstring_mentions_click_context(self) -> None:
         """_handle_dry_run docstring should mention 'Click context'."""
-        from autopilot.cli import _handle_dry_run  # noqa: PLC0415 — local import avoids module-level coupling
+        from autopilot.cli import (
+            _handle_dry_run,  # noqa: PLC0415 — local import avoids module-level coupling
+        )
 
         assert _handle_dry_run.__doc__ is not None, "_handle_dry_run must have a docstring"
         assert "Click context" in _handle_dry_run.__doc__, (
