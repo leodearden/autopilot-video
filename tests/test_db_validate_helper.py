@@ -39,6 +39,50 @@ class TestValidateUpdateKwargs:
         catalog_db._validate_update_kwargs(allowed, {}, "entity")
 
 
+class TestExecuteKwargsUpdate:
+    """Direct tests for the _execute_kwargs_update private helper."""
+
+    def test_returns_zero_on_empty_kwargs(self, catalog_db):
+        """Empty kwargs returns 0 without touching the database."""
+        result = catalog_db._execute_kwargs_update(
+            "activity_clusters", "cluster_id", "nonexistent",
+            frozenset({"label"}), "cluster", {},
+        )
+        assert result == 0
+
+    def test_raises_valueerror_on_disallowed_columns(self, catalog_db):
+        """Delegates to _validate_update_kwargs; bad columns raise ValueError."""
+        with pytest.raises(ValueError, match=r"Disallowed column\(s\) for widget update"):
+            catalog_db._execute_kwargs_update(
+                "activity_clusters", "cluster_id", "ac1",
+                frozenset({"label"}), "widget", {"evil_col": "bad"},
+            )
+
+    def test_executes_update_and_returns_rowcount(self, catalog_db):
+        """Builds SET clause, executes UPDATE, and returns affected row count."""
+        catalog_db.insert_activity_cluster(cluster_id="ac1", label="Original")
+        rowcount = catalog_db._execute_kwargs_update(
+            "activity_clusters", "cluster_id", "ac1",
+            frozenset({"label", "description"}), "cluster",
+            {"label": "Updated", "description": "New desc"},
+        )
+        assert rowcount == 1
+        row = catalog_db.get_activity_cluster("ac1")
+        assert row["label"] == "Updated"
+        assert row["description"] == "New desc"
+
+    def test_single_column_update(self, catalog_db):
+        """Handles single-column update correctly (no trailing comma bug)."""
+        catalog_db.insert_activity_cluster(cluster_id="ac2", label="Before")
+        rowcount = catalog_db._execute_kwargs_update(
+            "activity_clusters", "cluster_id", "ac2",
+            frozenset({"label"}), "cluster", {"label": "After"},
+        )
+        assert rowcount == 1
+        row = catalog_db.get_activity_cluster("ac2")
+        assert row["label"] == "After"
+
+
 class TestUpdateMethodsDelegateValidation:
     """Verify each public update method delegates to _validate_update_kwargs."""
 
