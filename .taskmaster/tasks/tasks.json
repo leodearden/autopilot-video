@@ -4741,11 +4741,11 @@
         "description": "Two changes in tests/test_review.py TestGetNarrativeEditHTMX:\n\n1. **Remove duplicate test_get_json_not_found_returns_404** (line ~995): This test sends `GET /api/narratives/nonexistent` without HX-Request and asserts 404 — identical to `TestGetNarrativeAPI.test_404_for_nonexistent` (line 235). It violates class cohesion (HTMX class testing non-HTMX path) and duplicates existing coverage. Delete it.\n\n2. **Add test_get_htmx_card_not_found_returns_404**: The edit-path 404 is tested (test_get_htmx_edit_not_found_returns_404, line 1002), and the JSON 404 is tested in TestGetNarrativeAPI, but the HTMX card path (GET /api/narratives/nonexistent with HX-Request, no edit param) is untested. Add a test that sends this request and asserts status_code == 404.\n\nMemory hints: search \"TestGetNarrativeEditHTMX 404 test class cohesion\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "blocked",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T14:20:07.525Z"
+        "updatedAt": "2026-04-04T18:03:15.852Z"
       },
       {
         "id": "252",
@@ -5018,7 +5018,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:03:13.776Z",
+      "lastModified": "2026-04-04T18:03:15.852Z",
       "taskCount": 274,
       "completedCount": 181,
       "tags": [
