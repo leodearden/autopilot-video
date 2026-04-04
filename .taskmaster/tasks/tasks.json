@@ -3219,6 +3219,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 161,
+        "title": "Extract shared assert_utc_iso() test helper for UTC timestamp validation",
+        "description": "Two test files validate UTC ISO timestamps with inconsistent approaches:\n\n- **test_youtube.py:329-331** — Strong: `datetime.fromisoformat()` + `tzinfo is not None` + `utcoffset() == timedelta(0)`\n- **test_orchestrator.py:3674-3675** — Weak: string-based `\"T\" in started_at` and `\"+\" in started_at or \"Z\" in started_at`\n\nCreate a shared helper (e.g. `assert_utc_iso(value)` in `tests/conftest.py` or a `tests/helpers.py` module) that centralises the strong validation pattern and use it in both test files. This unifies the validation strength and prevents further inconsistency as more timestamp assertions are added.\n\nMemory hints: search for \"UTC timestamp validation\" and \"test helper conventions\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -3231,7 +3242,7 @@
       ],
       "created": "2026-04-04T08:17:37.031Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T08:17:37.032Z"
+      "updated": "2026-04-04T08:17:42.767Z"
     }
   }
 }
