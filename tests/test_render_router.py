@@ -1150,3 +1150,30 @@ class TestSourcePathResolution:
         ):
             with pytest.raises(RoutingError, match="no clip_id"):
                 route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+    def test_media_missing_file_path_raises_routing_error(self) -> None:
+        """Media record without file_path key should raise RoutingError, not KeyError."""
+        from autopilot.render.router import RoutingError, route_and_render
+
+        clips = [
+            {
+                "clip_id": "clip_1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        db.get_media.return_value = {"media_id": "clip_1"}  # no file_path key
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple"),
+            patch("subprocess.run"),
+        ):
+            with pytest.raises(RoutingError, match="missing file_path"):
+                route_and_render("n1", db, config, Path("/tmp/test_output"))
