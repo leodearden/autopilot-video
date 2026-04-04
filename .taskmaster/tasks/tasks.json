@@ -5710,6 +5710,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 324,
+        "title": "app.js notification handler hardening follow-ups",
+        "description": "Three targeted fixes to app.js around the notification handler:\n\n1. **Simplify msg guard** (line ~136): Change `(data && typeof data.message === 'string')` to `(typeof data.message === 'string')` — `data` is already guaranteed non-null by the early return above.\n2. **Document _permissionRequested lifetime** (line ~118): Add a one-line comment next to `var _permissionRequested = false;` documenting that it stays true for the page lifetime even on dismissed prompts.\n3. **Add .catch() to requestPermission promise** (line ~148-152): Add `.catch(function(err) { _permissionRequested = false; console.warn('Notification permission request failed:', err); })` after the `.then()` so rejected promises are handled and transient failures reset the flag to allow a future retry.\n\nMemory hints: search for \"notification handler\" and \"_permissionRequested\" in project context.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5722,7 +5733,7 @@
       ],
       "created": "2026-04-04T19:08:36.599Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T19:08:44.503Z"
+      "updated": "2026-04-04T19:08:47.880Z"
     }
   }
 }
