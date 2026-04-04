@@ -1466,6 +1466,8 @@ class CatalogDB:
 
     def prune_events(self, *, hours: int = 24) -> None:
         """Delete events older than *hours* hours."""
+        if hours <= 0:
+            raise ValueError(f"hours must be positive, got {hours}")
         self.conn.execute(
             "DELETE FROM pipeline_events WHERE created_at < datetime('now', ?)",
             (f"-{hours} hours",),
