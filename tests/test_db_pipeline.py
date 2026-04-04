@@ -327,6 +327,24 @@ class TestJobsCRUD:
         counts = catalog_db.count_jobs_by_status("ingest", run_id="r1")
         assert counts == {"done": 1, "pending": 1}
 
+    def test_update_job_rejects_disallowed_columns(self, catalog_db):
+        """update_job() raises ValueError for unknown columns."""
+        catalog_db.insert_job("j30", "ingest", "media_import")
+        with pytest.raises(ValueError, match="hacked"):
+            catalog_db.update_job("j30", hacked="yes")
+        with pytest.raises(ValueError, match="injected"):
+            catalog_db.update_job("j30", injected="bad")
+
+    def test_update_job_rejects_mix_of_valid_and_invalid(self, catalog_db):
+        """update_job() raises ValueError when valid+invalid columns are mixed."""
+        catalog_db.insert_job("j31", "ingest", "media_import")
+        with pytest.raises(ValueError, match="Disallowed column"):
+            catalog_db.update_job("j31", status="done", hacked="yes")
+        # Ensure the valid column was NOT applied
+        job = catalog_db.get_job("j31")
+        assert job is not None
+        assert job["status"] == "pending"
+
 
 # -- Events CRUD tests ------------------------------------------------------
 
