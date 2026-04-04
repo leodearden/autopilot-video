@@ -55,6 +55,7 @@ _DEFAULT_FPS = 30.0
 # Keys must match the prompt schema's allowed transition types (excluding 'cut',
 # which is implicit and produces no Transition object).
 # See edit_planner.md for the canonical enum: crossfade, cut, fade_in, fade_out, dissolve.
+# Types not in this map emit a WARNING and fall back to SMPTE_Dissolve (see _insert_transitions).
 _TRANSITION_TYPE_MAP = {
     "crossfade": "SMPTE_Dissolve",
     "dissolve": "SMPTE_Dissolve",
