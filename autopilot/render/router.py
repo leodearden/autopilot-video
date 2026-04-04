@@ -189,7 +189,8 @@ def route_and_render(
                         raise RoutingError(f"No crop data for slow-path clip {clip_id}")
                     path_data = crop_record.get("path_data")
                     if not path_data:
-                        raise RoutingError(f"crop_record has empty/null path_data for clip {clip_id}")
+                        msg = f"crop_record has empty/null path_data for clip {clip_id}"
+                        raise RoutingError(msg)
                     crop_path = np.array(path_data, dtype=np.float64)
                 elif crop_modes.get(clip_id):
                     # Fast-path clips may have optional static crop
