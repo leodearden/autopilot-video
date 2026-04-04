@@ -2899,7 +2899,7 @@
         "description": "classify_audio_events uses get_audio_events_for_range(media_id, 0.0, 0.0) for idempotency, but this only returns events at exactly timestamp 0.0. If no event exists at t=0, the entire classification reruns and creates duplicate rows. Should use has_audio_events(media_id) instead, consistent with all other analyze stages.",
         "details": "File: analyze/audio_events.py:95\n\nChange:\n  existing = db.get_audio_events_for_range(media_id, 0.0, 0.0)\nTo:\n  existing = db.has_audio_events(media_id)\n\nThe has_audio_events() method already exists in db.py and uses SELECT 1 ... LIMIT 1.\n\nmemory_hints:\n- search: \"audio events idempotency checkpoint\"",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "high",
         "subtasks": [],
@@ -2915,7 +2915,8 @@
             "autopilot",
             "tests"
           ]
-        }
+        },
+        "updatedAt": "2026-04-04T08:27:18.899Z"
       },
       {
         "id": "145",
@@ -3607,7 +3608,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:27:18.761Z",
+      "lastModified": "2026-04-04T08:27:18.899Z",
       "taskCount": 184,
       "completedCount": 134,
       "tags": [
