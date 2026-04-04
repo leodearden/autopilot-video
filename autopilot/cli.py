@@ -94,6 +94,19 @@ def _setup_context(
     return config, db
 
 
+def _handle_dry_run(dry_run: bool, stages: str) -> bool:
+    """Check dry-run flag and echo the planned stages if active.
+
+    Returns:
+        True if dry-run is active (caller should return immediately),
+        False otherwise.
+    """
+    if dry_run:
+        click.echo(f"[DRY-RUN] Would execute: {stages}")
+        return True
+    return False
+
+
 def _cli_human_review(formatted_text: str, narratives: list) -> list[str]:
     """Interactive CLI prompt for human review of proposed narratives.
 
