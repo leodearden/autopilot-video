@@ -6170,10 +6170,11 @@
         "description": "Four separate color-map duplication problems: (1) media_colors defined identically in media/detail.html:15 and partials/media_row.html:22; (2) stage_colors defined identically in pipeline/index.html and pipeline/stages.html:22; (3) job_count_colors (stages.html:46) and job_colors (jobs.html:58) map the same four job statuses to identical classes; (4) review/hub.html:16 passes empty color_map {} to force the default branch — misleading API usage. Additionally, review/renders.html:38 bakes domain key-inspection logic (key == 'passes' and value) into the template. Fix: create a macros/color_maps.html (or thin wrapper macros like narrative_status_badge.html) exposing media_status_badge, stage_status_badge, job_status_badge; fix hub.html to pass {'waiting': 'bg-amber-900 text-amber-300'} explicitly; move validation status logic to the view context or a dedicated validation_badge macro.\n\nmemory_hints: search \"color map duplication templates\", search \"narrative_status_badge wrapper pattern\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T23:18:18.618Z"
       },
       {
         "id": "357",
@@ -6200,7 +6201,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T23:18:08.643Z",
+      "lastModified": "2026-04-04T23:18:18.618Z",
       "taskCount": 358,
       "completedCount": 210,
       "tags": [
