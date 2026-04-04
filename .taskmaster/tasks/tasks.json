@@ -2784,17 +2784,17 @@
         "description": "Address reviewer suggestions from task 73 review cycle affecting autopilot/web/routes/review.py:\n\n1. Add `model_config = ConfigDict(extra='forbid')` to ClusterMerge (line ~358) — matches ClusterRelabel pattern (architect S2, robustness S4)\n2. Deduplicate clip_ids in api_merge_clusters before json.dumps — use dict.fromkeys() (robustness S3)\n3. Fix TOCTOU race in api_stream_video: wrap FileResponse in try/except OSError → 404 (robustness S1)\n4. Derive media_type from file extension via mimetypes.guess_type instead of hardcoded video/mp4 (architect S4, robustness S2)\n5. Fix inconsistent render file-existence check in render_index_page — use Path.is_file() like render_review_page (architect S3)\n\nFiles: autopilot/web/routes/review.py",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T09:03:42.290Z",
+        "updatedAt": "2026-04-04T09:08:54.226Z",
         "metadata": {
           "modules": [
             "autopilot/web/routes/review.py",
             "autopilot/web/templates/review",
-            "tests/conftest.py",
-            "tests/test_render_review.py"
+            "tests/test_render_review.py",
+            "tests/test_review.py"
           ]
         }
       },
@@ -3844,7 +3844,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T09:08:20.931Z",
+      "lastModified": "2026-04-04T09:08:54.231Z",
       "taskCount": 196,
       "completedCount": 143,
       "tags": [
