@@ -3508,10 +3508,11 @@
         "description": "In tests/test_youtube.py, tighten the assertions in both new test methods:\n1. `test_tags_empty_when_detections_use_old_class_name_key` (line ~256): after the two `not in` assertions, add `assert tags == []` to make the zero-tag invariant explicit and match the docstring's stated intent.\n2. `test_tags_exclude_empty_string_class` (line ~286): replace or supplement `assert 'dog' in tags` with `assert tags == ['dog']` to pin the exact output and catch spurious extra tags.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T08:26:17.392Z"
       },
       {
         "id": "179",
@@ -3538,7 +3539,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:26:17.329Z",
+      "lastModified": "2026-04-04T08:26:17.393Z",
       "taskCount": 180,
       "completedCount": 133,
       "tags": [
