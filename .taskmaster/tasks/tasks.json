@@ -6022,6 +6022,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 346,
+        "title": "Clean up redundant tests and close fade_out message coverage gap",
+        "description": "In `tests/test_otio_export.py`:\n\n1. Remove `test_subset_assertion_exists_in_source` — fragile inspect-based test that pins syntax rather than behavior; the invariant is already covered by `test_fade_approximation_types_subset_of_transition_map` and the module-level guard.\n2. Remove `test_fade_approximation_msg_constant_exists` — existence check fully subsumed by `test_fade_approximation_metadata_matches_msg_constant`.\n3. Extend `test_fade_approximation_metadata_matches_msg_constant` to cover `fade_out` — either parameterise with `@pytest.mark.parametrize('trans_type', ['fade_in', 'fade_out'])` or add a parallel `test_fade_out_transition_metadata_matches_msg_constant`. The existing `test_fade_out_transition_has_approximation_metadata` only checks type, not value equality against `_FADE_APPROXIMATION_MSG`.\n\nmemory_hints: search for \"test_fade_approximation\" and \"test_subset_assertion\" in test_otio_export.py",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -6034,7 +6045,7 @@
       ],
       "created": "2026-04-04T23:13:18.268Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T23:13:18.271Z"
+      "updated": "2026-04-04T23:13:22.820Z"
     }
   }
 }
