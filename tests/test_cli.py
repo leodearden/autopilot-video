@@ -630,16 +630,15 @@ class TestHandleDryRun:
     def test_returns_true_and_echoes_when_dry_run(self) -> None:
         """_handle_dry_run(True, ...) returns True and echoes '[DRY-RUN] Would execute: ...'."""
         runner = CliRunner()
-        with runner.isolated_filesystem():
 
-            @click.command()
-            def dummy() -> None:
-                result = _handle_dry_run(True, "INGEST")
-                assert result is True
+        @click.command()
+        def dummy() -> None:
+            result = _handle_dry_run(True, "INGEST")
+            assert result is True
 
-            result = runner.invoke(dummy)
-            assert result.exit_code == 0, f"Unexpected error: {result.output}"
-            assert "[DRY-RUN] Would execute: INGEST" in result.output
+        result = runner.invoke(dummy)
+        assert result.exit_code == 0, f"Unexpected error: {result.output}"
+        assert "[DRY-RUN] Would execute: INGEST" in result.output
 
     def test_returns_true_with_multiple_stages(self) -> None:
         """_handle_dry_run echoes all stage names when multiple are provided."""
