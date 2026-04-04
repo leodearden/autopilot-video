@@ -1083,7 +1083,8 @@ class TestEditFormZeroDuration:
         assert response.status_code == 200
         # The input value should be empty, not the string 'None'
         assert 'value="None"' not in response.text
-        # Duration input should have an empty value attribute
+        # Duration input should render with an empty value attribute
+        assert 'value=""' in response.text
         assert 'name="proposed_duration_seconds"' in response.text
 
     def test_edit_form_js_does_not_use_falsy_or_null(
