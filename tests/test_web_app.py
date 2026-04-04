@@ -309,6 +309,31 @@ class TestExtractListenerBody:
             _extract_listener_body(malformed_js, "broken_event")
 
 
+class TestBraceMatchFrom:
+    """Tests for the _brace_match_from helper."""
+
+    def test_extracts_simple_braced_block(self) -> None:
+        """Extracts a simple braced block from a known start index."""
+        result = _brace_match_from("x { a; }", 2, "simple")
+        assert result == "{ a; }"
+
+    def test_handles_nested_braces(self) -> None:
+        """Correctly brace-matches when there are nested braces."""
+        source = "{ if (x) { y; } }"
+        result = _brace_match_from(source, 0, "nested")
+        assert result == source
+
+    def test_raises_on_unbalanced_braces(self) -> None:
+        """Raises AssertionError when braces are not balanced."""
+        with pytest.raises(AssertionError, match="unbalanced"):
+            _brace_match_from("{ open { but no close", 0, "broken")
+
+    def test_label_appears_in_error_message(self) -> None:
+        """Error message includes the label for context."""
+        with pytest.raises(AssertionError, match="test-block"):
+            _brace_match_from("{ broken", 0, "test-block")
+
+
 class TestSSEErrorHandling:
     """Tests for SSE notification error handling in app.js."""
 
