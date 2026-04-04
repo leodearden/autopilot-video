@@ -3944,15 +3944,16 @@
         "description": "In tests/test_youtube.py, the `_insert_detections` helper (line ~232) has three issues:\n\n1. **Misleading name**: It inserts a narrative + media + detections but the name implies only detections. Rename to `_setup_media_with_detections` (or similar) to reflect all side effects.\n\n2. **Placement**: The helper sits between test methods, breaking the class's organizational pattern. Move it above the first test method that uses it, or group it with other helpers.\n\n3. **Incomplete deduplication**: `test_tags_from_activity_labels_and_detections` (line ~180) still inlines the same `insert_narrative` + `insert_media` + `batch_insert_detections` pattern. Extend the renamed helper (e.g., accept optional `activity_cluster_ids_json` kwarg for `insert_narrative`) so this test can also use it, keeping the activity-cluster-specific setup (`insert_activity_cluster` calls) inline since that's unique to the test.\n\nMemory hints: search \"task 180 extract helper _insert_detections\" for prior context.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:15:25.709Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T09:15:25.566Z",
+      "lastModified": "2026-04-04T09:15:25.709Z",
       "taskCount": 202,
       "completedCount": 145,
       "tags": [
