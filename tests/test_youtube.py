@@ -281,6 +281,25 @@ class TestBuildUploadMetadata:
         assert "" not in tags
         assert tags == ["dog"]
 
+    def test_setup_helper_encodes_cluster_ids_as_json(self, catalog_db, youtube_config):
+        """Helper encodes activity_cluster_ids list as JSON string in the DB."""
+        self._setup_media_with_detections(
+            catalog_db,
+            [("m1", 0, json.dumps([{"class": "x", "confidence": 0.9}]))],
+            activity_cluster_ids=["x1"],
+        )
+        narrative = catalog_db.get_narrative("n1")
+        assert narrative["activity_cluster_ids_json"] == json.dumps(["x1"])
+
+    def test_setup_helper_omitted_cluster_ids_stores_none(self, catalog_db, youtube_config):
+        """When activity_cluster_ids is omitted, the DB stores None."""
+        self._setup_media_with_detections(
+            catalog_db,
+            [("m1", 0, json.dumps([{"class": "x", "confidence": 0.9}]))],
+        )
+        narrative = catalog_db.get_narrative("n1")
+        assert narrative["activity_cluster_ids_json"] is None
+
     def test_uses_config_privacy_status_and_category(self, catalog_db):
         """Privacy and category come from YouTubeConfig."""
         catalog_db.insert_narrative("n1", title="Title", description="desc")
