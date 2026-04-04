@@ -5373,6 +5373,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 299,
+        "title": "Use 'unknown' as OTIO transition name fallback instead of empty string",
+        "description": "In autopilot/plan/otio_export.py line 164, change `name=trans_type or ''` to `name=trans_type or 'unknown'`. This makes OTIO Transition objects self-describing when inspected in DaVinci Resolve or OTIO timeline tools. Update the corresponding test assertions (name == '' → name == 'unknown') in any tests that pin this value, including the new null-type test.\n\nmemory_hints:\n- search: \"OTIO transition name fallback empty string unknown\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5385,7 +5396,7 @@
       ],
       "created": "2026-04-04T18:17:36.986Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:17:54.173Z"
+      "updated": "2026-04-04T18:17:58.804Z"
     }
   }
 }
