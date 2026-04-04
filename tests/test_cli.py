@@ -592,3 +592,35 @@ class TestDryRunSubcommands:
                 stage_func.assert_not_called(), (
                     f"{cmd_name} --dry-run should NOT call any stage function"
                 )
+
+    @pytest.mark.parametrize(
+        "cmd_name,expected_stages",
+        list(SUBCOMMAND_STAGES.items()),
+    )
+    def test_dry_run_logs_stage_names(
+        self, tmp_path: Path, cmd_name: str, expected_stages: list[str]
+    ) -> None:
+        """'<cmd> --dry-run' outputs '[DRY-RUN] Would execute: <STAGE_NAMES>' and exits 0."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+            mock_db_cls.return_value = MagicMock()
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch = MagicMock()
+                mock_orch_cls.return_value = mock_orch
+
+                result = runner.invoke(
+                    main,
+                    ["--config", str(config_file), cmd_name, "--dry-run"],
+                )
+                assert result.exit_code == 0, (
+                    f"{cmd_name} --dry-run failed: {result.output}"
+                )
+                assert "[DRY-RUN]" in result.output, (
+                    f"{cmd_name} --dry-run should print [DRY-RUN] marker"
+                )
+                for stage_name in expected_stages:
+                    assert stage_name in result.output, (
+                        f"{cmd_name} --dry-run should mention stage {stage_name}"
+                    )
