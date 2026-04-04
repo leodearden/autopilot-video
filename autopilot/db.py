@@ -890,9 +890,12 @@ class CatalogDB:
         "status",
     })
 
-    def update_narrative(self, narrative_id: str, **kwargs: object) -> None:
-        """Update fields of a narrative by keyword arguments."""
-        self._execute_kwargs_update(
+    def update_narrative(self, narrative_id: str, **kwargs: object) -> int:
+        """Update fields of a narrative by keyword arguments.
+
+        Returns number of rows affected (0 if not found or no kwargs).
+        """
+        return self._execute_kwargs_update(
             "narratives", "narrative_id", narrative_id,
             self._NARRATIVE_ALLOWED_COLUMNS, "narrative", kwargs,
         )
