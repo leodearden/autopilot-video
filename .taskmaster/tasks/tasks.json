@@ -1371,11 +1371,11 @@
         "description": "api_relabel_cluster and api_exclude_cluster still use db.conn.commit() directly, while api_merge_clusters was refactored to use `with db:` context manager for transaction safety. Apply the same pattern to both routes for consistency.\n\nFiles: autopilot/web/routes/review.py (lines 314-357)\n\nmemory_hints: search \"task 63 transaction pattern\", entity \"api_merge_clusters\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-03T15:03:37.299Z",
+        "updatedAt": "2026-04-04T13:03:00.523Z",
         "metadata": {
           "modules": [
             "autopilot/web/routes/review.py",
@@ -1437,13 +1437,13 @@
         "description": "_render_narrative_partial (review.py:151-158) and _render_cluster_partial (review.py:295-302) are structurally identical — both call templates.get_template(), template.render(), and return HTMLResponse. Only the template path and context variable name differ.\n\nExtract a shared helper: `def _render_partial(request: Request, template_name: str, **ctx) -> HTMLResponse` to reduce duplication.\n\nFiles: autopilot/web/routes/review.py (lines 151-158, 295-302)\n\nmemory_hints: search \"review.py render partial helper\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [
           "63"
         ],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:00:53.245Z",
+        "updatedAt": "2026-04-04T13:03:52.749Z",
         "metadata": {
           "files": [
             "autopilot/web/routes/review.py"
@@ -1976,7 +1976,7 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:10:00.300Z",
+        "updatedAt": "2026-04-04T13:05:47.092Z",
         "metadata": {
           "files": [
             "autopilot/web/routes/sse.py",
@@ -1992,15 +1992,9 @@
             "tests/test_sse.py"
           ],
           "memory_hints": {
-            "entities": [
-              "VALID_EVENT_TYPES",
-              "setupDashboardSSE"
-            ],
+            "entities": [],
             "queries": [
-              "sse.py VALID_EVENT_TYPES notification event type missing",
-              "notification bell badge base.html hidden class",
-              "orchestrator emit notification events gate_waiting stage_error run_completed",
-              "app.js notification event listener existing"
+              "resolution for: Wire notification SSE events: emit from server, connect to bell badge"
             ]
           }
         }
@@ -2712,7 +2706,7 @@
         "description": "autopilot/web/routes/review.py defines `_get_db` (line 20-22) and `_is_htmx` (line 25-27) that are byte-for-byte identical to `get_db` and `is_htmx` in autopilot/web/deps.py. Replace the local definitions with `from autopilot.web.deps import get_db, is_htmx` and update all ~15 call-sites in review.py (rename _get_db → get_db, _is_htmx → is_htmx). Also apply the same cleanup to sse.py which has the same pre-existing duplicate.\n\nmemory_hints: search \"_get_db _is_htmx deps.py duplicate\", entity \"deps.py\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
@@ -2730,7 +2724,7 @@
             "tests"
           ]
         },
-        "updatedAt": "2026-04-04T08:20:33.773Z"
+        "updatedAt": "2026-04-04T08:30:47.071Z"
       },
       {
         "id": "138",
@@ -2788,13 +2782,13 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-03T15:06:55.817Z",
+        "updatedAt": "2026-04-04T09:08:54.226Z",
         "metadata": {
           "modules": [
             "autopilot/web/routes/review.py",
             "autopilot/web/templates/review",
-            "tests/conftest.py",
-            "tests/test_render_review.py"
+            "tests/test_render_review.py",
+            "tests/test_review.py"
           ]
         }
       },
@@ -2861,7 +2855,7 @@
         "description": "CRITICAL: render_simple() and render_complex() require edl_entry[\"source_path\"], but generate_edl() produces clips with clip_id/in_timecode/out_timecode/track only. The render router must resolve clip_id to file_path via db.get_media() before passing clips to renderers. Currently any real render run crashes with KeyError/RenderError. Tests paper over this by manually constructing EDL dicts that include source_path.",
         "details": "Files: render/router.py:174-177, render/ffmpeg_render.py:64, render/moviepy_render.py:96\n\nFix: In render/router.py, before calling render_simple/render_complex, resolve each clip's source_path:\n  media = db.get_media(clip_id)\n  clip[\"source_path\"] = media[\"file_path\"]\n\nAlso update test data in test_render_router.py to verify this resolution works end-to-end rather than manually injecting source_path.\n\nmemory_hints:\n- search: \"render pipeline source_path EDL clip resolution\"\n- entity: \"render_router\", \"ffmpeg_render\"",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "high",
         "subtasks": [],
@@ -2891,7 +2885,7 @@
             ]
           }
         },
-        "updatedAt": "2026-04-04T08:00:53.333Z"
+        "updatedAt": "2026-04-04T08:27:18.761Z"
       },
       {
         "id": "144",
@@ -2899,7 +2893,7 @@
         "description": "classify_audio_events uses get_audio_events_for_range(media_id, 0.0, 0.0) for idempotency, but this only returns events at exactly timestamp 0.0. If no event exists at t=0, the entire classification reruns and creates duplicate rows. Should use has_audio_events(media_id) instead, consistent with all other analyze stages.",
         "details": "File: analyze/audio_events.py:95\n\nChange:\n  existing = db.get_audio_events_for_range(media_id, 0.0, 0.0)\nTo:\n  existing = db.has_audio_events(media_id)\n\nThe has_audio_events() method already exists in db.py and uses SELECT 1 ... LIMIT 1.\n\nmemory_hints:\n- search: \"audio events idempotency checkpoint\"",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [],
         "priority": "high",
         "subtasks": [],
@@ -2915,7 +2909,8 @@
             "autopilot",
             "tests"
           ]
-        }
+        },
+        "updatedAt": "2026-04-04T09:02:23.985Z"
       },
       {
         "id": "145",
@@ -2923,7 +2918,7 @@
         "description": "SQL injection vector: update_gate, update_job, and update_run build SET clauses from **kwargs keys without whitelist validation. Current callers pass literal kwargs so no live exploit, but the pattern is inconsistent with update_narrative and update_activity_cluster which use frozenset whitelists. Also fix prune_events f-string interpolation (db.py:1438).",
         "details": "Files: db.py:1287-1298 (update_gate), db.py:1352-1363 (update_job), db.py:1478-1489 (update_run), db.py:1438 (prune_events)\n\nPattern to follow (from update_narrative):\n  _GATE_ALLOWED_COLUMNS = frozenset({\"status\", \"mode\", \"timeout_minutes\", ...})\n  if not kwargs.keys() <= _GATE_ALLOWED_COLUMNS:\n      bad = kwargs.keys() - _GATE_ALLOWED_COLUMNS\n      raise ValueError(f\"Invalid columns: {bad}\")\n\nFor prune_events, parameterize the hours value instead of f-string interpolation.\n\nmemory_hints:\n- search: \"SQL injection whitelist update methods\"\n- entity: \"CatalogDB\"",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "high",
         "subtasks": [],
@@ -2936,7 +2931,8 @@
             "autopilot",
             "tests"
           ]
-        }
+        },
+        "updatedAt": "2026-04-04T09:06:15.703Z"
       },
       {
         "id": "146",
@@ -3041,7 +3037,7 @@
         "description": "CLI subcommands (ingest, analyze, plan, edit, render, upload) accept --dry-run but silently ignore it. Implement dry-run behavior for each. Also wire up config keys num_cpu_workers (to scanner's ProcessPoolExecutor max_workers) and batch_size_yolo (to detect_objects batch_size parameter).",
         "details": "Files: cli.py:130,156,183,210,237,263, config.py:103-104, orchestrator.py:227,430-446\n\n--dry-run: Each subcommand should log what it would do without executing. Pass dry_run to stage functions or add a guard at the CLI level.\n\nConfig wiring:\n- config.processing.num_cpu_workers -> orchestrator.py:227 scan_directory(max_workers=config.processing.num_cpu_workers)\n- config.processing.batch_size_yolo -> orchestrator.py:430 detect_objects(batch_size=config.processing.batch_size_yolo)\n\nmemory_hints:\n- search: \"CLI dry-run config num_cpu_workers batch_size_yolo\"",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
@@ -3061,7 +3057,7 @@
             "tests/test_orchestrator.py"
           ]
         },
-        "updatedAt": "2026-04-04T08:21:10.119Z"
+        "updatedAt": "2026-04-04T09:28:59.155Z"
       },
       {
         "id": "151",
@@ -3089,7 +3085,7 @@
         "description": "Add missing assertions for toast parameters, conditional guards, and fallback strings in SSE handler tests",
         "details": "In tests/test_web_app.py: (1) test_stage_error_uses_factory: assert the full makeStageHandler call signature including toastMsg, toastType, toastDuration, refreshCard params. (2) test_make_stage_handler_calls_refresh_stage_card: assert 'if (refreshCard)' guard wraps the refreshStageCard call. (3) test_make_stage_handler_shows_toast_on_missing_stage: assert 'unknown' appears in the else_body. (4) TestSSERunHandlerRobustness: add assertions for toast message text ('Pipeline run completed!' / 'Pipeline run failed'), toast types ('success' / 'error'), and durations (6000, 8000). Follow-up from task 111 review.",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
@@ -3101,7 +3097,7 @@
             "tests"
           ]
         },
-        "updatedAt": "2026-04-04T08:21:06.038Z"
+        "updatedAt": "2026-04-04T08:30:53.454Z"
       },
       {
         "id": "153",
@@ -3130,11 +3126,11 @@
         "description": "In autopilot/plan/otio_export.py lines 54-63, update the _TRANSITION_TYPE_MAP comment to explicitly acknowledge that fade_in and fade_out are approximated as SMPTE_Dissolve (a cross-dissolve requiring two overlapping clips) because OTIO lacks a native fade-to-black Transition type. The comment currently says keys 'must match the prompt schema' but does not warn that the visual rendering will be a cross-dissolve rather than a true fade-to-black. Either add a clear approximation note with a TODO for proper opacity-based fades, or implement fade_in/fade_out as OTIO Effects on the adjacent clip instead.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:24:15.474Z",
+        "updatedAt": "2026-04-04T09:05:54.429Z",
         "metadata": {
           "modules": [
             "autopilot/plan/otio_export.py",
@@ -3172,11 +3168,11 @@
         "description": "In tests/test_otio_export.py, consolidate the four structurally-identical transition tests (test_crossfade_creates_smpte_dissolve, test_fade_in_creates_smpte_dissolve, test_fade_out_creates_smpte_dissolve, test_dissolve_creates_smpte_dissolve) into a single @pytest.mark.parametrize('transition_type', ['crossfade', 'fade_in', 'fade_out', 'dissolve']) test. Also move the repeated inline import of _TRANSITION_TYPE_MAP from the four methods of TestTransitionMapKeys to module level alongside other imports.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:13:04.176Z",
+        "updatedAt": "2026-04-04T13:05:01.063Z",
         "metadata": {
           "modules": [
             "tests/test_otio_export.py"
@@ -3224,11 +3220,11 @@
         "description": "In tests/test_web_app.py: (1) Extract a private `_brace_match_from(source: str, start: int, label: str) -> str` helper that performs the depth-counted brace scan from a known opening-brace index. (2) Refactor `_extract_listener_body` and `_extract_function_body` to delegate to it — each reduces to: locate marker → find `{` → call `_brace_match_from`. (3) Replace the inline brace-matching block in `test_sse_notification_listener_has_try_catch` with `_extract_listener_body(js_source, 'notification')`. (4) Replace the inline else-block extraction in `test_make_stage_handler_shows_toast_on_missing_stage` with `_brace_match_from(factory_body, else_brace_start, 'else block')`.",
         "details": "Follow-up from task 151 review. Consolidates 3+ copies of the identical brace-matching loop into a single shared helper. Memory hints: search for \"task 151 brace matching\" and \"task 111 SSE handler factory\".",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:19:46.391Z",
+        "updatedAt": "2026-04-04T09:13:14.271Z",
         "metadata": {
           "modules": [
             "tests/test_web_app.py"
@@ -3278,11 +3274,11 @@
         "description": "In tests/test_web_app.py: (1) Fix `_extract_function_body` (line ~247-248): after `find(f'function {func_name}')`, verify the character immediately following `func_name` is not alphanumeric or `_` (word-boundary check), or switch to `re.search(rf'\\bfunction\\s+{re.escape(func_name)}\\b', js_source)`. (2) Add a regression test: `js = 'function makeStageHandlerV2() { return 2; }\\nfunction makeStageHandler() { return 1; }'; body = _extract_function_body(js, 'makeStageHandler'); assert '{ return 1; }' in body`. (3) Add a multi-function test verifying correct targeting when the target is not the first function in source.",
         "details": "Follow-up from task 151 review (robustness + test coverage). Currently safe because function names in app.js happen to be unique and non-prefix-of-each-other, but the helper has no guard. Memory hints: search for \"_extract_function_body\" and \"task 151 test helpers\".",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:19:31.898Z",
+        "updatedAt": "2026-04-04T09:13:15.345Z",
         "metadata": {
           "modules": [
             "tests/test_web_app.py"
@@ -3329,11 +3325,11 @@
         "description": "In `autopilot/web/routes/review.py`, delete the private `_is_htmx` helper (lines 29–31) and add `is_htmx` to the existing import: `from autopilot.web.deps import is_htmx, render_partial`. Replace all four call-sites of `_is_htmx(request)` in review.py with `is_htmx(request)`. Resolves review suggestions [0] and [3] from task 100 review cycle.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:21:05.972Z",
+        "updatedAt": "2026-04-04T09:03:41.854Z",
         "metadata": {
           "modules": [
             "autopilot/web/routes/review.py",
@@ -3347,11 +3343,11 @@
         "description": "Two zero-value bugs in `autopilot/web/templates/partials/narrative_edit_form.html`:\n1. **Jinja (line 21):** Replace `{{ narrative.proposed_duration_seconds or '' }}` with `{{ narrative.proposed_duration_seconds if narrative.proposed_duration_seconds is not none else '' }}` so that a stored value of `0` renders as `0` rather than blank.\n2. **JS hx-vals (line 30):** Replace `parseFloat(...) || null` with an explicit NaN check, e.g. `(v => v !== '' && !isNaN(parseFloat(v)) ? parseFloat(v) : null)(...)`, so that a user-entered `0` is sent as `0` not `null`.\nResolves review suggestions [1], [10], and [11] from task 100 review cycle.\n\nMemory hints: search \"zero-value falsy handling Jinja JS convention\" for related norms.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:22:31.244Z",
+        "updatedAt": "2026-04-04T09:03:42.149Z",
         "metadata": {
           "modules": [
             "autopilot/web/templates/partials",
@@ -3365,11 +3361,11 @@
         "description": "The 5-way `{% if narrative.status == 'approved' %}...` badge block is duplicated verbatim in three templates:\n- `autopilot/web/templates/partials/narrative_card.html` (lines 4–11)\n- `autopilot/web/templates/partials/narrative_edit_form.html` (lines 6–13)\n- `autopilot/web/templates/review/narratives.html` (lines 26–33)\n\nCreate `autopilot/web/templates/macros/narrative_status_badge.html` with a `status_badge(status)` macro and replace all three inline blocks with `{% from 'macros/narrative_status_badge.html' import status_badge %}{{ status_badge(narrative.status) }}`. Resolves review suggestion [4] from task 100 review cycle.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:19:46.454Z"
+        "updatedAt": "2026-04-04T08:45:38.804Z"
       },
       {
         "id": "169",
@@ -3394,11 +3390,17 @@
         "description": "In autopilot/orchestrator.py _run_edl: remove both validator.validate_edl(edl, db) calls at lines 751 and 765 (return value is discarded; generate_edl already validates internally and the calls create a spurious failure surface). After removing, add an assertion or comment at line ~770 making it explicit that generate_edl() must have already persisted edl_json before db.upsert_edit_plan is called — e.g. assert db.get_edit_plan(nid) is not None. Also update tests/test_orchestrator.py: test_edl_generates_validates_exports_per_narrative (line 1103) currently asserts mock_validator.validate_edl.assert_called_once() — that assertion must be removed or inverted. Remove duplicate test test_edl_upsert_only_passes_otio_path (lines 1183-1207).",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:20:42.438Z"
+        "updatedAt": "2026-04-04T08:31:24.634Z",
+        "metadata": {
+          "modules": [
+            "autopilot/orchestrator.py",
+            "tests/test_orchestrator.py"
+          ]
+        }
       },
       {
         "id": "171",
@@ -3426,11 +3428,11 @@
         "description": "In tests/test_orchestrator.py, three assertion gaps to fix: (1) In test_narrate_skips_when_approved_narratives_exist (line 955): add db.list_narratives.assert_called_once_with('approved') and mock_narratives.build_master_storyboard.assert_not_called(). (2) In test_narrate_logs_resume_message (line 970): add db.list_narratives.assert_called_once_with('approved'). (3) In test_narrate_force_repropose_even_with_existing (line 989): add db.list_narratives.assert_not_called() to verify the checkpoint query is bypassed when force=True.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:22:41.211Z",
+        "updatedAt": "2026-04-04T09:29:32.920Z",
         "metadata": {
           "modules": [
             "tests/test_orchestrator.py"
@@ -3460,11 +3462,11 @@
         "description": "In tests/test_otio_export.py: (1) Merge test_unknown_transition_type_falls_back_to_smpte_dissolve and test_unknown_transition_type_emits_warning into a single test that asserts both the SMPTE_Dissolve fallback type AND the warning log — they have byte-for-byte identical setup. (2) Extract the repeated 3-line Clip/Transition/Clip isinstance block into a TestTransitionMapping class helper, e.g. `def _assert_clip_transition_clip(track): items = list(track); assert len(items) == 3; assert isinstance(items[0], otio.schema.Clip); assert isinstance(items[1], otio.schema.Transition); assert isinstance(items[2], otio.schema.Clip)`. (3) Capture track_items once before deriving the transitions list comprehension in the merged test (currently iterated twice).",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:26:51.813Z",
+        "updatedAt": "2026-04-04T13:05:01.204Z",
         "metadata": {
           "modules": [
             "tests/test_otio_export.py"
@@ -3529,11 +3531,11 @@
         "description": "In tests/test_youtube.py, tighten the assertions in both new test methods:\n1. `test_tags_empty_when_detections_use_old_class_name_key` (line ~256): after the two `not in` assertions, add `assert tags == []` to make the zero-tag invariant explicit and match the docstring's stated intent.\n2. `test_tags_exclude_empty_string_class` (line ~286): replace or supplement `assert 'dog' in tags` with `assert tags == ['dog']` to pin the exact output and catch spurious extra tags.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:26:17.392Z"
+        "updatedAt": "2026-04-04T08:45:27.292Z"
       },
       {
         "id": "179",
@@ -3541,11 +3543,16 @@
         "description": "In tests/test_youtube.py, add a test (or parametrize `test_tags_empty_when_detections_use_old_class_name_key`) to cover a detection dict that has no `class` key at all — e.g. `[{'confidence': 0.9}]`. Assert the result produces no detection tags. This makes explicit that `d.get('class')` silently ignores not just wrong-named keys but also absent keys, preventing a future refactor from inadvertently treating these cases differently.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:26:26.425Z"
+        "updatedAt": "2026-04-04T09:08:11.694Z",
+        "metadata": {
+          "modules": [
+            "tests/test_youtube.py"
+          ]
+        }
       },
       {
         "id": "180",
@@ -3553,11 +3560,16 @@
         "description": "In tests/test_youtube.py, add a private helper method `_insert_detections(self, catalog_db, detections_json)` to `TestBuildUploadMetadata` that encapsulates the repeated 3-step setup: `catalog_db.insert_narrative('n1', ...)`, `catalog_db.insert_media('m1', ...)`, `catalog_db.batch_insert_detections(...)`. Replace the duplicated blocks in `test_tags_empty_when_detections_use_old_class_name_key` and `test_tags_exclude_empty_string_class` with calls to this helper, passing only the varying detections JSON.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:26:31.925Z"
+        "updatedAt": "2026-04-04T09:15:25.117Z",
+        "metadata": {
+          "modules": [
+            "tests/test_youtube.py"
+          ]
+        }
       },
       {
         "id": "181",
@@ -3565,17 +3577,444 @@
         "description": "Three related robustness issues in autopilot/render/router.py around the source_path resolution block (lines 135-145):\n1. Add a pre-check before the db.get_media call — if a clip has neither source_path nor clip_id, raise RoutingError(f'Clip at index {i} has no clip_id and no source_path') rather than silently using the synthetic f'clip_{i}' id and producing a confusing 'No media record for clip_0' error.\n2. After confirming media is not None, guard the file_path key access: use media.get('file_path') and raise RoutingError(f'Media record for clip {clip_id!r} is missing file_path') if absent, rather than letting a bare KeyError escape.\n3. Switch from in-place mutation clip['source_path'] = ... to a non-mutating rebind clip = {**clip, 'source_path': str(file_path)} for consistency with the rest of the function.\n\nmemory_hints:\n- search: \"render pipeline source_path resolution robustness RoutingError\"\n- entity: \"render_router\"",
         "details": "",
         "testStrategy": "",
+        "status": "in-progress",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:08:20.928Z",
+        "metadata": {
+          "modules": [
+            "autopilot/render/router.py",
+            "tests/test_render_router.py"
+          ]
+        }
+      },
+      {
+        "id": "182",
+        "title": "Add missing test coverage for source_path resolution edge cases",
+        "description": "Add the following test cases to tests/test_render_router.py in TestSourcePathResolution:\n1. Add db.get_media.assert_called_with('clip_1') to test_source_path_resolved_for_slow_clip (line 1052) to mirror the assertion present in the fast-path test.\n2. Add a test variant where db.get_media.return_value = {'file_path': Path('/resolved/clip.mp4')} (a pathlib.Path) and assert rendered_clip['source_path'] == '/resolved/clip.mp4' (str), verifying the str() coercion at router.py:145.\n3. Add a test where db.get_media.return_value = {} (no file_path key) and assert RoutingError is raised with a meaningful message. Pair this with the router fix from the robustness task.\n4. In TestEDLLoading::test_loads_edl_from_edit_plan (line 203), replace assert rendered_clip['source_path'].startswith('/') with assert rendered_clip['source_path'] == '/fake/source.mp4'.\n\nmemory_hints:\n- search: \"source_path resolution test coverage edge cases\"\n- entity: \"render_router\", \"test_render_router\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:04:27.579Z"
+      },
+      {
+        "id": "183",
+        "title": "Reduce test setup duplication with _make_db() helper",
+        "description": "Clean up repeated boilerplate in tests/test_render_router.py:\n1. Introduce a _make_db() factory (parallel to _make_config/_make_edl) that returns a MagicMock pre-configured with db.get_media.return_value = {'file_path': '/fake/source.mp4'}, db.get_edit_plan=None, db.get_narrative=None, db.get_transcript=None. Replace the ~15 copy-paste sites across all test classes.\n2. Merge test_db_get_media_called_for_clip_without_source_path and test_resolved_source_path_passed_to_renderer (lines 930-987) into a single test that asserts both db.get_media.assert_called_with('clip_1') and rendered_clip['source_path'] == '/resolved/clip.mp4', since they share 100% identical setup.\n3. Remove the dead db.get_media.return_value = {'file_path': '/fake/source.mp4'} assignment at line 1074 in test_multiple_clips_each_resolved, which is immediately superseded by the side_effect assignment at line 1082.\n4. Either keep a default source_path in _make_edl and introduce a separate _make_edl_no_source_path used only by TestSourcePathResolution, or add a _SENTINEL default that triggers an assertion failure if db.get_media is unconfigured — preventing silent MagicMock objects as source_path values in unrelated tests.\n\nmemory_hints:\n- search: \"test_render_router _make_edl _make_config helper pattern\"\n- entity: \"test_render_router\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:02:12.110Z",
+        "metadata": {
+          "modules": [
+            "tests/test_render_router.py"
+          ]
+        }
+      },
+      {
+        "id": "184",
+        "title": "Optimize media record fetching: eliminate N+1 queries and redundant lookups",
+        "description": "In autopilot/render/router.py, refactor the per-clip db.get_media call (lines 139-145) to avoid N serial round-trips:\nBefore the clip loop, collect all clip_ids that are missing source_path. Fetch them in one shot (e.g. a new db.get_media_batch(ids) method using WHERE id IN (...)), build a lookup dict, and apply it inside the loop. This also handles duplicate clip_ids (same clip reused at different cut points) without redundant queries, addressing both the N+1 and deduplication issues.\n\nmemory_hints:\n- search: \"render pipeline db.get_media N+1 batch query optimization\"\n- entity: \"render_router\", \"db\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T08:31:29.634Z",
+        "metadata": {
+          "modules": [
+            "autopilot/db.py",
+            "autopilot/render/router.py",
+            "tests/test_db.py",
+            "tests/test_render_router.py"
+          ]
+        }
+      },
+      {
+        "id": "185",
+        "title": "Cache CatalogDB or skip _create_schema on repeated get_db() calls",
+        "description": "Every call to get_db() in autopilot/web/deps.py constructs a new CatalogDB instance, which opens a SQLite connection, fires two PRAGMAs (journal_mode=WAL, foreign_keys=ON), and runs _create_schema() — an executescript with 19 CREATE TABLE IF NOT EXISTS statements. This overhead is paid on every HTTP request.\n\nNow that get_db() is the single canonical entry point (after task 137 consolidated duplicates), this is the right place to optimize. Options:\n1. Store a shared CatalogDB instance on app.state at startup and have get_db() return it (CatalogDB already uses check_same_thread=False and WAL mode).\n2. At minimum, move _create_schema() behind a once-flag so the 19 DDL statements don't re-execute every request.\n\nNote: Prior decision accepted SSE long-lived DB connection as-is for single-user localhost, so this is low priority but still worth doing for correctness.\n\nmemory_hints: search \"CatalogDB connection get_db deps.py\", search \"SSE long-lived DB connection decision\", entity \"deps.py\", entity \"CatalogDB\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:05:01.331Z",
+        "metadata": {
+          "modules": [
+            "autopilot/db.py",
+            "autopilot/web/app.py",
+            "autopilot/web/deps.py",
+            "autopilot/web/routes/dashboard.py",
+            "autopilot/web/routes/gates.py",
+            "autopilot/web/routes/media.py",
+            "autopilot/web/routes/pipeline.py",
+            "autopilot/web/routes/review.py",
+            "autopilot/web/routes/sse.py",
+            "tests/test_db.py",
+            "tests/test_web_deps.py"
+          ]
+        }
+      },
+      {
+        "id": "186",
+        "title": "Harden toast parameter assertions in run_completed/run_failed and extract shared helper",
+        "description": "In tests/test_web_app.py, replace the bare substring checks for 'success', 'error', 6000, and 8000 in test_run_completed_has_try_catch and test_run_failed_has_try_catch with full showToast(...) call string assertions, e.g. assert \"showToast('Pipeline run completed!', 'success', 6000)\" in body. Then extract a module-level _assert_toast_params(body, message, toast_type, duration) helper and replace the duplicated blocks with two calls to it.",
+        "details": "Follow-up from task 152 review suggestions. Addresses fragile bare substring assertions that could produce false positives if handler bodies grow. The full-call-string approach is consistent with the exact-signature pattern used for makeStageHandler assertions elsewhere in the file.\n\nmemory_hints: search for \"toast assertion pattern\" and \"test_web_app showToast\"",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:08:20.256Z",
+        "metadata": {
+          "memory_hints": {
+            "entities": [],
+            "queries": [
+              "resolution for: Harden toast parameter assertions in run_completed/run_failed and extract shared helper"
+            ]
+          },
+          "modules": [
+            "tests/test_web_app.py"
+          ]
+        }
+      },
+      {
+        "id": "187",
+        "title": "Strengthen 'unknown' fallback and whitespace-sensitivity fixes in SSE handler tests",
+        "description": "In tests/test_web_app.py: (1) Replace assert \"'unknown'\" in else_body with assert \".replace('{stage}', 'unknown')\" in else_body to pin the precise replacement contract instead of matching incidental occurrences of 'unknown'. (2) Make the 5-param makeStageHandler call assertion resilient to whitespace changes by normalising whitespace before the substring search (e.g. re.sub(r'\\s+', ' ', js_source)) or by splitting into separate per-argument assertions.",
+        "details": "Follow-up from task 152 review suggestions. The 'unknown' assertion currently passes if the string appears anywhere in the else block. The whitespace-sensitive exact-match assertion will break if app.js is auto-formatted.\n\nmemory_hints: search for \"makeStageHandler assertion\" and \"unknown fallback test\"",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:02:01.190Z",
+        "metadata": {
+          "modules": [
+            "tests/test_web_app.py"
+          ]
+        }
+      },
+      {
+        "id": "188",
+        "title": "Fill refreshCard assertion gaps and document false-branch coverage gap",
+        "description": "In tests/test_web_app.py: (1) Add assertions in TestSSEHandlerFactory confirming that stage_started, stage_completed, and job_progress factory calls do NOT include a refreshCard=false argument (i.e. they use the default). (2) Add a comment in test_make_stage_handler_calls_refresh_stage_card noting that the if(refreshCard)=false behavioural path (i.e. that refreshStageCard is NOT called for stage_error handlers) is only statically verified and needs an integration/behavioural test.",
+        "details": "Follow-up from task 152 review suggestions. Currently only stage_error's refreshCard=false is asserted; the other event types lack symmetric assertions. The if(refreshCard) guard is tested for textual presence but not for actual runtime behavior.\n\nmemory_hints: search for \"refreshCard assertion\" and \"SSE handler factory tests\"",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:04:16.399Z",
+        "metadata": {
+          "modules": [
+            "tests/test_web_app.py"
+          ]
+        }
+      },
+      {
+        "id": "189",
+        "title": "Clean up test_youtube.py: remove redundant assertions, fix test name, add mixed-key edge case",
+        "description": "Clean up review suggestions from task 178 in tests/test_youtube.py",
+        "details": "In tests/test_youtube.py: (1) Remove redundant `assert \"person\" not in tags` and `assert \"car\" not in tags` in test_tags_empty_when_detections_use_old_class_name_key — they're subsumed by `assert tags == []`. (2) Remove redundant `assert \"\" not in tags` in test_tags_exclude_empty_string_class — subsumed by `assert tags == [\"dog\"]`. (3) Rename test_tags_exclude_low_confidence_detections to test_tags_ignore_detections_without_class_key — the production code does no confidence filtering, the test passes because detections use the old `class_name` key not `class`. Update docstring to match. (4) Add test_tags_with_mixed_old_and_new_key_detections that uses `[{\"class_name\": \"car\"}, {\"class\": \"dog\"}]` and asserts `tags == [\"dog\"]` to verify old-key entries are ignored while new-key entries are included. Follow-up from task 178 review.",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T13:04:07.352Z",
+        "metadata": {
+          "modules": [
+            "tests/test_youtube.py"
+          ]
+        }
+      },
+      {
+        "id": "190",
+        "title": "Enforce _FADE_APPROXIMATION_TYPES subset invariant via frozenset and assertion",
+        "description": "In autopilot/plan/otio_export.py:\n1. Change `_FADE_APPROXIMATION_TYPES = {\"fade_in\", \"fade_out\"}` (line 76) to `_FADE_APPROXIMATION_TYPES: frozenset[str] = frozenset({\"fade_in\", \"fade_out\"})` so mutation fails loudly.\n2. Add a module-level assertion `assert _FADE_APPROXIMATION_TYPES <= _TRANSITION_TYPE_MAP.keys()` immediately after the definition to enforce the subset invariant at import time.\n3. Extract the approximation string literal from lines 173-178 into a module-level constant `_FADE_APPROXIMATION_MSG` and reference it in the metadata dict, making it a single source of truth that tests can also import.\n\nmemory_hints: search for \"_FADE_APPROXIMATION_TYPES\" and \"_TRANSITION_TYPE_MAP\" usage; get_entity for \"otio_export.py\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:07:59.432Z",
+        "metadata": {
+          "modules": [
+            "autopilot/plan/otio_export.py",
+            "tests/test_otio_export.py"
+          ]
+        }
+      },
+      {
+        "id": "191",
+        "title": "Remove redundant test and parametrize duplicated fade transition tests",
+        "description": "In tests/test_otio_export.py:\n1. Delete `test_fade_approximation_types_contains_fade_in` (lines 1373-1377) — it is fully subsumed by `test_fade_approximation_types_constant`.\n2. Collapse `test_fade_in_transition_has_approximation_metadata` and `test_fade_out_transition_has_approximation_metadata` (lines 1333-1417) into one `@pytest.mark.parametrize('trans_type', ['fade_in', 'fade_out'])` test.\n3. Collapse `test_crossfade_has_no_approximation_metadata` and `test_dissolve_has_no_approximation_metadata` (lines 1419-1495) into one `@pytest.mark.parametrize('trans_type', ['crossfade', 'dissolve'])` test.\n\nmemory_hints: search for \"TestFadeApproximationMetadata\" test class structure",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:07:39.379Z",
+        "metadata": {
+          "modules": [
+            "tests/test_otio_export.py"
+          ]
+        }
+      },
+      {
+        "id": "192",
+        "title": "Strengthen and expand fade approximation test assertions and coverage",
+        "description": "In tests/test_otio_export.py:\n1. In the (post-parametrization) fade metadata test, add `assert 'SMPTE_Dissolve' in approx` after the `len > 0` check to verify the string communicates the correct semantic.\n2. In the same test, add `assert transitions[0].transition_type == 'SMPTE_Dissolve'` to verify the actual OTIO type mapping.\n3. Before every `video_tracks[0]` index, add `assert len(video_tracks) >= 1, 'expected at least one video track'`; similarly guard `transitions[0]` accesses with a descriptive assertion.\n4. Add a new test `test_mixed_transitions_only_fades_get_approximation_metadata` with three clips, one 'crossfade' at position 0 and one 'fade_in' at position 1. Assert exactly one transition has the approximation key and it is the fade_in.\n\nmemory_hints: search for \"fade approximation metadata\" test patterns; get_entity for \"_FADE_APPROXIMATION_TYPES\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:09:35.718Z",
+        "metadata": {
+          "modules": [
+            "tests/test_otio_export.py"
+          ]
+        }
+      },
+      {
+        "id": "193",
+        "title": "Harden audio event idempotency test assertions",
+        "description": "Strengthen the TestIdempotency tests in tests/test_audio_events.py with better assertions and comments:\n\n1. **Postcondition assertion (most important):** After calling classify_audio_events in test_skip_when_events_exist_at_nonzero_timestamp, assert that DB state is unchanged — the 2 pre-existing events are still present and no extra rows were written. E.g.: `events = catalog_db.get_audio_events_for_range('vid1', 0.0, 10.0); assert len(events) == 2`. Do the same for test_skip_when_events_exist (assert 1 event remains). This catches bugs where the function skips model loading but still mutates DB rows.\n\n2. **Broader scheduler assertion:** Add `scheduler.assert_not_called()` alongside `scheduler.model.assert_not_called()` in both idempotency tests to cover any hypothetical scheduler method calls that don't go through `.model`.\n\n3. **Regression test comment:** In test_skip_when_events_exist_at_nonzero_timestamp (line 357), change comment from `# Scheduler should NOT be called for model loading` to `# Scheduler should NOT be called: classification skipped because events already exist` to better reflect the regression test's intent.\n\nmemory_hints:\n- search: \"audio events idempotency checkpoint\"\n- search: \"classify_audio_events test patterns\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [
+          "144"
+        ],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:29:32.820Z"
+      },
+      {
+        "id": "194",
+        "title": "Refactor TestSourcePathResolution to use shared fixtures and parametrize",
+        "description": "TestSourcePathResolution in tests/test_render_router.py has 8 tests that all repeat identical setup: constructing clips list, calling _make_edl, wiring MagicMock db with get_edit_plan/get_narrative/get_transcript return values, and calling _make_config(). Refactor to reduce duplication:\n\n1. Extract a pytest fixture or `_make_standard_db()` helper that builds the base db mock and edl, letting individual tests only override relevant values.\n2. Merge `test_source_path_coerced_from_pathlib_path` (line 1053) with `test_resolved_source_path_passed_to_renderer` (line 957) using `@pytest.mark.parametrize` over `[\"/resolved/clip.mp4\", Path(\"/resolved/clip.mp4\")]`, asserting both `== \"/resolved/clip.mp4\"` and `isinstance(str)`.\n3. Remove dead `render_simple`/`render_complex` patches from `test_missing_file_path_key_raises_routing_error` (line 1084) — the RoutingError fires before render dispatch.\n4. Add missing `db.get_transcript.return_value = None` to `test_missing_file_path_key_raises_routing_error` for consistency.\n\nmemory_hints:\n- search: \"TestSourcePathResolution boilerplate fixture refactoring\"\n- entity: \"test_render_router\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:11:49.831Z",
+        "metadata": {
+          "modules": [
+            "tests/test_render_router.py"
+          ]
+        }
+      },
+      {
+        "id": "195",
+        "title": "Deduplicate test_youtube.py TestBuildUploadMetadata boilerplate",
+        "description": "Clean up repeated boilerplate in tests/test_youtube.py TestBuildUploadMetadata class (continuation of Task 109 fixture consolidation that covered other test files but not this one).\n\nItems to address:\n1. **Extract shared config fixture** — The 3-line `config = MagicMock(); config.privacy_status = 'unlisted'; config.default_category = '22'` block is duplicated ~7 times. Extract as a pytest fixture (either in conftest.py or as a class-scoped fixture).\n2. **Hoist repeated import** — `from autopilot.upload.youtube import _build_upload_metadata` appears inside every test method. Move to module-level import.\n3. **Parametrize similar empty-tag tests** — `test_tags_empty_when_detections_use_old_class_name_key` and `test_tags_empty_when_detection_has_no_class_key` are structurally identical, differing only in detection payload. Combine via `@pytest.mark.parametrize`.\n4. **Fix naming inconsistency** — Rename `test_tags_empty_when_detection_has_no_class_key` to use plural 'detections' to match the sibling test's naming convention.\n5. **Normalize assertion style** — Remove redundant negative membership checks in `test_tags_empty_when_detections_use_old_class_name_key` (lines 258-259) since line 260 already asserts `tags == []`.\n\nmemory_hints: search for \"Task 109 fixture consolidation\" and \"test file deduplication conventions\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "in-progress",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T13:04:07.475Z",
+        "metadata": {
+          "modules": [
+            "tests/test_youtube.py"
+          ]
+        }
+      },
+      {
+        "id": "196",
+        "title": "Improve RoutingError specificity for file_path resolution edge cases",
+        "description": "Three related improvements to source_path resolution error handling in autopilot/render/router.py and its tests:\n\n1. **Add explicit-None edge case test**: `test_missing_file_path_key_raises_routing_error` covers `db.get_media.return_value = {}` (missing key) but not `{\"file_path\": None}` (explicit null). Add a companion test `test_explicit_null_file_path_raises_routing_error` that sets `db.get_media.return_value = {\"file_path\": None}` and asserts RoutingError is raised. Both cases hit the same `media.get(\"file_path\") is None` guard at router.py:145-148.\n\n2. **Tighten assertion match pattern**: In `test_missing_file_path_key_raises_routing_error` (line 1108), change `match=\"file_path\"` to `match=r\"has no file_path\"` to avoid false matches against the \"No media record\" RoutingError.\n\n3. **Distinguish missing-key vs None-value in error message** (router.py:145-149): Replace the single check with:\n   ```python\n   if \"file_path\" not in media:\n       raise RoutingError(f\"file_path key missing from media record for clip {clip_id!r}\")\n   if media[\"file_path\"] is None:\n       raise RoutingError(f\"file_path is null in media record for clip {clip_id!r}\")\n   ```\n   This aids debugging when the root cause differs (DB schema bug vs intentional null).\n\nmemory_hints:\n- search: \"RoutingError file_path source_path resolution\"\n- entity: \"render_router\", \"RoutingError\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:12:12.693Z",
+        "metadata": {
+          "modules": [
+            "autopilot/render/router.py",
+            "tests/test_render_router.py"
+          ]
+        }
+      },
+      {
+        "id": "197",
+        "title": "Fix _brace_match_from: explicit raise + bounds check",
+        "description": "In tests/test_web_app.py: (1) Lines 215-218 — replace `assert brace_depth == 0, ...` with `raise AssertionError(f\"unbalanced braces in {label} (depth {brace_depth} after scan)\")` and delete the unreachable `return source[start:]`. (2) Line 206 — add `assert 0 <= start < len(source), f\"start {start} out of range for {label}\"` before the existing `assert source[start] == \"{\"` check.",
+        "details": "",
+        "testStrategy": "",
         "status": "pending",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:15:12.640Z",
+        "metadata": {
+          "modules": [
+            "tests/test_web_app.py"
+          ]
+        }
+      },
+      {
+        "id": "198",
+        "title": "Expand _brace_match_from test coverage (precondition + dedup)",
+        "description": "In tests/test_web_app.py, class TestBraceMatchFrom (lines 309-331): (1) Add a test `test_raises_when_start_not_at_brace` that calls `_brace_match_from('abc', 1, 'no-brace')` and asserts `AssertionError` matching `\"expected '{'\"`. (2) Merge or differentiate `test_raises_on_unbalanced_braces` and `test_label_appears_in_error_message` — either combine into one assertion or use distinct inputs (e.g. depth-1 vs depth-3 unclosed brace) so the two tests exercise meaningfully different scenarios.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:15:25.566Z",
+        "metadata": {
+          "modules": [
+            "tests/test_web_app.py"
+          ]
+        }
+      },
+      {
+        "id": "199",
+        "title": "Add happy-path unit test to TestExtractListenerBody",
+        "description": "In tests/test_web_app.py, class TestExtractListenerBody (line 296): add `test_extracts_listener_body` using a synthetic inline-function listener string (e.g. `\"source.addEventListener('click', function(e) { doStuff(); })\"`) that asserts the returned body equals `\"{ doStuff(); }\"`. This makes the class symmetric with TestExtractFunctionBody and removes reliance on real app.js for basic correctness verification.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:14:38.307Z",
+        "metadata": {
+          "modules": [
+            "tests/test_web_app.py"
+          ]
+        }
+      },
+      {
+        "id": "200",
+        "title": "Improve test file organization and document behavioral improvement",
+        "description": "In tests/test_web_app.py: (1) Move class TestBraceMatchFrom (lines 309-331) to appear immediately before class TestExtractFunctionBody (line 268) so the file reads in dependency order: primitive helper → higher-level helpers → integration tests. (2) In `test_make_stage_handler_shows_toast_on_missing_stage` (line 415), add a comment near the `_brace_match_from` call noting that it now raises loudly on malformed JS rather than silently yielding an empty body as the old inline loop did.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T13:03:52.627Z",
+        "metadata": {
+          "modules": [
+            "tests/test_web_app.py"
+          ]
+        }
+      },
+      {
+        "id": "201",
+        "title": "Cache _read_app_js() to avoid repeated disk reads",
+        "description": "In tests/test_web_app.py, function `_read_app_js` (lines 190-193): add `@functools.lru_cache(maxsize=None)` decorator (and `import functools` at the top if not already present) so the file is read only once per process. At least 7 test methods currently trigger a fresh disk read each.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T13:02:17.371Z",
+        "metadata": {
+          "modules": [
+            "tests/test_web_app.py"
+          ]
+        }
+      },
+      {
+        "id": "202",
+        "title": "Rename _insert_detections helper and complete deduplication in TestBuildUploadMetadata",
+        "description": "In tests/test_youtube.py, the `_insert_detections` helper (line ~232) has three issues:\n\n1. **Misleading name**: It inserts a narrative + media + detections but the name implies only detections. Rename to `_setup_media_with_detections` (or similar) to reflect all side effects.\n\n2. **Placement**: The helper sits between test methods, breaking the class's organizational pattern. Move it above the first test method that uses it, or group it with other helpers.\n\n3. **Incomplete deduplication**: `test_tags_from_activity_labels_and_detections` (line ~180) still inlines the same `insert_narrative` + `insert_media` + `batch_insert_detections` pattern. Extend the renamed helper (e.g., accept optional `activity_cluster_ids_json` kwarg for `insert_narrative`) so this test can also use it, keeping the activity-cluster-specific setup (`insert_activity_cluster` calls) inline since that's unique to the test.\n\nMemory hints: search \"task 180 extract helper _insert_detections\" for prior context.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T13:01:24.852Z",
+        "metadata": {
+          "modules": [
+            "tests/test_youtube.py"
+          ]
+        }
+      },
+      {
+        "id": "203",
+        "title": "Fix test_audio_events idempotency postcondition queries and comment asymmetry",
+        "description": "Quick fixes in TestIdempotency class (tests/test_audio_events.py):\n\n1. **Comment asymmetry (line 328):** Update comment from `# Scheduler should NOT be called for model loading` to `# Scheduler should NOT be called: classification skipped because events already exist` to match the paired test at line 363.\n\n2. **Postcondition range queries (lines 334, 368):** Replace `catalog_db.get_audio_events_for_range(\"vid1\", 0.0, 10.0)` with `catalog_db.get_audio_events_for_media(\"vid1\")` in both idempotency tests. The `get_audio_events_for_media` method exists on CatalogDB (db.py:652) and fetches all rows without a range bound. This eliminates the implicit coupling to fixture timestamps and ensures spurious writes at any timestamp are caught. The rest of the test suite uses 100.0 as upper bound (lines 586, 726); using the unbounded method is even cleaner.\n\nmemory_hints:\n- search: \"get_audio_events_for_media postcondition\"\n- search: \"TestIdempotency test patterns\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "in-progress",
+        "dependencies": [
+          "193"
+        ],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T13:02:17.428Z"
+      },
+      {
+        "id": "204",
+        "title": "Move dry-run guard before _setup_context in CLI subcommands",
+        "description": "Fix dry-run to be zero-side-effect by moving guard before DB/config setup",
+        "details": "In autopilot/cli.py: The `if dry_run:` guard in all 6 subcommands (ingest, analyze, plan, edit, render, upload) is placed AFTER `_setup_context()`, which opens DB and loads config. Move it before. If `_handle_dry_run` helper already exists at cli.py:98, use it. Each subcommand becomes `if _handle_dry_run(dry_run, 'STAGE'): return` before the try block. Also add test for `run` command's dry-run path (delegates to orchestrator). Follow-up from task 150 review.",
+        "testStrategy": "",
+        "status": "in-progress",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T13:01:25.038Z"
+      },
+      {
+        "id": "205",
+        "title": "Parametrize duplicate orchestrator/CLI tests from task 150",
+        "description": "Reduce test duplication and fix assertion quality in test_orchestrator.py and test_cli.py",
+        "details": "In tests/test_orchestrator.py: (1) Merge test_analyze_passes_default_batch_size_yolo and test_analyze_passes_custom_batch_size_yolo into one parametrized test. (2) Merge test_ingest_calls_scan_directory and test_ingest_passes_custom_num_cpu_workers into one parametrized test. (3) Replace `call_args[1]` with `call_args.kwargs` for explicit kwarg inspection. (4) Replace `call_kwargs.get('batch_size')` with direct `call_kwargs['batch_size']` for clear KeyError on missing. (5) Use `minimal_config.processing.num_cpu_workers` instead of hardcoded 12. (6) Add test for run_id branch batch_size propagation. In tests/test_cli.py: (7) Extract _invoke_dry_run helper to deduplicate test boilerplate. (8) Add mock_orch_cls.assert_not_called() to verify early return. Follow-up from task 150 review.",
+        "testStrategy": "",
+        "status": "in-progress",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T13:03:00.622Z"
+      },
+      {
+        "id": "206",
+        "title": "Revert _TRANSITION_TYPE_MAP to class-scoped import and add clarifying test comments",
+        "description": "In tests/test_otio_export.py, the module-level `from autopilot.plan.otio_export import _TRANSITION_TYPE_MAP` (line 12) is an outlier: the entire rest of the file (~50 sites) uses local imports inside test methods. This module-level import of a private symbol means any ImportError (e.g., symbol renamed) kills all 100+ tests at collection time rather than just the 1 `TestTransitionMapKeys` test.\n\nChanges needed:\n1. Remove line 12 (`from autopilot.plan.otio_export import _TRANSITION_TYPE_MAP`)\n2. Add the import as a class-level attribute or local import inside `TestTransitionMapKeys.test_map_keys_match_prompt_schema` (~line 388)\n3. Update the docstring of `test_transition_creates_smpte_dissolve` (~line 404) to explicitly state that all four transition types are expected to produce a Transition with `name` equal to the transition type string (this assertion was added for crossfade but didn't exist in the original test)\n4. Add an inline comment above `assert transitions[0].name == transition_type` (~line 439): `# name is the sole semantic differentiator; all four types resolve to SMPTE_Dissolve`\n\nMemory hints: search for \"test_otio_export local import convention\" and \"_TRANSITION_TYPE_MAP semantic gap documentation\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "in-progress",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T13:05:47.162Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:26:51.814Z",
-      "taskCount": 181,
-      "completedCount": 133,
+      "lastModified": "2026-04-04T13:05:47.162Z",
+      "taskCount": 206,
+      "completedCount": 150,
       "tags": [
         "master"
       ]
