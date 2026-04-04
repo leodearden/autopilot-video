@@ -4547,6 +4547,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 247,
+        "title": "Fix missed macro usage and null safety in narrative_status_badge",
+        "description": "1. Update review/scripts.html (lines 18-23) to import and use the status_badge macro instead of the inline pattern. 2. Add `{{ status or 'unknown' }}` null guard in the macro template (autopilot/web/templates/macros/narrative_status_badge.html). 3. Add test_none_status and test_empty_string_status tests in tests/test_narrative_status_badge.py.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -4559,7 +4570,7 @@
       ],
       "created": "2026-04-04T13:40:24.627Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T13:40:24.629Z"
+      "updated": "2026-04-04T13:41:08.577Z"
     }
   }
 }
