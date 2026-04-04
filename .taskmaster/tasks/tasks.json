@@ -3375,11 +3375,11 @@
         "description": "Five test improvements in `tests/test_review.py`, all within `TestGetNarrativeEditHTMX`:\n1. In `test_get_htmx_edit_prepopulates_values`, add `assert '120' in response.text` to verify duration field is pre-populated.\n2. Add `test_get_htmx_edit_param_non_one_returns_card`: GET `/api/narratives/n-1?edit=0` with `HX-Request: true` should return the read-only card (no `name=\"title\"` inputs).\n3. In `test_get_htmx_edit_contains_input_fields` (or a dedicated test), add `assert 'id=\"narrative-n-1\"' in response.text` to verify the outerHTML swap target is present.\n4. Add `test_get_json_not_found_returns_404`: GET `/api/narratives/nonexistent` (no `HX-Request`) should return 404.\n5. In `test_get_htmx_no_edit_returns_card`, replace or supplement the `assert 'Approve' in response.text` check with a structural marker such as `assert 'hx-post' in response.text`.\nResolves review suggestions [5], [6], [7], [8], and [9] from task 100 review cycle.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:22:42.569Z",
+        "updatedAt": "2026-04-04T13:20:09.401Z",
         "metadata": {
           "modules": [
             "tests/test_review.py"
@@ -4391,7 +4391,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T13:20:09.343Z",
+      "lastModified": "2026-04-04T13:20:09.401Z",
       "taskCount": 234,
       "completedCount": 161,
       "tags": [
