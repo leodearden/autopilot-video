@@ -4201,11 +4201,11 @@
         "description": "In tests/test_render_router.py: add a _make_db(edl=None, media=None) module-level helper alongside the existing _make_edl() and _make_config() helpers. It should construct a MagicMock with get_edit_plan, get_narrative, get_transcript, and optionally get_media pre-configured. Replace the repeated 4-5 line mock setup in test_no_clip_id_and_no_source_path_raises_routing_error, test_media_missing_file_path_raises_routing_error, test_source_path_resolution_does_not_mutate_original_clip, and the broader TestSourcePathResolution class with calls to _make_db().\n\nmemory_hints:\n- search: \"_make_db test helper mock setup render router\"\n- entity: \"test_render_router\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "blocked",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T13:24:37.507Z"
+        "updatedAt": "2026-04-04T14:02:22.030Z"
       },
       {
         "id": "219",
@@ -4590,7 +4590,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:02:16.510Z",
+      "lastModified": "2026-04-04T14:02:22.031Z",
       "taskCount": 249,
       "completedCount": 168,
       "tags": [
