@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from 'macros/status_badge.html' import status_badge %}
 
 {% block title %}{{ page_title }}{% endblock %}
 
@@ -32,13 +33,10 @@
             <div class="bg-surface-800 rounded-lg p-4">
                 <h2 class="text-lg font-semibold text-white mb-3">Validation Results</h2>
                 <div class="flex flex-wrap gap-2">
+                    {% set validation_colors = {'pass': 'bg-green-900 text-green-300', 'fail': 'bg-red-900 text-red-300'} %}
                     {% for key, value in edit_plan.validation.items() %}
-                    <span class="inline-flex items-center px-3 py-1 rounded-full text-sm
-                        {% if key == 'passes' and value %}bg-green-900 text-green-300
-                        {% elif key == 'passes' and not value %}bg-red-900 text-red-300
-                        {% else %}bg-gray-700 text-gray-300{% endif %}">
-                        {{ key }}: {{ value }}
-                    </span>
+                    {% set vs = 'pass' if (key == 'passes' and value) else ('fail' if key == 'passes' else 'other') %}
+                    {{ status_badge(vs, validation_colors, extra_classes='inline-flex items-center px-3 rounded-full text-sm', label=key ~ ': ' ~ value) }}
                     {% endfor %}
                 </div>
             </div>

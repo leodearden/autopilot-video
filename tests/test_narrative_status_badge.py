@@ -95,6 +95,16 @@ class TestExtraClasses:
         assert "ml-2" not in html
 
 
+class TestSourceUsesGenericMacro:
+    """Verify narrative_status_badge.html delegates to the generic macro."""
+
+    def test_source_uses_generic_macro(self) -> None:
+        source_path = TEMPLATES_DIR / "macros" / "narrative_status_badge.html"
+        source = source_path.read_text()
+        expected = "{% from 'macros/status_badge.html' import status_badge as _generic_badge %}"
+        assert expected in source
+
+
 class TestNarrativeCardBadge:
     """Verify narrative_card.html uses the shared status_badge macro."""
 

@@ -1,0 +1,5 @@
+{% macro status_badge(status, color_map, extra_classes='', label=none, default='bg-gray-700 text-gray-300') -%}
+<span class="px-2 py-1 rounded text-xs font-medium {{ extra_classes }} {{ color_map.get(status, default) }}">
+    {{ label if label is not none else (status or 'unknown') }}
+</span>
+{%- endmacro %}
