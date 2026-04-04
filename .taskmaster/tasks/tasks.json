@@ -4519,15 +4519,16 @@
         "description": "TestUpdateMethodsDelegateValidation only tests the rejection path (disallowed columns). There are no success-path tests verifying that valid column updates actually mutate the record for update_gate, update_job, and update_run. Add tests that: insert a record, call the update method with allowed columns, fetch the record, and assert the fields changed. This guards against regressions where the SET clause construction could be accidentally broken.\n\nMemory hints: search for \"CatalogDB update methods\" and \"test_db_validate_helper\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T13:25:10.351Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T13:25:10.279Z",
+      "lastModified": "2026-04-04T13:25:10.351Z",
       "taskCount": 244,
       "completedCount": 166,
       "tags": [
