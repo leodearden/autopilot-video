@@ -4315,11 +4315,11 @@
         "description": "In `tests/test_review.py`, promote `zero_duration_app` (line ~1031) and `zero_duration_client` (line ~1050) to `scope='class'` so the SQLite database and FastAPI app are created once per class instead of once per test. The three read-only tests (`test_edit_form_renders_zero_duration`, `test_edit_form_renders_empty_for_none_duration`, `test_edit_form_js_does_not_use_falsy_or_null`) don't mutate state. If the mutating roundtrip test needs isolation, either move it to a separate class with its own function-scoped fixtures or use class scope and re-seed in the test itself.\n\nNote: Task 109 handles conftest.py fixture consolidation across test files — this task is complementary, focusing on class-level scope optimization within the zero-duration test class specifically.\n\nMemory hints: search \"task 109 conftest fixture consolidation\" for related work.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T14:05:47.179Z",
+        "updatedAt": "2026-04-04T18:20:36.174Z",
         "metadata": {
           "modules": [
             "tests/test_review.py"
@@ -5431,7 +5431,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:20:36.096Z",
+      "lastModified": "2026-04-04T18:20:36.175Z",
       "taskCount": 301,
       "completedCount": 190,
       "tags": [
