@@ -181,17 +181,8 @@ class TestBuildUploadMetadata:
         """Tags combine activity cluster labels and detected object classes."""
         from autopilot.upload.youtube import _build_upload_metadata
 
-        catalog_db.insert_narrative(
-            "n1",
-            title="Title",
-            description="desc",
-            activity_cluster_ids_json=json.dumps(["c1", "c2"]),
-        )
-        catalog_db.insert_activity_cluster("c1", label="hiking")
-        catalog_db.insert_activity_cluster("c2", label="camping")
-        # Insert a media file + detections with class names
-        catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
-        catalog_db.batch_insert_detections(
+        self._setup_media_with_detections(
+            catalog_db,
             [
                 (
                     "m1",
@@ -213,8 +204,11 @@ class TestBuildUploadMetadata:
                         ]
                     ),
                 ),
-            ]
+            ],
+            activity_cluster_ids_json=json.dumps(["c1", "c2"]),
         )
+        catalog_db.insert_activity_cluster("c1", label="hiking")
+        catalog_db.insert_activity_cluster("c2", label="camping")
         config = MagicMock()
         config.privacy_status = "unlisted"
         config.default_category = "22"
