@@ -1321,9 +1321,12 @@ class CatalogDB:
         "timeout_hours",
     })
 
-    def update_gate(self, stage: str, **kwargs: object) -> None:
-        """Update fields of a gate by keyword arguments."""
-        self._execute_kwargs_update(
+    def update_gate(self, stage: str, **kwargs: object) -> int:
+        """Update fields of a gate by keyword arguments.
+
+        Returns number of rows affected (0 if not found or no kwargs).
+        """
+        return self._execute_kwargs_update(
             "pipeline_gates", "stage", stage,
             self._GATE_ALLOWED_COLUMNS, "gate", kwargs,
         )
