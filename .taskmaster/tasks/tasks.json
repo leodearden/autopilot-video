@@ -3298,10 +3298,11 @@
         "description": "In `autopilot/web/routes/review.py`, delete the private `_is_htmx` helper (lines 29–31) and add `is_htmx` to the existing import: `from autopilot.web.deps import is_htmx, render_partial`. Replace all four call-sites of `_is_htmx(request)` in review.py with `is_htmx(request)`. Resolves review suggestions [0] and [3] from task 100 review cycle.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T08:19:32.071Z"
       },
       {
         "id": "167",
@@ -3329,7 +3330,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:19:32.040Z",
+      "lastModified": "2026-04-04T08:19:32.071Z",
       "taskCount": 168,
       "completedCount": 128,
       "tags": [
