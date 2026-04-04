@@ -4991,10 +4991,11 @@
         "description": "In `test_tags_empty_when_detections_lack_class_key` (tests/test_youtube.py, around line 252), add a short inline comment on the `old_class_name_key` parametrize case — e.g. `# 'class_name' was renamed to 'class'; old key must not silently produce tags` — so future readers understand why the assertion exists and don't accidentally break it when modifying detection handling.\n\nmemory_hints: search for \"class_name renamed to class detection key\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T23:02:30.478Z"
       },
       {
         "id": "265",
@@ -5830,7 +5831,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T23:02:30.366Z",
+      "lastModified": "2026-04-04T23:02:30.478Z",
       "taskCount": 331,
       "completedCount": 202,
       "tags": [
