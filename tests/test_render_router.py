@@ -138,7 +138,6 @@ def _make_edl(clips: list[dict] | None = None, **kwargs: object) -> dict:
         or [
             {
                 "clip_id": "clip_1",
-                "source_path": "/tmp/src/clip.mp4",
                 "in_timecode": "00:00:00.000",
                 "out_timecode": "00:00:10.000",
                 "track": 1,
@@ -168,6 +167,7 @@ class TestEDLLoading:
         from autopilot.render.router import RoutingError, route_and_render
 
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = None
         config = _make_config()
 
@@ -180,6 +180,7 @@ class TestEDLLoading:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "narr_1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -198,6 +199,8 @@ class TestEDLLoading:
         mock_rs.assert_called_once()
         rendered_clip = mock_rs.call_args[0][0]
         assert rendered_clip["clip_id"] == "clip_1"
+        # Regression guard: source_path must be the resolved mock value
+        assert rendered_clip["source_path"] == "/fake/source.mp4"
 
 
 # ---------------------------------------------------------------------------
@@ -214,6 +217,7 @@ class TestWorkDirCleanup:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -243,6 +247,7 @@ class TestWorkDirCleanup:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         config = _make_config()
@@ -273,6 +278,7 @@ class TestClipDispatching:
 
         edl = _make_edl(crop_modes={"clip_1": "center"})
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -295,6 +301,7 @@ class TestClipDispatching:
 
         edl = _make_edl(crop_modes={"clip_1": "auto_subject"})
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -318,14 +325,12 @@ class TestClipDispatching:
         clips = [
             {
                 "clip_id": "c1",
-                "source_path": "/a.mp4",
                 "in_timecode": "00:00:00.000",
                 "out_timecode": "00:00:05.000",
                 "track": 1,
             },
             {
                 "clip_id": "c2",
-                "source_path": "/b.mp4",
                 "in_timecode": "00:00:00.000",
                 "out_timecode": "00:00:05.000",
                 "track": 1,
@@ -336,6 +341,7 @@ class TestClipDispatching:
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
+        db.get_media.side_effect = lambda mid: {"file_path": f"/resolved/{mid}.mp4"}
         config = _make_config()
 
         with (
@@ -370,6 +376,7 @@ class TestCropPathLoading:
         )
         crop_data = np.full((30, 2), [100, 50], dtype=np.float64)
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -399,6 +406,7 @@ class TestCropPathLoading:
             ],
         )
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_crop_path.return_value = None
@@ -427,6 +435,7 @@ class TestFinalConcatenation:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -452,6 +461,7 @@ class TestFinalConcatenation:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "My Video"}
         db.get_transcript.return_value = None
@@ -470,6 +480,7 @@ class TestFinalConcatenation:
 
         edl = _make_edl(music=[{"path": "/tmp/music.mp3", "level": -6}])
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -493,6 +504,7 @@ class TestFinalConcatenation:
 
         edl = _make_edl(music=[{"path": "/tmp/music.mp3", "level": -6}])
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -531,6 +543,7 @@ class TestSubtitleSupport:
             {"start": 2.5, "end": 5.0, "text": "Testing"},
         ]
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = {"segments_json": json.dumps(segments)}
@@ -553,6 +566,7 @@ class TestSubtitleSupport:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -585,6 +599,7 @@ class TestSubtitlesWithAudioMixing:
         segments = [{"start": 0.0, "end": 2.0, "text": "Hello"}]
         edl = _make_edl(music=[{"path": "/tmp/music.mp3", "level": -6}])
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = {"segments_json": json.dumps(segments)}
@@ -631,6 +646,7 @@ class TestStreamCopyVsFilter:
         segments = [{"start": 0.0, "end": 2.0, "text": "Hello"}]
         edl = _make_edl()  # no music -> no audio mixing
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = {"segments_json": json.dumps(segments)}
@@ -659,6 +675,7 @@ class TestStreamCopyVsFilter:
 
         edl = _make_edl()  # no music, no voiceovers
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None  # no subtitles
@@ -696,6 +713,7 @@ class TestTranscriptByMediaId:
         segments = [{"start": 0.0, "end": 2.5, "text": "Hello"}]
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = {"segments_json": json.dumps(segments)}
@@ -718,14 +736,12 @@ class TestTranscriptByMediaId:
         clips = [
             {
                 "clip_id": "c1",
-                "source_path": "/a.mp4",
                 "in_timecode": "00:00:00.000",
                 "out_timecode": "00:00:05.000",
                 "track": 1,
             },
             {
                 "clip_id": "c2",
-                "source_path": "/b.mp4",
                 "in_timecode": "00:00:00.000",
                 "out_timecode": "00:00:05.000",
                 "track": 1,
@@ -738,6 +754,7 @@ class TestTranscriptByMediaId:
         db = MagicMock()
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_media.side_effect = lambda mid: {"file_path": f"/resolved/{mid}.mp4"}
 
         def _get_transcript(media_id: str):
             if media_id == "c1":
@@ -778,6 +795,7 @@ class TestErrorHandling:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -800,6 +818,7 @@ class TestErrorHandling:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -823,6 +842,7 @@ class TestErrorHandling:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -852,6 +872,7 @@ class TestErrorHandling:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         config = _make_config()
@@ -870,6 +891,7 @@ class TestErrorHandling:
         from autopilot.render.router import RoutingError, route_and_render
 
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": "not valid json{{{"}
         config = _make_config()
 
@@ -882,6 +904,7 @@ class TestErrorHandling:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = None
         db.get_transcript.return_value = None
@@ -892,3 +915,270 @@ class TestErrorHandling:
             result = route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         assert "untitled" in str(result)
+
+
+# ---------------------------------------------------------------------------
+# Source path resolution from clip_id
+# ---------------------------------------------------------------------------
+
+
+class TestSourcePathResolution:
+    """Verify route_and_render resolves source_path via db.get_media when missing."""
+
+    def test_db_get_media_called_for_clip_without_source_path(self) -> None:
+        """When clip has clip_id but no source_path, db.get_media should be called."""
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "clip_id": "clip_1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        db.get_media.return_value = {"file_path": "/resolved/clip.mp4"}
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run"),
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        db.get_media.assert_called_with("clip_1")
+
+    def test_resolved_source_path_passed_to_renderer(self) -> None:
+        """The resolved source_path should be set on the clip dict passed to renderer."""
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "clip_id": "clip_1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        db.get_media.return_value = {"file_path": "/resolved/clip.mp4"}
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run"),
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        rendered_clip = mock_rs.call_args[0][0]
+        assert rendered_clip["source_path"] == "/resolved/clip.mp4"
+
+    def test_missing_media_raises_routing_error(self) -> None:
+        """When db.get_media returns None, RoutingError should be raised."""
+        from autopilot.render.router import RoutingError, route_and_render
+
+        clips = [
+            {
+                "clip_id": "clip_1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_media.return_value = None
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple"),
+            patch("autopilot.render.router.render_complex"),
+            patch("subprocess.run"),
+        ):
+            with pytest.raises(RoutingError, match="No media record"):
+                route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+    def test_source_path_resolved_for_slow_clip(self) -> None:
+        """Slow-path (auto_subject) clip without source_path should also be resolved."""
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "clip_id": "clip_1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }
+        ]
+        crop_data = np.full((30, 2), [100, 50], dtype=np.float64)
+        edl = _make_edl(
+            clips=clips,
+            crop_modes=[
+                {"clip_id": "clip_1", "mode": "auto_subject", "subject_track_id": 0}
+            ],
+        )
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        db.get_media.return_value = {"file_path": "/resolved/slow_clip.mp4"}
+        db.get_crop_path.return_value = {"path_data": crop_data.tolist()}
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple"),
+            patch("autopilot.render.router.render_complex") as mock_rc,
+            patch("subprocess.run"),
+        ):
+            mock_rc.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        rendered_clip = mock_rc.call_args[0][0]
+        assert rendered_clip["source_path"] == "/resolved/slow_clip.mp4"
+        db.get_media.assert_called_with("clip_1")
+
+    def test_source_path_coerced_from_pathlib_path(self) -> None:
+        """When db.get_media returns a Path object for file_path, it should be coerced to str."""
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "clip_id": "clip_1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        db.get_media.return_value = {"file_path": Path("/resolved/clip.mp4")}
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run"),
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        rendered_clip = mock_rs.call_args[0][0]
+        assert rendered_clip["source_path"] == "/resolved/clip.mp4"
+        assert isinstance(rendered_clip["source_path"], str)
+
+    def test_missing_file_path_key_raises_routing_error(self) -> None:
+        """When db.get_media returns a dict without file_path, RoutingError should be raised."""
+        from autopilot.render.router import RoutingError, route_and_render
+
+        clips = [
+            {
+                "clip_id": "clip_1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_media.return_value = {}
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple"),
+            patch("autopilot.render.router.render_complex"),
+            patch("subprocess.run"),
+        ):
+            with pytest.raises(RoutingError, match="file_path"):
+                route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+    def test_multiple_clips_each_resolved(self) -> None:
+        """Each clip without source_path should trigger its own db.get_media call."""
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "clip_id": "c1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:05.000",
+                "track": 1,
+            },
+            {
+                "clip_id": "c2",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:05.000",
+                "track": 1,
+            },
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+
+        def _get_media(media_id: str):
+            return {"file_path": f"/resolved/{media_id}.mp4"}
+
+        db.get_media.side_effect = _get_media
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run"),
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        called_ids = [c[0][0] for c in db.get_media.call_args_list]
+        assert "c1" in called_ids
+        assert "c2" in called_ids
+        assert db.get_media.call_count == 2
+
+    def test_existing_source_path_not_overwritten(self) -> None:
+        """Clip with source_path already set should NOT trigger db.get_media."""
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "clip_id": "clip_1",
+                "source_path": "/already/set.mp4",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run"),
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        db.get_media.assert_not_called()
+        rendered_clip = mock_rs.call_args[0][0]
+        assert rendered_clip["source_path"] == "/already/set.mp4"
