@@ -4044,11 +4044,11 @@
         "description": "In tests/test_db_pipeline.py around line 446: (1) Replace the anonymous `type('FakeConn', (), {'execute': staticmethod(spy_execute)})()` stub with `unittest.mock.patch.object(catalog_db.conn, 'execute', wraps=catalog_db.conn.execute)` so all other conn attributes remain intact. (2) Add an assertion that the captured parameter tuple actually contains the expected string, e.g. `assert delete_calls[0][1] == ('-48 hours',)` — the current `len(...) >= 2` check verifies form but not value correctness.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T13:09:55.544Z",
+        "updatedAt": "2026-04-04T13:17:03.107Z",
         "metadata": {
           "modules": [
             "tests/test_db_pipeline.py"
@@ -4365,7 +4365,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T13:17:03.040Z",
+      "lastModified": "2026-04-04T13:17:03.107Z",
       "taskCount": 233,
       "completedCount": 160,
       "tags": [
