@@ -177,6 +177,24 @@ class TestGatesCRUD:
         assert gate is not None
         assert gate["mode"] == "auto"  # unchanged
 
+    def test_update_gate_rejects_disallowed_columns(self, catalog_db):
+        """update_gate() raises ValueError for unknown columns."""
+        catalog_db.init_default_gates()
+        with pytest.raises(ValueError, match="evil_col"):
+            catalog_db.update_gate("ingest", evil_col="bad")
+        with pytest.raises(ValueError, match="hacked"):
+            catalog_db.update_gate("ingest", hacked="yes")
+
+    def test_update_gate_rejects_mix_of_valid_and_invalid(self, catalog_db):
+        """update_gate() raises ValueError when valid+invalid columns are mixed."""
+        catalog_db.init_default_gates()
+        with pytest.raises(ValueError, match="Disallowed column"):
+            catalog_db.update_gate("ingest", mode="manual", evil_col="bad")
+        # Ensure the valid column was NOT applied
+        gate = catalog_db.get_gate("ingest")
+        assert gate is not None
+        assert gate["mode"] == "auto"
+
 
 # -- Jobs CRUD tests --------------------------------------------------------
 
