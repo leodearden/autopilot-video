@@ -1050,6 +1050,7 @@ class TestSourcePathResolution:
 
         rendered_clip = mock_rc.call_args[0][0]
         assert rendered_clip["source_path"] == "/resolved/slow_clip.mp4"
+        db.get_media.assert_called_with("clip_1")
 
     def test_multiple_clips_each_resolved(self) -> None:
         """Each clip without source_path should trigger its own db.get_media call."""
