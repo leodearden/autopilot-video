@@ -1062,3 +1062,23 @@ class TestEditFormZeroDuration:
         assert "|| null" not in response.text
         # Should use explicit NaN check instead
         assert "isNaN" in response.text
+
+    def test_update_zero_duration_roundtrip(
+        self, zero_duration_client: TestClient,
+    ) -> None:
+        """Zero duration survives a save→render roundtrip via JSON API + edit form."""
+        # PUT zero duration via JSON API
+        put_resp = zero_duration_client.put(
+            "/api/narratives/n-zero",
+            json={"proposed_duration_seconds": 0},
+        )
+        assert put_resp.status_code == 200
+        assert put_resp.json()["proposed_duration_seconds"] == 0
+
+        # GET edit form and verify zero is rendered, not blank
+        get_resp = zero_duration_client.get(
+            "/api/narratives/n-zero?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert get_resp.status_code == 200
+        assert 'value="0"' in get_resp.text or 'value="0.0"' in get_resp.text
