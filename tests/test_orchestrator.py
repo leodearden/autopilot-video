@@ -1305,23 +1305,23 @@ class TestEdlStage:
     def test_edl_asserts_generate_persisted(
         self, mock_edl, mock_otio, minimal_config
     ):
-        """When generate_edl returns but doesn't persist, assertion guard fires."""
+        """When generate_edl returns but doesn't persist, contract guard propagates RuntimeError."""
         from autopilot.orchestrator import _run_edl
 
         db = MagicMock()
         db.list_narratives.return_value = [{"narrative_id": "n1"}]
         db.get_narrative_script.return_value = {"scenes": []}
         # checkpoint returns None (process this narrative),
-        # assertion guard also returns None (generate_edl didn't persist)
+        # guard also returns None (generate_edl didn't persist)
         db.get_edit_plan.side_effect = [None, None]
         mock_edl.generate_edl.return_value = {"timeline": []}
         mock_otio.export_otio.return_value = Path("/out/timeline.otio")
 
-        # Single narrative fails → RuntimeError("All narratives failed")
-        with pytest.raises(RuntimeError, match="All narratives failed"):
+        # Contract violation should propagate as descriptive RuntimeError
+        with pytest.raises(RuntimeError, match="generate_edl.*must persist"):
             _run_edl(config=minimal_config, db=db)
 
-        # upsert_edit_plan should NOT have been called (assertion fired before it)
+        # upsert_edit_plan should NOT have been called (guard fired before it)
         db.upsert_edit_plan.assert_not_called()
 
     @patch("autopilot.plan.otio_export")
