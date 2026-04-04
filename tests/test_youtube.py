@@ -327,7 +327,8 @@ class TestUploadVideoFlow:
         # uploaded_at must be set to a valid ISO-format UTC timestamp
         assert upload_rec["uploaded_at"] is not None
         ts = datetime.fromisoformat(upload_rec["uploaded_at"])
-        assert ts.tzinfo is not None or upload_rec["uploaded_at"].endswith("+00:00")
+        assert ts.tzinfo is not None, "uploaded_at must be timezone-aware"
+        assert ts.utcoffset() == timedelta(0), "uploaded_at must be UTC"
 
     def test_upload_returns_youtube_url(self, catalog_db, tmp_path):
         """Returns the YouTube URL for the uploaded video."""
