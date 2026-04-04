@@ -243,8 +243,6 @@ class TestBuildUploadMetadata:
 
         meta = _build_upload_metadata("n1", catalog_db, youtube_config)
         tags = meta["snippet"]["tags"]
-        assert "person" not in tags
-        assert "car" not in tags
         assert tags == []
 
     def test_tags_empty_when_detection_has_no_class_key(self, catalog_db, youtube_config):
