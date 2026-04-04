@@ -12,7 +12,7 @@
     <div class="mb-3">
         <label class="text-gray-500 text-xs">Duration (seconds):</label>
         <input type="number" name="proposed_duration_seconds"
-               value="{{ narrative.proposed_duration_seconds or '' }}"
+               value="{{ narrative.proposed_duration_seconds if narrative.proposed_duration_seconds is not none else '' }}"
                class="text-gray-400 text-sm bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none w-20 ml-1"
                placeholder="0">
     </div>
@@ -21,7 +21,7 @@
                 hx-put="/api/narratives/{{ narrative.narrative_id }}"
                 hx-target="#narrative-{{ narrative.narrative_id }}"
                 hx-swap="outerHTML"
-                hx-vals='js:{"title": this.closest("[id^=narrative-]").querySelector("[name=title]")?.value ?? "", "description": this.closest("[id^=narrative-]").querySelector("[name=description]")?.value ?? "", "proposed_duration_seconds": parseFloat(this.closest("[id^=narrative-]").querySelector("[name=proposed_duration_seconds]")?.value) || null}'>
+                hx-vals='js:{"title": this.closest("[id^=narrative-]").querySelector("[name=title]")?.value ?? "", "description": this.closest("[id^=narrative-]").querySelector("[name=description]")?.value ?? "", "proposed_duration_seconds": (v => v !== '' && !isNaN(parseFloat(v)) ? parseFloat(v) : null)(this.closest("[id^=narrative-]").querySelector("[name=proposed_duration_seconds]")?.value)}'>
             Save
         </button>
         <button class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded text-xs font-medium"

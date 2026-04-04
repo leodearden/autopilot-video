@@ -222,6 +222,12 @@ class TestBuildUploadMetadata:
         assert "backpack" in tags
         assert "tent" in tags
 
+    def _insert_detections(self, catalog_db, detections_json):
+        """Set up a narrative + media + detections for metadata tests."""
+        catalog_db.insert_narrative("n1", title="Title", description="desc")
+        catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
+        catalog_db.batch_insert_detections(detections_json)
+
     @pytest.mark.parametrize(
         "detections_json",
         [
@@ -240,10 +246,9 @@ class TestBuildUploadMetadata:
         self, catalog_db, youtube_config, detections_json
     ):
         """Detections without a 'class' key produce no tags."""
-        catalog_db.insert_narrative("n1", title="Title", description="desc")
-        catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
-        catalog_db.batch_insert_detections(
-            [("m1", 0, json.dumps(detections_json))]
+        self._insert_detections(
+            catalog_db,
+            [("m1", 0, json.dumps(detections_json))],
         )
 
         meta = _build_upload_metadata("n1", catalog_db, youtube_config)
@@ -252,9 +257,8 @@ class TestBuildUploadMetadata:
 
     def test_tags_exclude_empty_string_class(self, catalog_db, youtube_config):
         """Empty-string class values are excluded; valid ones are kept."""
-        catalog_db.insert_narrative("n1", title="Title", description="desc")
-        catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
-        catalog_db.batch_insert_detections(
+        self._insert_detections(
+            catalog_db,
             [
                 (
                     "m1",
@@ -266,7 +270,7 @@ class TestBuildUploadMetadata:
                         ]
                     ),
                 ),
-            ]
+            ],
         )
 
         meta = _build_upload_metadata("n1", catalog_db, youtube_config)
