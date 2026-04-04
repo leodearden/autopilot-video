@@ -4552,10 +4552,11 @@
         "description": "In tests/test_otio_export.py: (1) Line 589: remove the extra blank line so there is only one blank line between the `TestTransitionMapping` class body and the `# -- Step 20:` section comment, matching the rest of the file. (2) Line 576: replace comment `# Derive transitions from the single iteration` with `# Filter transitions from the already-materialized items list`. (3) In each test method that accesses `video_tracks[0]` without a prior length check — add `assert len(video_tracks) >= 1, f'Expected at least one video track, got: {video_tracks}'` immediately after the list comprehension.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T14:12:30.694Z"
       },
       {
         "id": "241",
@@ -4812,7 +4813,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:12:30.430Z",
+      "lastModified": "2026-04-04T14:12:30.695Z",
       "taskCount": 262,
       "completedCount": 177,
       "tags": [
