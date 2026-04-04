@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -153,3 +154,29 @@ class TestUpdateRunRowcount:
         db.conn.commit()
         result = db.update_run("r-1")
         assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# TestRowcountSentinelGuard — task-308 step-1
+# ---------------------------------------------------------------------------
+
+class TestRowcountSentinelGuard:
+    """Guard: rowcount=-1 sentinel from sqlite3 should be clamped to 0."""
+
+    def test_negative_rowcount_clamped_to_zero(self, db: CatalogDB) -> None:
+        """When cursor.rowcount is -1, _execute_kwargs_update returns 0."""
+        _seed_narrative(db, "n-1", title="Original")
+
+        mock_cursor = MagicMock()
+        mock_cursor.rowcount = -1
+
+        from unittest.mock import patch
+
+        with patch.object(db, "conn") as mock_conn:
+            mock_conn.execute.return_value = mock_cursor
+            result = db.update_narrative("n-1", title="Updated")
+
+        assert result == 0, (
+            "Expected 0 when cursor.rowcount is -1 (sentinel), "
+            f"but got {result}"
+        )

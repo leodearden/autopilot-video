@@ -95,7 +95,8 @@ class CatalogDB:
             f"UPDATE {table} SET {set_clause} WHERE {pk_col} = ?",  # noqa: S608 — column names validated against allowlist
             values,
         )
-        return cur.rowcount
+        rc = cur.rowcount
+        return rc if rc >= 0 else 0
 
     def _create_schema(self) -> None:
         """Create all 19 catalog tables if they don't already exist."""
