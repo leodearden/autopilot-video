@@ -193,6 +193,31 @@ def _read_app_js() -> str:
     return js_path.read_text()
 
 
+def _brace_match_from(source: str, start: int, label: str) -> str:
+    """Extract a brace-delimited block from *source* starting at index *start*.
+
+    *start* must point at an opening ``{``.  The function walks forward counting
+    brace depth and returns ``source[start:end]`` (braces included) once the
+    matching closing ``}`` is found.
+
+    Raises :class:`AssertionError` with a message containing *label* if
+    ``source[start]`` is not ``{`` or if the braces are unbalanced.
+    """
+    assert source[start] == "{", f"expected '{{' at position {start} in {label}"
+    brace_depth = 0
+    for i in range(start, len(source)):
+        if source[i] == "{":
+            brace_depth += 1
+        elif source[i] == "}":
+            brace_depth -= 1
+            if brace_depth == 0:
+                return source[start : i + 1]
+    assert brace_depth == 0, (
+        f"unbalanced braces in {label} (depth {brace_depth} after scan)"
+    )
+    return source[start:]  # unreachable; keeps type-checkers happy
+
+
 def _extract_listener_body(js_source: str, event_type: str) -> str:
     """Extract the body of a source.addEventListener callback by brace-matching.
 
