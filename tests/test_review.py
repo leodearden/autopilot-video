@@ -1065,7 +1065,7 @@ class TestEditFormZeroDuration:
         fixturedefs = request._fixturemanager.getfixturedefs(
             "zero_duration_client", request.node,
         )
-        assert fixturedefs is not None, "zero_duration_client fixture not found"
+        assert fixturedefs is not None and len(fixturedefs) > 0, "zero_duration_client fixture not found"
         assert fixturedefs[-1].scope == "class", (
             f"Expected class scope, got {fixturedefs[-1].scope}"
         )
