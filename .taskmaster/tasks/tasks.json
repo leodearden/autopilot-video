@@ -4469,10 +4469,11 @@
         "description": "Delete the entire `TestMockDbFixture` class (lines 69-86 in tests/test_orchestrator.py) — its three tests verify pytest/MagicMock framework behavior, not production code, and inflate the test count. Also remove `test_existing_narrate_test_still_passes` (line 5465) which is a self-described meta-test duplicating coverage already in `TestNarrateStage.test_narrate_calls_human_review_callback`.\n\nMemory hints: search for \"mock_db fixture\" and \"TestMockDbFixture\" to understand the fixture introduced in task 173.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T14:08:00.976Z"
       },
       {
         "id": "236",
@@ -4705,7 +4706,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:08:00.701Z",
+      "lastModified": "2026-04-04T14:08:00.976Z",
       "taskCount": 255,
       "completedCount": 173,
       "tags": [
