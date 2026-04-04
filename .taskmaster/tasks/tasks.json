@@ -5023,11 +5023,17 @@
         "description": "Three related fixes: 1. Remove TestHandleDryRunDocstring class from tests/test_cli.py (tests prose not behavior, no precedent in codebase). 2. Restore the 3 deleted behavioral tests from TestHandleDryRun: test_returns_true_and_echoes_when_dry_run, test_returns_true_with_multiple_stages, test_returns_false_and_no_output_when_not_dry_run. Restore the module-level import of _handle_dry_run. 3. In autopilot/cli.py ~line 101, change 'Requires an active Click context' to 'Intended for use within a Click command callback' since click.echo() works without a Click context.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:04:37.645Z"
+        "updatedAt": "2026-04-04T18:06:31.872Z",
+        "metadata": {
+          "modules": [
+            "autopilot/cli.py",
+            "tests/test_cli.py"
+          ]
+        }
       },
       {
         "id": "275",
@@ -5043,7 +5049,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:05:22.682Z",
+      "lastModified": "2026-04-04T18:06:31.872Z",
       "taskCount": 275,
       "completedCount": 185,
       "tags": [
