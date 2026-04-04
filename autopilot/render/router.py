@@ -253,8 +253,8 @@ def route_and_render(
         all_subtitle_segs: list[dict] = []
         cumulative_offset = 0.0
         for clip in clips:
-            media_id = clip.get("clip_id", "")
-            transcript = db.get_transcript(media_id)
+            media_id: str | None = clip.get("clip_id")
+            transcript = db.get_transcript(media_id) if media_id is not None else None
             if transcript and transcript.get("segments_json"):
                 try:
                     clip_segs = json.loads(str(transcript["segments_json"]))
