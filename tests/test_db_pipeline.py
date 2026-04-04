@@ -627,6 +627,23 @@ class TestUpdateColumnValidation:
         with pytest.raises(ValueError, match="evil_col"):
             spec["update"](catalog_db, evil_col="bad")
 
+    @pytest.mark.parametrize("entity", ["gate", "job", "run"])
+    def test_rejects_mix_of_valid_and_invalid(
+        self, catalog_db: CatalogDB, entity: str
+    ) -> None:
+        """update_*() raises ValueError and does not apply valid columns."""
+        spec = _UPDATE_SPECS[entity]
+        spec["setup"](catalog_db)
+        with pytest.raises(ValueError, match="Disallowed column"):
+            spec["update"](
+                catalog_db,
+                **{spec["valid_col"]: spec["valid_val"], "evil_col": "bad"},
+            )
+        # Valid column must NOT have been applied (atomicity).
+        row = spec["get"](catalog_db)
+        assert row is not None
+        assert row[spec["valid_col"]] == spec["default_val"]
+
 
 # -- Cross-table integration tests ------------------------------------------
 
