@@ -3245,11 +3245,16 @@
         "description": "In tests/test_web_app.py: (1) Add a `@pytest.fixture(scope='module') def app_js_source()` fixture that calls `_read_app_js()` once and inject it into all test methods in TestSSEHandlerFactory, TestSSEErrorHandling, TestSSERunHandlerRobustness, and TestDashboardSSEEventCoverage — eliminating 7+ redundant Path.read_text() calls. (2) Add a `@pytest.fixture(scope='class') def make_stage_handler_body(app_js_source)` fixture that calls `_extract_function_body` once and inject into the 4 TestSSEHandlerFactory tests that call it — eliminating 3 redundant O(n) scans.",
         "details": "Follow-up from task 151 review (performance suggestions). Note: Task 109 covers conftest.py fixture consolidation but doesn't cover these module-scoped caching fixtures specific to JS extraction. Memory hints: search for \"task 109 fixture consolidation\" and \"task 151 test helpers\".",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:17:55.457Z"
+        "updatedAt": "2026-04-04T08:20:33.708Z",
+        "metadata": {
+          "modules": [
+            "tests/test_web_app.py"
+          ]
+        }
       },
       {
         "id": "163",
@@ -3392,7 +3397,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:20:33.078Z",
+      "lastModified": "2026-04-04T08:20:33.708Z",
       "taskCount": 173,
       "completedCount": 129,
       "tags": [
