@@ -5518,10 +5518,11 @@
         "description": "In autopilot/orchestrator.py: (1) At the `update_gate()` call sites around lines 1169-1180 (auto/notify approval path and pause/waiting path), capture the return value and emit `logger.error('Gate %s not found; pipeline state may be corrupt', gate_name)` when it is 0. (2) In the `_finish_job` helper (~lines 155-164), capture the `update_job()` return value and emit `logger.warning('update_job: job_id %s not found; final status dropped', job_id)` when it is 0. Neither case should raise — logging the anomaly is sufficient for production resilience.\n\nMemory hints: search for \"orchestrator gate handling\" and \"CatalogDB update pattern\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T18:40:54.312Z"
       },
       {
         "id": "310",
@@ -5603,7 +5604,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:40:54.228Z",
+      "lastModified": "2026-04-04T18:40:54.312Z",
       "taskCount": 316,
       "completedCount": 194,
       "tags": [
