@@ -6024,10 +6024,11 @@
         "description": "In `autopilot/plan/otio_export.py` line 78, replace the bare `assert _FADE_APPROXIMATION_TYPES <= _TRANSITION_TYPE_MAP.keys()` with an explicit `if/raise` guard so the check survives `python -O`:\n\n```python\nif not _FADE_APPROXIMATION_TYPES <= _TRANSITION_TYPE_MAP.keys():\n    raise ValueError(\n        f\"_FADE_APPROXIMATION_TYPES contains keys not in _TRANSITION_TYPE_MAP: \"\n        f\"{_FADE_APPROXIMATION_TYPES - _TRANSITION_TYPE_MAP.keys()}\"\n    )\n```\n\nUpdate `test_subset_assertion_exists_in_source` to reflect the new syntax (or remove it per the test-cleanup task).\n\nmemory_hints: search for \"_FADE_APPROXIMATION_TYPES\" and \"assert\" usage patterns in otio_export.py",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T23:14:55.673Z"
       },
       {
         "id": "346",
@@ -6076,7 +6077,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T23:14:55.593Z",
+      "lastModified": "2026-04-04T23:14:55.673Z",
       "taskCount": 349,
       "completedCount": 209,
       "tags": [
