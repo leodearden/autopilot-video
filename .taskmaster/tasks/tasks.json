@@ -3196,11 +3196,11 @@
         "description": "Three related improvements: (1) In tests/test_otio_export.py, add track_items structural ordering assertions (isinstance checks for Clip/Transition/Clip) to the fade_in, fade_out, and dissolve integration tests, mirroring the existing crossfade test. (2) Add a new test (e.g., test_unknown_transition_type_falls_back_to_smpte_dissolve) that passes type='wipe' and asserts the current fallback behavior, documenting the contract. (3) In autopilot/plan/otio_export.py line 140, replace the silent .get(trans_type, 'SMPTE_Dissolve') fallback with an explicit lookup that emits a logger.warning when an unrecognized transition type is coerced, so LLM hallucinations and unmapped schema additions are visible.\n\nmemory_hints:\n- search: \"OTIO transition type mapping fallback behavior\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:12:37.329Z",
+        "updatedAt": "2026-04-04T08:13:16.198Z",
         "metadata": {
           "modules": [
             "autopilot/plan/otio_export.py",
@@ -3211,7 +3211,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:13:16.040Z",
+      "lastModified": "2026-04-04T08:13:16.198Z",
       "taskCount": 159,
       "completedCount": 126,
       "tags": [
