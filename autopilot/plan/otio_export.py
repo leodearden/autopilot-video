@@ -147,7 +147,7 @@ def _insert_transitions(
         half_dur = otio.opentime.RationalTime.from_seconds(duration_secs / 2.0, fps)
 
         transition = otio.schema.Transition(
-            name=trans_type,
+            name=trans_type or "",
             transition_type=otio_type,
             in_offset=half_dur,
             out_offset=half_dur,
