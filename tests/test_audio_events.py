@@ -759,7 +759,7 @@ class TestErrorHandling:
                     )
 
         # No partial data should be stored
-        events = catalog_db.get_audio_events_for_range("vid1", 0.0, 100.0)
+        events = catalog_db.get_audio_events_for_media("vid1")
         assert len(events) == 0
 
 
