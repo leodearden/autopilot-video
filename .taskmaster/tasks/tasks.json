@@ -4252,6 +4252,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 226,
+        "title": "Consolidate TestDryRunZeroSideEffects into single parametrized test",
+        "description": "In tests/test_cli.py, replace the three separate parametrized methods in `TestDryRunZeroSideEffects` (lines 679-734) with a single `test_dry_run_no_side_effects` method that patches `autopilot.cli.load_config`, `autopilot.cli.CatalogDB`, and `autopilot.cli.PipelineOrchestrator` together and asserts all three `assert_not_called()` checks in one pass. This reduces 18 test cases to 6 and eliminates triple-invocation of the same CLI path per subcommand.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -4264,7 +4275,7 @@
       ],
       "created": "2026-04-04T13:13:01.565Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T13:13:01.566Z"
+      "updated": "2026-04-04T13:13:06.237Z"
     }
   }
 }
