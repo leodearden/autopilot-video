@@ -4873,6 +4873,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 264,
+        "title": "Add clarifying inline comment to class_name regression-guard test case",
+        "description": "In `test_tags_empty_when_detections_lack_class_key` (tests/test_youtube.py, around line 252), add a short inline comment on the `old_class_name_key` parametrize case — e.g. `# 'class_name' was renamed to 'class'; old key must not silently produce tags` — so future readers understand why the assertion exists and don't accidentally break it when modifying detection handling.\n\nmemory_hints: search for \"class_name renamed to class detection key\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -4885,7 +4896,7 @@
       ],
       "created": "2026-04-04T14:16:22.367Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T14:16:40.457Z"
+      "updated": "2026-04-04T14:16:44.828Z"
     }
   }
 }
