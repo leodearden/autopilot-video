@@ -5510,6 +5510,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 309,
+        "title": "Log warnings on zero rowcount from update_gate and update_job in orchestrator.py",
+        "description": "In autopilot/orchestrator.py: (1) At the `update_gate()` call sites around lines 1169-1180 (auto/notify approval path and pause/waiting path), capture the return value and emit `logger.error('Gate %s not found; pipeline state may be corrupt', gate_name)` when it is 0. (2) In the `_finish_job` helper (~lines 155-164), capture the `update_job()` return value and emit `logger.warning('update_job: job_id %s not found; final status dropped', job_id)` when it is 0. Neither case should raise — logging the anomaly is sufficient for production resilience.\n\nMemory hints: search for \"orchestrator gate handling\" and \"CatalogDB update pattern\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5522,7 +5533,7 @@
       ],
       "created": "2026-04-04T18:21:23.724Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:21:32.480Z"
+      "updated": "2026-04-04T18:21:37.062Z"
     }
   }
 }
