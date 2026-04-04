@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
+
+if TYPE_CHECKING:
+    from autopilot.db import CatalogDB
 
 KNOWN_STAGES = [
     "ingest",
@@ -17,6 +21,42 @@ KNOWN_STAGES = [
     "render",
     "upload",
 ]
+
+
+# -- Specs for parametrized update-column-validation tests --------------------
+#
+# Each entry maps a short key to the callables and fixture data needed to
+# exercise one of the three update_* methods.  The lambdas accept a CatalogDB
+# as first arg so the parametrize decorator only carries a string key.
+
+_UPDATE_SPECS: dict[str, dict] = {
+    "gate": {
+        "setup": lambda db: db.init_default_gates(),
+        "update": lambda db, **kw: db.update_gate("ingest", **kw),
+        "get": lambda db: db.get_gate("ingest"),
+        "valid_col": "mode",
+        "valid_val": "manual",
+        "default_val": "auto",
+    },
+    "job": {
+        "setup": lambda db: db.insert_job("j-val", "ingest", "media_import"),
+        "update": lambda db, **kw: db.update_job("j-val", **kw),
+        "get": lambda db: db.get_job("j-val"),
+        "valid_col": "status",
+        "valid_val": "done",
+        "default_val": "pending",
+    },
+    "run": {
+        "setup": lambda db: db.insert_run(
+            "r-val", started_at="2026-01-01T00:00:00"
+        ),
+        "update": lambda db, **kw: db.update_run("r-val", **kw),
+        "get": lambda db: db.get_run("r-val"),
+        "valid_col": "status",
+        "valid_val": "completed",
+        "default_val": "running",
+    },
+}
 
 # -- Schema tests for pipeline tables ----------------------------------------
 
@@ -110,6 +150,32 @@ class TestPipelineSchema:
         cols = [row[2] for row in cur.fetchall()]
         assert cols == ["created_at"]
 
+    @pytest.mark.parametrize(
+        "table, allowed_attr",
+        [
+            ("pipeline_gates", "_GATE_ALLOWED_COLUMNS"),
+            ("pipeline_jobs", "_JOB_ALLOWED_COLUMNS"),
+            ("pipeline_runs", "_RUN_ALLOWED_COLUMNS"),
+        ],
+        ids=["gates", "jobs", "runs"],
+    )
+    def test_non_pk_columns_match_allowlist(
+        self, catalog_db: CatalogDB, table: str, allowed_attr: str
+    ) -> None:
+        """Non-PK columns in the schema == the update allowlist frozenset.
+
+        Catches drift in either direction: a column added to the CREATE TABLE
+        but not the frozenset, or a stale frozenset entry for a removed column.
+        """
+        cur = catalog_db.conn.execute(f"PRAGMA table_info({table})")  # noqa: S608
+        non_pk_cols = {row[1] for row in cur.fetchall() if row[5] == 0}
+        allowed: frozenset[str] = getattr(catalog_db, allowed_attr)
+        assert non_pk_cols == allowed, (
+            f"Schema drift detected for {table}:\n"
+            f"  in schema but not allowlist: {non_pk_cols - allowed}\n"
+            f"  in allowlist but not schema: {allowed - non_pk_cols}"
+        )
+
 
 # -- Gates CRUD tests -------------------------------------------------------
 
@@ -179,23 +245,6 @@ class TestGatesCRUD:
         assert gate is not None
         assert gate["mode"] == "auto"  # unchanged
 
-    def test_update_gate_rejects_disallowed_columns(self, catalog_db):
-        """update_gate() raises ValueError for unknown columns."""
-        catalog_db.init_default_gates()
-        with pytest.raises(ValueError, match="evil_col"):
-            catalog_db.update_gate("ingest", evil_col="bad")
-        with pytest.raises(ValueError, match="hacked"):
-            catalog_db.update_gate("ingest", hacked="yes")
-
-    def test_update_gate_rejects_mix_of_valid_and_invalid(self, catalog_db):
-        """update_gate() raises ValueError when valid+invalid columns are mixed."""
-        catalog_db.init_default_gates()
-        with pytest.raises(ValueError, match="Disallowed column"):
-            catalog_db.update_gate("ingest", mode="manual", evil_col="bad")
-        # Ensure the valid column was NOT applied
-        gate = catalog_db.get_gate("ingest")
-        assert gate is not None
-        assert gate["mode"] == "auto"
 
 
 # -- Jobs CRUD tests --------------------------------------------------------
@@ -329,23 +378,6 @@ class TestJobsCRUD:
         counts = catalog_db.count_jobs_by_status("ingest", run_id="r1")
         assert counts == {"done": 1, "pending": 1}
 
-    def test_update_job_rejects_disallowed_columns(self, catalog_db):
-        """update_job() raises ValueError for unknown columns."""
-        catalog_db.insert_job("j30", "ingest", "media_import")
-        with pytest.raises(ValueError, match="hacked"):
-            catalog_db.update_job("j30", hacked="yes")
-        with pytest.raises(ValueError, match="injected"):
-            catalog_db.update_job("j30", injected="bad")
-
-    def test_update_job_rejects_mix_of_valid_and_invalid(self, catalog_db):
-        """update_job() raises ValueError when valid+invalid columns are mixed."""
-        catalog_db.insert_job("j31", "ingest", "media_import")
-        with pytest.raises(ValueError, match="Disallowed column"):
-            catalog_db.update_job("j31", status="done", hacked="yes")
-        # Ensure the valid column was NOT applied
-        job = catalog_db.get_job("j31")
-        assert job is not None
-        assert job["status"] == "pending"
 
 
 # -- Events CRUD tests ------------------------------------------------------
@@ -576,23 +608,56 @@ class TestRunsCRUD:
         assert len(runs) == 3
         assert [r["run_id"] for r in runs] == ["r11", "r12", "r10"]
 
-    def test_update_run_rejects_disallowed_columns(self, catalog_db):
-        """update_run() raises ValueError for unknown columns."""
-        catalog_db.insert_run("r20", started_at="2026-01-01T00:00:00")
-        with pytest.raises(ValueError, match="injected"):
-            catalog_db.update_run("r20", injected="bad")
-        with pytest.raises(ValueError, match="evil"):
-            catalog_db.update_run("r20", evil="yes")
 
-    def test_update_run_rejects_mix_of_valid_and_invalid(self, catalog_db):
-        """update_run() raises ValueError when valid+invalid columns are mixed."""
-        catalog_db.insert_run("r21", started_at="2026-01-01T00:00:00")
+
+# -- Parametrized update-column validation tests ------------------------------
+
+
+class TestUpdateColumnValidation:
+    """Cross-entity tests for update method column rejection."""
+
+    @pytest.mark.parametrize("entity", ["gate", "job", "run"])
+    def test_rejects_single_disallowed_column(
+        self, catalog_db: CatalogDB, entity: str
+    ) -> None:
+        """update_*() raises ValueError naming the bad column."""
+        spec = _UPDATE_SPECS[entity]
+        spec["setup"](catalog_db)
+        with pytest.raises(ValueError, match="evil_col"):
+            spec["update"](catalog_db, evil_col="bad")
+
+    @pytest.mark.parametrize("entity", ["gate", "job", "run"])
+    def test_rejects_mix_of_valid_and_invalid(
+        self, catalog_db: CatalogDB, entity: str
+    ) -> None:
+        """update_*() raises ValueError and does not apply valid columns."""
+        spec = _UPDATE_SPECS[entity]
+        spec["setup"](catalog_db)
         with pytest.raises(ValueError, match="Disallowed column"):
-            catalog_db.update_run("r21", status="completed", injected="bad")
-        # Ensure the valid column was NOT applied
-        run = catalog_db.get_run("r21")
-        assert run is not None
-        assert run["status"] == "running"
+            spec["update"](
+                catalog_db,
+                **{spec["valid_col"]: spec["valid_val"], "evil_col": "bad"},
+            )
+        # Valid column must NOT have been applied (atomicity).
+        row = spec["get"](catalog_db)
+        assert row is not None
+        assert row[spec["valid_col"]] == spec["default_val"]
+
+    @pytest.mark.parametrize("entity", ["gate", "job", "run"])
+    def test_rejects_multiple_disallowed_columns(
+        self, catalog_db: CatalogDB, entity: str
+    ) -> None:
+        """update_*() names all bad columns in sorted order when >1 are passed."""
+        spec = _UPDATE_SPECS[entity]
+        spec["setup"](catalog_db)
+        with pytest.raises(ValueError, match="Disallowed column") as exc_info:
+            spec["update"](catalog_db, aaa_col="x", zzz_col="y")
+        msg = str(exc_info.value)
+        # Both bad column names appear in the error message.
+        assert "aaa_col" in msg
+        assert "zzz_col" in msg
+        # sorted() order: 'aaa_col' appears before 'zzz_col'.
+        assert msg.index("aaa_col") < msg.index("zzz_col")
 
 
 # -- Cross-table integration tests ------------------------------------------
