@@ -5325,10 +5325,11 @@
         "description": "Narrative status values (proposed, approved, rejected, scripted, planned, sourced) and their Tailwind color class mappings are scattered across multiple independent locations with no single source of truth:\n- Database schema (db.py)\n- Template macro (narrative_status_badge.html)\n- Pipeline orchestrator (orchestrator.py)\n- EDL planner (plan/edl.py)\n- Source resolver (source/resolve.py)\n- Duplicate `_STATUS_COLORS` dicts in pipeline.py and dashboard.py\n- `_GATE_STATUS_COLORS` in gates.py also inlined in gate_toggle.html\n- Ad-hoc inline mappings in media_row.html\n\nAdding a new status requires manual updates to every location.\n\nChanges needed:\n1. Define a `NarrativeStatus` enum or string constants in a shared module (e.g., `autopilot/constants.py` or `autopilot/models.py`).\n2. Extract narrative status→Tailwind class mappings into a shared Python constant (e.g., `STATUS_BADGE_CLASSES` in `autopilot/web/colors.py` or similar).\n3. Inject the mapping into the Jinja2 environment as a global so the macro can reference it.\n4. Update all status-aware locations to import from the shared module.\n5. Update tests to verify consistency.\n\nMemory hints: search for \"_STATUS_COLORS\" and \"narrative status definitions\" to find all scattered locations.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T18:18:22.678Z"
       },
       {
         "id": "295",
@@ -5410,7 +5411,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:18:22.555Z",
+      "lastModified": "2026-04-04T18:18:22.678Z",
       "taskCount": 301,
       "completedCount": 189,
       "tags": [
