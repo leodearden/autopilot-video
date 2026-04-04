@@ -3809,10 +3809,11 @@
         "description": "TestSourcePathResolution in tests/test_render_router.py has 8 tests that all repeat identical setup: constructing clips list, calling _make_edl, wiring MagicMock db with get_edit_plan/get_narrative/get_transcript return values, and calling _make_config(). Refactor to reduce duplication:\n\n1. Extract a pytest fixture or `_make_standard_db()` helper that builds the base db mock and edl, letting individual tests only override relevant values.\n2. Merge `test_source_path_coerced_from_pathlib_path` (line 1053) with `test_resolved_source_path_passed_to_renderer` (line 957) using `@pytest.mark.parametrize` over `[\"/resolved/clip.mp4\", Path(\"/resolved/clip.mp4\")]`, asserting both `== \"/resolved/clip.mp4\"` and `isinstance(str)`.\n3. Remove dead `render_simple`/`render_complex` patches from `test_missing_file_path_key_raises_routing_error` (line 1084) — the RoutingError fires before render dispatch.\n4. Add missing `db.get_transcript.return_value = None` to `test_missing_file_path_key_raises_routing_error` for consistency.\n\nmemory_hints:\n- search: \"TestSourcePathResolution boilerplate fixture refactoring\"\n- entity: \"test_render_router\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:08:00.549Z"
       },
       {
         "id": "195",
@@ -3824,12 +3825,23 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": "196",
+        "title": "Improve RoutingError specificity for file_path resolution edge cases",
+        "description": "Three related improvements to source_path resolution error handling in autopilot/render/router.py and its tests:\n\n1. **Add explicit-None edge case test**: `test_missing_file_path_key_raises_routing_error` covers `db.get_media.return_value = {}` (missing key) but not `{\"file_path\": None}` (explicit null). Add a companion test `test_explicit_null_file_path_raises_routing_error` that sets `db.get_media.return_value = {\"file_path\": None}` and asserts RoutingError is raised. Both cases hit the same `media.get(\"file_path\") is None` guard at router.py:145-148.\n\n2. **Tighten assertion match pattern**: In `test_missing_file_path_key_raises_routing_error` (line 1108), change `match=\"file_path\"` to `match=r\"has no file_path\"` to avoid false matches against the \"No media record\" RoutingError.\n\n3. **Distinguish missing-key vs None-value in error message** (router.py:145-149): Replace the single check with:\n   ```python\n   if \"file_path\" not in media:\n       raise RoutingError(f\"file_path key missing from media record for clip {clip_id!r}\")\n   if media[\"file_path\"] is None:\n       raise RoutingError(f\"file_path is null in media record for clip {clip_id!r}\")\n   ```\n   This aids debugging when the root cause differs (DB schema bug vs intentional null).\n\nmemory_hints:\n- search: \"RoutingError file_path source_path resolution\"\n- entity: \"render_router\", \"RoutingError\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T09:07:59.437Z",
-      "taskCount": 195,
+      "lastModified": "2026-04-04T09:08:00.549Z",
+      "taskCount": 196,
       "completedCount": 142,
       "tags": [
         "master"
