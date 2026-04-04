@@ -5607,10 +5607,11 @@
         "description": "In `autopilot/upload/youtube.py` lines 102-107, `_build_upload_metadata` calls `db.get_activity_clusters()` which fetches ALL clusters into memory, then builds a dict and filters by the narrative's cluster IDs. The method `db.get_activity_clusters_by_ids(cluster_ids)` already exists (added in task 80) and issues a single `WHERE cluster_id IN (...)` query returning a pre-keyed dict.\n\nReplace lines 102-107 with:\n```python\ncluster_map = db.get_activity_clusters_by_ids(cluster_ids)\nfor cid in cluster_ids:\n    cluster = cluster_map.get(cid)\n    if cluster and cluster.get(\"label\"):\n        tags.append(str(cluster[\"label\"]))\n```\n\nThis eliminates the full table scan and Python-side dict construction. The existing test `test_tags_missing_activity_clusters_gracefully_degrades` and `test_tags_from_activity_labels_and_detections` should still pass.\n\nMemory hints: search \"get_activity_clusters_by_ids CatalogDB\" for the method signature.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T19:04:57.396Z"
       },
       {
         "id": "316",
@@ -5677,7 +5678,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T19:04:48.534Z",
+      "lastModified": "2026-04-04T19:04:57.404Z",
       "taskCount": 321,
       "completedCount": 197,
       "tags": [
