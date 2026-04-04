@@ -4398,6 +4398,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 236,
+        "title": "Re-split merged test_unknown_transition_type into two focused tests",
+        "description": "In tests/test_otio_export.py around line 535, split `test_unknown_transition_type_falls_back_and_warns` back into two separate tests: (1) `test_unknown_transition_type_falls_back_to_smpte_dissolve` — asserts SMPTE_Dissolve fallback type and Clip/Transition/Clip structure; (2) `test_unknown_transition_type_emits_warning` — asserts the WARNING log contains 'wipe'. Both can call `_assert_clip_transition_clip` (or its renamed form) and share the same EDL construction via a private `_wipe_edl()` helper or fixture to avoid duplication. This ensures a structural regression does not silently hide whether warning emission is also broken.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -4410,7 +4421,7 @@
       ],
       "created": "2026-04-04T13:22:55.763Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T13:22:55.765Z"
+      "updated": "2026-04-04T13:23:00.471Z"
     }
   }
 }
