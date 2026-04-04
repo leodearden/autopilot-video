@@ -5896,11 +5896,16 @@
         "description": "In tests/test_render_router.py, redesign test_subtitle_loop_uses_resolved_clips (~line 1666) so it would fail if the production code used `clips` instead of `resolved_clips`. Currently the test passes regardless, because the subtitle loop only reads clip_id/timecodes which are identical in both lists. One approach: mock render_simple to conditionally not append one clip, then assert get_transcript is only called for the rendered set. Also add a timing assertion: with two 5-second clips, the second clip's subtitle segments should have a cumulative start offset of 5.0s — this validates the core cumulative_offset logic that is currently untested.\n\nmemory_hints:\n- search: \"subtitle loop resolved_clips test validation cumulative_offset\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T23:04:25.194Z"
+        "updatedAt": "2026-04-04T23:18:08.554Z",
+        "metadata": {
+          "modules": [
+            "tests/test_render_router.py"
+          ]
+        }
       },
       {
         "id": "335",
@@ -6194,7 +6199,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T23:18:05.645Z",
+      "lastModified": "2026-04-04T23:18:08.554Z",
       "taskCount": 358,
       "completedCount": 210,
       "tags": [
