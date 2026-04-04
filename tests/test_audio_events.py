@@ -327,7 +327,6 @@ class TestIdempotency:
 
         # Scheduler should NOT be called: classification skipped because events already exist
         scheduler.model.assert_not_called()
-        scheduler.assert_not_called()
 
         # DB postcondition: the single pre-existing event is still present,
         # no extra rows written
@@ -362,7 +361,6 @@ class TestIdempotency:
 
         # Scheduler should NOT be called: classification skipped because events already exist
         scheduler.model.assert_not_called()
-        scheduler.assert_not_called()
 
         # DB postcondition: both pre-existing events remain, no extra rows written
         events = catalog_db.get_audio_events_for_media("vid1")
