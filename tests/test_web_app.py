@@ -340,10 +340,9 @@ class TestFixtureSanity:
 class TestSSEErrorHandling:
     """Tests for SSE notification error handling in app.js."""
 
-    def test_sse_notification_listener_has_try_catch(self) -> None:
+    def test_sse_notification_listener_has_try_catch(self, app_js_source: str) -> None:
         """The SSE notification listener wraps JSON.parse in try/catch."""
-        js_path = Path(__file__).resolve().parent.parent / "autopilot" / "web" / "static" / "app.js"
-        js_source = js_path.read_text()
+        js_source = app_js_source
 
         # Find the notification listener block
         listener_start = js_source.find("addEventListener('notification'")
