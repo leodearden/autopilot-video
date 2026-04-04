@@ -166,6 +166,24 @@ class TestNotificationSSESetup:
             "setupNotificationSSE should set _permissionRequested = true"
         )
 
+    def test_sse_reconnect_gap_documented(self) -> None:
+        """connectSSE should have a comment documenting the SSE reconnect gap
+        and mentioning Last-Event-ID as the robust fix."""
+        content = _APP_JS.read_text()
+        func_start = content.find("function connectSSE")
+        assert func_start != -1
+        func_body = content[func_start:]
+        next_func = func_body.find("\nfunction ", 1)
+        if next_func != -1:
+            func_body = func_body[:next_func]
+
+        assert "reconnect" in func_body.lower() or "reconnection" in func_body.lower(), (
+            "connectSSE should document the reconnect gap"
+        )
+        assert "Last-Event-ID" in func_body, (
+            "connectSSE should mention Last-Event-ID as the robust fix"
+        )
+
     def test_connectsse_no_duplicate_notification_listener(self) -> None:
         """connectSSE must not duplicate the notification listener."""
         content = _APP_JS.read_text()
