@@ -6124,6 +6124,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 354,
+        "title": "Add OSError guard and defense-in-depth comments for assert test",
+        "description": "Two related documentation/robustness changes: (1) In tests/test_render_router.py around line 1605: wrap `inspect.getsource(route_and_render)` in `try/except OSError: pytest.skip('source file not available')` so CI surfaces a clear skip rather than an OSError traceback in pyc-only environments. (2) In autopilot/render/router.py lines 156–162 and in the corresponding test docstring: add a comment explaining that the secondary `if clip_id is None` guard is intentional defense-in-depth (belt-and-suspenders against future refactoring that removes the earlier guard), not reachable logic under current code paths.\n\nmemory_hints:\n- search: \"defense-in-depth guard clip_id route_and_render\"\n- search: \"inspect.getsource OSError pytest.skip\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -6136,7 +6147,7 @@
       ],
       "created": "2026-04-04T23:16:16.824Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T23:16:27.586Z"
+      "updated": "2026-04-04T23:16:32.635Z"
     }
   }
 }
