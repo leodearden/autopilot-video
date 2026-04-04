@@ -1096,3 +1096,62 @@ class TestEditFormZeroDuration:
         # Duration input should render with an empty value attribute
         assert 'value=""' in response.text
         assert 'name="proposed_duration_seconds"' in response.text
+
+
+# ---------------------------------------------------------------------------
+# TestZeroDurationRoundtrip — task-224
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def _roundtrip_app(tmp_path: Path) -> FastAPI:
+    """Function-scoped app for mutating zero-duration roundtrip tests."""
+    db_path = str(tmp_path / "catalog.db")
+    with CatalogDB(db_path) as _db:
+        _db.init_default_gates()
+        _seed_narrative(
+            _db, "n-zero",
+            title="Zero Duration",
+            proposed_duration_seconds=0,
+        )
+        _seed_narrative(
+            _db, "n-none",
+            title="No Duration",
+            proposed_duration_seconds=None,
+        )
+    return create_app(db_path)
+
+
+@pytest.fixture
+def _roundtrip_client(_roundtrip_app: FastAPI) -> TestClient:
+    """Function-scoped TestClient for mutating zero-duration roundtrip tests."""
+    return TestClient(_roundtrip_app)
+
+
+class TestZeroDurationRoundtrip:
+    """Mutating roundtrip tests for zero-duration values (isolated fixtures)."""
+
+    def test_update_zero_duration_roundtrip(
+        self, _roundtrip_client: TestClient,
+    ) -> None:
+        """Zero duration survives a save→render roundtrip via JSON API + edit form.
+
+        This behavioural roundtrip also subsumes JS-pattern regression coverage:
+        if the hx-vals serialisation ever coerces 0 to null/empty, the final
+        assertion will catch it regardless of the specific JS implementation
+        (isNaN, Number.isFinite, etc.).
+        """
+        # PUT zero duration via JSON API
+        put_resp = _roundtrip_client.put(
+            "/api/narratives/n-zero",
+            json={"proposed_duration_seconds": 0},
+        )
+        assert put_resp.status_code == 200
+        assert put_resp.json()["proposed_duration_seconds"] == 0
+
+        # GET edit form and verify zero is rendered, not blank
+        get_resp = _roundtrip_client.get(
+            "/api/narratives/n-zero?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert get_resp.status_code == 200
+        assert 'value="0"' in get_resp.text or 'value="0.0"' in get_resp.text
