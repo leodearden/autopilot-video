@@ -4564,10 +4564,11 @@
         "description": "Task 225 fixed the silent-tuple bug in assert_not_called() calls (lines 590, 693, 712, 731) by replacing them with `assert not mock.called, msg`. While correct, this deviates from the file's convention of using the mock assertion API (assert_called_once(), assert_called_once_with(), etc.) and loses Mock's built-in rich diagnostic output on failure.\n\nFix: Change the four sites back to `mock.assert_not_called()` as a standalone statement, and move the custom message to a comment on the same line. Example:\n```python\nstage_func.assert_not_called()  # --dry-run should NOT call any stage function\n```\n\nThis preserves consistency with the rest of the test module while eliminating the original silent-tuple bug.\n\nmemory_hints: search for \"mock assert_not_called bug task 204\" and \"assertion style convention\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T14:12:49.441Z"
       },
       {
         "id": "242",
@@ -4819,7 +4820,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:12:48.828Z",
+      "lastModified": "2026-04-04T14:12:49.441Z",
       "taskCount": 262,
       "completedCount": 177,
       "tags": [
