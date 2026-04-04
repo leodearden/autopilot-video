@@ -585,6 +585,15 @@ def _run_narrate(
     """NARRATE stage: build storyboard, propose narratives, human review."""
     from autopilot.organize import narratives
 
+    if not force:
+        existing = db.list_narratives("approved")
+        if existing:
+            logger.info(
+                "Resuming NARRATE: %d approved narratives already exist, skipping",
+                len(existing),
+            )
+            return
+
     _jkw: dict[str, Any] = {"run_id": run_id, "emit_fn": emit_fn}
     if run_id is not None:
         with _track_job(db, "NARRATE", "build_storyboard", worker="cpu", **_jkw):
@@ -739,7 +748,7 @@ def _run_edl(
                     worker="cpu",
                     **_jkw,
                 ):
-                    val_result = validator.validate_edl(edl, db)
+                    validator.validate_edl(edl, db)
                 otio_path = config.output_dir / nid / "timeline.otio"
                 otio_path.parent.mkdir(parents=True, exist_ok=True)
                 with _track_job(
@@ -753,17 +762,12 @@ def _run_edl(
                     otio_export.export_otio(edl, otio_path, db)
             else:
                 edl = edl_mod.generate_edl(nid, db, config.llm)
-                val_result = validator.validate_edl(edl, db)
+                validator.validate_edl(edl, db)
                 otio_path = config.output_dir / nid / "timeline.otio"
                 otio_path.parent.mkdir(parents=True, exist_ok=True)
                 otio_export.export_otio(edl, otio_path, db)
 
-            db.upsert_edit_plan(
-                nid,
-                json.dumps(edl),
-                otio_path=str(otio_path),
-                validation_json=json.dumps({"passed": val_result.passed}),
-            )
+            db.upsert_edit_plan(nid, otio_path=str(otio_path))
             successes += 1
         except Exception:
             logger.exception("EDL generation failed for narrative %s", nid)
