@@ -4986,6 +4986,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 273,
+        "title": "Add protective comments for function-scope dependency and sorted-order contract",
+        "description": "In tests/test_db_pipeline.py: (1) Add a comment above or within `_UPDATE_SPECS` (near line 32) noting that the hardcoded IDs ('j-val', 'r-val', 'ingest') are safe only because `catalog_db` is function-scoped — a session-scoped fixture would cause PK conflicts. (2) Add a comment near the `msg.index` ordering assertion (line 660) or in the `update_*` method docstrings documenting that the sorted-order contract is intentional and tested.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -4998,7 +5009,7 @@
       ],
       "created": "2026-04-04T14:20:14.591Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T14:20:28.170Z"
+      "updated": "2026-04-04T14:20:32.913Z"
     }
   }
 }
