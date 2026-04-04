@@ -92,7 +92,7 @@ class TestSSEEventDelivery:
         sse_db.insert_event("stage_completed", stage="INGEST")
 
         async def _finite_gen(request):
-            db = sse_module._get_db(request)
+            db = sse_module.get_db(request)
             try:
                 events = db.get_events_since(0)
                 for ev in events:
@@ -117,7 +117,7 @@ class TestSSEEventDelivery:
         sse_db.insert_event("stage_started", stage="ANALYZE", job_id="j1")
 
         async def _finite_gen(request):
-            db = sse_module._get_db(request)
+            db = sse_module.get_db(request)
             try:
                 events = db.get_events_since(0)
                 for ev in events:
@@ -152,7 +152,7 @@ class TestSSEEventDelivery:
         )
 
         async def _finite_gen(request):
-            db = sse_module._get_db(request)
+            db = sse_module.get_db(request)
             try:
                 events = db.get_events_since(0)
                 for ev in events:
@@ -183,7 +183,7 @@ class TestSSEReconnection:
             sse_db.insert_event(f"event_{i}", stage="INGEST")
 
         async def _finite_gen(request):
-            db = sse_module._get_db(request)
+            db = sse_module.get_db(request)
             last_id = sse_module._get_last_event_id(request)
             try:
                 events = db.get_events_since(last_id)
@@ -209,7 +209,7 @@ class TestSSEReconnection:
             sse_db.insert_event(f"event_{i}", stage="INGEST")
 
         async def _finite_gen(request):
-            db = sse_module._get_db(request)
+            db = sse_module.get_db(request)
             last_id = sse_module._get_last_event_id(request)
             try:
                 events = db.get_events_since(last_id)
@@ -233,7 +233,7 @@ class TestSSEReconnection:
             sse_db.insert_event(f"event_{i}", stage="INGEST")
 
         async def _finite_gen(request):
-            db = sse_module._get_db(request)
+            db = sse_module.get_db(request)
             last_id = sse_module._get_last_event_id(request)
             try:
                 events = db.get_events_since(last_id)
@@ -312,7 +312,7 @@ class TestSSEEventTypes:
             sse_db.insert_event(etype, stage="TEST")
 
         async def _finite_gen(request):
-            db = sse_module._get_db(request)
+            db = sse_module.get_db(request)
             try:
                 events = db.get_events_since(0)
                 for ev in events:
