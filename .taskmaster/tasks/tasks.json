@@ -5565,6 +5565,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 314,
+        "title": "Improve TestHandleDryRun assertion precision and test naming",
+        "description": "In tests/test_cli.py: (1) At line 640, change `assert \"[DRY-RUN] Would execute: INGEST\" in result.output` to `assert result.output == \"[DRY-RUN] Would execute: INGEST\\n\"` for precise output matching, consistent with the strict `== \"\"` assertion in the False-case test. Similarly update line 653 for the multi-stage test. (2) Rename `test_returns_true_with_multiple_stages` (line 642) to `test_echoes_all_stages_and_returns_true` to accurately describe both assertions made in the test body.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5577,7 +5588,7 @@
       ],
       "created": "2026-04-04T18:24:58.240Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:25:04.083Z"
+      "updated": "2026-04-04T18:25:07.639Z"
     }
   }
 }
