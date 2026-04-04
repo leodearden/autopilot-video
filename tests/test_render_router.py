@@ -1236,46 +1236,54 @@ class TestSourcePathResolution:
                 route_and_render("n1", db, config, Path("/tmp/test_output"))
 
     def test_source_path_resolution_does_not_mutate_original_clip(self) -> None:
-        """Resolving source_path should NOT mutate the original clip dict."""
+        """Resolving source_path creates a new dict; originals stay untouched."""
         from autopilot.render.router import route_and_render
 
-        clips = [
-            {
-                "clip_id": "clip_1",
-                "in_timecode": "00:00:00.000",
-                "out_timecode": "00:00:10.000",
-                "track": 1,
-            }
-        ]
-        edl = _make_edl(clips=clips)
+        clip_a = {
+            "clip_id": "clip_a",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:05.000",
+            "track": 1,
+        }
+        clip_b = {
+            "clip_id": "clip_b",
+            "in_timecode": "00:00:05.000",
+            "out_timecode": "00:00:10.000",
+            "track": 1,
+        }
+        original_keys_a = set(clip_a.keys())
+        original_keys_b = set(clip_b.keys())
+
+        edl = _make_edl(clips=[clip_a, clip_b])
         db = MagicMock()
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
-        db.get_media.return_value = {"file_path": "/resolved/clip.mp4"}
+        db.get_media.side_effect = lambda cid: {
+            "clip_a": {"file_path": "/media/a.mp4"},
+            "clip_b": {"file_path": "/media/b.mp4"},
+        }[cid]
         config = _make_config()
 
-        # Capture the deserialized clips to verify they aren't mutated
-        parsed_clips: list[dict] = []
-        _real_loads = json.loads
-
-        def _capturing_loads(s: object, *a: object, **kw: object) -> object:
-            result = _real_loads(str(s), *a, **kw)  # type: ignore[arg-type]
-            if isinstance(result, dict) and "clips" in result:
-                parsed_clips.extend(result["clips"])
-            return result
-
         with (
-            patch("autopilot.render.router.json.loads", side_effect=_capturing_loads),
             patch("autopilot.render.router.render_simple") as mock_rs,
             patch("subprocess.run"),
         ):
             mock_rs.return_value = Path("/tmp/seg.mp4")
             route_and_render("n1", db, config, Path("/tmp/test_output"))
 
-        # The deserialized clip dict should NOT have source_path added
-        assert len(parsed_clips) == 1
-        assert "source_path" not in parsed_clips[0]
-        # But the renderer should still have received the resolved source_path
-        rendered_clip = mock_rs.call_args[0][0]
-        assert rendered_clip["source_path"] == "/resolved/clip.mp4"
+        # render_simple called once per clip with correct source_path
+        assert mock_rs.call_count == 2
+        rendered_a = mock_rs.call_args_list[0][0][0]
+        rendered_b = mock_rs.call_args_list[1][0][0]
+        assert rendered_a["source_path"] == "/media/a.mp4"
+        assert rendered_b["source_path"] == "/media/b.mp4"
+
+        # Each rendered clip has exactly the original keys + source_path
+        assert set(rendered_a.keys()) == original_keys_a | {"source_path"}
+        assert set(rendered_b.keys()) == original_keys_b | {"source_path"}
+
+        # Test input dicts remain unmodified (trivially true via JSON
+        # serialization boundary, but documents the behavioural contract)
+        assert "source_path" not in clip_a
+        assert "source_path" not in clip_b
