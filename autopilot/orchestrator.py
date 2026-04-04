@@ -224,7 +224,7 @@ def _run_ingest(
     """INGEST stage: scan directory, insert media, normalize audio, mark duplicates."""
     from autopilot.ingest import dedup, normalizer, scanner
 
-    files = scanner.scan_directory(config.input_dir, max_workers=None)
+    files = scanner.scan_directory(config.input_dir, max_workers=config.processing.num_cpu_workers)
     norm_dir = config.output_dir / "normalized"
     norm_dir.mkdir(parents=True, exist_ok=True)
 
@@ -434,6 +434,7 @@ def _run_analyze(
                                 scheduler,
                                 config.models,
                                 sparse=False,
+                                batch_size=config.processing.batch_size_yolo,
                             )
                     else:
                         objects.detect_objects(
@@ -443,6 +444,7 @@ def _run_analyze(
                             scheduler,
                             config.models,
                             sparse=False,
+                            batch_size=config.processing.batch_size_yolo,
                         )
                 if force or not db.has_faces(media_id):
                     if run_id is not None:
@@ -584,6 +586,15 @@ def _run_narrate(
 ) -> None:
     """NARRATE stage: build storyboard, propose narratives, human review."""
     from autopilot.organize import narratives
+
+    if not force:
+        existing = db.list_narratives("approved")
+        if existing:
+            logger.info(
+                "Resuming NARRATE: %d approved narratives already exist, skipping",
+                len(existing),
+            )
+            return
 
     _jkw: dict[str, Any] = {"run_id": run_id, "emit_fn": emit_fn}
     if run_id is not None:
@@ -739,7 +750,7 @@ def _run_edl(
                     worker="cpu",
                     **_jkw,
                 ):
-                    val_result = validator.validate_edl(edl, db)
+                    validator.validate_edl(edl, db)
                 otio_path = config.output_dir / nid / "timeline.otio"
                 otio_path.parent.mkdir(parents=True, exist_ok=True)
                 with _track_job(
@@ -753,17 +764,12 @@ def _run_edl(
                     otio_export.export_otio(edl, otio_path, db)
             else:
                 edl = edl_mod.generate_edl(nid, db, config.llm)
-                val_result = validator.validate_edl(edl, db)
+                validator.validate_edl(edl, db)
                 otio_path = config.output_dir / nid / "timeline.otio"
                 otio_path.parent.mkdir(parents=True, exist_ok=True)
                 otio_export.export_otio(edl, otio_path, db)
 
-            db.upsert_edit_plan(
-                nid,
-                json.dumps(edl),
-                otio_path=str(otio_path),
-                validation_json=json.dumps({"passed": val_result.passed}),
-            )
+            db.upsert_edit_plan(nid, otio_path=str(otio_path))
             successes += 1
         except Exception:
             logger.exception("EDL generation failed for narrative %s", nid)

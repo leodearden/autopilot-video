@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 import sys
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -228,6 +229,97 @@ class TestBuildUploadMetadata:
         assert "backpack" in tags
         assert "tent" in tags
 
+    def _insert_detections(self, catalog_db, detections_json):
+        """Set up a narrative + media + detections for metadata tests."""
+        catalog_db.insert_narrative("n1", title="Title", description="desc")
+        catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
+        catalog_db.batch_insert_detections(detections_json)
+
+    def test_tags_empty_when_detections_use_old_class_name_key(self, catalog_db):
+        """Detections keyed with old 'class_name' field are ignored (regression guard)."""
+        from autopilot.upload.youtube import _build_upload_metadata
+
+        self._insert_detections(
+            catalog_db,
+            [
+                (
+                    "m1",
+                    0,
+                    json.dumps(
+                        [
+                            {"class_name": "person", "confidence": 0.9},
+                            {"class_name": "car", "confidence": 0.8},
+                        ]
+                    ),
+                ),
+            ],
+        )
+        config = MagicMock()
+        config.privacy_status = "unlisted"
+        config.default_category = "22"
+
+        meta = _build_upload_metadata("n1", catalog_db, config)
+        tags = meta["snippet"]["tags"]
+        assert "person" not in tags
+        assert "car" not in tags
+        assert tags == []
+
+    def test_tags_empty_when_detection_has_no_class_key(self, catalog_db):
+        """Detections with no 'class' key at all produce no tags."""
+        from autopilot.upload.youtube import _build_upload_metadata
+
+        catalog_db.insert_narrative("n1", title="Title", description="desc")
+        catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
+        catalog_db.batch_insert_detections(
+            [
+                (
+                    "m1",
+                    0,
+                    json.dumps(
+                        [
+                            {"confidence": 0.9},
+                            {"bbox": [0, 0, 100, 100]},
+                        ]
+                    ),
+                ),
+            ]
+        )
+        config = MagicMock()
+        config.privacy_status = "unlisted"
+        config.default_category = "22"
+
+        meta = _build_upload_metadata("n1", catalog_db, config)
+        tags = meta["snippet"]["tags"]
+        assert tags == []
+
+    def test_tags_exclude_empty_string_class(self, catalog_db):
+        """Empty-string class values are excluded; valid ones are kept."""
+        from autopilot.upload.youtube import _build_upload_metadata
+
+        self._insert_detections(
+            catalog_db,
+            [
+                (
+                    "m1",
+                    0,
+                    json.dumps(
+                        [
+                            {"class": "", "confidence": 0.9},
+                            {"class": "dog", "confidence": 0.8},
+                        ]
+                    ),
+                ),
+            ],
+        )
+        config = MagicMock()
+        config.privacy_status = "unlisted"
+        config.default_category = "22"
+
+        meta = _build_upload_metadata("n1", catalog_db, config)
+        tags = meta["snippet"]["tags"]
+        assert "" not in tags
+        assert tags == ["dog"]
+
     def test_uses_config_privacy_status_and_category(self, catalog_db):
         """Privacy and category come from YouTubeConfig."""
         from autopilot.upload.youtube import _build_upload_metadata
@@ -325,9 +417,9 @@ class TestUploadVideoFlow:
         assert upload_rec["youtube_url"] == "https://youtu.be/xyz789"
         # uploaded_at must be set to a valid ISO-format UTC timestamp
         assert upload_rec["uploaded_at"] is not None
-        from datetime import datetime
         ts = datetime.fromisoformat(upload_rec["uploaded_at"])
-        assert ts.tzinfo is not None or upload_rec["uploaded_at"].endswith("+00:00")
+        assert ts.tzinfo is not None, "uploaded_at must be timezone-aware"
+        assert ts.utcoffset() == timedelta(0), "uploaded_at must be UTC"
 
     def test_upload_returns_youtube_url(self, catalog_db, tmp_path):
         """Returns the YouTube URL for the uploaded video."""

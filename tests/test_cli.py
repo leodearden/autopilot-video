@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import click
+import pytest
 from click.testing import CliRunner
 
 from autopilot.cli import main
@@ -549,3 +550,75 @@ class TestForceFlag:
                         assert call[1].get("force") is True, (
                             f"{cmd_name}: stage func not called with force=True"
                         )
+
+
+# Mapping from CLI subcommand name → stage names it would normally execute
+SUBCOMMAND_STAGES = {
+    "ingest": ["INGEST"],
+    "analyze": ["ANALYZE", "CLASSIFY"],
+    "plan": ["NARRATE", "SCRIPT"],
+    "edit": ["EDL", "SOURCE_ASSETS"],
+    "render": ["RENDER"],
+    "upload": ["UPLOAD"],
+}
+
+
+class TestDryRunSubcommands:
+    """Tests that --dry-run prevents stage functions from being called."""
+
+    @pytest.mark.parametrize("cmd_name", list(SUBCOMMAND_STAGES.keys()))
+    def test_dry_run_does_not_call_stage_func(self, tmp_path: Path, cmd_name: str) -> None:
+        """'<cmd> --dry-run' does NOT call any stage function."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+            mock_db_cls.return_value = MagicMock()
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch = MagicMock()
+                mock_orch_cls.return_value = mock_orch
+                stage_func = MagicMock()
+                mock_orch._stage_map.__getitem__.return_value.func = stage_func
+
+                result = runner.invoke(
+                    main,
+                    ["--config", str(config_file), cmd_name, "--dry-run"],
+                )
+                assert result.exit_code == 0, (
+                    f"{cmd_name} --dry-run failed: {result.output}"
+                )
+                stage_func.assert_not_called(), (
+                    f"{cmd_name} --dry-run should NOT call any stage function"
+                )
+
+    @pytest.mark.parametrize(
+        "cmd_name,expected_stages",
+        list(SUBCOMMAND_STAGES.items()),
+    )
+    def test_dry_run_logs_stage_names(
+        self, tmp_path: Path, cmd_name: str, expected_stages: list[str]
+    ) -> None:
+        """'<cmd> --dry-run' outputs '[DRY-RUN] Would execute: <STAGE_NAMES>' and exits 0."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+            mock_db_cls.return_value = MagicMock()
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch = MagicMock()
+                mock_orch_cls.return_value = mock_orch
+
+                result = runner.invoke(
+                    main,
+                    ["--config", str(config_file), cmd_name, "--dry-run"],
+                )
+                assert result.exit_code == 0, (
+                    f"{cmd_name} --dry-run failed: {result.output}"
+                )
+                assert "[DRY-RUN]" in result.output, (
+                    f"{cmd_name} --dry-run should print [DRY-RUN] marker"
+                )
+                for stage_name in expected_stages:
+                    assert stage_name in result.output, (
+                        f"{cmd_name} --dry-run should mention stage {stage_name}"
+                    )

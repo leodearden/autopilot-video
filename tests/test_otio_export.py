@@ -385,18 +385,6 @@ class TestMultiTrackSupport:
 class TestTransitionMapKeys:
     """Verify _TRANSITION_TYPE_MAP keys match the prompt schema."""
 
-    def test_map_contains_fade_in(self):
-        """_TRANSITION_TYPE_MAP includes fade_in key."""
-        assert "fade_in" in _TRANSITION_TYPE_MAP
-
-    def test_map_contains_fade_out(self):
-        """_TRANSITION_TYPE_MAP includes fade_out key."""
-        assert "fade_out" in _TRANSITION_TYPE_MAP
-
-    def test_map_does_not_contain_wipe(self):
-        """_TRANSITION_TYPE_MAP must not contain 'wipe' (not in prompt schema)."""
-        assert "wipe" not in _TRANSITION_TYPE_MAP
-
     def test_map_keys_match_prompt_schema(self):
         """_TRANSITION_TYPE_MAP keys exactly match prompt schema non-cut types.
 
@@ -537,6 +525,89 @@ class TestTransitionMapping:
         transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
         assert len(transitions) == 0
 
+    def test_unknown_transition_type_falls_back_to_smpte_dissolve(self, tmp_path):
+        """Unrecognized transition type (e.g. 'wipe') falls back to SMPTE_Dissolve."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "wipe",
+                    "duration": 1.0,
+                    "position": 0,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+        transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
+        assert len(transitions) == 1
+        assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
+        assert transitions[0].name == "wipe"
+
+        # Verify structural ordering: Clip / Transition / Clip
+        track_items = list(video_tracks[0])
+        assert isinstance(track_items[0], otio.schema.Clip)
+        assert isinstance(track_items[1], otio.schema.Transition)
+        assert isinstance(track_items[2], otio.schema.Clip)
+
+    def test_unknown_transition_type_emits_warning(self, tmp_path, caplog):
+        """Unrecognized transition type emits a WARNING log message."""
+        import logging
+
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "wipe",
+                    "duration": 1.0,
+                    "position": 0,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+
+        with caplog.at_level(logging.WARNING, logger="autopilot.plan.otio_export"):
+            export_otio(edl, output, db)
+
+        warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("wipe" in msg for msg in warning_messages), (
+            f"Expected a WARNING containing 'wipe', got: {warning_messages}"
+        )
 
 
 # -- Step 20: Multi-track transition isolation tests ---------------------------
@@ -1121,3 +1192,180 @@ class TestIntegration:
         row = cur.fetchone()
         assert row is not None
         assert row["otio_path"] == str(output)
+
+
+# -- Fade approximation metadata tests -----------------------------------------
+
+
+class TestFadeApproximationMetadata:
+    """Verify fade_in/fade_out transitions carry approximation metadata."""
+
+    def test_fade_in_transition_has_approximation_metadata(self, tmp_path):
+        """fade_in Transition object has metadata['autopilot']['approximation'] string."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "fade_in",
+                    "duration": 1.0,
+                    "position": 0,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+        transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
+        assert len(transitions) == 1
+
+        approx = transitions[0].metadata.get("autopilot", {}).get("approximation")
+        assert approx is not None, "fade_in transition should have approximation metadata"
+        assert isinstance(approx, str) and len(approx) > 0
+
+    def test_fade_approximation_types_contains_fade_in(self):
+        """_FADE_APPROXIMATION_TYPES includes 'fade_in'."""
+        from autopilot.plan.otio_export import _FADE_APPROXIMATION_TYPES
+
+        assert "fade_in" in _FADE_APPROXIMATION_TYPES
+
+    def test_fade_out_transition_has_approximation_metadata(self, tmp_path):
+        """fade_out Transition object has metadata['autopilot']['approximation'] string."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "fade_out",
+                    "duration": 1.0,
+                    "position": 0,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+        transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
+        assert len(transitions) == 1
+
+        approx = transitions[0].metadata.get("autopilot", {}).get("approximation")
+        assert approx is not None, "fade_out transition should have approximation metadata"
+        assert isinstance(approx, str) and len(approx) > 0
+
+    def test_crossfade_has_no_approximation_metadata(self, tmp_path):
+        """crossfade Transition does NOT get approximation metadata."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "crossfade",
+                    "duration": 1.0,
+                    "position": 0,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+        transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
+        assert len(transitions) == 1
+
+        approx = transitions[0].metadata.get("autopilot", {}).get("approximation")
+        assert approx is None, "crossfade should NOT have approximation metadata"
+
+    def test_dissolve_has_no_approximation_metadata(self, tmp_path):
+        """dissolve Transition does NOT get approximation metadata."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "dissolve",
+                    "duration": 1.0,
+                    "position": 0,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+        transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
+        assert len(transitions) == 1
+
+        approx = transitions[0].metadata.get("autopilot", {}).get("approximation")
+        assert approx is None, "dissolve should NOT have approximation metadata"
+
+    def test_fade_approximation_types_constant(self):
+        """_FADE_APPROXIMATION_TYPES is exactly {'fade_in', 'fade_out'}."""
+        from autopilot.plan.otio_export import _FADE_APPROXIMATION_TYPES
+
+        assert _FADE_APPROXIMATION_TYPES == {"fade_in", "fade_out"}
