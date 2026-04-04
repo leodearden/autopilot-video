@@ -5460,6 +5460,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 305,
+        "title": "Extract shared test helpers to eliminate duplication in TestSourcePathResolution",
+        "description": "In tests/test_render_router.py, class `TestSourcePathResolution` (starting line 925):\n1. Add a `_make_clip(clip_id, *, in_tc='00:00:00.000', out_tc='00:00:10.000', track=1, **extra) -> dict` factory helper alongside `_make_edl` and replace the 8+ verbatim clip-skeleton dicts throughout the class.\n2. Add a `_make_db(edl)` factory helper that returns a pre-configured `MagicMock` with `get_edit_plan`, `get_narrative`, and `get_transcript` set, then replace the repeated 3-line setup block across ~10 tests.\n3. Unify the `db.get_media.side_effect` style: `test_multiple_clips_each_resolved` (line 1136) uses a named `_get_media` inner function; the mutation test uses an inline lambda — pick one style and apply it consistently.\n\nmemory_hints:\n- search: \"TestSourcePathResolution _make_edl _make_clip helper duplication\"\n- entity: \"test_render_router\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5472,7 +5483,7 @@
       ],
       "created": "2026-04-04T18:20:37.505Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:20:49.067Z"
+      "updated": "2026-04-04T18:20:54.954Z"
     }
   }
 }
