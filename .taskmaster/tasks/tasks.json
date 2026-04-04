@@ -4568,10 +4568,11 @@
         "description": "1. Update review/scripts.html (lines 18-23) to import and use the status_badge macro instead of the inline pattern. 2. Add `{{ status or 'unknown' }}` null guard in the macro template (autopilot/web/templates/macros/narrative_status_badge.html). 3. Add test_none_status and test_empty_string_status tests in tests/test_narrative_status_badge.py.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T14:02:51.638Z"
       },
       {
         "id": "248",
@@ -4598,7 +4599,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:02:51.543Z",
+      "lastModified": "2026-04-04T14:02:51.638Z",
       "taskCount": 249,
       "completedCount": 169,
       "tags": [
