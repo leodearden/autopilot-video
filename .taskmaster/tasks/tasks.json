@@ -3881,10 +3881,11 @@
         "description": "In tests/test_web_app.py, class TestBraceMatchFrom (lines 309-331): (1) Add a test `test_raises_when_start_not_at_brace` that calls `_brace_match_from('abc', 1, 'no-brace')` and asserts `AssertionError` matching `\"expected '{'\"`. (2) Merge or differentiate `test_raises_on_unbalanced_braces` and `test_label_appears_in_error_message` — either combine into one assertion or use distinct inputs (e.g. depth-1 vs depth-3 unclosed brace) so the two tests exercise meaningfully different scenarios.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:13:15.926Z"
       },
       {
         "id": "199",
@@ -3892,10 +3893,11 @@
         "description": "In tests/test_web_app.py, class TestExtractListenerBody (line 296): add `test_extracts_listener_body` using a synthetic inline-function listener string (e.g. `\"source.addEventListener('click', function(e) { doStuff(); })\"`) that asserts the returned body equals `\"{ doStuff(); }\"`. This makes the class symmetric with TestExtractFunctionBody and removes reliance on real app.js for basic correctness verification.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:13:17.574Z"
       },
       {
         "id": "200",
@@ -3922,7 +3924,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T09:13:15.520Z",
+      "lastModified": "2026-04-04T09:13:17.574Z",
       "taskCount": 201,
       "completedCount": 144,
       "tags": [
