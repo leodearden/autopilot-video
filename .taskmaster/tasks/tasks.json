@@ -3157,10 +3157,11 @@
         "description": "In tests/test_youtube.py, add two new test methods to the detection tag test class: (1) `test_tags_empty_when_detections_use_old_class_name_key` — insert detections with `{\"class_name\": \"person\", \"confidence\": 0.9}` and assert `\"person\"` is NOT in the resulting tags. This guards against regression to the pre-fix field name. (2) `test_tags_exclude_empty_string_class` — insert detections with `{\"class\": \"\", \"confidence\": 0.9}` alongside a valid detection, and assert the empty string does NOT appear in tags while the valid class does. This validates the `if d.get(\"class\")` falsy-guard behaviour.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T08:10:20.747Z"
       },
       {
         "id": "159",
@@ -3177,7 +3178,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:10:20.630Z",
+      "lastModified": "2026-04-04T08:10:20.747Z",
       "taskCount": 159,
       "completedCount": 124,
       "tags": [
