@@ -395,13 +395,17 @@ class TestSSEHandlerFactory:
             "console.error not found in makeStageHandler catch block"
         )
 
-    def test_make_stage_handler_has_console_warn_for_missing_stage(self, make_stage_handler_body: str) -> None:
+    def test_make_stage_handler_has_console_warn_for_missing_stage(
+        self, make_stage_handler_body: str,
+    ) -> None:
         """makeStageHandler logs console.warn when data.stage is falsy."""
         assert "console.warn" in make_stage_handler_body, (
             "console.warn for missing stage field not found in makeStageHandler"
         )
 
-    def test_make_stage_handler_calls_refresh_stage_card(self, make_stage_handler_body: str) -> None:
+    def test_make_stage_handler_calls_refresh_stage_card(
+        self, make_stage_handler_body: str,
+    ) -> None:
         """makeStageHandler calls refreshStageCard when stage is present."""
         assert "refreshStageCard" in make_stage_handler_body, (
             "refreshStageCard call not found in makeStageHandler"
@@ -423,7 +427,9 @@ class TestSSEHandlerFactory:
         )
 
 
-    def test_make_stage_handler_shows_toast_on_missing_stage(self, make_stage_handler_body: str) -> None:
+    def test_make_stage_handler_shows_toast_on_missing_stage(
+        self, make_stage_handler_body: str,
+    ) -> None:
         """makeStageHandler shows a fallback toast when stage is missing and toastMsg is provided.
 
         This catches the regression where stage_error events with no stage field
