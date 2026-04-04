@@ -72,6 +72,31 @@ class CatalogDB:
             msg = f"Disallowed column(s) for {entity} update: {sorted(bad_keys)}"
             raise ValueError(msg)
 
+    def _execute_kwargs_update(
+        self,
+        table: str,
+        pk_col: str,
+        pk_val: object,
+        allowed: frozenset[str],
+        entity: str,
+        kwargs: dict[str, object],
+    ) -> int:
+        """Validate, build, and execute a kwargs-based UPDATE statement.
+
+        Returns the number of rows affected (0 when *kwargs* is empty or the
+        primary-key value is not found).
+        """
+        if not kwargs:
+            return 0
+        self._validate_update_kwargs(allowed, kwargs, entity)
+        set_clause = ", ".join(f"{k} = ?" for k in kwargs)
+        values = [*kwargs.values(), pk_val]
+        cur = self.conn.execute(
+            f"UPDATE {table} SET {set_clause} WHERE {pk_col} = ?",  # noqa: S608 — column names validated against allowlist
+            values,
+        )
+        return cur.rowcount
+
     def _create_schema(self) -> None:
         """Create all 19 catalog tables if they don't already exist."""
         self.conn.executescript(
