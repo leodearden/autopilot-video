@@ -4,6 +4,11 @@ from __future__ import annotations
 
 import pytest
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from autopilot.db import CatalogDB
+
 KNOWN_STAGES = [
     "ingest",
     "analyze",
@@ -15,6 +20,42 @@ KNOWN_STAGES = [
     "render",
     "upload",
 ]
+
+
+# -- Specs for parametrized update-column-validation tests --------------------
+#
+# Each entry maps a short key to the callables and fixture data needed to
+# exercise one of the three update_* methods.  The lambdas accept a CatalogDB
+# as first arg so the parametrize decorator only carries a string key.
+
+_UPDATE_SPECS: dict[str, dict] = {
+    "gate": {
+        "setup": lambda db: db.init_default_gates(),
+        "update": lambda db, **kw: db.update_gate("ingest", **kw),
+        "get": lambda db: db.get_gate("ingest"),
+        "valid_col": "mode",
+        "valid_val": "manual",
+        "default_val": "auto",
+    },
+    "job": {
+        "setup": lambda db: db.insert_job("j-val", "ingest", "media_import"),
+        "update": lambda db, **kw: db.update_job("j-val", **kw),
+        "get": lambda db: db.get_job("j-val"),
+        "valid_col": "status",
+        "valid_val": "done",
+        "default_val": "pending",
+    },
+    "run": {
+        "setup": lambda db: db.insert_run(
+            "r-val", started_at="2026-01-01T00:00:00"
+        ),
+        "update": lambda db, **kw: db.update_run("r-val", **kw),
+        "get": lambda db: db.get_run("r-val"),
+        "valid_col": "status",
+        "valid_val": "completed",
+        "default_val": "running",
+    },
+}
 
 # -- Schema tests for pipeline tables ----------------------------------------
 
@@ -592,6 +633,23 @@ class TestRunsCRUD:
         run = catalog_db.get_run("r21")
         assert run is not None
         assert run["status"] == "running"
+
+
+# -- Parametrized update-column validation tests ------------------------------
+
+
+class TestUpdateColumnValidation:
+    """Cross-entity tests for update method column rejection."""
+
+    @pytest.mark.parametrize("entity", ["gate", "job", "run"])
+    def test_rejects_single_disallowed_column(
+        self, catalog_db: CatalogDB, entity: str
+    ) -> None:
+        """update_*() raises ValueError naming the bad column."""
+        spec = _UPDATE_SPECS[entity]
+        spec["setup"](catalog_db)
+        with pytest.raises(ValueError, match="evil_col"):
+            spec["update"](catalog_db, evil_col="bad")
 
 
 # -- Cross-table integration tests ------------------------------------------
