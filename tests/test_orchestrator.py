@@ -1103,6 +1103,7 @@ class TestNarrateResume:
 
         _run_narrate(config=minimal_config, db=db, force=True)
 
+        db.list_narratives.assert_not_called()
         mock_narratives.propose_narratives.assert_called_once()
 
     @patch("autopilot.organize.narratives")
