@@ -269,9 +269,8 @@ class TestBuildUploadMetadata:
         """Detections with no 'class' key at all produce no tags."""
         from autopilot.upload.youtube import _build_upload_metadata
 
-        catalog_db.insert_narrative("n1", title="Title", description="desc")
-        catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
-        catalog_db.batch_insert_detections(
+        self._setup_media_with_detections(
+            catalog_db,
             [
                 (
                     "m1",
@@ -283,7 +282,7 @@ class TestBuildUploadMetadata:
                         ]
                     ),
                 ),
-            ]
+            ],
         )
         config = MagicMock()
         config.privacy_status = "unlisted"
