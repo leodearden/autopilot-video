@@ -88,6 +88,33 @@ class TestNotificationSSESetup:
             "Bell click handler should reset badge to 0"
         )
 
+    def test_notification_handler_guards_data_message(self) -> None:
+        """The notification handler must guard data.message with a typeof check
+        and provide a '(no message)' fallback so that undefined/null values
+        never reach showToast or Notification."""
+        content = _APP_JS.read_text()
+        func_start = content.find("function setupNotificationSSE")
+        assert func_start != -1
+        func_body = content[func_start:]
+        next_func = func_body.find("\nfunction ", 1)
+        if next_func != -1:
+            func_body = func_body[:next_func]
+
+        # There must be a typeof check on data.message
+        assert "typeof data.message" in func_body, (
+            "notification handler should check typeof data.message"
+        )
+        # There must be a '(no message)' fallback string
+        assert "(no message)" in func_body, (
+            "notification handler should have a '(no message)' fallback"
+        )
+        # showToast should NOT be called with raw data.message
+        # Instead it should use the guarded variable (msg)
+        notif_listener = func_body[func_body.find("notification"):]
+        assert "showToast(data.message" not in notif_listener, (
+            "showToast should use guarded msg variable, not raw data.message"
+        )
+
     def test_connectsse_no_duplicate_notification_listener(self) -> None:
         """connectSSE must not duplicate the notification listener."""
         content = _APP_JS.read_text()
