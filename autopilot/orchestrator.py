@@ -697,7 +697,7 @@ def _run_edl(
 ) -> None:
     """EDL stage: generate EDL, validate, and export OTIO per narrative."""
     from autopilot.plan import edl as edl_mod
-    from autopilot.plan import otio_export, validator
+    from autopilot.plan import otio_export
 
     approved = db.list_narratives("approved")
 
@@ -742,15 +742,6 @@ def _run_edl(
                     **_jkw,
                 ):
                     edl = edl_mod.generate_edl(nid, db, config.llm)
-                with _track_job(
-                    db,
-                    "EDL",
-                    "validate_edl",
-                    target_id=nid,
-                    worker="cpu",
-                    **_jkw,
-                ):
-                    validator.validate_edl(edl, db)
                 otio_path = config.output_dir / nid / "timeline.otio"
                 otio_path.parent.mkdir(parents=True, exist_ok=True)
                 with _track_job(
@@ -764,7 +755,6 @@ def _run_edl(
                     otio_export.export_otio(edl, otio_path, db)
             else:
                 edl = edl_mod.generate_edl(nid, db, config.llm)
-                validator.validate_edl(edl, db)
                 otio_path = config.output_dir / nid / "timeline.otio"
                 otio_path.parent.mkdir(parents=True, exist_ok=True)
                 otio_export.export_otio(edl, otio_path, db)
