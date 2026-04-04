@@ -1538,9 +1538,7 @@
         "details": "",
         "testStrategy": "",
         "status": "pending",
-        "dependencies": [
-          "78"
-        ],
+        "dependencies": [],
         "priority": "low",
         "subtasks": [],
         "updatedAt": "2026-04-02T22:27:36.000Z",
