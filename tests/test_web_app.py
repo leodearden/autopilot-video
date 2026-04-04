@@ -203,6 +203,7 @@ def _brace_match_from(source: str, start: int, label: str) -> str:
     Raises :class:`AssertionError` with a message containing *label* if
     ``source[start]`` is not ``{`` or if the braces are unbalanced.
     """
+    assert 0 <= start < len(source), f"start {start} out of range for {label}"
     assert source[start] == "{", f"expected '{{' at position {start} in {label}"
     brace_depth = 0
     for i in range(start, len(source)):
@@ -212,10 +213,9 @@ def _brace_match_from(source: str, start: int, label: str) -> str:
             brace_depth -= 1
             if brace_depth == 0:
                 return source[start : i + 1]
-    assert brace_depth == 0, (
+    raise AssertionError(
         f"unbalanced braces in {label} (depth {brace_depth} after scan)"
     )
-    return source[start:]  # unreachable; keeps type-checkers happy
 
 
 def _extract_listener_body(js_source: str, event_type: str) -> str:
@@ -348,6 +348,27 @@ class TestBraceMatchFrom:
         """Error message includes the label for context."""
         with pytest.raises(AssertionError, match="test-block"):
             _brace_match_from("{ broken", 0, "test-block")
+
+    def test_unbalanced_error_includes_depth(self) -> None:
+        """Error message from unbalanced braces includes 'depth' with a number."""
+        with pytest.raises(AssertionError, match=r"depth \d+"):
+            _brace_match_from("{ open { but no close", 0, "depth-check")
+
+    def test_raises_on_out_of_range_start(self) -> None:
+        """Raises AssertionError with 'out of range' for invalid start indices."""
+        source = "{ ok }"
+        # start == len(source)
+        with pytest.raises(AssertionError, match="out of range"):
+            _brace_match_from(source, len(source), "at-len")
+        # start > len(source)
+        with pytest.raises(AssertionError, match="out of range"):
+            _brace_match_from(source, len(source) + 5, "beyond-len")
+        # negative start
+        with pytest.raises(AssertionError, match="out of range"):
+            _brace_match_from(source, -1, "negative")
+        # empty source
+        with pytest.raises(AssertionError, match="out of range"):
+            _brace_match_from("", 0, "empty")
 
 
 class TestSSEErrorHandling:
