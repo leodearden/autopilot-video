@@ -302,10 +302,11 @@ class TestSSEEventTypes:
         "gate_skipped",
         "run_completed",
         "run_failed",
+        "notification",
     ]
 
     def test_all_event_types_forwarded(self, sse_db, sse_app) -> None:
-        """Each of the 12 event types is forwarded correctly via SSE."""
+        """Each of the 13 event types is forwarded correctly via SSE."""
         from autopilot.web.routes import sse as sse_module
 
         for etype in self.ALL_EVENT_TYPES:
