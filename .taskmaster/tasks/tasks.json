@@ -4179,10 +4179,11 @@
         "description": "In tests/test_render_router.py: (1) at line 1209 after the pytest.raises block in test_no_clip_id_and_no_source_path_raises_routing_error, add db.get_media.assert_not_called() to verify the guard short-circuits before any DB lookup; (2) add a parametrized case or sibling test for test_media_missing_file_path_raises_routing_error with {'file_path': ''} (empty string) to cover the empty-string branch of the 'if not file_path:' guard at router.py line 150.\n\nmemory_hints:\n- search: \"source_path resolution test assertions edge cases\"\n- entity: \"test_render_router\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T13:23:46.310Z"
       },
       {
         "id": "218",
@@ -4486,7 +4487,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T13:23:46.232Z",
+      "lastModified": "2026-04-04T13:23:46.310Z",
       "taskCount": 242,
       "completedCount": 165,
       "tags": [
