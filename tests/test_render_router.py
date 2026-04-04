@@ -138,7 +138,6 @@ def _make_edl(clips: list[dict] | None = None, **kwargs: object) -> dict:
         or [
             {
                 "clip_id": "clip_1",
-                "source_path": "/tmp/src/clip.mp4",
                 "in_timecode": "00:00:00.000",
                 "out_timecode": "00:00:10.000",
                 "track": 1,
@@ -318,14 +317,12 @@ class TestClipDispatching:
         clips = [
             {
                 "clip_id": "c1",
-                "source_path": "/a.mp4",
                 "in_timecode": "00:00:00.000",
                 "out_timecode": "00:00:05.000",
                 "track": 1,
             },
             {
                 "clip_id": "c2",
-                "source_path": "/b.mp4",
                 "in_timecode": "00:00:00.000",
                 "out_timecode": "00:00:05.000",
                 "track": 1,
@@ -336,6 +333,7 @@ class TestClipDispatching:
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
+        db.get_media.side_effect = lambda mid: {"file_path": f"/resolved/{mid}.mp4"}
         config = _make_config()
 
         with (
@@ -718,14 +716,12 @@ class TestTranscriptByMediaId:
         clips = [
             {
                 "clip_id": "c1",
-                "source_path": "/a.mp4",
                 "in_timecode": "00:00:00.000",
                 "out_timecode": "00:00:05.000",
                 "track": 1,
             },
             {
                 "clip_id": "c2",
-                "source_path": "/b.mp4",
                 "in_timecode": "00:00:00.000",
                 "out_timecode": "00:00:05.000",
                 "track": 1,
@@ -738,6 +734,7 @@ class TestTranscriptByMediaId:
         db = MagicMock()
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_media.side_effect = lambda mid: {"file_path": f"/resolved/{mid}.mp4"}
 
         def _get_transcript(media_id: str):
             if media_id == "c1":
