@@ -4781,11 +4781,16 @@
         "description": "In tests/test_review.py TestGetNarrativeEditHTMX, `test_get_htmx_no_edit_returns_card` (line 947) and `test_get_htmx_edit_param_non_one_returns_card` (line 963) are near-duplicates — both make an HTMX GET to the same narrative without edit=1 and assert 200, text/html, 'Morning Walk', and absence of `name=\"title\"`.\n\nImprovements:\n1. Merge into a single `@pytest.mark.parametrize` test over URL variants (`'/api/narratives/n-1'` and `'/api/narratives/n-1?edit=0'`), sharing the full assertion set. Alternatively, extract a `_assert_readonly_card(response)` helper.\n2. The edit=0 variant (line 963) currently only has negative assertions — add positive structural assertions like `assert 'id=\"narrative-n-1\"' in response.text` and `assert \"Approve\" in response.text` to confirm a card was actually rendered (an empty 200 body would pass the current test).\n\nMemory hints: search \"read-only card test parametrize\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:06:50.762Z"
+        "updatedAt": "2026-04-04T18:08:25.230Z",
+        "metadata": {
+          "modules": [
+            "tests/test_review.py"
+          ]
+        }
       },
       {
         "id": "254",
@@ -5087,7 +5092,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:07:21.279Z",
+      "lastModified": "2026-04-04T18:08:25.230Z",
       "taskCount": 278,
       "completedCount": 185,
       "tags": [
