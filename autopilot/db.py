@@ -1398,9 +1398,12 @@ class CatalogDB:
         "run_id",
     })
 
-    def update_job(self, job_id: str, **kwargs: object) -> None:
-        """Update fields of a job by keyword arguments."""
-        self._execute_kwargs_update(
+    def update_job(self, job_id: str, **kwargs: object) -> int:
+        """Update fields of a job by keyword arguments.
+
+        Returns number of rows affected (0 if not found or no kwargs).
+        """
+        return self._execute_kwargs_update(
             "pipeline_jobs", "job_id", job_id,
             self._JOB_ALLOWED_COLUMNS, "job", kwargs,
         )
