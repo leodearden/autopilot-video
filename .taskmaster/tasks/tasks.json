@@ -6158,10 +6158,11 @@
         "description": "The status_badge macro at autopilot/web/templates/macros/status_badge.html:2 hardcodes px-2, py-1, rounded, text-xs, and font-medium unconditionally. This causes silent visual bugs: (1) media/detail.html:16 and media_row.html:23 pass extra_classes='py-0.5', producing duplicate py-1+py-0.5 where Tailwind's stylesheet order (not HTML order) determines the winner; (2) renders.html:39 passes extra_classes='inline-flex items-center px-3 rounded-full text-sm', conflicting with px-2, rounded, and text-xs; (3) font-medium is added to stage badges that originally had none, changing visual weight; (4) when extra_classes is empty the class string has a redundant double space. Fix: redesign the macro to accept named override parameters (px, py, rounded, text_size, font_weight) or strip conflicting base classes and require callers to supply all layout/spacing via extra_classes. Update tests in tests/test_status_badge.py to assert the correct non-conflicting class strings are rendered.\n\nmemory_hints: search \"status_badge macro Tailwind utility classes\", get_entity \"status_badge\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T23:18:08.643Z"
       },
       {
         "id": "356",
@@ -6199,7 +6200,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T23:18:08.554Z",
+      "lastModified": "2026-04-04T23:18:08.643Z",
       "taskCount": 358,
       "completedCount": 210,
       "tags": [
