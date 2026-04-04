@@ -3227,10 +3227,11 @@
         "description": "Two test files validate UTC ISO timestamps with inconsistent approaches:\n\n- **test_youtube.py:329-331** — Strong: `datetime.fromisoformat()` + `tzinfo is not None` + `utcoffset() == timedelta(0)`\n- **test_orchestrator.py:3674-3675** — Weak: string-based `\"T\" in started_at` and `\"+\" in started_at or \"Z\" in started_at`\n\nCreate a shared helper (e.g. `assert_utc_iso(value)` in `tests/conftest.py` or a `tests/helpers.py` module) that centralises the strong validation pattern and use it in both test files. This unifies the validation strength and prevents further inconsistency as more timestamp assertions are added.\n\nMemory hints: search for \"UTC timestamp validation\" and \"test helper conventions\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T08:17:55.417Z"
       },
       {
         "id": "162",
@@ -3269,7 +3270,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:17:55.367Z",
+      "lastModified": "2026-04-04T08:17:55.417Z",
       "taskCount": 164,
       "completedCount": 127,
       "tags": [
