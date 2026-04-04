@@ -417,6 +417,51 @@ class TestTransitionMapKeys:
 class TestTransitionMapping:
     """Verify EDL transitions map to OTIO Transition objects."""
 
+    @pytest.mark.parametrize("transition_type", ["crossfade", "fade_in", "fade_out", "dissolve"])
+    def test_transition_creates_smpte_dissolve(self, tmp_path, transition_type):
+        """EDL transition type creates SMPTE_Dissolve with correct name and positioning."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": transition_type,
+                    "duration": 1.0,
+                    "position": 0,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+        transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
+        assert len(transitions) == 1
+        assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
+        assert transitions[0].name == transition_type
+
+        # Verify transition is positioned BETWEEN the two clips
+        track_items = list(video_tracks[0])
+        assert isinstance(track_items[0], otio.schema.Clip)
+        assert isinstance(track_items[1], otio.schema.Transition)
+        assert isinstance(track_items[2], otio.schema.Clip)
+
     def test_crossfade_creates_smpte_dissolve(self, tmp_path):
         """EDL transition type 'crossfade' creates SMPTE_Dissolve between clips."""
         from autopilot.plan.otio_export import export_otio
