@@ -3455,10 +3455,11 @@
         "description": "In tests/test_otio_export.py: (1) Merge test_unknown_transition_type_falls_back_to_smpte_dissolve and test_unknown_transition_type_emits_warning into a single test that asserts both the SMPTE_Dissolve fallback type AND the warning log — they have byte-for-byte identical setup. (2) Extract the repeated 3-line Clip/Transition/Clip isinstance block into a TestTransitionMapping class helper, e.g. `def _assert_clip_transition_clip(track): items = list(track); assert len(items) == 3; assert isinstance(items[0], otio.schema.Clip); assert isinstance(items[1], otio.schema.Transition); assert isinstance(items[2], otio.schema.Clip)`. (3) Capture track_items once before deriving the transitions list comprehension in the merged test (currently iterated twice).",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T08:24:15.520Z"
       },
       {
         "id": "175",
@@ -3507,7 +3508,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:24:15.474Z",
+      "lastModified": "2026-04-04T08:24:15.520Z",
       "taskCount": 178,
       "completedCount": 132,
       "tags": [
