@@ -247,7 +247,8 @@ class TestBuildUploadMetadata:
     def test_tags_empty_when_detections_lack_class_key(
         self, catalog_db, youtube_config, detections_json
     ):
-        """Detections using the old 'class_name' key (regression guard) or missing 'class' entirely produce no tags."""
+        """Detections using the old 'class_name' key (regression guard) or
+        missing 'class' entirely produce no tags."""
         self._setup_media_with_detections(
             catalog_db,
             [("m1", 0, json.dumps(detections_json))],
