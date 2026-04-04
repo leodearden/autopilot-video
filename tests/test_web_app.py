@@ -203,6 +203,7 @@ def _brace_match_from(source: str, start: int, label: str) -> str:
     Raises :class:`AssertionError` with a message containing *label* if
     ``source[start]`` is not ``{`` or if the braces are unbalanced.
     """
+    assert 0 <= start < len(source), f"start {start} out of range for {label}"
     assert source[start] == "{", f"expected '{{' at position {start} in {label}"
     brace_depth = 0
     for i in range(start, len(source)):
@@ -212,10 +213,9 @@ def _brace_match_from(source: str, start: int, label: str) -> str:
             brace_depth -= 1
             if brace_depth == 0:
                 return source[start : i + 1]
-    assert brace_depth == 0, (
+    raise AssertionError(
         f"unbalanced braces in {label} (depth {brace_depth} after scan)"
     )
-    return source[start:]  # unreachable; keeps type-checkers happy
 
 
 def _extract_listener_body(js_source: str, event_type: str) -> str:
@@ -339,15 +339,41 @@ class TestBraceMatchFrom:
         result = _brace_match_from(source, 0, "nested")
         assert result == source
 
+    def test_raises_when_start_not_at_brace(self) -> None:
+        """Raises AssertionError when source[start] is not '{'."""
+        with pytest.raises(AssertionError, match=r"expected '\{'"):
+            _brace_match_from("abc", 1, "no-brace")
+
     def test_raises_on_unbalanced_braces(self) -> None:
-        """Raises AssertionError when braces are not balanced."""
-        with pytest.raises(AssertionError, match="unbalanced"):
-            _brace_match_from("{ open { but no close", 0, "broken")
+        """Raises AssertionError for shallow (depth-1) unbalanced braces."""
+        with pytest.raises(AssertionError, match=r"unbalanced.*depth 1"):
+            _brace_match_from("{ unclosed", 0, "shallow")
 
     def test_label_appears_in_error_message(self) -> None:
-        """Error message includes the label for context."""
-        with pytest.raises(AssertionError, match="test-block"):
-            _brace_match_from("{ broken", 0, "test-block")
+        """Error message includes the label for deeply-nested (depth-3) unclosed braces."""
+        with pytest.raises(AssertionError, match=r"deep-block.*depth 3"):
+            _brace_match_from("{ { { deep", 0, "deep-block")
+
+    def test_unbalanced_error_includes_depth(self) -> None:
+        """Error message from unbalanced braces includes 'depth' with a number."""
+        with pytest.raises(AssertionError, match=r"depth \d+"):
+            _brace_match_from("{ open { but no close", 0, "depth-check")
+
+    def test_raises_on_out_of_range_start(self) -> None:
+        """Raises AssertionError with 'out of range' for invalid start indices."""
+        source = "{ ok }"
+        # start == len(source)
+        with pytest.raises(AssertionError, match="out of range"):
+            _brace_match_from(source, len(source), "at-len")
+        # start > len(source)
+        with pytest.raises(AssertionError, match="out of range"):
+            _brace_match_from(source, len(source) + 5, "beyond-len")
+        # negative start
+        with pytest.raises(AssertionError, match="out of range"):
+            _brace_match_from(source, -1, "negative")
+        # empty source
+        with pytest.raises(AssertionError, match="out of range"):
+            _brace_match_from("", 0, "empty")
 
 
 class TestSSEErrorHandling:
@@ -416,18 +442,19 @@ class TestSSEHandlerFactory:
                 f"setupDashboardSSE does not use makeStageHandler for '{event_type}'"
             )
 
-    def test_stage_error_uses_factory(self) -> None:
-        """stage_error handler uses makeStageHandler with toast parameters."""
+    def test_stage_error_handled_via_notification(self) -> None:
+        """stage_error is handled server-side via notification events, not client-side."""
         js_source = _read_app_js()
-        assert "makeStageHandler('stage_error'" in js_source, (
-            "stage_error handler does not use makeStageHandler"
-        )
-        assert (
-            "makeStageHandler('stage_error', 'Error in {stage} stage', 'error', 6000, false)"
-            in js_source
-        ), (
-            "stage_error factory call does not match expected 5-param signature: "
-            "('stage_error', 'Error in {stage} stage', 'error', 6000, false)"
+        # The unified notification handler in setupNotificationSSE handles all
+        # user-facing notifications including stage errors.
+        func_start = js_source.find("function setupNotificationSSE")
+        assert func_start != -1
+        func_body = js_source[func_start:]
+        next_func = func_body.find("\nfunction ", 1)
+        if next_func != -1:
+            func_body = func_body[:next_func]
+        assert "addEventListener('notification'" in func_body, (
+            "setupNotificationSSE should handle unified notification events"
         )
 
 
@@ -467,39 +494,18 @@ class TestSSEHandlerFactory:
 class TestSSERunHandlerRobustness:
     """Tests that run_completed and run_failed handlers have try/catch."""
 
-    def test_run_completed_has_try_catch(self) -> None:
-        """run_completed handler wraps its body in try/catch."""
-        js_source = _read_app_js()
-        body = _extract_listener_body(js_source, "run_completed")
-        assert "try" in body, "try block not found in run_completed handler"
-        assert "catch" in body, "catch block not found in run_completed handler"
-        assert "console.error" in body, "console.error not found in run_completed catch block"
-        assert "'Pipeline run completed!'" in body, (
-            "toast message 'Pipeline run completed!' not found in run_completed handler"
-        )
-        assert "'success'" in body, (
-            "toast type 'success' not found in run_completed handler"
-        )
-        assert "6000" in body, (
-            "toast duration 6000 not found in run_completed handler"
-        )
+    def test_notification_handler_has_try_catch(self) -> None:
+        """The unified notification handler wraps its body in try/catch.
 
-    def test_run_failed_has_try_catch(self) -> None:
-        """run_failed handler wraps its body in try/catch."""
+        run_completed and run_failed are now handled server-side via notification
+        events. The notification handler in setupNotificationSSE must have
+        error handling to avoid silently dropping events.
+        """
         js_source = _read_app_js()
-        body = _extract_listener_body(js_source, "run_failed")
-        assert "try" in body, "try block not found in run_failed handler"
-        assert "catch" in body, "catch block not found in run_failed handler"
-        assert "console.error" in body, "console.error not found in run_failed catch block"
-        assert "'Pipeline run failed'" in body, (
-            "toast message 'Pipeline run failed' not found in run_failed handler"
-        )
-        assert "'error'" in body, (
-            "toast type 'error' not found in run_failed handler"
-        )
-        assert "8000" in body, (
-            "toast duration 8000 not found in run_failed handler"
-        )
+        body = _extract_listener_body(js_source, "notification")
+        assert "try" in body, "try block not found in notification handler"
+        assert "catch" in body, "catch block not found in notification handler"
+        assert "console.error" in body, "console.error not found in notification catch block"
 
 
 class TestDashboardSSEEventCoverage:
@@ -522,8 +528,8 @@ class TestDashboardSSEEventCoverage:
     }
 
     # Legacy SSE listeners in app.js that are not in VALID_EVENT_TYPES.
-    # 'notification' handler exists but the server never emits this event type.
-    _LEGACY_SSE_LISTENERS: frozenset[str] = frozenset({"notification"})
+    # Currently empty — 'notification' was promoted to VALID_EVENT_TYPES.
+    _LEGACY_SSE_LISTENERS: frozenset[str] = frozenset()
 
     def test_all_dashboard_event_types_handled(self) -> None:
         """Every VALID_EVENT_TYPE (except job-level and server-only) has a listener in app.js."""
