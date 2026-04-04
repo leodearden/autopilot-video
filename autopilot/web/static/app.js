@@ -33,6 +33,12 @@ function connectSSE(url) {
     const source = new EventSource(url);
 
     source.onerror = function() {
+        /*
+         * NOTE: Events emitted by the server during reconnection are lost.
+         * EventSource will auto-reconnect, but there is no replay mechanism.
+         * A robust fix would be to track Last-Event-ID and have the server
+         * replay missed events on reconnect.
+         */
         console.warn('SSE connection lost, will retry...');
     };
 
