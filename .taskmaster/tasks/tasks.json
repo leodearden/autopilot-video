@@ -2930,7 +2930,7 @@
         "description": "youtube.py:120 reads d.get(\"class_name\") but objects.py uses \"class\" as the detection field name. Detection-based tags are always empty in uploaded videos. One-line fix.",
         "details": "File: upload/youtube.py:120-121\n\nChange:\n  if d.get(\"class_name\"):\n      class_names.add(d[\"class_name\"])\nTo:\n  if d.get(\"class\"):\n      class_names.add(d[\"class\"])\n\nAlso fix uploaded_at not being set in insert_upload (youtube.py:213) — add uploaded_at=datetime.now(timezone.utc).isoformat() to the call.\n\nmemory_hints:\n- search: \"YouTube upload metadata tags detection\"",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
@@ -2943,7 +2943,8 @@
             "autopilot/upload",
             "tests"
           ]
-        }
+        },
+        "updatedAt": "2026-04-04T08:00:53.451Z"
       },
       {
         "id": "147",
@@ -3100,7 +3101,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:00:53.412Z",
+      "lastModified": "2026-04-04T08:00:53.451Z",
       "taskCount": 153,
       "completedCount": 123,
       "tags": [
