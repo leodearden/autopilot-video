@@ -144,12 +144,11 @@ def ingest(
     force: bool,
 ) -> None:
     """Run the ingest stage."""
+    if _handle_dry_run(dry_run, "INGEST"):
+        return
     db = None
     try:
         config, db = _setup_context(ctx, input_dir, output_dir, verbose)
-        if dry_run:
-            click.echo("[DRY-RUN] Would execute: INGEST")
-            return
         orch = PipelineOrchestrator()
         orch._stage_map["INGEST"].func(config=config, db=db, force=force)
     except click.ClickException:
@@ -173,12 +172,11 @@ def analyze(
     force: bool,
 ) -> None:
     """Run the analyze and classify stages."""
+    if _handle_dry_run(dry_run, "ANALYZE, CLASSIFY"):
+        return
     db = None
     try:
         config, db = _setup_context(ctx, input_dir, output_dir, verbose)
-        if dry_run:
-            click.echo("[DRY-RUN] Would execute: ANALYZE, CLASSIFY")
-            return
         orch = PipelineOrchestrator()
         orch._stage_map["ANALYZE"].func(config=config, db=db, force=force)
         orch._stage_map["CLASSIFY"].func(config=config, db=db, force=force)
@@ -203,12 +201,11 @@ def plan(
     force: bool,
 ) -> None:
     """Run the narrate and script stages."""
+    if _handle_dry_run(dry_run, "NARRATE, SCRIPT"):
+        return
     db = None
     try:
         config, db = _setup_context(ctx, input_dir, output_dir, verbose)
-        if dry_run:
-            click.echo("[DRY-RUN] Would execute: NARRATE, SCRIPT")
-            return
         orch = PipelineOrchestrator()
         orch._stage_map["NARRATE"].func(config=config, db=db, force=force)
         orch._stage_map["SCRIPT"].func(config=config, db=db, force=force)
@@ -233,12 +230,11 @@ def edit(
     force: bool,
 ) -> None:
     """Run the EDL and source_assets stages."""
+    if _handle_dry_run(dry_run, "EDL, SOURCE_ASSETS"):
+        return
     db = None
     try:
         config, db = _setup_context(ctx, input_dir, output_dir, verbose)
-        if dry_run:
-            click.echo("[DRY-RUN] Would execute: EDL, SOURCE_ASSETS")
-            return
         orch = PipelineOrchestrator()
         orch._stage_map["EDL"].func(config=config, db=db, force=force)
         orch._stage_map["SOURCE_ASSETS"].func(config=config, db=db, force=force)
@@ -263,12 +259,11 @@ def render(
     force: bool,
 ) -> None:
     """Run the render stage."""
+    if _handle_dry_run(dry_run, "RENDER"):
+        return
     db = None
     try:
         config, db = _setup_context(ctx, input_dir, output_dir, verbose)
-        if dry_run:
-            click.echo("[DRY-RUN] Would execute: RENDER")
-            return
         orch = PipelineOrchestrator()
         orch._stage_map["RENDER"].func(config=config, db=db, force=force)
     except click.ClickException:
@@ -292,12 +287,11 @@ def upload(
     force: bool,
 ) -> None:
     """Run the upload stage."""
+    if _handle_dry_run(dry_run, "UPLOAD"):
+        return
     db = None
     try:
         config, db = _setup_context(ctx, input_dir, output_dir, verbose)
-        if dry_run:
-            click.echo("[DRY-RUN] Would execute: UPLOAD")
-            return
         orch = PipelineOrchestrator()
         orch._stage_map["UPLOAD"].func(config=config, db=db, force=force)
     except click.ClickException:
