@@ -742,6 +742,13 @@ def _run_edl(
                     **_jkw,
                 ):
                     edl = edl_mod.generate_edl(nid, db, config.llm)
+                # Contract guard: generate_edl() must persist edl_json before export
+                if db.get_edit_plan(nid) is None:
+                    logger.error(
+                        "generate_edl() did not persist edl_json for %s — skipping",
+                        nid,
+                    )
+                    continue
                 otio_path = config.output_dir / nid / "timeline.otio"
                 otio_path.parent.mkdir(parents=True, exist_ok=True)
                 with _track_job(
@@ -755,6 +762,13 @@ def _run_edl(
                     otio_export.export_otio(edl, otio_path, db)
             else:
                 edl = edl_mod.generate_edl(nid, db, config.llm)
+                # Contract guard: generate_edl() must persist edl_json before export
+                if db.get_edit_plan(nid) is None:
+                    logger.error(
+                        "generate_edl() did not persist edl_json for %s — skipping",
+                        nid,
+                    )
+                    continue
                 otio_path = config.output_dir / nid / "timeline.otio"
                 otio_path.parent.mkdir(parents=True, exist_ok=True)
                 otio_export.export_otio(edl, otio_path, db)
@@ -763,10 +777,6 @@ def _run_edl(
             logger.exception("EDL generation failed for narrative %s", nid)
             continue
 
-        if db.get_edit_plan(nid) is None:
-            raise RuntimeError(
-                "generate_edl() must persist edl_json before upsert_edit_plan"
-            )
         db.upsert_edit_plan(nid, otio_path=str(otio_path))
         successes += 1
 

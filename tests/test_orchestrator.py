@@ -1305,7 +1305,7 @@ class TestEdlStage:
     def test_edl_asserts_generate_persisted(
         self, mock_edl, mock_otio, minimal_config
     ):
-        """When generate_edl returns but doesn't persist, contract guard propagates RuntimeError."""
+        """When generate_edl returns but doesn't persist, contract guard skips the narrative."""
         from autopilot.orchestrator import _run_edl
 
         db = MagicMock()
@@ -1317,11 +1317,13 @@ class TestEdlStage:
         mock_edl.generate_edl.return_value = {"timeline": []}
         mock_otio.export_otio.return_value = Path("/out/timeline.otio")
 
-        # Contract violation should propagate as descriptive RuntimeError
-        with pytest.raises(RuntimeError, match="generate_edl.*must persist"):
+        # Contract violation skips the narrative; with all narratives failing
+        # the stage raises the "all failed" RuntimeError
+        with pytest.raises(RuntimeError, match="All narratives failed"):
             _run_edl(config=minimal_config, db=db)
 
-        # upsert_edit_plan should NOT have been called (guard fired before it)
+        # Guard fires before export — neither export nor upsert should run
+        mock_otio.export_otio.assert_not_called()
         db.upsert_edit_plan.assert_not_called()
 
     @patch("autopilot.plan.otio_export")
