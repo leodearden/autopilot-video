@@ -3612,15 +3612,16 @@
         "description": "In autopilot/render/router.py, refactor the per-clip db.get_media call (lines 139-145) to avoid N serial round-trips:\nBefore the clip loop, collect all clip_ids that are missing source_path. Fetch them in one shot (e.g. a new db.get_media_batch(ids) method using WHERE id IN (...)), build a lookup dict, and apply it inside the loop. This also handles duplicate clip_ids (same clip reused at different cut points) without redundant queries, addressing both the N+1 and deduplication issues.\n\nmemory_hints:\n- search: \"render pipeline db.get_media N+1 batch query optimization\"\n- entity: \"render_router\", \"db\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T08:28:27.367Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:28:27.288Z",
+      "lastModified": "2026-04-04T08:28:27.367Z",
       "taskCount": 184,
       "completedCount": 134,
       "tags": [
