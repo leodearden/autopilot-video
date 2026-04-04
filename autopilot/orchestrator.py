@@ -748,7 +748,7 @@ def _run_edl(
                     worker="cpu",
                     **_jkw,
                 ):
-                    val_result = validator.validate_edl(edl, db)
+                    validator.validate_edl(edl, db)
                 otio_path = config.output_dir / nid / "timeline.otio"
                 otio_path.parent.mkdir(parents=True, exist_ok=True)
                 with _track_job(
@@ -762,7 +762,7 @@ def _run_edl(
                     otio_export.export_otio(edl, otio_path, db)
             else:
                 edl = edl_mod.generate_edl(nid, db, config.llm)
-                val_result = validator.validate_edl(edl, db)
+                validator.validate_edl(edl, db)
                 otio_path = config.output_dir / nid / "timeline.otio"
                 otio_path.parent.mkdir(parents=True, exist_ok=True)
                 otio_export.export_otio(edl, otio_path, db)

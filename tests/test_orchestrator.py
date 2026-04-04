@@ -953,7 +953,7 @@ class TestNarrateResume:
 
     @patch("autopilot.organize.narratives")
     def test_narrate_skips_when_approved_narratives_exist(self, mock_narratives, minimal_config):
-        """_run_narrate skips LLM proposal when approved narratives already exist and force=False."""
+        """_run_narrate skips LLM proposal when approved narratives exist."""
         from autopilot.orchestrator import _run_narrate
 
         db = MagicMock()
@@ -1109,7 +1109,7 @@ class TestEdlStage:
     def test_edl_stores_validation_result(
         self, mock_edl, mock_validator, mock_otio, minimal_config
     ):
-        """_run_edl upsert only passes otio_path; generate_edl() handles edl_json and validation_json."""
+        """_run_edl upsert only passes otio_path; generate_edl() handles edl/validation."""
         from autopilot.orchestrator import _run_edl
 
         db = MagicMock()
