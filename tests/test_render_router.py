@@ -1265,7 +1265,20 @@ class TestSourcePathResolution:
         }[cid]
         config = _make_config()
 
+        # Capture deserialized clip dicts that json.loads produces inside the
+        # router.  This lets us assert on the actual objects the router operates
+        # on — the only way to detect in-place mutation at router.py line 154.
+        _real_loads = json.loads
+        parsed_clips: list[dict] = []
+
+        def _capturing_loads(*args, **kwargs):
+            result = _real_loads(*args, **kwargs)
+            if isinstance(result, dict) and "clips" in result:
+                parsed_clips.extend(result["clips"])
+            return result
+
         with (
+            patch("autopilot.render.router.json.loads", _capturing_loads),
             patch("autopilot.render.router.render_simple") as mock_rs,
             patch("subprocess.run"),
         ):
@@ -1283,7 +1296,8 @@ class TestSourcePathResolution:
         assert set(rendered_a.keys()) == original_keys_a | {"source_path"}
         assert set(rendered_b.keys()) == original_keys_b | {"source_path"}
 
-        # Test input dicts remain unmodified (trivially true via JSON
-        # serialization boundary, but documents the behavioural contract)
-        assert "source_path" not in clip_a
-        assert "source_path" not in clip_b
+        # Deserialized clips should NOT have source_path — the router must
+        # create new dicts (via dict-spread) rather than mutating in place.
+        assert len(parsed_clips) == 2
+        assert "source_path" not in parsed_clips[0]
+        assert "source_path" not in parsed_clips[1]
