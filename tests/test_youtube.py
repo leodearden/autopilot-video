@@ -82,6 +82,12 @@ def _setup_google_mocks():
     return mods, mock_google_oauth2_credentials, mock_google_auth_transport_requests
 
 
+@pytest.fixture
+def youtube_config():
+    """Default YouTube upload config used by most metadata tests."""
+    return MagicMock(privacy_status="unlisted", default_category="22")
+
+
 class TestLoadCredentials:
     """Verify _load_credentials helper."""
 
