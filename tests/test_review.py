@@ -158,20 +158,20 @@ class TestUpdateNarrativeWhitelist:
 @pytest.fixture
 def seeded_app(tmp_path: Path) -> FastAPI:
     """Create a FastAPI app with seeded narratives."""
-    db_path = str(tmp_path / "catalog.db")
-    with CatalogDB(db_path) as _db:
-        _db.init_default_gates()
-        _seed_narrative(_db, "n-1", title="Morning Walk", status="proposed")
-        _seed_narrative(_db, "n-2", title="Sunset Hike", status="approved")
-        _seed_narrative(_db, "n-3", title="Beach Day", status="proposed")
-        _db.insert_activity_cluster(
+
+    def _seed(db: CatalogDB) -> None:
+        _seed_narrative(db, "n-1", title="Morning Walk", status="proposed")
+        _seed_narrative(db, "n-2", title="Sunset Hike", status="approved")
+        _seed_narrative(db, "n-3", title="Beach Day", status="proposed")
+        db.insert_activity_cluster(
             "c-test-1",
             label="Morning Jog",
             description="Jogging in the park",
             clip_ids_json='["v1","v2"]',
         )
-        _db.conn.commit()
-    return create_app(db_path)
+        db.conn.commit()
+
+    return _make_review_app(tmp_path, _seed)
 
 
 @pytest.fixture
@@ -424,14 +424,14 @@ class TestBulkApproveCorrectness:
 @pytest.fixture
 def waiting_gate_app(tmp_path: Path) -> FastAPI:
     """App with narrate gate set to 'waiting' and proposed narratives."""
-    db_path = str(tmp_path / "catalog.db")
-    with CatalogDB(db_path) as _db:
-        _db.init_default_gates()
-        _db.update_gate("narrate", status="waiting")
-        _db.conn.commit()
-        _seed_narrative(_db, "n-1", title="Morning Walk", status="proposed")
-        _seed_narrative(_db, "n-2", title="Sunset Hike", status="proposed")
-    return create_app(db_path)
+
+    def _seed(db: CatalogDB) -> None:
+        db.update_gate("narrate", status="waiting")
+        db.conn.commit()
+        _seed_narrative(db, "n-1", title="Morning Walk", status="proposed")
+        _seed_narrative(db, "n-2", title="Sunset Hike", status="proposed")
+
+    return _make_review_app(tmp_path, _seed)
 
 
 @pytest.fixture
@@ -576,14 +576,14 @@ class TestNarrativePartialHTMX:
 @pytest.fixture
 def all_decided_app(tmp_path: Path) -> FastAPI:
     """App with narrate gate waiting and all narratives decided (none proposed)."""
-    db_path = str(tmp_path / "catalog.db")
-    with CatalogDB(db_path) as _db:
-        _db.init_default_gates()
-        _db.update_gate("narrate", status="waiting")
-        _db.conn.commit()
-        _seed_narrative(_db, "n-1", title="Morning Walk", status="approved")
-        _seed_narrative(_db, "n-2", title="Sunset Hike", status="rejected")
-    return create_app(db_path)
+
+    def _seed(db: CatalogDB) -> None:
+        db.update_gate("narrate", status="waiting")
+        db.conn.commit()
+        _seed_narrative(db, "n-1", title="Morning Walk", status="approved")
+        _seed_narrative(db, "n-2", title="Sunset Hike", status="rejected")
+
+    return _make_review_app(tmp_path, _seed)
 
 
 @pytest.fixture
@@ -765,20 +765,20 @@ class TestParseNarrativeSafety:
 @pytest.fixture
 def malformed_json_app(tmp_path: Path) -> FastAPI:
     """App with narratives that have malformed/non-list JSON in cluster IDs."""
-    db_path = str(tmp_path / "catalog.db")
-    with CatalogDB(db_path) as _db:
-        _db.init_default_gates()
+
+    def _seed(db: CatalogDB) -> None:
         _seed_narrative(
-            _db, "n-bad-json",
+            db, "n-bad-json",
             title="Bad JSON",
             activity_cluster_ids_json="{bad",
         )
         _seed_narrative(
-            _db, "n-not-list",
+            db, "n-not-list",
             title="Not A List",
             activity_cluster_ids_json='"just-a-string"',
         )
-    return create_app(db_path)
+
+    return _make_review_app(tmp_path, _seed)
 
 
 @pytest.fixture
@@ -1072,20 +1072,20 @@ class TestDepsImportRefactor:
 @pytest.fixture
 def zero_duration_app(tmp_path: Path) -> FastAPI:
     """App with narratives seeded with proposed_duration_seconds=0 and None."""
-    db_path = str(tmp_path / "catalog.db")
-    with CatalogDB(db_path) as _db:
-        _db.init_default_gates()
+
+    def _seed(db: CatalogDB) -> None:
         _seed_narrative(
-            _db, "n-zero",
+            db, "n-zero",
             title="Zero Duration",
             proposed_duration_seconds=0,
         )
         _seed_narrative(
-            _db, "n-none",
+            db, "n-none",
             title="No Duration",
             proposed_duration_seconds=None,
         )
-    return create_app(db_path)
+
+    return _make_review_app(tmp_path, _seed)
 
 
 @pytest.fixture
@@ -1177,20 +1177,20 @@ class TestEditFormZeroDuration:
 @pytest.fixture
 def null_title_desc_app(tmp_path: Path) -> FastAPI:
     """App with narratives seeded with title=None and description=None."""
-    db_path = str(tmp_path / "catalog.db")
-    with CatalogDB(db_path) as _db:
-        _db.init_default_gates()
+
+    def _seed(db: CatalogDB) -> None:
         _seed_narrative(
-            _db, "n-null-title",
+            db, "n-null-title",
             title=None,
             description="Has Desc",
         )
         _seed_narrative(
-            _db, "n-null-desc",
+            db, "n-null-desc",
             title="Has Title",
             description=None,
         )
-    return create_app(db_path)
+
+    return _make_review_app(tmp_path, _seed)
 
 
 @pytest.fixture
