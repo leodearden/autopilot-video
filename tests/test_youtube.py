@@ -370,6 +370,49 @@ class TestBuildUploadMetadata:
         narrative = catalog_db.get_narrative("n1")
         assert narrative["activity_cluster_ids_json"] is None
 
+    def test_uses_targeted_query_not_full_scan(
+        self, catalog_db, youtube_config, monkeypatch
+    ):
+        """_build_upload_metadata calls get_activity_clusters_by_ids, not get_activity_clusters."""
+        from autopilot.db import CatalogDB
+
+        # Trap: full-table-scan method should NOT be called
+        def _full_scan_trap(self_db):
+            raise AssertionError(
+                "Full table scan: get_activity_clusters() should not be called"
+            )
+
+        monkeypatch.setattr(CatalogDB, "get_activity_clusters", _full_scan_trap)
+
+        # Spy: targeted query should be called with the correct IDs
+        batch_args: list[list[str]] = []
+        _original = CatalogDB.get_activity_clusters_by_ids
+
+        def _batch_spy(self_db, cluster_ids):
+            batch_args.append(list(cluster_ids))
+            return _original(self_db, cluster_ids)
+
+        monkeypatch.setattr(CatalogDB, "get_activity_clusters_by_ids", _batch_spy)
+
+        # Set up data with two activity clusters
+        catalog_db.insert_activity_cluster("c1", label="hiking")
+        catalog_db.insert_activity_cluster("c2", label="camping")
+        self._setup_media_with_detections(
+            catalog_db,
+            [("m1", 0, json.dumps([{"class": "person", "confidence": 0.9}]))],
+            activity_cluster_ids=["c1", "c2"],
+        )
+
+        meta = _build_upload_metadata("n1", catalog_db, youtube_config)
+
+        # Verify the targeted method was called with the right IDs
+        assert len(batch_args) == 1
+        assert sorted(batch_args[0]) == ["c1", "c2"]
+        # Verify results still correct
+        tags = meta["snippet"]["tags"]
+        assert "hiking" in tags
+        assert "camping" in tags
+
     def test_uses_config_privacy_status_and_category(self, catalog_db):
         """Privacy and category come from YouTubeConfig."""
         catalog_db.insert_narrative("n1", title="Title", description="desc")
