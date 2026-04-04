@@ -619,7 +619,7 @@ class TestDBStorage:
                     **kwargs,
                 )
 
-        return catalog_db.get_audio_events_for_range("vid1", 0.0, 100.0)
+        return catalog_db.get_audio_events_for_media("vid1")
 
     def test_correct_timestamps(self, catalog_db):
         """5s audio -> timestamps 0.0, 1.0, 2.0, 3.0, 4.0 in DB."""
