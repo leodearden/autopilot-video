@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -17,6 +17,23 @@ from tests.conftest import _seed_narrative
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+def _make_review_app(
+    tmp_path: Path,
+    seed_fn: Callable[[CatalogDB], None],
+) -> FastAPI:
+    """Factory: create a review-test app with seeded data.
+
+    Encapsulates the db_path / CatalogDB / init_default_gates / create_app
+    pattern shared by all review-test app fixtures.
+    """
+    db_path = str(tmp_path / "catalog.db")
+    with CatalogDB(db_path) as _db:
+        _db.init_default_gates()
+        seed_fn(_db)
+    return create_app(db_path)
+
 
 @pytest.fixture
 def db(tmp_path: Path) -> Iterator[CatalogDB]:
