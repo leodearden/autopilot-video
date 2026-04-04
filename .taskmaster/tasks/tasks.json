@@ -4409,6 +4409,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 237,
+        "title": "Harden mock_db fixture: explicit scope, conftest placement, and divergence comment",
+        "description": "Three related fixture hygiene tasks: (1) Add `scope='function'` explicitly to `@pytest.fixture()` on `mock_db` in tests/test_orchestrator.py so intent is self-documenting. (2) Move `mock_db` to tests/conftest.py alongside the existing `catalog_db` fixture so it's available to future test modules covering narrate/gate surfaces. (3) Add a comment above `TestNarrateResume` (around line 975) explaining that its inline `db = MagicMock()` with non-empty `list_narratives` is intentional — it tests the checkpoint-hit scenario, unlike `mock_db` which models the fresh/no-checkpoint precondition.\n\nMemory hints: search for \"mock_db fixture\" and \"conftest.py fixtures\" for context on existing fixture placement conventions.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -4421,7 +4432,7 @@
       ],
       "created": "2026-04-04T13:22:55.763Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T13:23:00.471Z"
+      "updated": "2026-04-04T13:23:01.477Z"
     }
   }
 }
