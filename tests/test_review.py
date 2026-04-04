@@ -941,3 +941,18 @@ class TestGetNarrativeEditHTMX:
         # Cancel button should GET the narrative without ?edit=1 to get the card back
         assert 'hx-get="/api/narratives/n-1"' in response.text
         assert "Cancel" in response.text
+
+    def test_get_htmx_no_edit_returns_card(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """GET /api/narratives/n-1 with HX-Request (no ?edit=1) returns read-only card."""
+        response = seeded_client.get(
+            "/api/narratives/n-1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "Morning Walk" in response.text
+        # Read-only card has Approve button, not input fields
+        assert "Approve" in response.text
+        assert 'name="title"' not in response.text
