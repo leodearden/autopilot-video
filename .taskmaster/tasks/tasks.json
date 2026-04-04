@@ -4598,11 +4598,11 @@
         "description": "Task 225 fixed the silent-tuple bug in assert_not_called() calls (lines 590, 693, 712, 731) by replacing them with `assert not mock.called, msg`. While correct, this deviates from the file's convention of using the mock assertion API (assert_called_once(), assert_called_once_with(), etc.) and loses Mock's built-in rich diagnostic output on failure.\n\nFix: Change the four sites back to `mock.assert_not_called()` as a standalone statement, and move the custom message to a comment on the same line. Example:\n```python\nstage_func.assert_not_called()  # --dry-run should NOT call any stage function\n```\n\nThis preserves consistency with the rest of the test module while eliminating the original silent-tuple bug.\n\nmemory_hints: search for \"mock assert_not_called bug task 204\" and \"assertion style convention\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:15:41.694Z",
+        "updatedAt": "2026-04-04T19:09:00.591Z",
         "metadata": {
           "modules": [
             "tests/test_cli.py"
@@ -5732,12 +5732,23 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": "326",
+        "title": "test_notifications.py infrastructure cleanup",
+        "description": "Two structural improvements to tests/test_notifications.py to reduce duplication:\n\n1. **Cache file content at module level** (line ~8): Add `_APP_JS_CONTENT = _APP_JS.read_text()` at module level and replace all `_APP_JS.read_text()` calls across the class with the cached constant — eliminates 10+ redundant file reads.\n2. **Extract _func_body helper** : Add a `_func_body(self, func_name: str) -> str` helper method to TestNotificationSSESetup that reads content (using cached constant), finds `function {func_name}`, slices to next `\\nfunction`, and returns the body. Replace the 7 verbatim copies of this pattern across test methods with `func_body = self._func_body('setupNotificationSSE')`.\n\nMemory hints: search for \"test_notifications\" and \"test helper patterns\" in project context.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T19:08:57.864Z",
-      "taskCount": 325,
+      "lastModified": "2026-04-04T19:09:00.603Z",
+      "taskCount": 326,
       "completedCount": 198,
       "tags": [
         "master"
