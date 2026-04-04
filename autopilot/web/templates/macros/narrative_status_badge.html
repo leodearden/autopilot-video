@@ -5,6 +5,6 @@
     {%- elif status == 'proposed' %} bg-amber-900 text-amber-300
     {%- elif status == 'scripted' %} bg-blue-900 text-blue-300
     {%- else %} bg-purple-900 text-purple-300{% endif %}">
-    {{ status }}
+    {{ status or 'unknown' }}
 </span>
 {%- endmacro %}
