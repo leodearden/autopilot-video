@@ -3578,10 +3578,11 @@
         "description": "Add the following test cases to tests/test_render_router.py in TestSourcePathResolution:\n1. Add db.get_media.assert_called_with('clip_1') to test_source_path_resolved_for_slow_clip (line 1052) to mirror the assertion present in the fast-path test.\n2. Add a test variant where db.get_media.return_value = {'file_path': Path('/resolved/clip.mp4')} (a pathlib.Path) and assert rendered_clip['source_path'] == '/resolved/clip.mp4' (str), verifying the str() coercion at router.py:145.\n3. Add a test where db.get_media.return_value = {} (no file_path key) and assert RoutingError is raised with a meaningful message. Pair this with the router fix from the robustness task.\n4. In TestEDLLoading::test_loads_edl_from_edit_plan (line 203), replace assert rendered_clip['source_path'].startswith('/') with assert rendered_clip['source_path'] == '/fake/source.mp4'.\n\nmemory_hints:\n- search: \"source_path resolution test coverage edge cases\"\n- entity: \"render_router\", \"test_render_router\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T08:27:18.940Z"
       },
       {
         "id": "183",
@@ -3608,7 +3609,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T08:27:18.899Z",
+      "lastModified": "2026-04-04T08:27:18.941Z",
       "taskCount": 184,
       "completedCount": 134,
       "tags": [
