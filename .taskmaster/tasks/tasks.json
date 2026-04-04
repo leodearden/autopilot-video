@@ -3661,11 +3661,11 @@
         "description": "In tests/test_web_app.py, replace the bare substring checks for 'success', 'error', 6000, and 8000 in test_run_completed_has_try_catch and test_run_failed_has_try_catch with full showToast(...) call string assertions, e.g. assert \"showToast('Pipeline run completed!', 'success', 6000)\" in body. Then extract a module-level _assert_toast_params(body, message, toast_type, duration) helper and replace the duplicated blocks with two calls to it.",
         "details": "Follow-up from task 152 review suggestions. Addresses fragile bare substring assertions that could produce false positives if handler bodies grow. The full-call-string approach is consistent with the exact-signature pattern used for makeStageHandler assertions elsewhere in the file.\n\nmemory_hints: search for \"toast assertion pattern\" and \"test_web_app showToast\"",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "blocked",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:31:24.700Z"
+        "updatedAt": "2026-04-04T09:03:22.742Z"
       },
       {
         "id": "187",
@@ -3711,7 +3711,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T09:02:23.985Z",
+      "lastModified": "2026-04-04T09:03:22.742Z",
       "taskCount": 189,
       "completedCount": 139,
       "tags": [
