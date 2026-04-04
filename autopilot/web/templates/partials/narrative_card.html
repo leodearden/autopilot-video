@@ -30,7 +30,7 @@
             Reject
         </button>
         <button class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded text-xs font-medium"
-                hx-get="/api/narratives/{{ narrative.narrative_id }}"
+                hx-get="/api/narratives/{{ narrative.narrative_id }}?edit=1"
                 hx-target="#narrative-{{ narrative.narrative_id }}"
                 hx-swap="outerHTML">
             Edit
