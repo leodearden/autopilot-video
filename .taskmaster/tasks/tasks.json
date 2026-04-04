@@ -4558,6 +4558,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 248,
+        "title": "Improve narrative_status_badge test quality",
+        "description": "1. Hoist jinja2.Environment to module-level _ENV in tests/test_narrative_status_badge.py (used by _render_badge and integration test classes). 2. Add assertion for base color classes in test_extra_classes_included. 3. Add render test for review/narratives.html in TestReviewNarrativesBadge. 4. Replace fragile source-text assertions (3 tests) with render-output assertions or relaxed regex.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -4570,7 +4581,7 @@
       ],
       "created": "2026-04-04T13:40:24.627Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T13:41:08.577Z"
+      "updated": "2026-04-04T13:41:10.636Z"
     }
   }
 }
