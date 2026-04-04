@@ -53,3 +53,16 @@ class TestStatusBadgeMacro:
     def test_status_text_displayed(self) -> None:
         html = _render_badge("approved")
         assert "approved" in html
+
+
+class TestExtraClasses:
+    """Verify the extra_classes parameter adds classes to the badge span."""
+
+    def test_extra_classes_included(self) -> None:
+        html = _render_badge("approved", "ml-2 whitespace-nowrap")
+        assert "ml-2" in html
+        assert "whitespace-nowrap" in html
+
+    def test_no_extra_classes_by_default(self) -> None:
+        html = _render_badge("proposed")
+        assert "ml-2" not in html
