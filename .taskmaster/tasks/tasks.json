@@ -3760,11 +3760,16 @@
         "description": "In tests/test_otio_export.py:\n1. Delete `test_fade_approximation_types_contains_fade_in` (lines 1373-1377) — it is fully subsumed by `test_fade_approximation_types_constant`.\n2. Collapse `test_fade_in_transition_has_approximation_metadata` and `test_fade_out_transition_has_approximation_metadata` (lines 1333-1417) into one `@pytest.mark.parametrize('trans_type', ['fade_in', 'fade_out'])` test.\n3. Collapse `test_crossfade_has_no_approximation_metadata` and `test_dissolve_has_no_approximation_metadata` (lines 1419-1495) into one `@pytest.mark.parametrize('trans_type', ['crossfade', 'dissolve'])` test.\n\nmemory_hints: search for \"TestFadeApproximationMetadata\" test class structure",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T09:05:55.054Z"
+        "updatedAt": "2026-04-04T09:07:39.379Z",
+        "metadata": {
+          "modules": [
+            "tests/test_otio_export.py"
+          ]
+        }
       },
       {
         "id": "192",
@@ -3794,7 +3799,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T09:06:16.028Z",
+      "lastModified": "2026-04-04T09:07:39.382Z",
       "taskCount": 193,
       "completedCount": 142,
       "tags": [
