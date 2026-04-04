@@ -74,7 +74,7 @@ _TRANSITION_TYPE_MAP = {
 # Transition types that are semantic approximations — see the NOTE above.
 # These types are mapped to SMPTE_Dissolve but are not true cross-dissolves;
 # Transition objects for these types carry approximation metadata.
-_FADE_APPROXIMATION_TYPES = {"fade_in", "fade_out"}
+_FADE_APPROXIMATION_TYPES: frozenset[str] = frozenset({"fade_in", "fade_out"})
 
 
 def _get_media_info(clip_id: str, db: CatalogDB) -> tuple[str, float]:
