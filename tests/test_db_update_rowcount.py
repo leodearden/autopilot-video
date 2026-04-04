@@ -99,3 +99,30 @@ class TestUpdateGateRowcount:
         db.conn.commit()
         result = db.update_gate("classify")
         assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# TestUpdateJobRowcount — task-278 step-5
+# ---------------------------------------------------------------------------
+
+class TestUpdateJobRowcount:
+    """Tests that update_job returns int rowcount."""
+
+    def test_returns_1_for_existing_job(self, db: CatalogDB) -> None:
+        """update_job returns 1 when updating an existing row."""
+        db.insert_job("j-1", "ingest", "media_import")
+        db.conn.commit()
+        result = db.update_job("j-1", status="running")
+        assert result == 1
+
+    def test_returns_0_for_nonexistent_job(self, db: CatalogDB) -> None:
+        """update_job returns 0 for a non-existent job_id."""
+        result = db.update_job("nonexistent", status="running")
+        assert result == 0
+
+    def test_returns_0_for_empty_kwargs(self, db: CatalogDB) -> None:
+        """update_job returns 0 for empty kwargs (early return)."""
+        db.insert_job("j-1", "ingest", "media_import")
+        db.conn.commit()
+        result = db.update_job("j-1")
+        assert result == 0
