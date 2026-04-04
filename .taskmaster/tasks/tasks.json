@@ -5506,10 +5506,11 @@
         "description": "In autopilot/db.py at `_execute_kwargs_update` (~line 98): replace `return cur.rowcount` with a guard against the documented -1 sentinel: `rc = cur.rowcount; return rc if rc >= 0 else 0`. This ensures callers using `== 0` to detect missing records are never misled by the sentinel value.\n\nMemory hints: search for \"CatalogDB update pattern\" and \"update_activity_cluster rowcount\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T18:25:12.420Z"
       },
       {
         "id": "309",
@@ -5580,7 +5581,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:25:12.337Z",
+      "lastModified": "2026-04-04T18:25:12.420Z",
       "taskCount": 314,
       "completedCount": 192,
       "tags": [
