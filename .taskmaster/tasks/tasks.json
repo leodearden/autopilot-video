@@ -5937,6 +5937,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 340,
+        "title": "Add None-duration roundtrip test to TestZeroDurationRoundtrip",
+        "description": "In tests/test_review.py, add `test_update_none_duration_roundtrip` to `TestZeroDurationRoundtrip`. The test should: (1) PUT `{\"proposed_duration_seconds\": null}` to `/api/narratives/n-none` and assert `proposed_duration_seconds` is `null`/absent in the JSON response; (2) GET `/api/narratives/n-none?edit=1` with `HX-Request: true` and assert the `proposed_duration_seconds` input contains `value=\"\"`. The `_roundtrip_app` fixture already seeds `n-none` but no test exercises this code path, leaving null serialisation in the PUT handler and edit-form renderer untested.\n\nMemory hints: search \"task 224 zero-duration fixture scope optimization\" for parent task context.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5949,7 +5960,7 @@
       ],
       "created": "2026-04-04T23:07:46.399Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T23:07:56.707Z"
+      "updated": "2026-04-04T23:08:02.044Z"
     }
   }
 }
