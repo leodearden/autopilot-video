@@ -242,21 +242,7 @@ def _extract_listener_body(js_source: str, event_type: str) -> str:
     body_start = js_source.find("{", func_start)
     assert body_start != -1, f"opening brace not found in {event_type} listener"
 
-    brace_depth = 0
-    body_end = body_start
-    for i in range(body_start, len(js_source)):
-        if js_source[i] == "{":
-            brace_depth += 1
-        elif js_source[i] == "}":
-            brace_depth -= 1
-            if brace_depth == 0:
-                body_end = i + 1
-                break
-
-    assert brace_depth == 0, (
-        f"unbalanced braces in {event_type} listener (depth {brace_depth} after scan)"
-    )
-    return js_source[body_start:body_end]
+    return _brace_match_from(js_source, body_start, f"{event_type} listener")
 
 
 def _extract_function_body(js_source: str, func_name: str) -> str:
@@ -276,21 +262,7 @@ def _extract_function_body(js_source: str, func_name: str) -> str:
     body_start = js_source.find("{", func_start)
     assert body_start != -1, f"opening brace not found for {func_name}"
 
-    brace_depth = 0
-    body_end = body_start
-    for i in range(body_start, len(js_source)):
-        if js_source[i] == "{":
-            brace_depth += 1
-        elif js_source[i] == "}":
-            brace_depth -= 1
-            if brace_depth == 0:
-                body_end = i + 1
-                break
-
-    assert brace_depth == 0, (
-        f"unbalanced braces in {func_name} (depth {brace_depth} after scan)"
-    )
-    return js_source[body_start:body_end]
+    return _brace_match_from(js_source, body_start, func_name)
 
 
 class TestExtractFunctionBody:
