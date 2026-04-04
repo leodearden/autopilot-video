@@ -4009,11 +4009,16 @@
         "description": "In tests/test_otio_export.py, the module-level `from autopilot.plan.otio_export import _TRANSITION_TYPE_MAP` (line 12) is an outlier: the entire rest of the file (~50 sites) uses local imports inside test methods. This module-level import of a private symbol means any ImportError (e.g., symbol renamed) kills all 100+ tests at collection time rather than just the 1 `TestTransitionMapKeys` test.\n\nChanges needed:\n1. Remove line 12 (`from autopilot.plan.otio_export import _TRANSITION_TYPE_MAP`)\n2. Add the import as a class-level attribute or local import inside `TestTransitionMapKeys.test_map_keys_match_prompt_schema` (~line 388)\n3. Update the docstring of `test_transition_creates_smpte_dissolve` (~line 404) to explicitly state that all four transition types are expected to produce a Transition with `name` equal to the transition type string (this assertion was added for crossfade but didn't exist in the original test)\n4. Add an inline comment above `assert transitions[0].name == transition_type` (~line 439): `# name is the sole semantic differentiator; all four types resolve to SMPTE_Dissolve`\n\nMemory hints: search for \"test_otio_export local import convention\" and \"_TRANSITION_TYPE_MAP semantic gap documentation\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T13:05:47.162Z"
+        "updatedAt": "2026-04-04T13:08:05.393Z",
+        "metadata": {
+          "modules": [
+            "tests/test_otio_export.py"
+          ]
+        }
       },
       {
         "id": "207",
@@ -4086,7 +4091,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T13:07:27.843Z",
+      "lastModified": "2026-04-04T13:08:05.393Z",
       "taskCount": 212,
       "completedCount": 152,
       "tags": [
