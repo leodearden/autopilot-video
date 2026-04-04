@@ -5084,15 +5084,16 @@
         "description": "After the task 243 refactoring, `update_activity_cluster` returns `int` (the rowcount from `_execute_kwargs_update`), but `update_narrative`, `update_gate`, `update_job`, and `update_run` all discard the rowcount and return `None`. This API inconsistency means callers of the latter four methods get no signal when the target record doesn't exist (silent no-op).\n\nChanges needed in `autopilot/db.py`:\n- `update_narrative` (line ~893): Change `-> None` to `-> int`, add `return` before the call\n- `update_gate` (line ~1321): Same\n- `update_job` (line ~1395): Same\n- `update_run` (line ~1528): Same\n\nUpdate docstrings to match `update_activity_cluster`'s pattern: \"Returns number of rows affected (0 if not found or no kwargs).\"\n\nMemory hints: search for \"CatalogDB update pattern\" and \"update_activity_cluster rowcount\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T18:08:25.316Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:08:25.230Z",
+      "lastModified": "2026-04-04T18:08:25.316Z",
       "taskCount": 278,
       "completedCount": 185,
       "tags": [
