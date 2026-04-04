@@ -3330,11 +3330,11 @@
         "description": "In `autopilot/web/routes/review.py`, delete the private `_is_htmx` helper (lines 29–31) and add `is_htmx` to the existing import: `from autopilot.web.deps import is_htmx, render_partial`. Replace all four call-sites of `_is_htmx(request)` in review.py with `is_htmx(request)`. Resolves review suggestions [0] and [3] from task 100 review cycle.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:30:47.181Z",
+        "updatedAt": "2026-04-04T09:03:41.854Z",
         "metadata": {
           "modules": [
             "autopilot/web/routes/review.py",
@@ -3665,7 +3665,15 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T09:03:22.742Z"
+        "updatedAt": "2026-04-04T09:03:22.742Z",
+        "metadata": {
+          "memory_hints": {
+            "entities": [],
+            "queries": [
+              "resolution for: Harden toast parameter assertions in run_completed/run_failed and extract shared helper"
+            ]
+          }
+        }
       },
       {
         "id": "187",
@@ -3711,9 +3719,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T09:03:22.742Z",
+      "lastModified": "2026-04-04T09:03:41.854Z",
       "taskCount": 189,
-      "completedCount": 139,
+      "completedCount": 140,
       "tags": [
         "master"
       ]
