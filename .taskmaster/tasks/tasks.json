@@ -4122,6 +4122,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 216,
+        "title": "Rewrite mutation test to avoid json.loads monkey-patch coupling",
+        "description": "In tests/test_render_router.py lines 1238-1281: replace the test_source_path_resolution_does_not_mutate_original_clip implementation — it currently patches 'autopilot.render.router.json.loads' and captures parsed dicts indirectly, which breaks if the router changes its import style (from json import loads) or calls json.loads a second time with a 'clips' key. Instead, pass the known clip list reference directly (or via a stub), call the router, and assert the original dict objects are unchanged post-call without any JSON interception. The test should also remain robust to future second-pass json.loads calls.\n\nmemory_hints:\n- search: \"mutation test json.loads monkey-patch source_path resolution\"\n- entity: \"test_render_router\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -4134,7 +4145,7 @@
       ],
       "created": "2026-04-04T13:09:43.652Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T13:09:43.653Z"
+      "updated": "2026-04-04T13:09:49.433Z"
     }
   }
 }
