@@ -5348,11 +5348,11 @@
         "description": "In autopilot/plan/otio_export.py, guard two crash bugs: (1) line 152 — change `float(trans_data.get('duration', 0.5))` to `float(trans_data.get('duration') or 0.5)` to avoid `float(None)` TypeError; (2) line 134 — change `pos = trans_data.get('position', 0)` to `pos = trans_data.get('position') or 0` to avoid None dict-key and subsequent `sorted()` TypeError. Also (3) line 151 — change `trans_data.get('type', 'cut')` to `trans_data.get('type')` (no default) since 'cut' and missing-key entries were already filtered at lines 128-130; the default is dead code.\n\nmemory_hints:\n- search: \"OTIO _insert_transitions null handling dict.get or idiom\"\n- search: \"OTIO transition duration position null crash\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "high",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:25:17.933Z",
+        "updatedAt": "2026-04-04T19:02:31.548Z",
         "metadata": {
           "modules": [
             "autopilot/plan/otio_export.py",
@@ -5655,9 +5655,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:46:14.502Z",
+      "lastModified": "2026-04-04T19:02:31.548Z",
       "taskCount": 321,
-      "completedCount": 196,
+      "completedCount": 197,
       "tags": [
         "master"
       ]
