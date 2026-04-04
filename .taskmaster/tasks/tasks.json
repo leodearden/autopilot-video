@@ -4365,10 +4365,11 @@
         "description": "In tests/test_web_app.py lines 206-207, replace the two `assert` statements with explicit `raise AssertionError(...)` calls to match line 216 and avoid silent suppression under `python -O`. Change:\n  assert 0 <= start < len(source), f\"start {start} out of range for {label}\"\n  assert source[start] == \"{\", f\"expected '{{' at position {start} in {label}\"\nto:\n  if not (0 <= start < len(source)):\n      raise AssertionError(f\"start {start} out of range for {label}\")\n  if source[start] != \"{\":\n      raise AssertionError(f\"expected '{{' at position {start} in {label}\")\n\nmemory_hints: search for \"assert raise style consistency _brace_match_from\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T14:05:47.262Z"
       },
       {
         "id": "230",
@@ -4640,7 +4641,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:05:47.179Z",
+      "lastModified": "2026-04-04T14:05:47.262Z",
       "taskCount": 252,
       "completedCount": 171,
       "tags": [
