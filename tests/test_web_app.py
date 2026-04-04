@@ -268,6 +268,12 @@ def _extract_function_body(js_source: str, func_name: str) -> str:
     return js_source[body_start:body_end]
 
 
+@pytest.fixture(scope="module")
+def app_js_source() -> str:
+    """Read app.js once and cache for the entire test module."""
+    return _read_app_js()
+
+
 class TestExtractFunctionBody:
     """Tests for the _extract_function_body helper."""
 
