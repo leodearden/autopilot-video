@@ -3789,17 +3789,18 @@
         "description": "Strengthen the TestIdempotency tests in tests/test_audio_events.py with better assertions and comments:\n\n1. **Postcondition assertion (most important):** After calling classify_audio_events in test_skip_when_events_exist_at_nonzero_timestamp, assert that DB state is unchanged — the 2 pre-existing events are still present and no extra rows were written. E.g.: `events = catalog_db.get_audio_events_for_range('vid1', 0.0, 10.0); assert len(events) == 2`. Do the same for test_skip_when_events_exist (assert 1 event remains). This catches bugs where the function skips model loading but still mutates DB rows.\n\n2. **Broader scheduler assertion:** Add `scheduler.assert_not_called()` alongside `scheduler.model.assert_not_called()` in both idempotency tests to cover any hypothetical scheduler method calls that don't go through `.model`.\n\n3. **Regression test comment:** In test_skip_when_events_exist_at_nonzero_timestamp (line 357), change comment from `# Scheduler should NOT be called for model loading` to `# Scheduler should NOT be called: classification skipped because events already exist` to better reflect the regression test's intent.\n\nmemory_hints:\n- search: \"audio events idempotency checkpoint\"\n- search: \"classify_audio_events test patterns\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [
           "144"
         ],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T09:07:41.056Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T09:07:39.382Z",
+      "lastModified": "2026-04-04T09:07:41.056Z",
       "taskCount": 193,
       "completedCount": 142,
       "tags": [
