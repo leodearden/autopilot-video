@@ -432,18 +432,7 @@ class TestSSEHandlerFactory:
         else_brace_start = factory_body.find("{", else_pos + 1)
         assert else_brace_start != -1, "opening brace of else block not found"
 
-        brace_depth = 0
-        else_end = else_brace_start
-        for i in range(else_brace_start, len(factory_body)):
-            if factory_body[i] == "{":
-                brace_depth += 1
-            elif factory_body[i] == "}":
-                brace_depth -= 1
-                if brace_depth == 0:
-                    else_end = i + 1
-                    break
-
-        else_body = factory_body[else_brace_start:else_end]
+        else_body = _brace_match_from(factory_body, else_brace_start, "else block")
 
         # The else branch must call showToast for fallback toast on missing stage
         assert "showToast" in else_body, (
