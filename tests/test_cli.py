@@ -587,9 +587,7 @@ class TestDryRunSubcommands:
                 assert result.exit_code == 0, (
                     f"{cmd_name} --dry-run failed: {result.output}"
                 )
-                assert not stage_func.called, (
-                    f"{cmd_name} --dry-run should NOT call any stage function"
-                )
+                stage_func.assert_not_called()  # --dry-run should NOT call any stage function
 
     @pytest.mark.parametrize(
         "cmd_name,expected_stages",
@@ -647,15 +645,9 @@ class TestDryRunZeroSideEffects:
                     assert result.exit_code == 0, (
                         f"{cmd_name} --dry-run failed: {result.output}"
                     )
-                    assert not mock_load.called, (
-                        f"{cmd_name} --dry-run should NOT call load_config"
-                    )
-                    assert not mock_db_cls.called, (
-                        f"{cmd_name} --dry-run should NOT instantiate CatalogDB"
-                    )
-                    assert not mock_orch_cls.called, (
-                        f"{cmd_name} --dry-run should NOT instantiate PipelineOrchestrator"
-                    )
+                    mock_load.assert_not_called()  # --dry-run should NOT call load_config
+                    mock_db_cls.assert_not_called()  # --dry-run should NOT instantiate CatalogDB
+                    mock_orch_cls.assert_not_called()  # --dry-run should NOT instantiate PipelineOrchestrator
 
 
 
