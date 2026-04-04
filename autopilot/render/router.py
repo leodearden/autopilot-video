@@ -128,6 +128,7 @@ def route_and_render(
 
     # -- Render each clip ------------------------------------------------------
     segments: list[Path] = []
+    resolved_clips: list[dict] = []
 
     with tempfile.TemporaryDirectory(prefix="render_") as work_dir_str:
         work_dir = Path(work_dir_str)
@@ -171,6 +172,7 @@ def route_and_render(
                     )
                 clip = {**clip, "source_path": str(file_path)}
 
+            resolved_clips.append(clip)
             classification = _classify_clip(clip, crop_modes)
 
             if classification == "slow" and clip_id is None:
@@ -265,7 +267,7 @@ def route_and_render(
         # -- Collect subtitle segments from per-clip transcripts ----------------
         all_subtitle_segs: list[dict] = []
         cumulative_offset = 0.0
-        for clip in clips:
+        for clip in resolved_clips:
             media_id: str | None = clip.get("clip_id")
             transcript = db.get_transcript(media_id) if media_id is not None else None
             if transcript and transcript.get("segments_json"):

@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from autopilot.config import YouTubeConfig
 from autopilot.upload.youtube import _build_upload_metadata
 
 # ---------------------------------------------------------------------------
@@ -85,7 +86,7 @@ def _setup_google_mocks():
 @pytest.fixture
 def youtube_config():
     """Default YouTube upload config used by most metadata tests."""
-    return MagicMock(privacy_status="unlisted", default_category="22")
+    return YouTubeConfig(privacy_status="unlisted", default_category="22")
 
 
 class TestLoadCredentials:
@@ -176,20 +177,26 @@ class TestBuildUploadMetadata:
         assert "Narrative desc" in meta["snippet"]["description"]
 
     def _setup_media_with_detections(
-        self, catalog_db, detections_json, *, activity_cluster_ids_json=None
+        self, catalog_db, detections_json, *, activity_cluster_ids: list[str] | None = None
     ):
         """Set up a narrative + media + detections for metadata tests."""
         catalog_db.insert_narrative(
             "n1",
             title="Title",
             description="desc",
-            activity_cluster_ids_json=activity_cluster_ids_json,
+            activity_cluster_ids_json=(
+                json.dumps(activity_cluster_ids) if activity_cluster_ids is not None else None
+            ),
         )
         catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
         catalog_db.batch_insert_detections(detections_json)
 
     def test_tags_from_activity_labels_and_detections(self, catalog_db, youtube_config):
         """Tags combine activity cluster labels and detected object classes."""
+        # Insert activity clusters before the narrative that references them
+        catalog_db.insert_activity_cluster("c1", label="hiking")
+        catalog_db.insert_activity_cluster("c2", label="camping")
+
         self._setup_media_with_detections(
             catalog_db,
             [
@@ -214,10 +221,8 @@ class TestBuildUploadMetadata:
                     ),
                 ),
             ],
-            activity_cluster_ids_json=json.dumps(["c1", "c2"]),
+            activity_cluster_ids=["c1", "c2"],
         )
-        catalog_db.insert_activity_cluster("c1", label="hiking")
-        catalog_db.insert_activity_cluster("c2", label="camping")
 
         meta = _build_upload_metadata("n1", catalog_db, youtube_config)
         tags = meta["snippet"]["tags"]
@@ -228,6 +233,72 @@ class TestBuildUploadMetadata:
         assert "person" in tags
         assert "backpack" in tags
         assert "tent" in tags
+
+    def test_tags_missing_activity_clusters_gracefully_degrades(
+        self, catalog_db, youtube_config
+    ):
+        """Missing cluster IDs are silently skipped; detection tags still appear."""
+        self._setup_media_with_detections(
+            catalog_db,
+            [
+                (
+                    "m1",
+                    0,
+                    json.dumps([{"class": "person", "confidence": 0.9}]),
+                ),
+            ],
+            activity_cluster_ids=["nonexistent_c1"],
+        )
+
+        meta = _build_upload_metadata("n1", catalog_db, youtube_config)
+        tags = meta["snippet"]["tags"]
+        assert "person" in tags
+        assert len(tags) == 1
+
+    def test_uses_targeted_cluster_lookup_not_full_scan(
+        self, catalog_db, youtube_config
+    ):
+        """Regression guard: _build_upload_metadata must call the targeted
+        get_activity_clusters_by_ids() rather than the full-scan
+        get_activity_clusters()."""
+        catalog_db.insert_activity_cluster("c1", label="hiking")
+        catalog_db.insert_activity_cluster("c2", label="camping")
+
+        self._setup_media_with_detections(
+            catalog_db,
+            [
+                (
+                    "m1",
+                    0,
+                    json.dumps([{"class": "person", "confidence": 0.9}]),
+                ),
+            ],
+            activity_cluster_ids=["c1", "c2"],
+        )
+
+        with patch.object(
+            catalog_db,
+            "get_activity_clusters_by_ids",
+            wraps=catalog_db.get_activity_clusters_by_ids,
+        ) as spy_by_ids, patch.object(
+            catalog_db,
+            "get_activity_clusters",
+            wraps=catalog_db.get_activity_clusters,
+        ) as spy_full_scan:
+            meta = _build_upload_metadata("n1", catalog_db, youtube_config)
+
+        # The targeted method must be used
+        spy_by_ids.assert_called_once()
+        called_ids = spy_by_ids.call_args[0][0]
+        assert sorted(called_ids) == ["c1", "c2"]
+
+        # The full-scan method must NOT be used
+        spy_full_scan.assert_not_called()
+
+        # Functional correctness preserved
+        tags = meta["snippet"]["tags"]
+        assert "hiking" in tags
+        assert "camping" in tags
 
     @pytest.mark.parametrize(
         "detections_json",
@@ -246,7 +317,8 @@ class TestBuildUploadMetadata:
     def test_tags_empty_when_detections_lack_class_key(
         self, catalog_db, youtube_config, detections_json
     ):
-        """Detections without a 'class' key produce no tags."""
+        """Detections using the old 'class_name' key (regression guard) or
+        missing 'class' entirely produce no tags."""
         self._setup_media_with_detections(
             catalog_db,
             [("m1", 0, json.dumps(detections_json))],
@@ -279,6 +351,68 @@ class TestBuildUploadMetadata:
         assert "" not in tags
         assert tags == ["dog"]
 
+    def test_setup_helper_encodes_cluster_ids_as_json(self, catalog_db, youtube_config):
+        """Helper encodes activity_cluster_ids list as JSON string in the DB."""
+        self._setup_media_with_detections(
+            catalog_db,
+            [("m1", 0, json.dumps([{"class": "x", "confidence": 0.9}]))],
+            activity_cluster_ids=["x1"],
+        )
+        narrative = catalog_db.get_narrative("n1")
+        assert narrative["activity_cluster_ids_json"] == json.dumps(["x1"])
+
+    def test_setup_helper_omitted_cluster_ids_stores_none(self, catalog_db, youtube_config):
+        """When activity_cluster_ids is omitted, the DB stores None."""
+        self._setup_media_with_detections(
+            catalog_db,
+            [("m1", 0, json.dumps([{"class": "x", "confidence": 0.9}]))],
+        )
+        narrative = catalog_db.get_narrative("n1")
+        assert narrative["activity_cluster_ids_json"] is None
+
+    def test_uses_targeted_query_not_full_scan(
+        self, catalog_db, youtube_config, monkeypatch
+    ):
+        """_build_upload_metadata calls get_activity_clusters_by_ids, not get_activity_clusters."""
+        from autopilot.db import CatalogDB
+
+        # Trap: full-table-scan method should NOT be called
+        def _full_scan_trap(self_db):
+            raise AssertionError(
+                "Full table scan: get_activity_clusters() should not be called"
+            )
+
+        monkeypatch.setattr(CatalogDB, "get_activity_clusters", _full_scan_trap)
+
+        # Spy: targeted query should be called with the correct IDs
+        batch_args: list[list[str]] = []
+        _original = CatalogDB.get_activity_clusters_by_ids
+
+        def _batch_spy(self_db, cluster_ids):
+            batch_args.append(list(cluster_ids))
+            return _original(self_db, cluster_ids)
+
+        monkeypatch.setattr(CatalogDB, "get_activity_clusters_by_ids", _batch_spy)
+
+        # Set up data with two activity clusters
+        catalog_db.insert_activity_cluster("c1", label="hiking")
+        catalog_db.insert_activity_cluster("c2", label="camping")
+        self._setup_media_with_detections(
+            catalog_db,
+            [("m1", 0, json.dumps([{"class": "person", "confidence": 0.9}]))],
+            activity_cluster_ids=["c1", "c2"],
+        )
+
+        meta = _build_upload_metadata("n1", catalog_db, youtube_config)
+
+        # Verify the targeted method was called with the right IDs
+        assert len(batch_args) == 1
+        assert sorted(batch_args[0]) == ["c1", "c2"]
+        # Verify results still correct
+        tags = meta["snippet"]["tags"]
+        assert "hiking" in tags
+        assert "camping" in tags
+
     def test_uses_config_privacy_status_and_category(self, catalog_db):
         """Privacy and category come from YouTubeConfig."""
         catalog_db.insert_narrative("n1", title="Title", description="desc")
@@ -289,6 +423,14 @@ class TestBuildUploadMetadata:
         meta = _build_upload_metadata("n1", catalog_db, config)
         assert meta["snippet"]["categoryId"] == "19"
         assert meta["status"]["privacyStatus"] == "private"
+
+    def test_youtube_config_fixture_is_real_dataclass(self, youtube_config):
+        """The youtube_config fixture returns a real YouTubeConfig, not a mock."""
+        from autopilot.config import YouTubeConfig
+
+        assert isinstance(youtube_config, YouTubeConfig)
+        assert youtube_config.privacy_status == "unlisted"
+        assert youtube_config.default_category == "22"
 
 
 # ---------------------------------------------------------------------------

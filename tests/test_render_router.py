@@ -1236,49 +1236,71 @@ class TestSourcePathResolution:
                 route_and_render("n1", db, config, Path("/tmp/test_output"))
 
     def test_source_path_resolution_does_not_mutate_original_clip(self) -> None:
-        """Resolving source_path should NOT mutate the original clip dict."""
+        """Resolving source_path creates a new dict; originals stay untouched."""
         from autopilot.render.router import route_and_render
 
-        clips = [
-            {
-                "clip_id": "clip_1",
-                "in_timecode": "00:00:00.000",
-                "out_timecode": "00:00:10.000",
-                "track": 1,
-            }
-        ]
-        edl = _make_edl(clips=clips)
+        clip_a = {
+            "clip_id": "clip_a",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:05.000",
+            "track": 1,
+        }
+        clip_b = {
+            "clip_id": "clip_b",
+            "in_timecode": "00:00:05.000",
+            "out_timecode": "00:00:10.000",
+            "track": 1,
+        }
+        original_keys_a = set(clip_a.keys())
+        original_keys_b = set(clip_b.keys())
+
+        edl = _make_edl(clips=[clip_a, clip_b])
         db = MagicMock()
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
-        db.get_media.return_value = {"file_path": "/resolved/clip.mp4"}
+        db.get_media.side_effect = lambda cid: {
+            "clip_a": {"file_path": "/media/a.mp4"},
+            "clip_b": {"file_path": "/media/b.mp4"},
+        }[cid]
         config = _make_config()
 
-        # Capture the deserialized clips to verify they aren't mutated
-        parsed_clips: list[dict] = []
+        # Capture deserialized clip dicts that json.loads produces inside the
+        # router.  This lets us assert on the actual objects the router operates
+        # on — the only way to detect in-place mutation at router.py line 154.
         _real_loads = json.loads
+        parsed_clips: list[dict] = []
 
-        def _capturing_loads(s: object, *a: object, **kw: object) -> object:
-            result = _real_loads(str(s), *a, **kw)  # type: ignore[arg-type]
+        def _capturing_loads(*args, **kwargs):
+            result = _real_loads(*args, **kwargs)
             if isinstance(result, dict) and "clips" in result:
                 parsed_clips.extend(result["clips"])
             return result
 
         with (
-            patch("autopilot.render.router.json.loads", side_effect=_capturing_loads),
+            patch("autopilot.render.router.json.loads", _capturing_loads),
             patch("autopilot.render.router.render_simple") as mock_rs,
             patch("subprocess.run"),
         ):
             mock_rs.return_value = Path("/tmp/seg.mp4")
             route_and_render("n1", db, config, Path("/tmp/test_output"))
 
-        # The deserialized clip dict should NOT have source_path added
-        assert len(parsed_clips) == 1
+        # render_simple called once per clip with correct source_path
+        assert mock_rs.call_count == 2
+        rendered_a = mock_rs.call_args_list[0][0][0]
+        rendered_b = mock_rs.call_args_list[1][0][0]
+        assert rendered_a["source_path"] == "/media/a.mp4"
+        assert rendered_b["source_path"] == "/media/b.mp4"
+
+        # Each rendered clip has exactly the original keys + source_path
+        assert set(rendered_a.keys()) == original_keys_a | {"source_path"}
+        assert set(rendered_b.keys()) == original_keys_b | {"source_path"}
+
+        # Deserialized clips should NOT have source_path — the router must
+        # create new dicts (via dict-spread) rather than mutating in place.
+        assert len(parsed_clips) == 2
         assert "source_path" not in parsed_clips[0]
-        # But the renderer should still have received the resolved source_path
-        rendered_clip = mock_rs.call_args[0][0]
-        assert rendered_clip["source_path"] == "/resolved/clip.mp4"
+        assert "source_path" not in parsed_clips[1]
 
 
 # ---------------------------------------------------------------------------
@@ -1592,3 +1614,189 @@ class TestClipIdValidation:
             f"route_and_render contains {len(asserts)} assert statement(s); "
             "use explicit 'if … raise RoutingError(…)' guards instead"
         )
+
+
+# ---------------------------------------------------------------------------
+# Resolved clips list accumulation
+# ---------------------------------------------------------------------------
+
+
+class TestResolvedClipsList:
+    """Verify resolved clips accumulate with explicit source_path lifetime."""
+
+    def test_all_rendered_clips_have_source_path_in_mixed_scenario(self) -> None:
+        """Mixed pre-existing + resolved clips should all have source_path in render."""
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "clip_id": "c1",
+                "source_path": "/already/c1.mp4",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:05.000",
+                "track": 1,
+            },
+            {
+                "clip_id": "c2",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:05.000",
+                "track": 1,
+            },
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        db.get_media.side_effect = lambda mid: {"file_path": f"/resolved/{mid}.mp4"}
+        config = _make_config()
+
+        # Capture the deserialized clips to verify non-mutation
+        parsed_clips: list[dict] = []
+        _real_loads = json.loads
+
+        def _capturing_loads(s: object, *a: object, **kw: object) -> object:
+            result = _real_loads(str(s), *a, **kw)  # type: ignore[arg-type]
+            if isinstance(result, dict) and "clips" in result:
+                parsed_clips.extend(result["clips"])
+            return result
+
+        rendered_clips_collected: list[dict] = []
+        with (
+            patch("autopilot.render.router.json.loads", side_effect=_capturing_loads),
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run"),
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+            # Collect all clips passed to the renderer
+            for call in mock_rs.call_args_list:
+                rendered_clips_collected.append(call[0][0])
+
+        # Both rendered clips must have source_path
+        assert len(rendered_clips_collected) == 2
+        assert rendered_clips_collected[0]["source_path"] == "/already/c1.mp4"
+        assert rendered_clips_collected[1]["source_path"] == "/resolved/c2.mp4"
+
+        # Original deserialized clips must be unmodified:
+        # c1 had source_path pre-set, c2 should NOT have source_path
+        assert len(parsed_clips) == 2
+        assert parsed_clips[0]["source_path"] == "/already/c1.mp4"
+        assert "source_path" not in parsed_clips[1]
+
+        # db.get_media only called for c2 (c1 had source_path pre-set)
+        db.get_media.assert_called_once_with("c2")
+
+    def test_subtitle_loop_uses_resolved_clips(self) -> None:
+        """Subtitle pass should work correctly when clips need source_path resolution."""
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "clip_id": "c1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:05.000",
+                "track": 1,
+            },
+            {
+                "clip_id": "c2",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:05.000",
+                "track": 1,
+            },
+        ]
+        edl = _make_edl(clips=clips)
+        seg1 = [{"start": 0.0, "end": 2.0, "text": "First clip sub"}]
+        seg2 = [{"start": 0.0, "end": 2.0, "text": "Second clip sub"}]
+
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_media.side_effect = lambda mid: {"file_path": f"/resolved/{mid}.mp4"}
+
+        def _get_transcript(media_id: str):
+            if media_id == "c1":
+                return {"segments_json": json.dumps(seg1)}
+            elif media_id == "c2":
+                return {"segments_json": json.dumps(seg2)}
+            return None
+
+        db.get_transcript.side_effect = _get_transcript
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        # Verify subtitles filter appears in the ffmpeg command
+        concat_cmd = mock_run.call_args[0][0]
+        cmd_str = " ".join(concat_cmd)
+        assert "subtitles=" in cmd_str
+
+        # Both clips' transcripts should have been fetched
+        transcript_ids = [c[0][0] for c in db.get_transcript.call_args_list]
+        assert "c1" in transcript_ids
+        assert "c2" in transcript_ids
+
+    def test_original_clips_unmodified_after_full_pipeline(self) -> None:
+        """After render + subtitle pipeline, deserialized clips must lack source_path."""
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "clip_id": "c1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:05.000",
+                "track": 1,
+            },
+            {
+                "clip_id": "c2",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:05.000",
+                "track": 1,
+            },
+        ]
+        edl = _make_edl(clips=clips)
+        seg1 = [{"start": 0.0, "end": 2.0, "text": "Hello"}]
+
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_media.side_effect = lambda mid: {"file_path": f"/resolved/{mid}.mp4"}
+
+        def _get_transcript(media_id: str):
+            if media_id == "c1":
+                return {"segments_json": json.dumps(seg1)}
+            return None
+
+        db.get_transcript.side_effect = _get_transcript
+        config = _make_config()
+
+        # Capture the deserialized clips to verify non-mutation
+        parsed_clips: list[dict] = []
+        _real_loads = json.loads
+
+        def _capturing_loads(s: object, *a: object, **kw: object) -> object:
+            result = _real_loads(str(s), *a, **kw)  # type: ignore[arg-type]
+            if isinstance(result, dict) and "clips" in result:
+                parsed_clips.extend(result["clips"])
+            return result
+
+        with (
+            patch("autopilot.render.router.json.loads", side_effect=_capturing_loads),
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run"),
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        # After the full pipeline (render + subtitles), original clips must
+        # have NO source_path — the non-mutating {**clip} pattern is preserved
+        assert len(parsed_clips) == 2
+        for original_clip in parsed_clips:
+            assert "source_path" not in original_clip, (
+                f"Original clip {original_clip.get('clip_id')} was mutated with source_path"
+            )

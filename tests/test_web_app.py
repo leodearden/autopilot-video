@@ -264,6 +264,18 @@ def _extract_function_body(js_source: str, func_name: str) -> str:
     return _brace_match_from(js_source, body_start, func_name)
 
 
+@pytest.fixture(scope="module")
+def app_js_source() -> str:
+    """Read app.js once and cache for the entire test module."""
+    return _read_app_js()
+
+
+@pytest.fixture(scope="class")
+def make_stage_handler_body(app_js_source: str) -> str:
+    """Extract makeStageHandler body once per class that needs it."""
+    return _extract_function_body(app_js_source, "makeStageHandler")
+
+
 class TestExtractFunctionBody:
     """Tests for the _extract_function_body helper."""
 
@@ -376,13 +388,28 @@ class TestBraceMatchFrom:
             _brace_match_from("", 0, "empty")
 
 
+class TestFixtureSanity:
+    """Sanity checks for module-scoped caching fixtures."""
+
+    def test_app_js_source_returns_string(self, app_js_source: str) -> None:
+        """app_js_source fixture returns a non-empty string containing 'function'."""
+        assert isinstance(app_js_source, str)
+        assert len(app_js_source) > 0
+        assert "function" in app_js_source
+
+    def test_make_stage_handler_body_contains_try_catch(self, make_stage_handler_body: str) -> None:
+        """make_stage_handler_body fixture returns a string containing 'try' and 'catch'."""
+        assert isinstance(make_stage_handler_body, str)
+        assert "try" in make_stage_handler_body
+        assert "catch" in make_stage_handler_body
+
+
 class TestSSEErrorHandling:
     """Tests for SSE notification error handling in app.js."""
 
-    def test_sse_notification_listener_has_try_catch(self) -> None:
+    def test_sse_notification_listener_has_try_catch(self, app_js_source: str) -> None:
         """The SSE notification listener wraps JSON.parse in try/catch."""
-        js_source = _read_app_js()
-        listener_body = _extract_listener_body(js_source, "notification")
+        listener_body = _extract_listener_body(app_js_source, "notification")
 
         # Assert try/catch wraps the JSON.parse
         assert "try" in listener_body, "try block not found in notification listener"
@@ -395,69 +422,67 @@ class TestSSEErrorHandling:
 class TestSSEHandlerFactory:
     """Tests for the makeStageHandler factory function in app.js."""
 
-    def test_make_stage_handler_defined(self) -> None:
+    def test_make_stage_handler_defined(self, app_js_source: str) -> None:
         """makeStageHandler function is defined in app.js."""
-        js_source = _read_app_js()
-        assert "function makeStageHandler" in js_source, (
+        assert "function makeStageHandler" in app_js_source, (
             "makeStageHandler factory function not found in app.js"
         )
 
-    def test_make_stage_handler_has_try_catch(self) -> None:
+    def test_make_stage_handler_has_try_catch(self, make_stage_handler_body: str) -> None:
         """makeStageHandler contains try/catch error handling."""
-        js_source = _read_app_js()
-        factory_body = _extract_function_body(js_source, "makeStageHandler")
-        assert "try" in factory_body, "try block not found in makeStageHandler"
-        assert "catch" in factory_body, "catch block not found in makeStageHandler"
-        assert "console.error" in factory_body, (
+        assert "try" in make_stage_handler_body, "try block not found in makeStageHandler"
+        assert "catch" in make_stage_handler_body, "catch block not found in makeStageHandler"
+        assert "console.error" in make_stage_handler_body, (
             "console.error not found in makeStageHandler catch block"
         )
 
-    def test_make_stage_handler_has_console_warn_for_missing_stage(self) -> None:
+    def test_make_stage_handler_has_console_warn_for_missing_stage(
+        self, make_stage_handler_body: str,
+    ) -> None:
         """makeStageHandler logs console.warn when data.stage is falsy."""
-        js_source = _read_app_js()
-        factory_body = _extract_function_body(js_source, "makeStageHandler")
-        assert "console.warn" in factory_body, (
+        assert "console.warn" in make_stage_handler_body, (
             "console.warn for missing stage field not found in makeStageHandler"
         )
 
-    def test_make_stage_handler_calls_refresh_stage_card(self) -> None:
+    def test_make_stage_handler_calls_refresh_stage_card(
+        self, make_stage_handler_body: str,
+    ) -> None:
         """makeStageHandler calls refreshStageCard when stage is present."""
-        js_source = _read_app_js()
-        factory_body = _extract_function_body(js_source, "makeStageHandler")
-        assert "refreshStageCard" in factory_body, (
+        assert "refreshStageCard" in make_stage_handler_body, (
             "refreshStageCard call not found in makeStageHandler"
         )
-        assert "if (refreshCard)" in factory_body, (
+        assert "if (refreshCard)" in make_stage_handler_body, (
             "conditional guard 'if (refreshCard)' not found in makeStageHandler. "
             "refreshStageCard must only be called when the refreshCard param is true."
         )
 
-    def test_setup_dashboard_sse_uses_factory(self) -> None:
+    def test_setup_dashboard_sse_uses_factory(self, app_js_source: str) -> None:
         """setupDashboardSSE uses makeStageHandler for all 3 event types."""
-        js_source = _read_app_js()
-        dashboard_body = _extract_function_body(js_source, "setupDashboardSSE")
+        dashboard_body = _extract_function_body(app_js_source, "setupDashboardSSE")
 
         for event_type in ("stage_started", "stage_completed", "job_progress"):
             assert f"makeStageHandler('{event_type}'" in dashboard_body, (
                 f"setupDashboardSSE does not use makeStageHandler for '{event_type}'"
             )
 
-    def test_stage_error_uses_factory(self) -> None:
-        """stage_error handler uses makeStageHandler with toast parameters."""
-        js_source = _read_app_js()
-        assert "makeStageHandler('stage_error'" in js_source, (
-            "stage_error handler does not use makeStageHandler"
-        )
-        assert (
-            "makeStageHandler('stage_error', 'Error in {stage} stage', 'error', 6000, false)"
-            in js_source
-        ), (
-            "stage_error factory call does not match expected 5-param signature: "
-            "('stage_error', 'Error in {stage} stage', 'error', 6000, false)"
+    def test_stage_error_handled_via_notification(self, app_js_source: str) -> None:
+        """stage_error is handled server-side via notification events, not client-side."""
+        # The unified notification handler in setupNotificationSSE handles all
+        # user-facing notifications including stage errors.
+        func_start = app_js_source.find("function setupNotificationSSE")
+        assert func_start != -1
+        func_body = app_js_source[func_start:]
+        next_func = func_body.find("\nfunction ", 1)
+        if next_func != -1:
+            func_body = func_body[:next_func]
+        assert "addEventListener('notification'" in func_body, (
+            "setupNotificationSSE should handle unified notification events"
         )
 
 
-    def test_make_stage_handler_shows_toast_on_missing_stage(self) -> None:
+    def test_make_stage_handler_shows_toast_on_missing_stage(
+        self, make_stage_handler_body: str,
+    ) -> None:
         """makeStageHandler shows a fallback toast when stage is missing and toastMsg is provided.
 
         This catches the regression where stage_error events with no stage field
@@ -465,9 +490,7 @@ class TestSSEHandlerFactory:
         path) must call showToast with '{stage}' replaced by 'unknown' so that
         error-level events always surface to the user.
         """
-        js_source = _read_app_js()
-
-        factory_body = _extract_function_body(js_source, "makeStageHandler")
+        factory_body = make_stage_handler_body
 
         # Locate the else branch (the missing-stage path)
         else_pos = factory_body.find("} else {")
@@ -493,39 +516,17 @@ class TestSSEHandlerFactory:
 class TestSSERunHandlerRobustness:
     """Tests that run_completed and run_failed handlers have try/catch."""
 
-    def test_run_completed_has_try_catch(self) -> None:
-        """run_completed handler wraps its body in try/catch."""
-        js_source = _read_app_js()
-        body = _extract_listener_body(js_source, "run_completed")
-        assert "try" in body, "try block not found in run_completed handler"
-        assert "catch" in body, "catch block not found in run_completed handler"
-        assert "console.error" in body, "console.error not found in run_completed catch block"
-        assert "'Pipeline run completed!'" in body, (
-            "toast message 'Pipeline run completed!' not found in run_completed handler"
-        )
-        assert "'success'" in body, (
-            "toast type 'success' not found in run_completed handler"
-        )
-        assert "6000" in body, (
-            "toast duration 6000 not found in run_completed handler"
-        )
+    def test_notification_handler_has_try_catch(self, app_js_source: str) -> None:
+        """The unified notification handler wraps its body in try/catch.
 
-    def test_run_failed_has_try_catch(self) -> None:
-        """run_failed handler wraps its body in try/catch."""
-        js_source = _read_app_js()
-        body = _extract_listener_body(js_source, "run_failed")
-        assert "try" in body, "try block not found in run_failed handler"
-        assert "catch" in body, "catch block not found in run_failed handler"
-        assert "console.error" in body, "console.error not found in run_failed catch block"
-        assert "'Pipeline run failed'" in body, (
-            "toast message 'Pipeline run failed' not found in run_failed handler"
-        )
-        assert "'error'" in body, (
-            "toast type 'error' not found in run_failed handler"
-        )
-        assert "8000" in body, (
-            "toast duration 8000 not found in run_failed handler"
-        )
+        run_completed and run_failed are now handled server-side via notification
+        events. The notification handler in setupNotificationSSE must have
+        error handling to avoid silently dropping events.
+        """
+        body = _extract_listener_body(app_js_source, "notification")
+        assert "try" in body, "try block not found in notification handler"
+        assert "catch" in body, "catch block not found in notification handler"
+        assert "console.error" in body, "console.error not found in notification catch block"
 
 
 class TestDashboardSSEEventCoverage:
@@ -548,14 +549,12 @@ class TestDashboardSSEEventCoverage:
     }
 
     # Legacy SSE listeners in app.js that are not in VALID_EVENT_TYPES.
-    # 'notification' handler exists but the server never emits this event type.
-    _LEGACY_SSE_LISTENERS: frozenset[str] = frozenset({"notification"})
+    # Currently empty — 'notification' was promoted to VALID_EVENT_TYPES.
+    _LEGACY_SSE_LISTENERS: frozenset[str] = frozenset()
 
-    def test_all_dashboard_event_types_handled(self) -> None:
+    def test_all_dashboard_event_types_handled(self, app_js_source: str) -> None:
         """Every VALID_EVENT_TYPE (except job-level and server-only) has a listener in app.js."""
         from autopilot.web.routes.sse import VALID_EVENT_TYPES
-
-        js_source = _read_app_js()
 
         dashboard_event_types = (
             set(VALID_EVENT_TYPES) - self._JOB_LEVEL_EVENTS - self._SERVER_ONLY_EVENTS
@@ -563,22 +562,20 @@ class TestDashboardSSEEventCoverage:
         missing = []
         for event_type in sorted(dashboard_event_types):
             marker = f"source.addEventListener('{event_type}'"
-            if marker not in js_source:
+            if marker not in app_js_source:
                 missing.append(event_type)
 
         assert not missing, (
             f"Dashboard-relevant event types missing addEventListener in app.js: {missing}"
         )
 
-    def test_no_orphaned_sse_listeners(self) -> None:
+    def test_no_orphaned_sse_listeners(self, app_js_source: str) -> None:
         """Every source.addEventListener in app.js corresponds to a known event type."""
         from autopilot.web.routes.sse import VALID_EVENT_TYPES
 
-        js_source = _read_app_js()
-
         # Extract event types from source.addEventListener('...') calls only —
         # this excludes DOM-level listeners like document.addEventListener('DOMContentLoaded').
-        sse_listeners = set(re.findall(r"source\.addEventListener\('([^']+)'", js_source))
+        sse_listeners = set(re.findall(r"source\.addEventListener\('([^']+)'", app_js_source))
 
         allowed = set(VALID_EVENT_TYPES) | self._LEGACY_SSE_LISTENERS
         orphaned = sorted(sse_listeners - allowed)
@@ -586,10 +583,9 @@ class TestDashboardSSEEventCoverage:
             f"SSE listeners in app.js not in VALID_EVENT_TYPES or _LEGACY_SSE_LISTENERS: {orphaned}"
         )
 
-    def test_legacy_listeners_exist_in_app_js(self) -> None:
+    def test_legacy_listeners_exist_in_app_js(self, app_js_source: str) -> None:
         """Every _LEGACY_SSE_LISTENERS entry has a source.addEventListener in app.js."""
-        js_source = _read_app_js()
-        sse_listeners = set(re.findall(r"source\.addEventListener\('([^']+)'", js_source))
+        sse_listeners = set(re.findall(r"source\.addEventListener\('([^']+)'", app_js_source))
 
         stale = sorted(self._LEGACY_SSE_LISTENERS - sse_listeners)
         assert not stale, (

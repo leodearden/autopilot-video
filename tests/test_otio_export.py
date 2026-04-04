@@ -514,6 +514,7 @@ class TestTransitionMapping:
 
         # Verify transition is positioned between clips
         track_items = list(video_tracks[0])
+        assert len(track_items) == 3
         assert isinstance(track_items[1], otio.schema.Transition)
 
         # Transition has in_offset + out_offset = total duration
@@ -594,6 +595,177 @@ class TestTransitionMapping:
         assert any("wipe" in msg for msg in warning_messages), (
             f"Expected a WARNING containing 'wipe', got: {warning_messages}"
         )
+
+    def test_null_transition_type_falls_back_to_smpte_dissolve(self, tmp_path, caplog):
+        """Transition with type=None (key present, value null) falls back to SMPTE_Dissolve."""
+        import logging
+
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": None,
+                    "duration": 1.0,
+                    "position": 0,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+
+        with caplog.at_level(logging.WARNING, logger="autopilot.plan.otio_export"):
+            export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+        transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
+        assert len(transitions) == 1
+        assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
+        assert transitions[0].name == ""
+
+        # Verify structural ordering: Clip / Transition / Clip
+        track_items = list(video_tracks[0])
+        assert isinstance(track_items[0], otio.schema.Clip)
+        assert isinstance(track_items[1], otio.schema.Transition)
+        assert isinstance(track_items[2], otio.schema.Clip)
+
+        # Verify WARNING log mentions None
+        warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("None, falling back" in msg for msg in warning_messages), (
+            f"Expected a WARNING containing 'None, falling back', got: {warning_messages}"
+        )
+
+    def test_null_duration_uses_default(self, tmp_path):
+        """Transition with duration=None should use 0.5s default, not crash."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "crossfade",
+                    "duration": None,
+                    "position": 0,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+        track_items = self._assert_clip_transition_clip(video_tracks[0])
+        trans = track_items[1]
+        total_dur_sec = otio.opentime.to_seconds(trans.in_offset) + otio.opentime.to_seconds(
+            trans.out_offset
+        )
+        assert abs(total_dur_sec - 0.5) < 0.01
+
+    def test_null_position_uses_default(self, tmp_path):
+        """Transition with position=None should use position 0, not crash."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "crossfade",
+                    "duration": 1.0,
+                    "position": None,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+        self._assert_clip_transition_clip(video_tracks[0])
+
+    def test_cut_filtered_before_type_lookup(self, tmp_path):
+        """Cut transitions are filtered early; non-cut types produce Transitions."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "cut",
+                    "duration": 0,
+                    "position": 0,
+                },
+                {
+                    "type": "crossfade",
+                    "duration": 1.0,
+                    "position": 0,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+        transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
+        assert len(transitions) == 1
+        assert transitions[0].name == "crossfade"
 
 
 # -- Step 20: Multi-track transition isolation tests ---------------------------
@@ -1355,3 +1527,75 @@ class TestFadeApproximationMetadata:
         from autopilot.plan.otio_export import _FADE_APPROXIMATION_TYPES
 
         assert _FADE_APPROXIMATION_TYPES == {"fade_in", "fade_out"}
+
+    def test_fade_approximation_types_is_frozenset(self):
+        """_FADE_APPROXIMATION_TYPES is a frozenset (immutable)."""
+        from autopilot.plan.otio_export import _FADE_APPROXIMATION_TYPES
+
+        assert isinstance(_FADE_APPROXIMATION_TYPES, frozenset)
+
+    def test_fade_approximation_types_subset_of_transition_map(self):
+        """Every fade approximation type is a valid transition type."""
+        from autopilot.plan.otio_export import (
+            _FADE_APPROXIMATION_TYPES,
+            _TRANSITION_TYPE_MAP,
+        )
+
+        assert _FADE_APPROXIMATION_TYPES <= _TRANSITION_TYPE_MAP.keys()
+
+    def test_subset_assertion_exists_in_source(self):
+        """Module source contains a runtime assertion enforcing the subset invariant."""
+        import inspect
+
+        import autopilot.plan.otio_export as mod
+
+        source = inspect.getsource(mod)
+        assert "_FADE_APPROXIMATION_TYPES <= _TRANSITION_TYPE_MAP.keys()" in source
+
+    def test_fade_approximation_msg_constant_exists(self):
+        """_FADE_APPROXIMATION_MSG is a non-empty string constant."""
+        from autopilot.plan.otio_export import _FADE_APPROXIMATION_MSG
+
+        assert isinstance(_FADE_APPROXIMATION_MSG, str)
+        assert len(_FADE_APPROXIMATION_MSG) > 0
+
+    def test_fade_approximation_metadata_matches_msg_constant(self, tmp_path):
+        """Exported fade_in transition metadata matches _FADE_APPROXIMATION_MSG exactly."""
+        from autopilot.plan.otio_export import _FADE_APPROXIMATION_MSG, export_otio
+
+        edl = _minimal_edl(
+            clips=[
+                {
+                    "clip_id": "v1",
+                    "in_timecode": "00:00:00.000",
+                    "out_timecode": "00:00:10.000",
+                    "track": 1,
+                },
+                {
+                    "clip_id": "v2",
+                    "in_timecode": "00:00:10.000",
+                    "out_timecode": "00:00:20.000",
+                    "track": 1,
+                },
+            ],
+            transitions=[
+                {
+                    "type": "fade_in",
+                    "duration": 1.0,
+                    "position": 0,
+                },
+            ],
+        )
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+        transitions = [
+            item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)
+        ]
+        assert len(transitions) == 1
+
+        approx = transitions[0].metadata.get("autopilot", {}).get("approximation")
+        assert approx == _FADE_APPROXIMATION_MSG
