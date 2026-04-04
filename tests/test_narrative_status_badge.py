@@ -86,7 +86,8 @@ class TestSourceUsesGenericMacro:
     def test_source_uses_generic_macro(self) -> None:
         source_path = TEMPLATES_DIR / "macros" / "narrative_status_badge.html"
         source = source_path.read_text()
-        assert "{% from 'macros/status_badge.html' import status_badge as _generic_badge %}" in source
+        expected = "{% from 'macros/status_badge.html' import status_badge as _generic_badge %}"
+        assert expected in source
 
 
 class TestNarrativeCardBadge:
