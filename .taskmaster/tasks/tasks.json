@@ -4316,6 +4316,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 231,
+        "title": "Refactor test_raises_on_out_of_range_start to use pytest.mark.parametrize",
+        "description": "In tests/test_web_app.py lines 357-371, replace the single test method containing four sequential pytest.raises blocks with a parametrized test so each boundary case is independently reported. Use:\n  @pytest.mark.parametrize('source,start,label', [\n      ('{ ok }', 6, 'at-len'),\n      ('{ ok }', 11, 'beyond-len'),\n      ('{ ok }', -1, 'negative'),\n      ('', 0, 'empty'),\n  ])\n  def test_raises_on_out_of_range_start(self, source, start, label) -> None:\n      with pytest.raises(AssertionError, match='out of range'):\n          _brace_match_from(source, start, label)\n\nmemory_hints: search for \"pytest parametrize test_raises_on_out_of_range_start\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -4328,7 +4339,7 @@
       ],
       "created": "2026-04-04T13:15:17.693Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T13:15:20.308Z"
+      "updated": "2026-04-04T13:15:23.903Z"
     }
   }
 }
