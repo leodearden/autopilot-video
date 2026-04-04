@@ -9,7 +9,7 @@ import logging
 from fastapi import APIRouter, Request
 from sse_starlette.sse import EventSourceResponse, ServerSentEvent  # type: ignore[attr-defined]
 
-from autopilot.db import CatalogDB
+from autopilot.web.deps import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -32,11 +32,6 @@ VALID_EVENT_TYPES: tuple[str, ...] = (
 )
 
 router = APIRouter()
-
-
-def _get_db(request: Request) -> CatalogDB:
-    """Create a CatalogDB connection from the app's db_path."""
-    return CatalogDB(request.app.state.db_path)
 
 
 def _format_event(event: dict) -> ServerSentEvent:
@@ -75,7 +70,7 @@ def _get_last_event_id(request: Request) -> int:
 
 async def _event_generator(request: Request):
     """Async generator that polls pipeline_events and yields SSE events."""
-    db = _get_db(request)
+    db = get_db(request)
     last_event_id = _get_last_event_id(request)
     poll_count = 0
     try:

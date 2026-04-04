@@ -5,9 +5,13 @@ from __future__ import annotations
 import inspect
 import json
 import sys
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+from autopilot.config import YouTubeConfig
+from autopilot.upload.youtube import _build_upload_metadata
 
 # ---------------------------------------------------------------------------
 # Public API surface tests
@@ -79,6 +83,12 @@ def _setup_google_mocks():
     return mods, mock_google_oauth2_credentials, mock_google_auth_transport_requests
 
 
+@pytest.fixture
+def youtube_config():
+    """Default YouTube upload config used by most metadata tests."""
+    return YouTubeConfig(privacy_status="unlisted", default_category="22")
+
+
 class TestLoadCredentials:
     """Verify _load_credentials helper."""
 
@@ -148,57 +158,49 @@ class TestLoadCredentials:
 class TestBuildUploadMetadata:
     """Verify _build_upload_metadata helper."""
 
-    def test_builds_title_from_narrative(self, catalog_db):
+    def test_builds_title_from_narrative(self, catalog_db, youtube_config):
         """Title comes from narrative title in DB."""
-        from autopilot.upload.youtube import _build_upload_metadata
-
         catalog_db.insert_narrative("n1", title="My Great Video", description="desc")
-        config = MagicMock()
-        config.privacy_status = "unlisted"
-        config.default_category = "22"
 
-        meta = _build_upload_metadata("n1", catalog_db, config)
+        meta = _build_upload_metadata("n1", catalog_db, youtube_config)
         assert meta["snippet"]["title"] == "My Great Video"
 
-    def test_builds_description_from_script(self, catalog_db):
+    def test_builds_description_from_script(self, catalog_db, youtube_config):
         """Description includes narrative description and script content."""
-        from autopilot.upload.youtube import _build_upload_metadata
-
         catalog_db.insert_narrative("n1", title="Title", description="Narrative desc")
         catalog_db.upsert_narrative_script(
             "n1",
             json.dumps({"scenes": [{"narration": "Scene one narration."}]}),
         )
-        config = MagicMock()
-        config.privacy_status = "unlisted"
-        config.default_category = "22"
 
-        meta = _build_upload_metadata("n1", catalog_db, config)
+        meta = _build_upload_metadata("n1", catalog_db, youtube_config)
         assert "Narrative desc" in meta["snippet"]["description"]
 
-    def test_tags_from_activity_labels_and_detections(self, catalog_db):
-        """Tags combine activity cluster labels and detected object classes."""
-        from autopilot.upload.youtube import _build_upload_metadata
-
+    def _setup_media_with_detections(
+        self, catalog_db, detections_json, *, activity_cluster_ids_json=None
+    ):
+        """Set up a narrative + media + detections for metadata tests."""
         catalog_db.insert_narrative(
             "n1",
             title="Title",
             description="desc",
-            activity_cluster_ids_json=json.dumps(["c1", "c2"]),
+            activity_cluster_ids_json=activity_cluster_ids_json,
         )
-        catalog_db.insert_activity_cluster("c1", label="hiking")
-        catalog_db.insert_activity_cluster("c2", label="camping")
-        # Insert a media file + detections with class names
         catalog_db.insert_media("m1", file_path="/tmp/m1.mp4")
-        catalog_db.batch_insert_detections(
+        catalog_db.batch_insert_detections(detections_json)
+
+    def test_tags_from_activity_labels_and_detections(self, catalog_db, youtube_config):
+        """Tags combine activity cluster labels and detected object classes."""
+        self._setup_media_with_detections(
+            catalog_db,
             [
                 (
                     "m1",
                     0,
                     json.dumps(
                         [
-                            {"class_name": "person", "confidence": 0.9},
-                            {"class_name": "backpack", "confidence": 0.8},
+                            {"class": "person", "confidence": 0.9},
+                            {"class": "backpack", "confidence": 0.8},
                         ]
                     ),
                 ),
@@ -207,18 +209,18 @@ class TestBuildUploadMetadata:
                     1,
                     json.dumps(
                         [
-                            {"class_name": "person", "confidence": 0.85},
-                            {"class_name": "tent", "confidence": 0.7},
+                            {"class": "person", "confidence": 0.85},
+                            {"class": "tent", "confidence": 0.7},
                         ]
                     ),
                 ),
-            ]
+            ],
+            activity_cluster_ids_json=json.dumps(["c1", "c2"]),
         )
-        config = MagicMock()
-        config.privacy_status = "unlisted"
-        config.default_category = "22"
+        catalog_db.insert_activity_cluster("c1", label="hiking")
+        catalog_db.insert_activity_cluster("c2", label="camping")
 
-        meta = _build_upload_metadata("n1", catalog_db, config)
+        meta = _build_upload_metadata("n1", catalog_db, youtube_config)
         tags = meta["snippet"]["tags"]
         # Activity labels present
         assert "hiking" in tags
@@ -228,10 +230,59 @@ class TestBuildUploadMetadata:
         assert "backpack" in tags
         assert "tent" in tags
 
+    @pytest.mark.parametrize(
+        "detections_json",
+        [
+            [
+                {"class_name": "person", "confidence": 0.9},
+                {"class_name": "car", "confidence": 0.8},
+            ],
+            [
+                {"confidence": 0.9},
+                {"bbox": [0, 0, 100, 100]},
+            ],
+        ],
+        ids=["old_class_name_key", "no_class_key"],
+    )
+    def test_tags_empty_when_detections_lack_class_key(
+        self, catalog_db, youtube_config, detections_json
+    ):
+        """Detections using the old 'class_name' key (regression guard) or
+        missing 'class' entirely produce no tags."""
+        self._setup_media_with_detections(
+            catalog_db,
+            [("m1", 0, json.dumps(detections_json))],
+        )
+
+        meta = _build_upload_metadata("n1", catalog_db, youtube_config)
+        tags = meta["snippet"]["tags"]
+        assert tags == []
+
+    def test_tags_exclude_empty_string_class(self, catalog_db, youtube_config):
+        """Empty-string class values are excluded; valid ones are kept."""
+        self._setup_media_with_detections(
+            catalog_db,
+            [
+                (
+                    "m1",
+                    0,
+                    json.dumps(
+                        [
+                            {"class": "", "confidence": 0.9},
+                            {"class": "dog", "confidence": 0.8},
+                        ]
+                    ),
+                ),
+            ],
+        )
+
+        meta = _build_upload_metadata("n1", catalog_db, youtube_config)
+        tags = meta["snippet"]["tags"]
+        assert "" not in tags
+        assert tags == ["dog"]
+
     def test_uses_config_privacy_status_and_category(self, catalog_db):
         """Privacy and category come from YouTubeConfig."""
-        from autopilot.upload.youtube import _build_upload_metadata
-
         catalog_db.insert_narrative("n1", title="Title", description="desc")
         config = MagicMock()
         config.privacy_status = "private"
@@ -240,6 +291,14 @@ class TestBuildUploadMetadata:
         meta = _build_upload_metadata("n1", catalog_db, config)
         assert meta["snippet"]["categoryId"] == "19"
         assert meta["status"]["privacyStatus"] == "private"
+
+    def test_youtube_config_fixture_is_real_dataclass(self, youtube_config):
+        """The youtube_config fixture returns a real YouTubeConfig, not a mock."""
+        from autopilot.config import YouTubeConfig
+
+        assert isinstance(youtube_config, YouTubeConfig)
+        assert youtube_config.privacy_status == "unlisted"
+        assert youtube_config.default_category == "22"
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +382,11 @@ class TestUploadVideoFlow:
         assert upload_rec is not None
         assert upload_rec["youtube_video_id"] == "xyz789"
         assert upload_rec["youtube_url"] == "https://youtu.be/xyz789"
+        # uploaded_at must be set to a valid ISO-format UTC timestamp
+        assert upload_rec["uploaded_at"] is not None
+        ts = datetime.fromisoformat(upload_rec["uploaded_at"])
+        assert ts.tzinfo is not None, "uploaded_at must be timezone-aware"
+        assert ts.utcoffset() == timedelta(0), "uploaded_at must be UTC"
 
     def test_upload_returns_youtube_url(self, catalog_db, tmp_path):
         """Returns the YouTube URL for the uploaded video."""

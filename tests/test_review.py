@@ -879,3 +879,259 @@ class TestClusterExcludeHTMX:
             headers={"HX-Request": "true"},
         )
         assert "bg-red-900" in response.text
+
+
+# ---------------------------------------------------------------------------
+# TestGetNarrativeEditHTMX — task-100 step-1
+# ---------------------------------------------------------------------------
+
+class TestGetNarrativeEditHTMX:
+    """Tests for GET /api/narratives/{id}?edit=1 with HTMX returning edit form."""
+
+    def test_get_htmx_edit_returns_html(self, seeded_client: TestClient) -> None:
+        """GET /api/narratives/n-1?edit=1 with HX-Request returns text/html."""
+        response = seeded_client.get(
+            "/api/narratives/n-1?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+
+    def test_get_htmx_edit_contains_input_fields(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """HTMX edit response contains input fields for title, description, duration."""
+        response = seeded_client.get(
+            "/api/narratives/n-1?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert 'name="title"' in response.text
+        assert 'name="description"' in response.text
+        assert 'name="proposed_duration_seconds"' in response.text
+        assert 'id="narrative-n-1"' in response.text  # outerHTML swap target
+
+    def test_get_htmx_edit_prepopulates_values(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """HTMX edit response prepopulates fields with current narrative values."""
+        response = seeded_client.get(
+            "/api/narratives/n-1?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert "Morning Walk" in response.text
+        assert "A walk in the park" in response.text
+        assert "120" in response.text  # proposed_duration_seconds pre-populated
+
+    def test_get_htmx_edit_has_save_button(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """HTMX edit response contains Save button with hx-put to update endpoint."""
+        response = seeded_client.get(
+            "/api/narratives/n-1?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert 'hx-put="/api/narratives/n-1"' in response.text
+
+    def test_get_htmx_edit_has_cancel_button(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """HTMX edit response contains Cancel button that swaps back to read-only card."""
+        response = seeded_client.get(
+            "/api/narratives/n-1?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        # Cancel button should GET the narrative without ?edit=1 to get the card back
+        assert 'hx-get="/api/narratives/n-1"' in response.text
+        assert "Cancel" in response.text
+
+    def test_get_htmx_no_edit_returns_card(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """GET /api/narratives/n-1 with HX-Request (no ?edit=1) returns read-only card."""
+        response = seeded_client.get(
+            "/api/narratives/n-1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "Morning Walk" in response.text
+        # Read-only card has Approve button with HTMX wiring, not input fields
+        assert "Approve" in response.text
+        assert "hx-post" in response.text
+        assert 'name="title"' not in response.text
+
+    def test_get_htmx_edit_param_non_one_returns_card(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """GET /api/narratives/n-1?edit=0 with HX-Request returns read-only card, not form."""
+        response = seeded_client.get(
+            "/api/narratives/n-1?edit=0",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "Morning Walk" in response.text
+        assert 'name="title"' not in response.text  # no form inputs → read-only card
+
+    def test_get_no_htmx_returns_json(self, seeded_client: TestClient) -> None:
+        """GET /api/narratives/n-1 without HX-Request returns JSON."""
+        response = seeded_client.get("/api/narratives/n-1")
+        assert response.status_code == 200
+        assert "application/json" in response.headers["content-type"]
+        data = response.json()
+        assert data["title"] == "Morning Walk"
+
+    def test_narrative_card_edit_button_uses_edit_param(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """The Edit button in the read-only card includes ?edit=1 in its hx-get URL."""
+        response = seeded_client.get(
+            "/api/narratives/n-1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        assert "edit=1" in response.text
+
+    def test_get_json_not_found_returns_404(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """GET /api/narratives/nonexistent (no HX-Request) returns 404."""
+        response = seeded_client.get("/api/narratives/nonexistent")
+        assert response.status_code == 404
+
+    def test_get_htmx_edit_not_found_returns_404(
+        self, seeded_client: TestClient,
+    ) -> None:
+        """GET /api/narratives/nonexistent?edit=1 with HX-Request returns 404."""
+        response = seeded_client.get(
+            "/api/narratives/nonexistent?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 404
+
+
+# TestDepsImportRefactor — task-137 step-1
+# ---------------------------------------------------------------------------
+
+class TestDepsImportRefactor:
+    """Verify review.py uses get_db/is_htmx from deps and private copies are removed."""
+
+    def test_no_private_get_db(self) -> None:
+        """_get_db should be removed from review module."""
+        from autopilot.web.routes import review
+        assert not hasattr(review, "_get_db"), (
+            "_get_db should be removed in favor of get_db from deps"
+        )
+
+    def test_no_private_is_htmx(self) -> None:
+        """_is_htmx should be removed from review module."""
+        from autopilot.web.routes import review
+        assert not hasattr(review, "_is_htmx"), (
+            "_is_htmx should be removed in favor of is_htmx from deps"
+        )
+
+    def test_review_get_db_is_deps_get_db(self) -> None:
+        """review.get_db should be the same object as deps.get_db."""
+        from autopilot.web import deps
+        from autopilot.web.routes import review
+        assert review.get_db is deps.get_db, (
+            "review.get_db should be imported from deps"
+        )
+
+    def test_review_is_htmx_is_deps_is_htmx(self) -> None:
+        """review.is_htmx should be the same object as deps.is_htmx."""
+        from autopilot.web import deps
+        from autopilot.web.routes import review
+        assert review.is_htmx is deps.is_htmx, (
+            "review.is_htmx should be imported from deps"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Zero-duration fixtures — task-167
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def zero_duration_app(tmp_path: Path) -> FastAPI:
+    """App with narratives seeded with proposed_duration_seconds=0 and None."""
+    db_path = str(tmp_path / "catalog.db")
+    with CatalogDB(db_path) as _db:
+        _db.init_default_gates()
+        _seed_narrative(
+            _db, "n-zero",
+            title="Zero Duration",
+            proposed_duration_seconds=0,
+        )
+        _seed_narrative(
+            _db, "n-none",
+            title="No Duration",
+            proposed_duration_seconds=None,
+        )
+    return create_app(db_path)
+
+
+@pytest.fixture
+def zero_duration_client(zero_duration_app: FastAPI) -> TestClient:
+    """TestClient for the zero-duration app."""
+    return TestClient(zero_duration_app)
+
+
+# ---------------------------------------------------------------------------
+# TestEditFormZeroDuration — task-167 step-1
+# ---------------------------------------------------------------------------
+
+class TestEditFormZeroDuration:
+    """Tests for edit form rendering of zero and None duration values."""
+
+    def test_edit_form_renders_zero_duration(
+        self, zero_duration_client: TestClient,
+    ) -> None:
+        """Edit form for narrative with proposed_duration_seconds=0 shows value="0"."""
+        response = zero_duration_client.get(
+            "/api/narratives/n-zero?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        # DB stores REAL, so 0 renders as "0" or "0.0" — either is acceptable
+        assert 'value="0"' in response.text or 'value="0.0"' in response.text
+
+    def test_edit_form_renders_empty_for_none_duration(
+        self, zero_duration_client: TestClient,
+    ) -> None:
+        """Edit form for narrative with proposed_duration_seconds=None shows empty value."""
+        response = zero_duration_client.get(
+            "/api/narratives/n-none?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        # The input value should be empty, not the string 'None'
+        assert 'value="None"' not in response.text
+        # Duration input should render with an empty value attribute
+        assert 'value=""' in response.text
+        assert 'name="proposed_duration_seconds"' in response.text
+
+    def test_update_zero_duration_roundtrip(
+        self, zero_duration_client: TestClient,
+    ) -> None:
+        """Zero duration survives a save→render roundtrip via JSON API + edit form.
+
+        This behavioural roundtrip also subsumes JS-pattern regression coverage:
+        if the hx-vals serialisation ever coerces 0 to null/empty, the final
+        assertion will catch it regardless of the specific JS implementation
+        (isNaN, Number.isFinite, etc.).
+        """
+        # PUT zero duration via JSON API
+        put_resp = zero_duration_client.put(
+            "/api/narratives/n-zero",
+            json={"proposed_duration_seconds": 0},
+        )
+        assert put_resp.status_code == 200
+        assert put_resp.json()["proposed_duration_seconds"] == 0
+
+        # GET edit form and verify zero is rendered, not blank
+        get_resp = zero_duration_client.get(
+            "/api/narratives/n-zero?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert get_resp.status_code == 200
+        assert 'value="0"' in get_resp.text or 'value="0.0"' in get_resp.text

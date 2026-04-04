@@ -1,0 +1,10 @@
+{% macro status_badge(status, extra_classes='') -%}
+<span class="px-2 py-1 rounded text-xs font-medium {{ extra_classes }}
+    {%- if status == 'approved' %} bg-green-900 text-green-300
+    {%- elif status == 'rejected' %} bg-red-900 text-red-300
+    {%- elif status == 'proposed' %} bg-amber-900 text-amber-300
+    {%- elif status == 'scripted' %} bg-blue-900 text-blue-300
+    {%- else %} bg-purple-900 text-purple-300{% endif %}">
+    {{ status or 'unknown' }}
+</span>
+{%- endmacro %}
