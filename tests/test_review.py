@@ -1107,9 +1107,13 @@ class TestEditFormZeroDuration:
         assert response.status_code == 200
         # The input value should be empty, not the string 'None'
         assert 'value="None"' not in response.text
-        # Duration input should render with an empty value attribute
-        assert 'value=""' in response.text
-        assert 'name="proposed_duration_seconds"' in response.text
+        # Extract the specific duration input and verify its value is empty
+        match = re.search(
+            r'<input[^>]*name="proposed_duration_seconds"[^>]*>',
+            response.text,
+        )
+        assert match is not None, "proposed_duration_seconds input not found"
+        assert 'value=""' in match.group(0)
 
     def test_edit_form_js_does_not_use_falsy_or_null(
         self, zero_duration_client: TestClient,
