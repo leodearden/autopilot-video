@@ -5976,6 +5976,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 343,
+        "title": "Strengthen targeted-query test with empty-ids and decoy-cluster cases",
+        "description": "Two gaps in test_uses_targeted_query_not_full_scan (tests/test_youtube.py:373):\n\n1. Empty-IDs path: When activity_cluster_ids_json is None, get_activity_clusters_by_ids([]) is called instead of the full scan, but no test installs the full-scan trap for that path. Add a parametrized or dedicated test case for cluster_ids=[].\n\n2. Test precision: The test inserts exactly the 2 clusters referenced in the narrative, so it can't distinguish \"fetch only referenced IDs\" from \"fetch all\". Insert a third cluster ('c3', label='fishing') NOT in the narrative and assert it is absent from both batch_args[0] and the returned tags.\n\nmemory_hints: search \"targeted query test youtube\" and \"activity cluster test coverage\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5988,7 +5999,7 @@
       ],
       "created": "2026-04-04T23:10:23.776Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T23:10:28.737Z"
+      "updated": "2026-04-04T23:10:34.434Z"
     }
   }
 }
