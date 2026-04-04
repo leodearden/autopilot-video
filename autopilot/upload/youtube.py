@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -214,6 +215,7 @@ def upload_video(
         narrative_id,
         youtube_video_id=video_id,
         youtube_url=youtube_url,
+        uploaded_at=datetime.now(timezone.utc).isoformat(),
         privacy_status=config.privacy_status,
     )
     logger.info("Uploaded %s -> %s", narrative_id, youtube_url)
