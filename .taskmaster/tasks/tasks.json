@@ -5064,11 +5064,18 @@
         "description": "Two related robustness improvements:\n\n1. Make the regex `r'<input[^>]*name=\"proposed_duration_seconds\"[^>]*>'` quote-agnostic by using `[\"']proposed_duration_seconds[\"']` and handle `value=''` (single-quoted empty) alongside `value=\"\"` in `tests/test_review.py`.\n\n2. Create `tests/helpers.py` with a `find_input_by_name(html: str, name: str) -> str | None` function using `html.parser`, consistent with the `_SelectedOptionParser` pattern in `tests/test_gates.py`, so future tests can avoid ad-hoc regex islands. Migrate the input-finding logic in this test to use the new helper.\n\nMemory hints: search \"_SelectedOptionParser pattern test_gates.py\", search \"HTML parsing helpers in tests\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T23:13:32.618Z"
+        "updatedAt": "2026-04-04T23:18:50.574Z",
+        "metadata": {
+          "modules": [
+            "tests/helpers.py",
+            "tests/test_helpers.py",
+            "tests/test_review.py"
+          ]
+        }
       },
       {
         "id": "269",
@@ -6201,7 +6208,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T23:18:18.618Z",
+      "lastModified": "2026-04-04T23:18:50.574Z",
       "taskCount": 358,
       "completedCount": 210,
       "tags": [
