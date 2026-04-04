@@ -325,13 +325,13 @@ class TestIdempotency:
             scheduler,
         )
 
-        # Scheduler should NOT be called for model loading
+        # Scheduler should NOT be called: classification skipped because events already exist
         scheduler.model.assert_not_called()
         scheduler.assert_not_called()
 
         # DB postcondition: the single pre-existing event is still present,
         # no extra rows written
-        events = catalog_db.get_audio_events_for_range("vid1", 0.0, 10.0)
+        events = catalog_db.get_audio_events_for_media("vid1")
         assert len(events) == 1
 
     def test_skip_when_events_exist_at_nonzero_timestamp(self, catalog_db):
@@ -365,7 +365,7 @@ class TestIdempotency:
         scheduler.assert_not_called()
 
         # DB postcondition: both pre-existing events remain, no extra rows written
-        events = catalog_db.get_audio_events_for_range("vid1", 0.0, 10.0)
+        events = catalog_db.get_audio_events_for_media("vid1")
         assert len(events) == 2
 
     def test_processes_when_no_events(self, catalog_db):
