@@ -184,6 +184,39 @@ class TestNotificationSSESetup:
             "connectSSE should mention Last-Event-ID as the robust fix"
         )
 
+    def test_notification_handler_guards_data_object_before_side_effects(self) -> None:
+        """The notification handler must guard that data is a non-null object
+        immediately after JSON.parse, BEFORE unreadCount++ or updateNotificationBadge.
+        This prevents inconsistent UI state when JSON.parse yields null
+        (e.g. server sends 'data: null')."""
+        content = _APP_JS.read_text()
+        func_start = content.find("function setupNotificationSSE")
+        assert func_start != -1
+        func_body = content[func_start:]
+        next_func = func_body.find("\nfunction ", 1)
+        if next_func != -1:
+            func_body = func_body[:next_func]
+
+        # There must be a typeof data !== 'object' guard
+        assert "typeof data !== 'object'" in func_body or \
+               'typeof data !== "object"' in func_body, (
+            "notification handler should check typeof data !== 'object'"
+        )
+        # There must be a !data check (for null)
+        assert "!data" in func_body, (
+            "notification handler should check !data for null"
+        )
+        # The guard must appear BEFORE unreadCount++ to prevent side effects
+        guard_idx = func_body.find("typeof data")
+        unread_idx = func_body.find("unreadCount++")
+        assert guard_idx != -1 and unread_idx != -1, (
+            "Both guard and unreadCount++ should exist"
+        )
+        assert guard_idx < unread_idx, (
+            "data object guard must appear BEFORE unreadCount++ "
+            "to prevent badge increment on invalid payloads"
+        )
+
     def test_connectsse_no_duplicate_notification_listener(self) -> None:
         """connectSSE must not duplicate the notification listener."""
         content = _APP_JS.read_text()
