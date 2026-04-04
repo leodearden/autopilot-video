@@ -131,7 +131,7 @@ def _insert_transitions(
         trans_track = trans_data.get("track", 1)
         if trans_track != track_num:
             continue  # skip transitions for other tracks
-        pos = trans_data.get("position", 0)
+        pos = trans_data.get("position") or 0
         transitions_by_pos[pos] = trans_data
 
     if not transitions_by_pos:
@@ -148,8 +148,8 @@ def _insert_transitions(
     # Insert transitions in reverse order to avoid index shifting
     for pos in sorted(transitions_by_pos.keys(), reverse=True):
         trans_data = transitions_by_pos[pos]
-        trans_type = trans_data.get("type", "cut")
-        duration_secs = float(trans_data.get("duration", 0.5))
+        trans_type = trans_data.get("type")
+        duration_secs = float(trans_data.get("duration") or 0.5)
 
         otio_type = _TRANSITION_TYPE_MAP.get(trans_type)
         if otio_type is None:
