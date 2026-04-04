@@ -3884,6 +3884,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 199,
+        "title": "Add happy-path unit test to TestExtractListenerBody",
+        "description": "In tests/test_web_app.py, class TestExtractListenerBody (line 296): add `test_extracts_listener_body` using a synthetic inline-function listener string (e.g. `\"source.addEventListener('click', function(e) { doStuff(); })\"`) that asserts the returned body equals `\"{ doStuff(); }\"`. This makes the class symmetric with TestExtractFunctionBody and removes reliance on real app.js for basic correctness verification.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -3896,7 +3907,7 @@
       ],
       "created": "2026-04-04T09:12:45.701Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T09:12:50.123Z"
+      "updated": "2026-04-04T09:12:53.273Z"
     }
   }
 }
