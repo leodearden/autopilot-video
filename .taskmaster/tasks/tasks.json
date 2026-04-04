@@ -4753,11 +4753,11 @@
         "description": "Two minor issues in the idempotency-skip tests added by tasks 203 and 213:\n\n1. **Remove trivially-true `scheduler.assert_not_called()` assertions.**\n   `classify_audio_events` only calls `scheduler.model(\"panns_cnn14\")` (audio_events.py line 125), never `scheduler(...)` directly. So `scheduler.assert_not_called()` is trivially true in all code paths and doesn't verify the skip behavior. The meaningful assertion is `scheduler.model.assert_not_called()`, which is already present.\n   - Line ~365: `test_skip_when_events_exist_at_nonzero_timestamp`\n   - Line ~400: `test_skip_when_events_exist_beyond_range`\n\n2. **Guard against Path.exists ordering fragility.**\n   Both skip tests pass `/tmp/vid1.wav` to `classify_audio_events` without patching `Path.exists`. This works only because the idempotency guard (line 95-98) fires before the file-existence check (line 101). If that ordering reverses, the test fails with `AudioEventError` instead of testing the regression.\n   Either wrap the call with `patch.object(Path, 'exists', return_value=True)` (matching the pattern in `test_processes_when_no_events`), or add an inline comment explaining why the path doesn't need to exist.\n\nmemory_hints:\n- search: \"classify_audio_events idempotency skip early return\"\n- search: \"scheduler.model assert_not_called audio_events test\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:06:31.948Z",
+        "updatedAt": "2026-04-04T18:16:35.094Z",
         "metadata": {
           "modules": [
             "tests/test_audio_events.py"
@@ -5305,9 +5305,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:16:33.708Z",
+      "lastModified": "2026-04-04T18:16:35.094Z",
       "taskCount": 292,
-      "completedCount": 186,
+      "completedCount": 187,
       "tags": [
         "master"
       ]
