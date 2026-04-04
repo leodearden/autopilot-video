@@ -5449,6 +5449,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 304,
+        "title": "Code clarity and style fixes in mutation test",
+        "description": "In tests/test_render_router.py, method `test_source_path_resolution_does_not_mutate_original_clip` (line 1238):\n1. Rename the method to `test_source_path_resolution_does_not_mutate_original_clips` (plural) to match the docstring and actual two-clip scope.\n2. Restore typed parameters on `_capturing_loads` at line 1274: `def _capturing_loads(s: str | bytes, *args: object, **kwargs: object) -> object:` to match the module's annotation style.\n3. Replace the comment at line 1270 that hard-codes `router.py line 154` with a structural description such as 'the only way to detect in-place mutation inside the source_path resolution branch of route_and_render'.\n4. Either remove `mock_rs.return_value = Path('/tmp/seg.mp4')` at line 1285 (if it is truly unused) or add a comment explaining it is required for the concat phase.\n\nmemory_hints:\n- search: \"mutation test _capturing_loads type annotations style\"\n- entity: \"test_render_router\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5461,7 +5472,7 @@
       ],
       "created": "2026-04-04T18:20:37.505Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:20:42.353Z"
+      "updated": "2026-04-04T18:20:49.067Z"
     }
   }
 }
