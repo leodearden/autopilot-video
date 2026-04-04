@@ -54,6 +54,26 @@ EXPECTED_DEPS = {
 }
 
 
+class TestMockDbFixture:
+    """Validates the mock_db fixture contract."""
+
+    def test_returns_magicmock(self, mock_db):
+        """mock_db should be a MagicMock instance."""
+        assert isinstance(mock_db, MagicMock)
+
+    def test_list_narratives_returns_empty(self, mock_db):
+        """mock_db.list_narratives.return_value should be an empty list."""
+        assert mock_db.list_narratives.return_value == []
+
+    def test_fresh_per_test(self, mock_db):
+        """Each invocation returns a fresh instance (no cross-test leakage)."""
+        # A fresh mock should have no prior calls
+        assert mock_db.list_narratives.call_count == 0
+        # Call it to "dirty" the mock – won't carry to next test
+        mock_db.list_narratives()
+        assert mock_db.list_narratives.call_count == 1
+
+
 class TestStageDefinition:
     """Tests for StageDefinition dataclass and StageStatus enum."""
 
