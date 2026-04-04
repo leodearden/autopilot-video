@@ -636,6 +636,7 @@ class TestTransitionMapping:
         transitions = [item for item in video_tracks[0] if isinstance(item, otio.schema.Transition)]
         assert len(transitions) == 1
         assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
+        assert transitions[0].name == ""
 
         # Verify structural ordering: Clip / Transition / Clip
         track_items = list(video_tracks[0])
