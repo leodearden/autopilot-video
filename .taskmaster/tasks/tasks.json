@@ -5384,6 +5384,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 300,
+        "title": "Clean up test_setup_helper_* tests in test_youtube.py",
+        "description": "The two `test_setup_helper_*` tests (lines ~288-305 in tests/test_youtube.py) added by task 254 have three issues:\n\n1. **Unused fixture**: Both accept `youtube_config` but never reference it. Remove from both signatures.\n2. **Redundancy concern**: They test a private test helper (`_setup_media_with_detections`) whose JSON encoding behavior is already exercised end-to-end by `test_tags_from_activity_labels_and_detections` and `test_tags_exclude_empty_string_class`. Either remove the tests entirely (preferred) or add a comment justifying why helper-contract tests exist separately.\n3. **Duplicated payload**: If kept, extract `_MINIMAL_DETECTIONS = [(\"m1\", 0, json.dumps([{\"class\": \"x\", \"confidence\": 0.9}]))]` to deduplicate.\n\nMemory hints: search \"task 254 _setup_media_with_detections helper\" for context on why these tests were added.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5396,7 +5407,7 @@
       ],
       "created": "2026-04-04T18:17:36.986Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:17:58.804Z"
+      "updated": "2026-04-04T18:18:10.784Z"
     }
   }
 }
