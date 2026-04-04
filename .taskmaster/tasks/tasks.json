@@ -5351,6 +5351,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 297,
+        "title": "Add empty-string transition type edge case test",
+        "description": "In tests/test_otio_export.py, add test_empty_string_transition_type_falls_back_to_smpte_dissolve passing `{'type': '', 'duration': 1.0, 'position': 0}`. Assert SMPTE_Dissolve fallback, a WARNING is emitted, and `transitions[0].name == ''`. This covers the distinct code path where `type: ''` bypasses the 'cut' filter (empty string != 'cut'), hits the map-lookup miss, and triggers the warning+fallback branch.\n\nmemory_hints:\n- search: \"OTIO transition type empty string edge case test\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5363,7 +5374,7 @@
       ],
       "created": "2026-04-04T18:17:36.986Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:17:43.037Z"
+      "updated": "2026-04-04T18:17:47.913Z"
     }
   }
 }
