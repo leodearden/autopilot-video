@@ -5638,6 +5638,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 321,
+        "title": "Strengthen null-guard test assertions and reduce fixture boilerplate in test_review.py",
+        "description": "Follow-up from task 223 review suggestions:\n\nS1 - Test assertion scoping (architect, robustness, test analyst):\n- tests/test_review.py TestEditFormNullTitleDescription: title test asserts value=\"\" exists anywhere in HTML, not specifically on the title input. Use a regex to scope the assertion to the title input element.\n- Description test lacks a positive assertion that the textarea is actually empty. Add a positive assertion.\n\nS2 - Missing roundtrip test (test analyst):\n- TestEditFormZeroDuration has a roundtrip test (PUT zero duration -> GET edit form). TestEditFormNullTitleDescription has no equivalent. Add a test that PUTs empty title/description and verifies the edit form re-renders correctly.\n\nS4 - Fixture boilerplate (reuse auditor, performance):\n- 6th identical app/client fixture pair in test_review.py. Consider a shared factory or helper to reduce duplication. Also consider promoting fixtures to class scope since tests are read-only.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5650,7 +5661,7 @@
       ],
       "created": "2026-04-04T18:42:10.618Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:42:12.687Z"
+      "updated": "2026-04-04T18:44:04.319Z"
     }
   }
 }
