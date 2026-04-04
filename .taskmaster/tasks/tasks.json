@@ -2887,7 +2887,20 @@
         "status": "pending",
         "dependencies": [],
         "priority": "high",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/analyze/audio_events.py",
+            "autopilot/db.py",
+            "tests/test_audio_events.py",
+            "tests/test_db.py"
+          ],
+          "modules": [
+            "autopilot/analyze",
+            "autopilot",
+            "tests"
+          ]
+        }
       },
       {
         "id": 145,
