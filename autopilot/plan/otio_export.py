@@ -139,7 +139,10 @@ def _insert_transitions(
 
         otio_type = _TRANSITION_TYPE_MAP.get(trans_type)
         if otio_type is None:
-            logger.warning("Unrecognized transition type %r, falling back to SMPTE_Dissolve", trans_type)
+            logger.warning(
+                "Unrecognized transition type %r, falling back to SMPTE_Dissolve",
+                trans_type,
+            )
             otio_type = "SMPTE_Dissolve"
         half_dur = otio.opentime.RationalTime.from_seconds(duration_secs / 2.0, fps)
 
