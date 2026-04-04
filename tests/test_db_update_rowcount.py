@@ -126,3 +126,30 @@ class TestUpdateJobRowcount:
         db.conn.commit()
         result = db.update_job("j-1")
         assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# TestUpdateRunRowcount — task-278 step-7
+# ---------------------------------------------------------------------------
+
+class TestUpdateRunRowcount:
+    """Tests that update_run returns int rowcount."""
+
+    def test_returns_1_for_existing_run(self, db: CatalogDB) -> None:
+        """update_run returns 1 when updating an existing row."""
+        db.insert_run("r-1", started_at="2026-01-01T00:00:00")
+        db.conn.commit()
+        result = db.update_run("r-1", status="finished")
+        assert result == 1
+
+    def test_returns_0_for_nonexistent_run(self, db: CatalogDB) -> None:
+        """update_run returns 0 for a non-existent run_id."""
+        result = db.update_run("nonexistent", status="finished")
+        assert result == 0
+
+    def test_returns_0_for_empty_kwargs(self, db: CatalogDB) -> None:
+        """update_run returns 0 for empty kwargs (early return)."""
+        db.insert_run("r-1", started_at="2026-01-01T00:00:00")
+        db.conn.commit()
+        result = db.update_run("r-1")
+        assert result == 0
