@@ -255,11 +255,10 @@ def _extract_function_body(js_source: str, func_name: str) -> str:
     Raises :class:`AssertionError` if *func_name* is not found or if the
     braces are not balanced (malformed JS).
     """
-    marker = f"function {func_name}"
-    func_start = js_source.find(marker)
-    assert func_start != -1, f"{func_name} function not found in source"
+    match = re.search(rf'\bfunction\s+{re.escape(func_name)}\b', js_source)
+    assert match is not None, f"{func_name} function not found in source"
 
-    body_start = js_source.find("{", func_start)
+    body_start = js_source.find("{", match.end())
     assert body_start != -1, f"opening brace not found for {func_name}"
 
     return _brace_match_from(js_source, body_start, func_name)
@@ -291,6 +290,26 @@ class TestExtractFunctionBody:
         js = "function broken() { if (true) { return 1; }"
         with pytest.raises(AssertionError):
             _extract_function_body(js, "broken")
+
+    def test_does_not_match_prefix_name_collision(self) -> None:
+        """Searching for 'makeStageHandler' must not match 'makeStageHandlerV2'."""
+        js = (
+            "function makeStageHandlerV2() { return 2; }\n"
+            "function makeStageHandler() { return 1; }"
+        )
+        body = _extract_function_body(js, "makeStageHandler")
+        assert body == "{ return 1; }"
+
+    def test_targets_correct_function_among_multiple(self) -> None:
+        """Each function in a multi-function source can be individually targeted."""
+        js = (
+            "function alpha() { return 1; }\n"
+            "function beta() { return 2; }\n"
+            "function gamma() { return 3; }"
+        )
+        assert _extract_function_body(js, "beta") == "{ return 2; }"
+        assert _extract_function_body(js, "alpha") == "{ return 1; }"
+        assert _extract_function_body(js, "gamma") == "{ return 3; }"
 
 
 class TestExtractListenerBody:
