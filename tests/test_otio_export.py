@@ -395,6 +395,12 @@ class TestTransitionMapKeys:
 
         assert "fade_out" in _TRANSITION_TYPE_MAP
 
+    def test_map_does_not_contain_wipe(self):
+        """_TRANSITION_TYPE_MAP must not contain 'wipe' (not in prompt schema)."""
+        from autopilot.plan.otio_export import _TRANSITION_TYPE_MAP
+
+        assert "wipe" not in _TRANSITION_TYPE_MAP
+
 
 class TestTransitionMapping:
     """Verify EDL transitions map to OTIO Transition objects."""
