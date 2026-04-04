@@ -789,5 +789,5 @@ class TestRunDryRunDelegation:
                 )
                 assert result.exit_code == 0, f"run --dry-run failed: {result.output}"
                 mock_orch.run.assert_called_once()
-                call_kwargs = mock_orch.run.call_args[1]
+                call_kwargs = mock_orch.run.call_args.kwargs
                 assert call_kwargs["dry_run"] is True
