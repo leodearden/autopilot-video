@@ -9,6 +9,8 @@ from unittest.mock import MagicMock
 import opentimelineio as otio
 import pytest
 
+from autopilot.plan.otio_export import _TRANSITION_TYPE_MAP
+
 # -- Step 1: Public API surface tests -----------------------------------------
 
 
@@ -385,20 +387,14 @@ class TestTransitionMapKeys:
 
     def test_map_contains_fade_in(self):
         """_TRANSITION_TYPE_MAP includes fade_in key."""
-        from autopilot.plan.otio_export import _TRANSITION_TYPE_MAP
-
         assert "fade_in" in _TRANSITION_TYPE_MAP
 
     def test_map_contains_fade_out(self):
         """_TRANSITION_TYPE_MAP includes fade_out key."""
-        from autopilot.plan.otio_export import _TRANSITION_TYPE_MAP
-
         assert "fade_out" in _TRANSITION_TYPE_MAP
 
     def test_map_does_not_contain_wipe(self):
         """_TRANSITION_TYPE_MAP must not contain 'wipe' (not in prompt schema)."""
-        from autopilot.plan.otio_export import _TRANSITION_TYPE_MAP
-
         assert "wipe" not in _TRANSITION_TYPE_MAP
 
     def test_map_keys_match_prompt_schema(self):
@@ -408,8 +404,6 @@ class TestTransitionMapKeys:
         fade_out, dissolve.  'cut' is implicit (no Transition object), so the
         map must contain exactly {crossfade, dissolve, fade_in, fade_out}.
         """
-        from autopilot.plan.otio_export import _TRANSITION_TYPE_MAP
-
         expected_keys = {"crossfade", "dissolve", "fade_in", "fade_out"}
         assert set(_TRANSITION_TYPE_MAP.keys()) == expected_keys
 
