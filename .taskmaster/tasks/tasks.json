@@ -4336,10 +4336,11 @@
         "description": "In tests/test_cli.py: remove the `from autopilot.cli import _handle_dry_run` import (line 13) and delete the `TestHandleDryRun` class (lines 627-668). The three tests in that class test the private `_handle_dry_run` helper directly; equivalent behaviour is already covered end-to-end by `TestDryRunSubcommands` and `TestDryRunZeroSideEffects` through the public CLI surface. Also add a docstring note to `_handle_dry_run` in autopilot/cli.py (line 97) stating it requires an active Click context.\n\nmemory_hints: search for \"private helper testing convention\" and \"_handle_dry_run\" in project context.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T14:04:16.555Z"
       },
       {
         "id": "228",
@@ -4611,7 +4612,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:04:16.434Z",
+      "lastModified": "2026-04-04T14:04:16.555Z",
       "taskCount": 250,
       "completedCount": 171,
       "tags": [
