@@ -3464,7 +3464,12 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:24:15.520Z"
+        "updatedAt": "2026-04-04T08:24:15.520Z",
+        "metadata": {
+          "modules": [
+            "tests/test_otio_export.py"
+          ]
+        }
       },
       {
         "id": 175,
