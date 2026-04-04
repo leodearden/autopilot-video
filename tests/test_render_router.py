@@ -987,3 +987,114 @@ class TestSourcePathResolution:
         ):
             with pytest.raises(RoutingError, match="No media record"):
                 route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+    def test_source_path_resolved_for_slow_clip(self) -> None:
+        """Slow-path (auto_subject) clip without source_path should also be resolved."""
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "clip_id": "clip_1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }
+        ]
+        crop_data = np.full((30, 2), [100, 50], dtype=np.float64)
+        edl = _make_edl(
+            clips=clips,
+            crop_modes=[
+                {"clip_id": "clip_1", "mode": "auto_subject", "subject_track_id": 0}
+            ],
+        )
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        db.get_media.return_value = {"file_path": "/resolved/slow_clip.mp4"}
+        db.get_crop_path.return_value = {"path_data": crop_data.tolist()}
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple"),
+            patch("autopilot.render.router.render_complex") as mock_rc,
+            patch("subprocess.run"),
+        ):
+            mock_rc.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        rendered_clip = mock_rc.call_args[0][0]
+        assert rendered_clip["source_path"] == "/resolved/slow_clip.mp4"
+
+    def test_multiple_clips_each_resolved(self) -> None:
+        """Each clip without source_path should trigger its own db.get_media call."""
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "clip_id": "c1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:05.000",
+                "track": 1,
+            },
+            {
+                "clip_id": "c2",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:05.000",
+                "track": 1,
+            },
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+
+        def _get_media(media_id: str):
+            return {"file_path": f"/resolved/{media_id}.mp4"}
+
+        db.get_media.side_effect = _get_media
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run"),
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        called_ids = [c[0][0] for c in db.get_media.call_args_list]
+        assert "c1" in called_ids
+        assert "c2" in called_ids
+        assert db.get_media.call_count == 2
+
+    def test_existing_source_path_not_overwritten(self) -> None:
+        """Clip with source_path already set should NOT trigger db.get_media."""
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "clip_id": "clip_1",
+                "source_path": "/already/set.mp4",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("subprocess.run"),
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        db.get_media.assert_not_called()
+        rendered_clip = mock_rs.call_args[0][0]
+        assert rendered_clip["source_path"] == "/already/set.mp4"
