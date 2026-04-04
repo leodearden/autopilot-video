@@ -612,6 +612,23 @@ class TestTransitionMapping:
             f"Expected a WARNING containing 'wipe', got: {warning_messages}"
         )
 
+    def test_unknown_transition_type_falls_back_to_smpte_dissolve(self, tmp_path):
+        """Unrecognized transition type 'wipe' falls back to SMPTE_Dissolve structure."""
+        from autopilot.plan.otio_export import export_otio
+
+        edl = self._wipe_edl()
+        output = tmp_path / "test.otio"
+        db = _mock_db_for_clips()
+        export_otio(edl, output, db)
+
+        tl = otio.adapters.read_from_file(str(output))
+        video_tracks = [t for t in tl.tracks if t.kind == otio.schema.TrackKind.Video]
+
+        track_items = self._assert_clip_transition_clip(video_tracks[0])
+        transitions = [item for item in track_items if isinstance(item, otio.schema.Transition)]
+        assert len(transitions) == 1
+        assert transitions[0].transition_type == otio.schema.Transition.Type.SMPTE_Dissolve
+        assert transitions[0].name == "wipe"
 
 
 # -- Step 20: Multi-track transition isolation tests ---------------------------
