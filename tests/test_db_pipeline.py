@@ -617,6 +617,22 @@ class TestUpdateColumnValidation:
         assert row is not None
         assert row[spec["valid_col"]] == spec["default_val"]
 
+    @pytest.mark.parametrize("entity", ["gate", "job", "run"])
+    def test_rejects_multiple_disallowed_columns(
+        self, catalog_db: CatalogDB, entity: str
+    ) -> None:
+        """update_*() names all bad columns in sorted order when >1 are passed."""
+        spec = _UPDATE_SPECS[entity]
+        spec["setup"](catalog_db)
+        with pytest.raises(ValueError, match="Disallowed column") as exc_info:
+            spec["update"](catalog_db, aaa_col="x", zzz_col="y")
+        msg = str(exc_info.value)
+        # Both bad column names appear in the error message.
+        assert "aaa_col" in msg
+        assert "zzz_col" in msg
+        # sorted() order: 'aaa_col' appears before 'zzz_col'.
+        assert msg.index("aaa_col") < msg.index("zzz_col")
+
 
 # -- Cross-table integration tests ------------------------------------------
 
