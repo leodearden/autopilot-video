@@ -167,6 +167,7 @@ class TestEDLLoading:
         from autopilot.render.router import RoutingError, route_and_render
 
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = None
         config = _make_config()
 
@@ -179,6 +180,7 @@ class TestEDLLoading:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "narr_1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -217,6 +219,7 @@ class TestWorkDirCleanup:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -246,6 +249,7 @@ class TestWorkDirCleanup:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         config = _make_config()
@@ -276,6 +280,7 @@ class TestClipDispatching:
 
         edl = _make_edl(crop_modes={"clip_1": "center"})
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -298,6 +303,7 @@ class TestClipDispatching:
 
         edl = _make_edl(crop_modes={"clip_1": "auto_subject"})
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -372,6 +378,7 @@ class TestCropPathLoading:
         )
         crop_data = np.full((30, 2), [100, 50], dtype=np.float64)
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -401,6 +408,7 @@ class TestCropPathLoading:
             ],
         )
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_crop_path.return_value = None
@@ -429,6 +437,7 @@ class TestFinalConcatenation:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -454,6 +463,7 @@ class TestFinalConcatenation:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "My Video"}
         db.get_transcript.return_value = None
@@ -472,6 +482,7 @@ class TestFinalConcatenation:
 
         edl = _make_edl(music=[{"path": "/tmp/music.mp3", "level": -6}])
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -495,6 +506,7 @@ class TestFinalConcatenation:
 
         edl = _make_edl(music=[{"path": "/tmp/music.mp3", "level": -6}])
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -533,6 +545,7 @@ class TestSubtitleSupport:
             {"start": 2.5, "end": 5.0, "text": "Testing"},
         ]
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = {"segments_json": json.dumps(segments)}
@@ -555,6 +568,7 @@ class TestSubtitleSupport:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -587,6 +601,7 @@ class TestSubtitlesWithAudioMixing:
         segments = [{"start": 0.0, "end": 2.0, "text": "Hello"}]
         edl = _make_edl(music=[{"path": "/tmp/music.mp3", "level": -6}])
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = {"segments_json": json.dumps(segments)}
@@ -633,6 +648,7 @@ class TestStreamCopyVsFilter:
         segments = [{"start": 0.0, "end": 2.0, "text": "Hello"}]
         edl = _make_edl()  # no music -> no audio mixing
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = {"segments_json": json.dumps(segments)}
@@ -661,6 +677,7 @@ class TestStreamCopyVsFilter:
 
         edl = _make_edl()  # no music, no voiceovers
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None  # no subtitles
@@ -698,6 +715,7 @@ class TestTranscriptByMediaId:
         segments = [{"start": 0.0, "end": 2.5, "text": "Hello"}]
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = {"segments_json": json.dumps(segments)}
@@ -779,6 +797,7 @@ class TestErrorHandling:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -801,6 +820,7 @@ class TestErrorHandling:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -824,6 +844,7 @@ class TestErrorHandling:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -853,6 +874,7 @@ class TestErrorHandling:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         config = _make_config()
@@ -871,6 +893,7 @@ class TestErrorHandling:
         from autopilot.render.router import RoutingError, route_and_render
 
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": "not valid json{{{"}
         config = _make_config()
 
@@ -883,6 +906,7 @@ class TestErrorHandling:
 
         edl = _make_edl()
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = None
         db.get_transcript.return_value = None
@@ -1047,6 +1071,7 @@ class TestSourcePathResolution:
         ]
         edl = _make_edl(clips=clips)
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
@@ -1084,6 +1109,7 @@ class TestSourcePathResolution:
         ]
         edl = _make_edl(clips=clips)
         db = MagicMock()
+        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
         db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
         db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
         db.get_transcript.return_value = None
