@@ -3863,11 +3863,11 @@
         "description": "In tests/test_web_app.py: (1) Lines 215-218 — replace `assert brace_depth == 0, ...` with `raise AssertionError(f\"unbalanced braces in {label} (depth {brace_depth} after scan)\")` and delete the unreachable `return source[start:]`. (2) Line 206 — add `assert 0 <= start < len(source), f\"start {start} out of range for {label}\"` before the existing `assert source[start] == \"{\"` check.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T09:15:12.640Z",
+        "updatedAt": "2026-04-04T13:08:05.462Z",
         "metadata": {
           "modules": [
             "tests/test_web_app.py"
@@ -4091,7 +4091,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T13:08:05.393Z",
+      "lastModified": "2026-04-04T13:08:05.462Z",
       "taskCount": 212,
       "completedCount": 152,
       "tags": [
