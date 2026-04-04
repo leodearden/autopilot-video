@@ -1125,3 +1125,28 @@ class TestSourcePathResolution:
         db.get_media.assert_not_called()
         rendered_clip = mock_rs.call_args[0][0]
         assert rendered_clip["source_path"] == "/already/set.mp4"
+
+    def test_no_clip_id_and_no_source_path_raises_routing_error(self) -> None:
+        """Clip with neither clip_id nor source_path should raise RoutingError early."""
+        from autopilot.render.router import RoutingError, route_and_render
+
+        clips = [
+            {
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:10.000",
+                "track": 1,
+            }
+        ]
+        edl = _make_edl(clips=clips)
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_transcript.return_value = None
+        config = _make_config()
+
+        with (
+            patch("autopilot.render.router.render_simple"),
+            patch("subprocess.run"),
+        ):
+            with pytest.raises(RoutingError, match="no clip_id"):
+                route_and_render("n1", db, config, Path("/tmp/test_output"))
