@@ -52,6 +52,26 @@ class CatalogDB:
         else:
             self.conn.rollback()
 
+    def _validate_update_kwargs(
+        self, allowed: frozenset[str], kwargs: dict[str, object], entity: str
+    ) -> None:
+        """Raise *ValueError* if *kwargs* contains keys outside *allowed*.
+
+        Parameters
+        ----------
+        allowed:
+            The frozenset of column names permitted for this update.
+        kwargs:
+            The keyword arguments passed to the update method.
+        entity:
+            A human-readable label (e.g. ``"gate"``, ``"job"``) used in the
+            error message.
+        """
+        bad_keys = set(kwargs) - allowed
+        if bad_keys:
+            msg = f"Disallowed column(s) for {entity} update: {sorted(bad_keys)}"
+            raise ValueError(msg)
+
     def _create_schema(self) -> None:
         """Create all 19 catalog tables if they don't already exist."""
         self.conn.executescript(
