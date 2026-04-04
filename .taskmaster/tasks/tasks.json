@@ -1934,11 +1934,11 @@
         "description": "base.html line 69 links to `/settings` which 404s. The web console PRD mentions a settings page for \"console preferences, notification config\" but no route or template exists.",
         "details": "## Options (implementer should pick simplest)\n\n### Option A: Minimal settings page\n- Create `routes/settings.py` with `GET /settings`\n- Create `templates/settings/config.html` with notification preferences (enable/disable browser notifications) and console preferences (theme toggle if dark mode switch is wanted)\n- Register router in `__init__.py`\n\n### Option B: Remove nav link\n- Remove the Settings link from `base.html` nav\n- Add a TODO comment or create a follow-up task for when notification config is needed\n\nEither way, the nav link must not 404.\n\n## Memory hints\n- PRD: docs/prd-web-console.md — \"Settings\" section in navigation structure",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-03T22:33:17.909Z",
+        "updatedAt": "2026-04-04T19:08:57.857Z",
         "metadata": {
           "files": [
             "autopilot/web/templates/base.html",
@@ -1951,7 +1951,13 @@
             "autopilot/web",
             "autopilot/web/templates",
             "tests"
-          ]
+          ],
+          "memory_hints": {
+            "entities": [],
+            "queries": [
+              "resolution for: Add minimal settings page or remove dead nav link"
+            ]
+          }
         }
       },
       {
@@ -1972,11 +1978,11 @@
         "description": "Task 51 (notifications) is marked done but the implementation is incomplete. app.js has a `notification` event listener but the server never emits this event type (not in VALID_EVENT_TYPES). The notification bell badge in base.html is always hidden.",
         "details": "## Current state\n- app.js line 35: `source.addEventListener('notification', ...)` handler exists — parses data.message and data.type, calls showToast()\n- sse.py VALID_EVENT_TYPES: 11 types, \"notification\" NOT included\n- base.html: notification bell icon with badge that has class \"hidden\" — no JS ever removes it\n- Orchestrator emits stage/gate/job events but nothing typed as \"notification\"\n\n## Fix needed\n1. Add \"notification\" to VALID_EVENT_TYPES in sse.py\n2. Emit notification events from orchestrator for key moments:\n   - gate_waiting → notification \"Pipeline paused at {stage}. Review required.\"\n   - stage_error → notification \"Stage {stage} failed: {error}\"\n   - run_completed → notification \"Pipeline finished. {summary}\"\n   - run_failed → notification \"Pipeline failed at {stage}\"\n3. Wire bell badge: track unread notification count in JS, show/hide badge, show count\n4. Optional: browser Notification API integration (request permission, show native notifications for gate_waiting)\n5. Add tests: verify notification events are emitted, verify bell badge JS logic\n\n## Memory hints\n- PRD: docs/prd-web-console.md — \"Notifications\" section (feature 8) lists event→notification mapping",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T13:23:26.231Z",
+        "updatedAt": "2026-04-04T18:13:33.763Z",
         "metadata": {
           "files": [
             "autopilot/web/routes/sse.py",
@@ -3259,11 +3265,11 @@
         "description": "In tests/test_web_app.py: (1) Add a `@pytest.fixture(scope='module') def app_js_source()` fixture that calls `_read_app_js()` once and inject it into all test methods in TestSSEHandlerFactory, TestSSEErrorHandling, TestSSERunHandlerRobustness, and TestDashboardSSEEventCoverage — eliminating 7+ redundant Path.read_text() calls. (2) Add a `@pytest.fixture(scope='class') def make_stage_handler_body(app_js_source)` fixture that calls `_extract_function_body` once and inject into the 4 TestSSEHandlerFactory tests that call it — eliminating 3 redundant O(n) scans.",
         "details": "Follow-up from task 151 review (performance suggestions). Note: Task 109 covers conftest.py fixture consolidation but doesn't cover these module-scoped caching fixtures specific to JS extraction. Memory hints: search for \"task 109 fixture consolidation\" and \"task 151 test helpers\".",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:20:33.708Z",
+        "updatedAt": "2026-04-04T19:09:07.257Z",
         "metadata": {
           "modules": [
             "tests/test_web_app.py"
@@ -3392,11 +3398,11 @@
         "description": "In autopilot/orchestrator.py _run_edl: remove both validator.validate_edl(edl, db) calls at lines 751 and 765 (return value is discarded; generate_edl already validates internally and the calls create a spurious failure surface). After removing, add an assertion or comment at line ~770 making it explicit that generate_edl() must have already persisted edl_json before db.upsert_edit_plan is called — e.g. assert db.get_edit_plan(nid) is not None. Also update tests/test_orchestrator.py: test_edl_generates_validates_exports_per_narrative (line 1103) currently asserts mock_validator.validate_edl.assert_called_once() — that assertion must be removed or inverted. Remove duplicate test test_edl_upsert_only_passes_otio_path (lines 1183-1207).",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:31:24.634Z",
+        "updatedAt": "2026-04-04T18:14:00.636Z",
         "metadata": {
           "modules": [
             "autopilot/orchestrator.py",
@@ -3515,11 +3521,11 @@
         "description": "Two independent cleanup items: (1) In autopilot/plan/otio_export.py, append a note to the _TRANSITION_TYPE_MAP docblock: `# Types not in this map emit a WARNING and fall back to SMPTE_Dissolve (see _insert_transitions).` (2) In tests/test_otio_export.py, add test_null_transition_type_falls_back_to_smpte_dissolve passing `{'type': None, 'duration': 1.0, 'position': 0}` and asserting the SMPTE_Dissolve fallback and the warning log — this covers the distinct code path where the key exists with a null value (dict.get returns None rather than the 'cut' default).\n\nmemory_hints:\n- search: \"OTIO _TRANSITION_TYPE_MAP fallback behavior\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:05:22.680Z",
+        "updatedAt": "2026-04-04T18:18:22.555Z",
         "metadata": {
           "modules": [
             "autopilot/plan/otio_export.py",
@@ -3747,11 +3753,11 @@
         "description": "In autopilot/plan/otio_export.py:\n1. Change `_FADE_APPROXIMATION_TYPES = {\"fade_in\", \"fade_out\"}` (line 76) to `_FADE_APPROXIMATION_TYPES: frozenset[str] = frozenset({\"fade_in\", \"fade_out\"})` so mutation fails loudly.\n2. Add a module-level assertion `assert _FADE_APPROXIMATION_TYPES <= _TRANSITION_TYPE_MAP.keys()` immediately after the definition to enforce the subset invariant at import time.\n3. Extract the approximation string literal from lines 173-178 into a module-level constant `_FADE_APPROXIMATION_MSG` and reference it in the metadata dict, making it a single source of truth that tests can also import.\n\nmemory_hints: search for \"_FADE_APPROXIMATION_TYPES\" and \"_TRANSITION_TYPE_MAP\" usage; get_entity for \"otio_export.py\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T09:07:59.432Z",
+        "updatedAt": "2026-04-04T23:03:58.852Z",
         "metadata": {
           "modules": [
             "autopilot/plan/otio_export.py",
@@ -4224,11 +4230,11 @@
         "description": "In autopilot/render/router.py around lines 135-240: refactor the render loop to accumulate a resolved_clips list (e.g. resolved_clips: list[dict] = []) during the first pass, appending each clip (with source_path injected via the non-mutating {**clip, 'source_path': ...} pattern). Use resolved_clips for the rendering pass. Optionally switch the subtitle loop at line 240 to also use resolved_clips for consistency. This makes it explicit that the resolved dicts (with source_path set) have a defined lifetime, and prevents future second-pass code from silently reading the unresolved original clips list.\n\nmemory_hints:\n- search: \"resolved_clips source_path resolution render loop lifetime\"\n- entity: \"render_router\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T13:14:17.192Z",
+        "updatedAt": "2026-04-04T23:04:25.034Z",
         "metadata": {
           "modules": [
             "autopilot/render/router.py",
@@ -4285,11 +4291,11 @@
         "description": "In `autopilot/web/templates/partials/narrative_edit_form.html` lines 4 and 11, either:\n- Replace `{{ narrative.title or '' }}` and `{{ narrative.description or '' }}` with the same `if X is not none else ''` guard used for `proposed_duration_seconds`, OR\n- Add an explanatory comment (e.g. `{# or '' is safe for string fields: empty string is equivalent to None here #}`) explaining why the simpler pattern is intentional for string fields.\nThis prevents silent falsy-value bugs if the schema evolves.\n\nMemory hints: search \"zero-value falsy handling Jinja\" for the convention established in task 167.",
         "details": "",
         "testStrategy": "",
-        "status": "blocked",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:09:39.316Z",
+        "updatedAt": "2026-04-04T18:46:14.501Z",
         "metadata": {
           "modules": [
             "autopilot/web/templates/partials",
@@ -4309,11 +4315,11 @@
         "description": "In `tests/test_review.py`, promote `zero_duration_app` (line ~1031) and `zero_duration_client` (line ~1050) to `scope='class'` so the SQLite database and FastAPI app are created once per class instead of once per test. The three read-only tests (`test_edit_form_renders_zero_duration`, `test_edit_form_renders_empty_for_none_duration`, `test_edit_form_js_does_not_use_falsy_or_null`) don't mutate state. If the mutating roundtrip test needs isolation, either move it to a separate class with its own function-scoped fixtures or use class scope and re-seed in the test itself.\n\nNote: Task 109 handles conftest.py fixture consolidation across test files — this task is complementary, focusing on class-level scope optimization within the zero-duration test class specifically.\n\nMemory hints: search \"task 109 conftest fixture consolidation\" for related work.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T14:05:47.179Z",
+        "updatedAt": "2026-04-04T23:01:02.739Z",
         "metadata": {
           "modules": [
             "tests/test_review.py"
@@ -4466,11 +4472,11 @@
         "description": "Three fixes in `tests/test_review.py` within the zero-duration test class:\n\n1. **Restore slim `|| null` negative guard** (suggestions 1, 2, 4): The deleted `test_edit_form_js_does_not_use_falsy_or_null` test covered a real gap that the roundtrip test does NOT cover. The roundtrip test sends JSON directly via `put(..., json={...})` and never inspects the rendered hx-vals inline JS. Restore a slim test that GETs the edit form and asserts `'|| null' not in response.text` — this is a fast, isolated regression guard against the template being reverted from the safe `!isNaN(parseFloat(v))` pattern to the dangerous `v || null` pattern. Do NOT assert on `isNaN` (that was the implementation-detail assertion task 220 correctly removed).\n\n2. **Fix misleading docstring** (suggestions 2, 4): In `test_update_zero_duration_roundtrip` (line ~1093-1098), the docstring says \"This behavioural roundtrip also subsumes JS-pattern regression coverage\" — this is factually wrong. The TestClient makes direct HTTP/JSON calls and never executes browser-side JS. Correct the docstring to accurately state it covers server-side persistence and rendering only.\n\n3. **Tighten `value=\"\"` assertion** (suggestions 3, 5): In `test_edit_form_renders_empty_for_none_duration` (line ~1087), `assert 'value=\"\"' in response.text` could match any empty-value input on the page. Tie the assertion to the specific field, e.g. parse the HTML to find the input with `name=\"proposed_duration_seconds\"` and check its value attribute, or use a regex/substring that combines field name and value in the same element.\n\nMemory hints: search \"behavioral tests vs implementation-detail assertions convention\", get_entity \"narrative_edit_form.html\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T14:20:06.672Z",
+        "updatedAt": "2026-04-04T18:16:33.624Z",
         "metadata": {
           "modules": [
             "tests/test_review.py"
@@ -4592,15 +4598,21 @@
         "description": "Task 225 fixed the silent-tuple bug in assert_not_called() calls (lines 590, 693, 712, 731) by replacing them with `assert not mock.called, msg`. While correct, this deviates from the file's convention of using the mock assertion API (assert_called_once(), assert_called_once_with(), etc.) and loses Mock's built-in rich diagnostic output on failure.\n\nFix: Change the four sites back to `mock.assert_not_called()` as a standalone statement, and move the custom message to a comment on the same line. Example:\n```python\nstage_func.assert_not_called()  # --dry-run should NOT call any stage function\n```\n\nThis preserves consistency with the rest of the test module while eliminating the original silent-tuple bug.\n\nmemory_hints: search for \"mock assert_not_called bug task 204\" and \"assertion style convention\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:04:05.804Z",
+        "updatedAt": "2026-04-04T19:11:20.125Z",
         "metadata": {
           "modules": [
             "tests/test_cli.py"
-          ]
+          ],
+          "memory_hints": {
+            "entities": [],
+            "queries": [
+              "resolution for: Use mock.assert_not_called() with comment instead of assert not mock.called in test_cli.py"
+            ]
+          }
         }
       },
       {
@@ -4665,11 +4677,11 @@
         "description": "The current `patch.object(catalog_db, 'conn', wraps=catalog_db.conn)` wraps the connection object itself, but child attributes like `mock_conn.execute` become plain MagicMocks that do NOT forward calls to the real `conn.execute`. This means `prune_events()` no longer actually runs the DELETE against the in-memory DB during this test.\n\nFix by patching only the execute method: `patch.object(catalog_db.conn, 'execute', wraps=catalog_db.conn.execute) as mock_exec` and inspecting `mock_exec.call_args_list` directly. This preserves real DB I/O while still capturing call args.\n\nAlso:\n1. Move all assertions inside the `with` block (conventional idiom, avoids readability confusion about mock lifecycle).\n2. Add a second parametrized edge case for `hours=1` to verify parameterization works for the common default boundary value.\n\nmemory_hints: search \"test_prune_events mock pattern\" and \"task 208 mock wrapping decision\"",
         "details": "",
         "testStrategy": "",
-        "status": "blocked",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:09:50.271Z",
+        "updatedAt": "2026-04-04T18:21:16.974Z",
         "metadata": {
           "modules": [
             "tests/test_db_pipeline.py"
@@ -4724,11 +4736,11 @@
         "description": "Create a generic status_badge(status, color_map, extra_classes='') macro that accepts a color mapping dict. Migrate all 6+ templates with inline bg-X-900/text-X-300 badge patterns to use it. Files: new or generalized macro, plus pipeline/index.html, pipeline/stages.html, pipeline/jobs.html, media/detail.html, partials/media_row.html, review/scripts.html, review/renders.html, review/uploads.html, review/hub.html.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:10:42.033Z",
+        "updatedAt": "2026-04-04T23:05:26.591Z",
         "metadata": {
           "modules": [
             "autopilot/web/templates/macros",
@@ -4747,11 +4759,11 @@
         "description": "Two minor issues in the idempotency-skip tests added by tasks 203 and 213:\n\n1. **Remove trivially-true `scheduler.assert_not_called()` assertions.**\n   `classify_audio_events` only calls `scheduler.model(\"panns_cnn14\")` (audio_events.py line 125), never `scheduler(...)` directly. So `scheduler.assert_not_called()` is trivially true in all code paths and doesn't verify the skip behavior. The meaningful assertion is `scheduler.model.assert_not_called()`, which is already present.\n   - Line ~365: `test_skip_when_events_exist_at_nonzero_timestamp`\n   - Line ~400: `test_skip_when_events_exist_beyond_range`\n\n2. **Guard against Path.exists ordering fragility.**\n   Both skip tests pass `/tmp/vid1.wav` to `classify_audio_events` without patching `Path.exists`. This works only because the idempotency guard (line 95-98) fires before the file-existence check (line 101). If that ordering reverses, the test fails with `AudioEventError` instead of testing the regression.\n   Either wrap the call with `patch.object(Path, 'exists', return_value=True)` (matching the pattern in `test_processes_when_no_events`), or add an inline comment explaining why the path doesn't need to exist.\n\nmemory_hints:\n- search: \"classify_audio_events idempotency skip early return\"\n- search: \"scheduler.model assert_not_called audio_events test\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:06:31.948Z",
+        "updatedAt": "2026-04-04T18:16:35.094Z",
         "metadata": {
           "modules": [
             "tests/test_audio_events.py"
@@ -4821,11 +4833,11 @@
         "description": "In tests/test_youtube.py, the `_setup_media_with_detections` helper has two related issues:\n\n1. **Leaky interface**: The `activity_cluster_ids_json` parameter accepts a pre-encoded JSON string, forcing callers to call `json.dumps()` at the call site. Rename to `activity_cluster_ids: list[str] | None` and do `json.dumps(value) if value is not None else None` inside the helper.\n\n2. **Inverted fixture ordering**: In `test_tags_from_activity_labels_and_detections` (line ~219), `insert_activity_cluster(\"c1\", ...)` and `insert_activity_cluster(\"c2\", ...)` are called *after* `_setup_media_with_detections` which inserts a narrative referencing those clusters. Although SQLite doesn't enforce FK constraints on JSON columns, the ordering is conceptually inverted. Move `insert_activity_cluster` calls before the helper call (or into the helper when cluster IDs are provided), and add a brief comment if ordering still matters.\n\nMemory hints: search \"task 202 _setup_media_with_detections helper rename\" for prior context.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:07:21.279Z"
+        "updatedAt": "2026-04-04T18:18:29.406Z"
       },
       {
         "id": "255",
@@ -4833,11 +4845,16 @@
         "description": "In tests/test_youtube.py, there is no test covering the case where `activity_cluster_ids_json` in a narrative references cluster IDs that don't exist in the DB (stale/dangling references). The existing `test_tags_from_activity_labels_and_detections` always inserts matching clusters.\n\nAdd a test like `test_tags_empty_when_activity_clusters_missing` that:\n1. Calls `_setup_media_with_detections` with `activity_cluster_ids_json=json.dumps([\"nonexistent\"])` (or the updated `activity_cluster_ids=[\"nonexistent\"]` parameter if the interface improvement task lands first)\n2. Does NOT call `insert_activity_cluster`\n3. Asserts `_build_upload_metadata` produces no activity-label tags (graceful handling, not an error)\n\nMemory hints: search \"task 202 _setup_media_with_detections\" for helper context.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:09:24.308Z"
+        "updatedAt": "2026-04-04T18:11:07.026Z",
+        "metadata": {
+          "modules": [
+            "tests/test_youtube.py"
+          ]
+        }
       },
       {
         "id": "256",
@@ -4845,10 +4862,16 @@
         "description": "In tests/test_cli.py, the consolidated `test_dry_run_no_side_effects` method (class TestDryRunZeroSideEffects) uses three sequential `assert not mock.called` checks. If the first assertion fails, pytest stops and the remaining two are never evaluated, masking whether CatalogDB or PipelineOrchestrator were also incorrectly called.\n\nReplace the sequential assertions with a failure-collector pattern that evaluates all three conditions and reports all failures in a single AssertionError:\n\n```python\nfailures = []\nif mock_load.called:\n    failures.append(f'{cmd_name} --dry-run should NOT call load_config')\nif mock_db_cls.called:\n    failures.append(f'{cmd_name} --dry-run should NOT instantiate CatalogDB')\nif mock_orch_cls.called:\n    failures.append(f'{cmd_name} --dry-run should NOT instantiate PipelineOrchestrator')\nassert not failures, '\\n'.join(failures)\n```\n\nMemory hints: search for \"TestDryRunZeroSideEffects consolidation\" and \"task 226 test consolidation\".",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T23:01:51.781Z",
+        "metadata": {
+          "modules": [
+            "tests/test_cli.py"
+          ]
+        }
       },
       {
         "id": "257",
@@ -4856,11 +4879,11 @@
         "description": "Three reviewers independently flagged the same issue: `assert clip_id is not None` on line 156 of autopilot/render/router.py is stripped by Python's `-O` flag, allowing `db.get_media(None)` to be called silently. Replace it with: `if clip_id is None: raise RoutingError(f'Internal error: clip {i} reached DB lookup without clip_id')`. This is the only required change in the file for this group.\n\nmemory_hints:\n- search: \"assert clip_id RoutingError production guard router.py\"\n- entity: \"render_router\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T14:12:48.828Z",
+        "updatedAt": "2026-04-04T23:05:42.606Z",
         "metadata": {
           "modules": [
             "autopilot/render/router.py",
@@ -4895,7 +4918,14 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T18:16:29.577Z",
+        "metadata": {
+          "modules": [
+            "autopilot/render/router.py",
+            "tests/test_render_router.py"
+          ]
+        }
       },
       {
         "id": "260",
@@ -4906,7 +4936,13 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T18:15:12.360Z",
+        "metadata": {
+          "modules": [
+            "tests/test_render_router.py"
+          ]
+        }
       },
       {
         "id": "261",
@@ -4914,10 +4950,11 @@
         "description": "The status_badge macro in autopilot/web/templates/macros/narrative_status_badge.html explicitly maps 4 statuses (proposed, approved, rejected, scripted) but the system has a 5th known lifecycle status: 'planned' (set after EDL generation). It currently falls through to the purple 'unknown' fallback, giving no visual distinction between a legitimate 'planned' state and a truly unknown/bad status.\n\n**Changes needed:**\n1. Add an `elif status == 'planned'` branch with a semantically distinct color (e.g., `bg-indigo-900 text-indigo-300`) before the else clause in `autopilot/web/templates/macros/narrative_status_badge.html`.\n2. Add a `test_planned_indigo` test in `TestStatusBadgeMacro` in `tests/test_narrative_status_badge.py` that renders with status='planned' and asserts the correct CSS classes.\n\n**Memory hints:** search for \"narrative lifecycle statuses\" and \"planned status\" to confirm the full set of statuses.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T18:17:36.232Z"
       },
       {
         "id": "262",
@@ -4928,7 +4965,13 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T23:01:51.687Z",
+        "metadata": {
+          "modules": [
+            "tests/test_narrative_status_badge.py"
+          ]
+        }
       },
       {
         "id": "263",
@@ -4939,7 +4982,13 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T23:03:03.609Z",
+        "metadata": {
+          "modules": [
+            "tests/test_youtube.py"
+          ]
+        }
       },
       {
         "id": "264",
@@ -4950,7 +4999,13 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T23:03:58.769Z",
+        "metadata": {
+          "modules": [
+            "tests/test_youtube.py"
+          ]
+        }
       },
       {
         "id": "265",
@@ -4961,7 +5016,13 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T23:04:08.786Z",
+        "metadata": {
+          "modules": [
+            "tests/test_review.py"
+          ]
+        }
       },
       {
         "id": "266",
@@ -4969,10 +5030,11 @@
         "description": "In `tests/test_review.py`, replace `assert '|| null' not in response.text` with `assert not re.search(r'\\|\\|\\s*null', response.text)` to cover `||null` without space. Also add `assert '|| undefined' not in response.text` (or fold into the regex) to cover the other common falsy-coercion form for zero. Optionally scope the check to the hx-vals attribute region rather than the full response body to prevent spurious failures from unrelated content.\n\nMemory hints: search \"zero duration coercion bug history\", get_entity \"narrative_edit_form.html\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T23:08:14.573Z"
       },
       {
         "id": "267",
@@ -5057,11 +5119,11 @@
         "description": "Three related fixes: 1. Remove TestHandleDryRunDocstring class from tests/test_cli.py (tests prose not behavior, no precedent in codebase). 2. Restore the 3 deleted behavioral tests from TestHandleDryRun: test_returns_true_and_echoes_when_dry_run, test_returns_true_with_multiple_stages, test_returns_false_and_no_output_when_not_dry_run. Restore the module-level import of _handle_dry_run. 3. In autopilot/cli.py ~line 101, change 'Requires an active Click context' to 'Intended for use within a Click command callback' since click.echo() works without a Click context.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:06:31.872Z",
+        "updatedAt": "2026-04-04T18:25:17.847Z",
         "metadata": {
           "modules": [
             "autopilot/cli.py",
@@ -5108,11 +5170,11 @@
         "description": "After the task 243 refactoring, `update_activity_cluster` returns `int` (the rowcount from `_execute_kwargs_update`), but `update_narrative`, `update_gate`, `update_job`, and `update_run` all discard the rowcount and return `None`. This API inconsistency means callers of the latter four methods get no signal when the target record doesn't exist (silent no-op).\n\nChanges needed in `autopilot/db.py`:\n- `update_narrative` (line ~893): Change `-> None` to `-> int`, add `return` before the call\n- `update_gate` (line ~1321): Same\n- `update_job` (line ~1395): Same\n- `update_run` (line ~1528): Same\n\nUpdate docstrings to match `update_activity_cluster`'s pattern: \"Returns number of rows affected (0 if not found or no kwargs).\"\n\nMemory hints: search for \"CatalogDB update pattern\" and \"update_activity_cluster rowcount\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:08:25.316Z"
+        "updatedAt": "2026-04-04T18:21:45.818Z"
       },
       {
         "id": "279",
@@ -5146,13 +5208,759 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": "282",
+        "title": "Strengthen TestEditFormNullTitleDescription test assertions",
+        "description": "In tests/test_review.py, fix assertion weaknesses in the TestEditFormNullTitleDescription class:\n\n1. Scope the `value=\"\"` check to the title input specifically — use a regex or substring like `name=\"title\" value=\"\"` rather than a loose `'value=\"\"' in response.text`.\n2. Add a positive assertion to test_edit_form_renders_empty_for_none_description confirming the textarea body is empty (e.g. `assert '></textarea>' in response.text` or `assert '>\\n</textarea>' in response.text`).\n3. Add a PUT→GET roundtrip test mirroring `test_update_zero_duration_roundtrip`: PUT `{\"title\": \"\", \"description\": \"\"}`, then GET edit form and assert `value=\"None\"` and `>None</textarea>` are absent and empty values are rendered correctly.\n\nMemory hints: search \"TestEditFormNullTitleDescription\" for current test structure; search \"test_update_zero_duration_roundtrip\" for the roundtrip pattern to follow.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "283",
+        "title": "Clarify or-empty vs is-not-none Jinja convention for nullable string fields",
+        "description": "Resolve idiom divergence in Jinja templates for nullable field handling:\n\nThe edit form (narrative_edit_form.html) now uses `{{ x if x is not none else '' }}` for string fields (title, description), while 9 other templates use `{{ x or '' }}`. For string fields, `or ''` is functionally identical and is the established project convention.\n\nRecommended resolution:\n- Revert narrative_edit_form.html lines 4 and 11 to `{{ narrative.title or '' }}` / `{{ narrative.description or '' }}` (consistent with the 9-site project convention).\n- Add a comment on the proposed_duration_seconds field explaining why `is not none` is required there (numeric field where 0 is meaningful).\n- This satisfies task 223's comment-or-standardize requirement without introducing inconsistency.\n\nReference templates using `or ''`: narrative_card.html:7, cluster_card.html:14, review/narratives.html:29, media/list.html:24, and others.\n\nMemory hints: search \"zero-value falsy handling Jinja\" for the convention from task 167; search \"or '' Jinja template convention\" for related norms.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "284",
+        "title": "Fix stale JSDoc and documentation in app.js",
+        "description": "Update the JSDoc comment on setupNotificationSSE in autopilot/web/static/app.js lines 112-117. Replace the outdated 'Shows the badge when gate_waiting events arrive and hides it when gates are approved or skipped' with accurate documentation of the unified notification model: increments unread badge on each notification event, bell click resets count to zero.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "285",
+        "title": "Harden browser Notification API usage in app.js",
+        "description": "In autopilot/web/static/app.js, make four related fixes to the notification event handler (around lines 129-135): (1) Chain .then(perm => { if (perm==='granted') new Notification(...); }) on Notification.requestPermission() so the triggering notification is not silently dropped. (2) Add a module-level _permissionRequested flag so rapid notification events don't accumulate pending permission dialogs. (3) Guard data.message with a null/type check before passing to showToast and Notification: var msg = (data && typeof data.message === 'string') ? data.message : '(no message)'. (4) Add a comment documenting the SSE reconnect gap (events emitted during disconnection window are lost; Last-Event-ID replay would be the robust fix).",
+        "details": "",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T19:09:11.657Z"
+      },
+      {
+        "id": "286",
+        "title": "Sanitize exception message in _emit_notification stage_error call",
+        "description": "In autopilot/orchestrator.py line 1450, change the raw f'Stage {stage_name} failed: {exc}' to truncate or sanitize the exception: e.g. f'Stage {stage_name} failed: {type(exc).__name__}: {str(exc)[:120]}'. This prevents file paths, credentials fragments, or multi-line tracebacks from appearing in user-facing toast/browser notifications.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T18:18:24.491Z",
+        "metadata": {
+          "modules": [
+            "autopilot/orchestrator.py",
+            "tests/test_orchestrator.py"
+          ]
+        }
+      },
+      {
+        "id": "287",
+        "title": "Consolidate JS extraction test utilities into shared module",
+        "description": "Create tests/js_test_utils.py (or tests/helpers.py) and move _extract_listener_body from test_web_app.py into it. Add _extract_js_function (the top-level function variant) there as well. Update test_notifications.py to import and use these helpers instead of the four copies of the inline func_start/func_body/next_func pattern (lines 27-108), and update test_web_app.py imports accordingly. This removes 4x duplication and replaces the weaker split-on-newline approach with correct brace-matching.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "288",
+        "title": "Fix TestNotificationEvents test consistency and assertion quality",
+        "description": "In tests/test_orchestrator.py, make four fixes to the TestNotificationEvents class: (1) Refactor test_notification_emitted_on_gate_waiting (line 3630) to use mock_db = MagicMock() and orch._db = mock_db, consistent with the three sibling tests, to eliminate real-DB coupling. (2) Extract a _notif_payloads(mock_db) helper that filters and pre-parses notification call payloads, replacing the four repeated filter+json.loads patterns. (3) Change 'or' to 'and' in the gate_waiting assertion (line 3657) so both 'paused' and 'Review required' are required. (4) Change len(error_notifs) >= 1 to == 1 (line 3581) to pin the exact emission count.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T18:20:00.710Z",
+        "metadata": {
+          "modules": [
+            "tests/test_orchestrator.py"
+          ]
+        }
+      },
+      {
+        "id": "289",
+        "title": "Strengthen notification-related test assertions for coverage and precision",
+        "description": "Make four assertion improvements across the test suite: (1) In test_notifications.py, narrow the showToast assertion (line 62) to the body of the notification callback only, not anywhere in setupNotificationSSE, using brace-matching to avoid false passes from the bell-click handler. (2) In test_web_app.py test_stage_error_handled_via_notification (line 445), replace the duplicate addEventListener('notification') assertion with unique coverage — e.g. assert 'stage_error' no longer appears as a direct event listener in app.js, confirming the consolidation. (3) In tests/test_sse.py line 302, add a test that emits a notification event with known payload {\"message\": \"test\", \"type\": \"info\"} and asserts those exact fields arrive via the SSE stream. (4) In tests/test_orchestrator.py test_notification_emitted_on_run_completed, add assertions for stage count and duration format: re.search(r'\\d+ of \\d+ stages', message) and duration suffix 's.'.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "290",
+        "title": "Fix fragile hours=1 assertion and simplify parametrize in test_prune_events_parameterizes_hours",
+        "description": "In `test_prune_events_parameterizes_hours`, the assertion `str(hours) not in sql_arg` is fragile for `hours=1` because the single digit \"1\" commonly appears in SQL strings (e.g., `LIMIT 1`, version literals). Any future SQL change could cause a spurious failure.\n\nFix:\n1. Replace `hours=1` with a less collision-prone value like `hours=7` or drop the `str(hours) not in sql_arg` assertion entirely (the parameter-equality assertion already covers the parameterization contract).\n2. Drop the `expected_param` column from the parametrize decorator — it's derivable from `hours` via `f\"-{hours} hours\"`, creating a maintenance hazard. Simplify to `@pytest.mark.parametrize(\"hours\", [48, 7])` and compute expected inline.\n\nmemory_hints: search \"test_prune_events fragile assertion\" and \"task 245 review suggestions\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "291",
+        "title": "Broaden mock convention guard to cover all test files and additional patterns",
+        "description": "The convention guard in tests/test_cli_conventions.py currently only scans test_cli.py. Three improvements needed:\n\n1. **Scan all test files**: Change from hard-coded `test_cli.py` to iterating `Path(__file__).parent.glob('test_*.py')` (excluding the convention file itself). The project has 60+ test files that could independently reintroduce the anti-pattern.\n\n2. **Handle dotted mock names**: The regex `r\"assert\\s+not\\s+\\w+\\.called\\b\"` misses chained attribute patterns like `self.mock.called` or `mock_obj.child.called`. Replace `\\w+` with `[\\w.]+` to match dotted attribute chains.\n\n3. **Guard positive pattern too**: Add a second regex to catch `assert mock.called` (without `not`) which should use `mock.assert_called()` or `mock.assert_called_once()` instead.\n\n4. **Fix misleading docstring**: The module docstring incorrectly states the old pattern \"silently swallows custom messages when written as tuples.\" The actual motivation is that `mock.assert_not_called()` is the idiomatic Mock API producing richer failure output (call count, args). Update accordingly.\n\nmemory_hints: search for \"mock assert_not_called convention\" and \"convention guard test_cli_conventions\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "292",
+        "title": "Clean up idempotency test setup in test_audio_events.py",
+        "description": "Three cleanup items in the TestIdempotency class (tests/test_audio_events.py):\n\n1. **Remove dead `patch.object(Path, 'exists', return_value=True)` wrappers** from the three idempotency tests (`test_skip_when_events_exist`, `test_skip_when_events_exist_at_nonzero_timestamp`, `test_skip_when_events_exist_beyond_range`). These patches are dead code — the idempotency guard (`db.has_audio_events`) at audio_events.py:95-98 fires and returns early before `audio_path.exists()` at line 101 is ever reached. The patches create misleading signal.\n\n2. **Update test comments** to clarify why `scheduler.assert_not_called()` is absent. Current comments say \"Scheduler should NOT be called\" which is ambiguous. Change to something like \"Scheduler model should NOT be loaded (scheduler.model is the only entry point)\" or add an inline comment explaining `scheduler()` is never called directly, only `scheduler.model(...)`.\n\n3. **Add two defensive tests**:\n   a. A test proving idempotency short-circuits even when the file does NOT exist: pre-insert events, call with nonexistent path (no Path.exists patch), assert no exception and scheduler.model not called. This guards against future reordering of the idempotency check vs path check.\n   b. A test for the AudioEventError path: no prior events in DB, call with nonexistent path, assert `AudioEventError` is raised. This covers audio_events.py:101-102 which is currently untested.\n\nmemory_hints:\n- search: \"classify_audio_events idempotency guard has_audio_events early return\"\n- search: \"AudioEventError audio file not found test coverage\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "293",
+        "title": "Add 'sourced' status branch to narrative_status_badge macro",
+        "description": "The narrative pipeline has 5 lifecycle statuses: proposed → approved → scripted → planned → sourced. Task 261 added 'planned' but 'sourced' (the final step, set after media sourcing) still falls through to the purple 'unknown' fallback.\n\nChanges needed:\n1. Add `{%- elif status == 'sourced' %} bg-teal-900 text-teal-300` branch in `autopilot/web/templates/macros/narrative_status_badge.html` after the 'planned' branch and before the else clause.\n2. Add a `test_sourced_teal` test in `TestStatusBadgeMacro` in `tests/test_narrative_status_badge.py` that renders with status='sourced' and asserts the correct CSS classes (bg-teal-900, text-teal-300) and no purple fallback.\n\nMemory hints: search for \"narrative lifecycle statuses\" and \"sourced status\" to confirm the full set of statuses.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "294",
+        "title": "Centralize narrative status definitions and color mappings",
+        "description": "Narrative status values (proposed, approved, rejected, scripted, planned, sourced) and their Tailwind color class mappings are scattered across multiple independent locations with no single source of truth:\n- Database schema (db.py)\n- Template macro (narrative_status_badge.html)\n- Pipeline orchestrator (orchestrator.py)\n- EDL planner (plan/edl.py)\n- Source resolver (source/resolve.py)\n- Duplicate `_STATUS_COLORS` dicts in pipeline.py and dashboard.py\n- `_GATE_STATUS_COLORS` in gates.py also inlined in gate_toggle.html\n- Ad-hoc inline mappings in media_row.html\n\nAdding a new status requires manual updates to every location.\n\nChanges needed:\n1. Define a `NarrativeStatus` enum or string constants in a shared module (e.g., `autopilot/constants.py` or `autopilot/models.py`).\n2. Extract narrative status→Tailwind class mappings into a shared Python constant (e.g., `STATUS_BADGE_CLASSES` in `autopilot/web/colors.py` or similar).\n3. Inject the mapping into the Jinja2 environment as a global so the macro can reference it.\n4. Update all status-aware locations to import from the shared module.\n5. Update tests to verify consistency.\n\nMemory hints: search for \"_STATUS_COLORS\" and \"narrative status definitions\" to find all scattered locations.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T19:04:48.534Z",
+        "metadata": {
+          "modules": [
+            "autopilot/db.py",
+            "autopilot/orchestrator.py",
+            "autopilot/organize/narratives.py",
+            "autopilot/plan/edl.py",
+            "autopilot/plan/script.py",
+            "autopilot/source/resolve.py",
+            "autopilot/statuses.py",
+            "autopilot/web/app.py",
+            "autopilot/web/colors.py",
+            "autopilot/web/routes/dashboard.py",
+            "autopilot/web/routes/gates.py",
+            "autopilot/web/routes/pipeline.py",
+            "autopilot/web/routes/review.py",
+            "autopilot/web/templates/macros",
+            "autopilot/web/templates/partials",
+            "tests/test_narrative_status_badge.py",
+            "tests/test_statuses.py",
+            "tests/test_web_colors.py"
+          ]
+        }
+      },
+      {
+        "id": "295",
+        "title": "Fix null duration/position crashes and dead default in _insert_transitions",
+        "description": "In autopilot/plan/otio_export.py, guard two crash bugs: (1) line 152 — change `float(trans_data.get('duration', 0.5))` to `float(trans_data.get('duration') or 0.5)` to avoid `float(None)` TypeError; (2) line 134 — change `pos = trans_data.get('position', 0)` to `pos = trans_data.get('position') or 0` to avoid None dict-key and subsequent `sorted()` TypeError. Also (3) line 151 — change `trans_data.get('type', 'cut')` to `trans_data.get('type')` (no default) since 'cut' and missing-key entries were already filtered at lines 128-130; the default is dead code.\n\nmemory_hints:\n- search: \"OTIO _insert_transitions null handling dict.get or idiom\"\n- search: \"OTIO transition duration position null crash\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T19:02:31.548Z",
+        "metadata": {
+          "modules": [
+            "autopilot/plan/otio_export.py",
+            "tests/test_otio_export.py"
+          ]
+        }
+      },
+      {
+        "id": "296",
+        "title": "Strengthen null-type transition test: add name assertion and precise warning check",
+        "description": "In tests/test_otio_export.py in test_null_transition_type_falls_back_to_smpte_dissolve: (1) add `assert transitions[0].name == ''` after the transition_type assertion to pin the direct effect of `name=trans_type or ''`; (2) tighten the warning assertion from `any('None' in msg ...)` to `any('None, falling back' in msg ...)` to avoid matching any warning that happens to contain the word 'None'. Covers suggestions [5], [2], and [8] from the review.\n\nmemory_hints:\n- search: \"OTIO null transition type test assertions name warning\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T18:25:12.337Z"
+      },
+      {
+        "id": "297",
+        "title": "Add empty-string transition type edge case test",
+        "description": "In tests/test_otio_export.py, add test_empty_string_transition_type_falls_back_to_smpte_dissolve passing `{'type': '', 'duration': 1.0, 'position': 0}`. Assert SMPTE_Dissolve fallback, a WARNING is emitted, and `transitions[0].name == ''`. This covers the distinct code path where `type: ''` bypasses the 'cut' filter (empty string != 'cut'), hits the map-lookup miss, and triggers the warning+fallback branch.\n\nmemory_hints:\n- search: \"OTIO transition type empty string edge case test\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T23:03:05.059Z",
+        "metadata": {
+          "modules": [
+            "tests/test_otio_export.py"
+          ],
+          "memory_hints": {
+            "entities": [],
+            "queries": [
+              "resolution for: Add empty-string transition type edge case test"
+            ]
+          }
+        }
+      },
+      {
+        "id": "298",
+        "title": "Refactor TestTransitionMapping: fixture + parametrize",
+        "description": "In tests/test_otio_export.py inside TestTransitionMapping: (1) Extract the repeated 2-clip EDL construction (clip_id v1/v2, timecodes 00:00:00.000-10.000 and 00:00:10.000-20.000) shared across 9+ test methods into a class-level `@pytest.fixture` or helper method `_two_clip_edl(trans_type, duration=1.0)`. (2) Collapse test_unknown_transition_type_falls_back_to_smpte_dissolve, test_unknown_transition_type_emits_warning, and test_null_transition_type_falls_back_to_smpte_dissolve into a single `@pytest.mark.parametrize('trans_type,expected_in_warning', [('wipe', 'wipe'), (None, 'None')])` test.\n\nmemory_hints:\n- search: \"TestTransitionMapping test setup duplication fixture\"\n- search: \"test_otio_export parametrize refactor\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "299",
+        "title": "Use 'unknown' as OTIO transition name fallback instead of empty string",
+        "description": "In autopilot/plan/otio_export.py line 164, change `name=trans_type or ''` to `name=trans_type or 'unknown'`. This makes OTIO Transition objects self-describing when inspected in DaVinci Resolve or OTIO timeline tools. Update the corresponding test assertions (name == '' → name == 'unknown') in any tests that pin this value, including the new null-type test.\n\nmemory_hints:\n- search: \"OTIO transition name fallback empty string unknown\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "300",
+        "title": "Clean up test_setup_helper_* tests in test_youtube.py",
+        "description": "The two `test_setup_helper_*` tests (lines ~288-305 in tests/test_youtube.py) added by task 254 have three issues:\n\n1. **Unused fixture**: Both accept `youtube_config` but never reference it. Remove from both signatures.\n2. **Redundancy concern**: They test a private test helper (`_setup_media_with_detections`) whose JSON encoding behavior is already exercised end-to-end by `test_tags_from_activity_labels_and_detections` and `test_tags_exclude_empty_string_class`. Either remove the tests entirely (preferred) or add a comment justifying why helper-contract tests exist separately.\n3. **Duplicated payload**: If kept, extract `_MINIMAL_DETECTIONS = [(\"m1\", 0, json.dumps([{\"class\": \"x\", \"confidence\": 0.9}]))]` to deduplicate.\n\nMemory hints: search \"task 254 _setup_media_with_detections helper\" for context on why these tests were added.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "301",
+        "title": "Add test for graceful degradation with missing activity clusters",
+        "description": "In tests/test_youtube.py, there is no test covering what `_build_upload_metadata` returns when `activity_cluster_ids_json` references cluster IDs that do not exist in the DB. Since `activity_cluster_ids_json` is a plain TEXT column with no FK constraint, a missing-cluster scenario silently succeeds at insert time but may produce empty/wrong tags at query time. This failure mode is reachable in production if cluster data is deleted or missing.\n\nAdd a test like:\n```python\ndef test_tags_missing_activity_clusters_gracefully_degrades(self, catalog_db, youtube_config):\n    \"\"\"Tags fall back to detection-only values when referenced clusters don't exist.\"\"\"\n    self._setup_media_with_detections(\n        catalog_db,\n        [(\"m1\", 0, json.dumps([{\"class\": \"person\", \"confidence\": 0.9}]))],\n        activity_cluster_ids=[\"nonexistent_c1\"],\n    )\n    meta = _build_upload_metadata(\"n1\", catalog_db, youtube_config)\n    tags = meta[\"snippet\"][\"tags\"]\n    # Should not raise; detection tags should still be present\n    assert \"person\" in tags\n```\n\nMemory hints: search \"activity_cluster_ids _build_upload_metadata tags\" for implementation details.",
+        "details": "",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T18:40:54.228Z"
+      },
+      {
+        "id": "302",
+        "title": "Strengthen mutation test assertions",
+        "description": "In tests/test_render_router.py, method `test_source_path_resolution_does_not_mutate_original_clip` (line 1238):\n1. Add full equality assertions on `parsed_clips[0]` and `parsed_clips[1]` after routing to guarantee no fields were mutated (not just that `source_path` was not added).\n2. Add value-preservation assertions on `rendered_a` and `rendered_b` (e.g. `assert rendered_a['clip_id'] == 'clip_a'`) to verify the dict-spread did not corrupt original field values.\n\nmemory_hints:\n- search: \"mutation test assertions source_path resolution parsed_clips\"\n- entity: \"test_render_router\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "303",
+        "title": "Fix test robustness and call-convention resilience in mutation test",
+        "description": "In tests/test_render_router.py:\n1. Replace the bare dict key lookup `{...}[cid]` at line 1262-1265 with `.get(cid)` or an explicit `pytest.fail(f'Unexpected get_media call: {cid!r}')` so unexpected clip_id values produce diagnostic failures instead of cryptic KeyErrors.\n2. At lines 1290-1291, replace `mock_rs.call_args_list[0][0][0]` positional indexing with a helper that checks `args[0] if args else kwargs.get('edl_entry')`, plus an assert that the result is not None, to survive router switching to keyword-call convention.\n\nmemory_hints:\n- search: \"mutation test get_media side_effect render_simple call_args\"\n- entity: \"test_render_router\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "304",
+        "title": "Code clarity and style fixes in mutation test",
+        "description": "In tests/test_render_router.py, method `test_source_path_resolution_does_not_mutate_original_clip` (line 1238):\n1. Rename the method to `test_source_path_resolution_does_not_mutate_original_clips` (plural) to match the docstring and actual two-clip scope.\n2. Restore typed parameters on `_capturing_loads` at line 1274: `def _capturing_loads(s: str | bytes, *args: object, **kwargs: object) -> object:` to match the module's annotation style.\n3. Replace the comment at line 1270 that hard-codes `router.py line 154` with a structural description such as 'the only way to detect in-place mutation inside the source_path resolution branch of route_and_render'.\n4. Either remove `mock_rs.return_value = Path('/tmp/seg.mp4')` at line 1285 (if it is truly unused) or add a comment explaining it is required for the concat phase.\n\nmemory_hints:\n- search: \"mutation test _capturing_loads type annotations style\"\n- entity: \"test_render_router\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "305",
+        "title": "Extract shared test helpers to eliminate duplication in TestSourcePathResolution",
+        "description": "In tests/test_render_router.py, class `TestSourcePathResolution` (starting line 925):\n1. Add a `_make_clip(clip_id, *, in_tc='00:00:00.000', out_tc='00:00:10.000', track=1, **extra) -> dict` factory helper alongside `_make_edl` and replace the 8+ verbatim clip-skeleton dicts throughout the class.\n2. Add a `_make_db(edl)` factory helper that returns a pre-configured `MagicMock` with `get_edit_plan`, `get_narrative`, and `get_transcript` set, then replace the repeated 3-line setup block across ~10 tests.\n3. Unify the `db.get_media.side_effect` style: `test_multiple_clips_each_resolved` (line 1136) uses a named `_get_media` inner function; the mutation test uses an inline lambda — pick one style and apply it consistently.\n\nmemory_hints:\n- search: \"TestSourcePathResolution _make_edl _make_clip helper duplication\"\n- entity: \"test_render_router\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "306",
+        "title": "Clean up test_db_update_rowcount.py: dead code and fixture duplication",
+        "description": "In tests/test_db_update_rowcount.py: (1) Remove the empty `if TYPE_CHECKING: pass` block at lines 17-18 and drop `TYPE_CHECKING` from the typing import (keep `Iterator`). (2) Remove the local `_seed_narrative` helper (lines 32-49) which is byte-for-byte identical to `tests/conftest.py:136-153` — update call sites to import from conftest or rely on pytest conftest loading. (3) Drop the local `db` fixture (lines 22-27) and replace all usages with the conftest-provided `catalog_db` fixture (in-memory, autocommit), removing the now-unnecessary explicit `db.conn.commit()` calls throughout the test file. (4) While refactoring the fixture, wrap any remaining fixture yields in try/finally for explicit close() guarantees.\n\nMemory hints: search for \"CatalogDB test fixtures\" and \"conftest catalog_db fixture\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "307",
+        "title": "Refactor test classes into parametrized pattern and add read-back assertions",
+        "description": "In tests/test_db_update_rowcount.py: (1) Replace the four test classes (TestUpdateNarrativeRowcount, TestUpdateGateRowcount, TestUpdateJobRowcount, TestUpdateRunRowcount) with a single `@pytest.mark.parametrize`-driven structure or a shared helper accepting (setup_fn, update_fn, fetch_fn) pairs — this removes ~12 near-identical methods. (2) For each 'existing row' test case, add a read-back assertion after the update call (e.g. `assert db.get_narrative('n-1')['title'] == 'New'`) to verify the field was actually mutated, not just that rowcount was 1. (3) Add a note in the module docstring pointing to `tests/test_db_validate_helper.py` for ValueError coverage, documenting that ValueError paths are intentionally tested elsewhere.\n\nMemory hints: search for \"CatalogDB update pattern\" and \"test parametrize conventions\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "308",
+        "title": "Guard against sqlite3 rowcount sentinel in db.py",
+        "description": "In autopilot/db.py at `_execute_kwargs_update` (~line 98): replace `return cur.rowcount` with a guard against the documented -1 sentinel: `rc = cur.rowcount; return rc if rc >= 0 else 0`. This ensures callers using `== 0` to detect missing records are never misled by the sentinel value.\n\nMemory hints: search for \"CatalogDB update pattern\" and \"update_activity_cluster rowcount\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T19:09:06.217Z"
+      },
+      {
+        "id": "309",
+        "title": "Log warnings on zero rowcount from update_gate and update_job in orchestrator.py",
+        "description": "In autopilot/orchestrator.py: (1) At the `update_gate()` call sites around lines 1169-1180 (auto/notify approval path and pause/waiting path), capture the return value and emit `logger.error('Gate %s not found; pipeline state may be corrupt', gate_name)` when it is 0. (2) In the `_finish_job` helper (~lines 155-164), capture the `update_job()` return value and emit `logger.warning('update_job: job_id %s not found; final status dropped', job_id)` when it is 0. Neither case should raise — logging the anomaly is sufficient for production resilience.\n\nMemory hints: search for \"orchestrator gate handling\" and \"CatalogDB update pattern\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T19:05:09.521Z",
+        "metadata": {
+          "modules": [
+            "autopilot/orchestrator.py",
+            "tests/test_orchestrator.py"
+          ]
+        }
+      },
+      {
+        "id": "310",
+        "title": "Promote _handle_dry_run to public API or revert to scoped local import",
+        "description": "In autopilot/cli.py, rename `_handle_dry_run` → `handle_dry_run` (removing the underscore prefix) to make the design intent explicit — it is a tested, stable API. Update the module-level import in tests/test_cli.py line 13 accordingly (`from autopilot.cli import handle_dry_run, main`), and update all call sites within cli.py. Alternatively, if the function should remain private, revert the module-level import to a local import inside each TestHandleDryRun test method with a `# noqa: PLC0415` annotation.\n\nMemory hints: search for \"task 227 _handle_dry_run import coupling\", get_entity \"_handle_dry_run\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "311",
+        "title": "Extract _assert_warning_contains helper and use r.getMessage() in OTIO export tests",
+        "description": "In tests/test_otio_export.py, the warning-extraction-and-assertion pattern is duplicated across test_unknown_transition_type_emits_warning (line ~594) and test_null_transition_type_falls_back_to_smpte_dissolve (line ~648). Refactor:\n\n1. Extract a module-level helper:\n```python\ndef _assert_warning_contains(caplog, substring):\n    msgs = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]\n    assert any(substring in m for m in msgs), (\n        f\"Expected a WARNING containing {substring!r}, got: {msgs}\"\n    )\n```\n2. Replace both call sites with `_assert_warning_contains(caplog, \"wipe\")` and `_assert_warning_contains(caplog, \"None, falling back\")`.\n3. Use `r.getMessage()` instead of `r.message` in the helper — this is the stable, documented LogRecord API.\n4. Update the stale comment at line ~647 from \"Verify WARNING log mentions None\" to something like \"Verify WARNING log contains the falling-back sentinel phrase\".\n\nmemory_hints:\n- search: \"OTIO test warning assertion helper caplog getMessage\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "312",
+        "title": "Clean up TestHandleDryRun test structure",
+        "description": "In tests/test_cli.py around lines 628-666: (1) Remove the `with runner.isolated_filesystem():` block (and its extra blank line) from `test_returns_true_and_echoes_when_dry_run` so all three tests are structurally uniform. (2) Extract the shared CliRunner + @click.command + invoke boilerplate into a module- or class-level helper function, e.g. `def _invoke_dry_run(dry_run: bool, stages: str) -> Result`, so each test body reduces to one call + one assertion.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "313",
+        "title": "Strengthen _handle_dry_run docstring contract language",
+        "description": "In autopilot/cli.py around line 101, change the Note text from 'Intended for use within a Click command callback.' to firmer prescriptive language such as 'Must be called from within a Click command or group callback.' This preserves the design constraint without the now-incorrect 'Requires an active Click context' phrasing.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "314",
+        "title": "Improve TestHandleDryRun assertion precision and test naming",
+        "description": "In tests/test_cli.py: (1) At line 640, change `assert \"[DRY-RUN] Would execute: INGEST\" in result.output` to `assert result.output == \"[DRY-RUN] Would execute: INGEST\\n\"` for precise output matching, consistent with the strict `== \"\"` assertion in the False-case test. Similarly update line 653 for the multi-stage test. (2) Rename `test_returns_true_with_multiple_stages` (line 642) to `test_echoes_all_stages_and_returns_true` to accurately describe both assertions made in the test body.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "315",
+        "title": "Replace full-table-scan get_activity_clusters() with targeted get_activity_clusters_by_ids() in youtube upload",
+        "description": "In `autopilot/upload/youtube.py` lines 102-107, `_build_upload_metadata` calls `db.get_activity_clusters()` which fetches ALL clusters into memory, then builds a dict and filters by the narrative's cluster IDs. The method `db.get_activity_clusters_by_ids(cluster_ids)` already exists (added in task 80) and issues a single `WHERE cluster_id IN (...)` query returning a pre-keyed dict.\n\nReplace lines 102-107 with:\n```python\ncluster_map = db.get_activity_clusters_by_ids(cluster_ids)\nfor cid in cluster_ids:\n    cluster = cluster_map.get(cid)\n    if cluster and cluster.get(\"label\"):\n        tags.append(str(cluster[\"label\"]))\n```\n\nThis eliminates the full table scan and Python-side dict construction. The existing test `test_tags_missing_activity_clusters_gracefully_degrades` and `test_tags_from_activity_labels_and_detections` should still pass.\n\nMemory hints: search \"get_activity_clusters_by_ids CatalogDB\" for the method signature.",
+        "details": "",
+        "testStrategy": "",
+        "status": "done",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T23:02:30.656Z"
+      },
+      {
+        "id": "316",
+        "title": "Strengthen graceful-degradation test assertions and add mixed cluster-ID edge case",
+        "description": "Improve `test_tags_missing_activity_clusters_gracefully_degrades` in `tests/test_youtube.py` (around line 237):\n\n1. **Replace brittle length assertion with explicit negative assertion** (3 reviewers flagged this independently): Replace `assert len(tags) == 1` with `assert 'nonexistent_c1' not in tags` (or `assert tags == ['person']`). The current `len` check is implicit about the core claim (missing clusters produce no tag) and breaks if any default tags are added in the future.\n\n2. **Add a second detection class** to make the \"detection tags still appear\" (plural) claim falsifiable. Add e.g. `{\"class\": \"dog\", \"confidence\": 0.7}` alongside the existing person detection, then assert both appear.\n\n3. **Add a new test for mixed valid/nonexistent cluster IDs**: Insert one valid cluster (e.g. 'c1' with label 'hiking') and reference both it and a nonexistent ID. Assert 'hiking' appears in tags and the nonexistent ID contributes nothing. This catches bugs where the loop bails on first miss.\n\nMemory hints: search \"test_tags_from_activity_labels_and_detections _setup_media_with_detections\" for existing test patterns.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "317",
+        "title": "Tighten JS regression guard: whitespace-agnostic pattern and accurate test name",
+        "description": "Reviewer suggestions S1-S4 from task 234 unblock:\n\n1. Use re.search(r\"\\|\\|\\s*null\", response.text) instead of exact \"|| null\" substring to catch ||null (no space) variant (robustness, test_analyst).\n2. Rename test from test_edit_form_js_does_not_use_falsy_or_null to test_edit_form_js_does_not_use_falsy_coercion_to_null — current name overpromises (architect, test_analyst).\n3. Consider adding assertion that inline JS block IS present in response, so test fails loudly if JS is extracted to static file (architect).\n4. Consider adding || undefined check as secondary falsy pattern (test_analyst).\n\nFiles: tests/test_review.py, TestEditFormZeroDuration class.",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "318",
+        "title": "Test infrastructure cleanup: shared fixture and HTML parsing consistency",
+        "description": "Reviewer suggestions S5-S7 from task 234 unblock:\n\n1. Extract shared zero_duration_edit_response fixture in TestEditFormZeroDuration to deduplicate identical GET request across two test methods (reuse_auditor).\n2. Hoist regex pattern to module-level constant _DURATION_INPUT_RE = re.compile(...) (performance).\n3. Consider shared find_input_by_name(html, name) helper using html.parser, consistent with _SelectedOptionParser in test_gates.py, instead of ad-hoc regex (architect).\n\nFiles: tests/test_review.py, tests/test_gates.py (pattern reference).",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "319",
+        "title": "Replace full table scan in _build_upload_metadata with targeted query",
+        "description": "In autopilot/upload/youtube.py line 102, replace db.get_activity_clusters() (full table scan + manual dict construction) with db.get_activity_clusters_by_ids(cluster_ids) which already exists and uses a WHERE IN query. Update the loop to use the new return shape (dict keyed by cluster_id).",
+        "details": "",
+        "testStrategy": "",
+        "status": "in-progress",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T23:03:03.713Z",
+        "metadata": {
+          "modules": [
+            "autopilot/upload/youtube.py",
+            "tests/test_youtube.py"
+          ]
+        }
+      },
+      {
+        "id": "320",
+        "title": "Strengthen test assertions and coverage for missing-cluster graceful degradation",
+        "description": "In tests/test_youtube.py: (a) Replace `assert len(tags) == 1` with `assert tags == ['person']` in test_tags_missing_activity_clusters_gracefully_degrades for clarity. (b) Add a second detection entry to match the 'plural' docstring. (c) Add a new test test_tags_mixed_valid_and_nonexistent_clusters with both real and missing cluster IDs to cover the mixed-list edge case.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "321",
+        "title": "Strengthen null-guard test assertions and reduce fixture boilerplate in test_review.py",
+        "description": "Follow-up from task 223 review suggestions:\n\nS1 - Test assertion scoping (architect, robustness, test analyst):\n- tests/test_review.py TestEditFormNullTitleDescription: title test asserts value=\"\" exists anywhere in HTML, not specifically on the title input. Use a regex to scope the assertion to the title input element.\n- Description test lacks a positive assertion that the textarea is actually empty. Add a positive assertion.\n\nS2 - Missing roundtrip test (test analyst):\n- TestEditFormZeroDuration has a roundtrip test (PUT zero duration -> GET edit form). TestEditFormNullTitleDescription has no equivalent. Add a test that PUTs empty title/description and verifies the edit form re-renders correctly.\n\nS4 - Fixture boilerplate (reuse auditor, performance):\n- 6th identical app/client fixture pair in test_review.py. Consider a shared factory or helper to reduce duplication. Also consider promoting fixtures to class scope since tests are read-only.",
+        "details": "",
+        "testStrategy": "",
+        "status": "in-progress",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T23:08:35.409Z",
+        "metadata": {
+          "modules": [
+            "tests/conftest.py",
+            "tests/test_review.py"
+          ]
+        }
+      },
+      {
+        "id": "322",
+        "title": "Fix vacuous and misleading assertions in TestSettingsPage",
+        "description": "In tests/test_settings.py, three test methods have assertions that pass vacuously because they check strings present on every page via base.html's nav bar. Also consolidate redundant HTTP calls.",
+        "details": "Fix these specific issues in tests/test_settings.py:\n\n1. **test_settings_contains_page_title (line 17):** `assert 'Settings' in response.text` passes vacuously because 'Settings' appears in the nav on every page. Change to `assert '<title>Settings - Autopilot Video</title>' in response.text`.\n\n2. **test_settings_extends_base_template (line 32):** Asserts 'Dashboard' and 'Autopilot Video' which are nav-bar strings present on all pages. Assert a settings-specific string + a nav element together, or check the `<title>` tag.\n\n3. **Missing coverage:** Add an assertion that `<title>Settings - Autopilot Video</title>` appears in the rendered HTML to catch regressions in the page_title context variable.\n\n4. **Redundant IO:** Convert the 5 independent `client.get('/settings')` calls in TestSettingsPage into a single class-scoped response fixture to reduce round-trips.\n\n## Memory hints\n- search: \"settings page template context variable page_title\"\n- search: \"TestSettingsPage test structure\"",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "323",
+        "title": "Harden TestNavLinkContract: status codes, nav parsing, and input guards",
+        "description": "TestNavLinkContract in tests/test_settings.py has several defensive gaps: it's in the wrong file, only catches 404s (not 500s), uses a fragile regex for nav parsing, lacks an existence check on base.html, and doesn't filter external URLs.",
+        "details": "Fix these specific issues (currently in tests/test_settings.py, TestNavLinkContract class):\n\n1. **Move to dedicated file:** Move TestNavLinkContract to `tests/test_navigation.py` — it tests all nav links in base.html, not just settings. Its current placement is misleading.\n\n2. **Catch all error status codes (line 70):** Change `if response.status_code == 404` to `if response.status_code >= 400` to catch 500s from broken route handlers.\n\n3. **Fix fragile nav regex (lines 56/63):** Replace `re.search(r'<nav\\b[^>]*>(.*?)</nav>', html, re.DOTALL)` — it silently truncates on nested or secondary nav elements. Use html.parser or re.findall over all nav blocks.\n\n4. **Add existence check (line 53):** Add `assert base_html.exists(), f'base.html not found at {base_html}'` before read_text() for a self-documenting failure message.\n\n5. **Filter external URLs (line 64):** Filter hrefs to relative URLs only (`[h for h in hrefs if h.startswith('/')]`) before iterating, to prevent TestClient attempting real outbound HTTP requests on external links.\n\n## Memory hints\n- search: \"TestNavLinkContract nav link test\"\n- search: \"base.html nav structure\"",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "324",
+        "title": "app.js notification handler hardening follow-ups",
+        "description": "Three targeted fixes to app.js around the notification handler:\n\n1. **Simplify msg guard** (line ~136): Change `(data && typeof data.message === 'string')` to `(typeof data.message === 'string')` — `data` is already guaranteed non-null by the early return above.\n2. **Document _permissionRequested lifetime** (line ~118): Add a one-line comment next to `var _permissionRequested = false;` documenting that it stays true for the page lifetime even on dismissed prompts.\n3. **Add .catch() to requestPermission promise** (line ~148-152): Add `.catch(function(err) { _permissionRequested = false; console.warn('Notification permission request failed:', err); })` after the `.then()` so rejected promises are handled and transient failures reset the flag to allow a future retry.\n\nMemory hints: search for \"notification handler\" and \"_permissionRequested\" in project context.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "325",
+        "title": "test_notifications.py assertion gaps",
+        "description": "Strengthen four test assertions in tests/test_notifications.py:\n\n1. **Fix fragile slice in test_notification_handler_guards_data_message** (line ~113): Change `func_body.find(\"notification\")` to `func_body.find(\"addEventListener('notification'\")` so the slice starts at the actual listener, not the function name.\n2. **Assert return in guard block** (line ~187): In test_notification_handler_guards_data_object_before_side_effects, add `return_idx = func_body.find('return', guard_idx); assert return_idx != -1 and return_idx < unread_idx` to verify the guard contains a return statement.\n3. **Assert onerror assignment** (line ~169): In test_sse_reconnect_gap_documented, add an assertion that `source.onerror` is assigned inside connectSSE.\n4. **Assert guard-before-set ordering** (line ~141): In test_permission_requested_flag_guards_request_permission, add `assert func_body.find('!_permissionRequested') < func_body.find('_permissionRequested = true')` to ensure the check guards the set.\n\nMemory hints: search for \"test_notifications\" and \"notification test assertions\" in project context.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "326",
+        "title": "test_notifications.py infrastructure cleanup",
+        "description": "Two structural improvements to tests/test_notifications.py to reduce duplication:\n\n1. **Cache file content at module level** (line ~8): Add `_APP_JS_CONTENT = _APP_JS.read_text()` at module level and replace all `_APP_JS.read_text()` calls across the class with the cached constant — eliminates 10+ redundant file reads.\n2. **Extract _func_body helper** : Add a `_func_body(self, func_name: str) -> str` helper method to TestNotificationSSESetup that reads content (using cached constant), finds `function {func_name}`, slices to next `\\nfunction`, and returns the body. Replace the 7 verbatim copies of this pattern across test methods with `func_body = self._func_body('setupNotificationSSE')`.\n\nMemory hints: search for \"test_notifications\" and \"test helper patterns\" in project context.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "327",
+        "title": "Fix duration=0 coercion: replace `or` with explicit None check",
+        "description": "In `autopilot/plan/otio_export.py` line 152, replace `float(trans_data.get('duration') or 0.5)` with an explicit None guard: `raw = trans_data.get('duration'); duration_secs = float(0.5 if raw is None else raw)`. This prevents an explicit `duration: 0` from silently becoming 0.5s. Suggestions [1], [3], [10] all report this same bug.\n\nmemory_hints:\n- search: \"OTIO transition duration zero falsy or idiom\"\n- search: \"Python or default falsy value coercion convention\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T23:05:42.421Z",
+        "metadata": {
+          "memory_hints": {
+            "entities": [],
+            "queries": [
+              "resolution for: Fix duration=0 coercion: replace `or` with explicit None check"
+            ]
+          },
+          "modules": [
+            "autopilot/plan/otio_export.py",
+            "tests/test_otio_export.py"
+          ]
+        }
+      },
+      {
+        "id": "328",
+        "title": "Document dead/inconsistent `type` default at line 151",
+        "description": "In `autopilot/plan/otio_export.py` line 151, the default `''` for the `type` key is dead code — no entry without a `type` key can survive the line-128 cut-filter. Either revert to `'cut'` for consistency with line 128, or add a comment such as `# key always present here (cut-filtered above)` to explain the divergence. Suggestions [0] and [11].\n\nmemory_hints:\n- search: \"OTIO _insert_transitions type default dead code\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "329",
+        "title": "Clarify cut-filter test and cover dead-code path at line 151",
+        "description": "In `tests/test_otio_export.py`, the `test_cut_filtered_before_type_lookup` test verifies pre-existing line-128 filter behavior, not the changed `get('type', '')` default at line 151. (1) Add a short docstring explaining the shared `position=0` is intentional and that the test is a regression guard for the early-filter logic. (2) Optionally add a new unit test that directly calls `_insert_transitions` with a `trans_data` dict missing the `type` key to exercise the line-151 default in isolation. Suggestions [2] and [7].\n\nmemory_hints:\n- search: \"test_cut_filtered_before_type_lookup test purpose\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "330",
+        "title": "Strengthen null-guard tests: no-warning assertions and position verification",
+        "description": "In `tests/test_otio_export.py`: (1) Add `caplog` to `test_null_duration_uses_default` and `test_null_position_uses_default` and assert no WARNING is emitted, consistent with the `test_null_transition_type_falls_back_to_smpte_dissolve` pattern. (2) In `test_null_position_uses_default`, after `_assert_clip_transition_clip`, verify `track_items[0].name == 'v1'` and `track_items[2].name == 'v2'` to confirm the transition is inserted between the correct clips. Suggestions [8] and [9].\n\nmemory_hints:\n- search: \"OTIO null guard test caplog warning assertion pattern\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "331",
+        "title": "Extract reusable two-clip EDL fixture helper in TestTransitionMapping",
+        "description": "In `tests/test_otio_export.py`, the `TestTransitionMapping` class has ~12 inlined copies of the same two-clip dict list. Generalize `_wipe_edl()` to accept a `transitions` parameter (defaulting to the current wipe transition), or add a `_two_clip_edl(transitions)` static helper alongside it. Update the three new tests (`test_null_duration_uses_default`, `test_null_position_uses_default`, `test_cut_filtered_before_type_lookup`) and ideally the prior tests to call the helper instead of inlining. Suggestions [5] and [6].\n\nmemory_hints:\n- search: \"TestTransitionMapping _wipe_edl fixture helper pattern\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "332",
+        "title": "Fix _capturing_loads helper: remove str() coercion and narrow EDL filter",
+        "description": "In tests/test_render_router.py, extract the `_capturing_loads` inner function (currently copy-pasted in ~line 1274, 1634, and 1758) into a module-level `_make_capturing_loads()` factory. In the two new copies (lines 1634 and 1758), fix the `_real_loads(str(s), ...)` coercion to `_real_loads(s, ...)` — the str() cast silently corrupts bytes inputs and produces misleading JSONDecodeErrors. Also narrow the capture guard from `'clips' in result` to also check for an EDL-specific key (e.g., `'edl_version'`) so that future json.loads calls returning dicts with a 'clips' key don't corrupt parsed_clips.\n\nmemory_hints:\n- search: \"_capturing_loads str coercion EDL filter test helper\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T23:08:35.328Z",
+        "metadata": {
+          "modules": [
+            "tests/test_render_router.py"
+          ]
+        }
+      },
+      {
+        "id": "333",
+        "title": "Harden mock_run.call_args access with explicit call_count assertion",
+        "description": "In tests/test_render_router.py, in test_subtitle_loop_uses_resolved_clips (around lines 1711 and the cmd_str access), add `assert mock_run.call_count == 1` before accessing `mock_run.call_args[0][0]`. This makes the failure mode explicit if a future subprocess.run call is added — currently the assertion would silently inspect the wrong command call.\n\nmemory_hints:\n- search: \"mock_run call_args call_count subprocess assertion\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "334",
+        "title": "Redesign test_subtitle_loop_uses_resolved_clips to actually validate resolved_clips usage",
+        "description": "In tests/test_render_router.py, redesign test_subtitle_loop_uses_resolved_clips (~line 1666) so it would fail if the production code used `clips` instead of `resolved_clips`. Currently the test passes regardless, because the subtitle loop only reads clip_id/timecodes which are identical in both lists. One approach: mock render_simple to conditionally not append one clip, then assert get_transcript is only called for the rendered set. Also add a timing assertion: with two 5-second clips, the second clip's subtitle segments should have a cumulative start offset of 5.0s — this validates the core cumulative_offset logic that is currently untested.\n\nmemory_hints:\n- search: \"subtitle loop resolved_clips test validation cumulative_offset\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "in-progress",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2026-04-04T23:04:25.194Z"
+      },
+      {
+        "id": "335",
+        "title": "Extract shared db mock setup in TestResolvedClipsList to a helper factory",
+        "description": "In tests/test_render_router.py, the three methods in TestResolvedClipsList (~lines 1603, 1666, 1720) each repeat the same db MagicMock wiring: get_edit_plan, get_narrative, get_transcript, get_media (with the same `lambda mid: {'file_path': f'/resolved/{mid}.mp4'}` lambda), and `config = _make_config()`. Extract a `_make_db(edl, ...)` module-level helper (mirroring `_make_edl` and `_make_config`) that returns a wired MagicMock. This reduces maintenance surface when the router's setup contract changes.\n\nmemory_hints:\n- search: \"TestResolvedClipsList db mock setup helper factory\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "336",
+        "title": "Router code clarity: comment and scoping for resolved_clips",
+        "description": "In autopilot/render/router.py: (1) At the subtitle loop (~line 265, `for clip in resolved_clips:`), add an inline comment explaining that resolved_clips is used here to maintain a single consistent view of post-resolution clip state, future-proofing against fields that may depend on resolution. (2) Move the `resolved_clips: list[dict] = []` and `segments: list[Path] = []` initializations (currently at lines 130-131) to the first lines inside the `with tempfile.TemporaryDirectory(...) as work_dir_str:` block, since both are only populated and consumed within that block.\n\nmemory_hints:\n- search: \"resolved_clips scoping comment router.py TemporaryDirectory\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "337",
+        "title": "Remove fragile meta-test and replace with explanatory comment",
+        "description": "Delete `test_fixture_is_class_scoped` (tests/test_review.py lines ~1087-1097) entirely. It accesses `request._fixturemanager.getfixturedefs` (private pytest internal); in pytest ≥7.2 the scope attribute returns a `Scope` enum rather than a plain string so `fixturedefs[-1].scope == 'class'` silently evaluates `False`. The isolation guarantee it was meant to enforce is already provided by `TestZeroDurationRoundtrip`'s function-scoped fixtures. Replace it with a code comment above the `zero_duration_client` fixture definition explaining why class scope is required and that mutating tests must remain in `TestZeroDurationRoundtrip`.\n\nMemory hints: search \"task 224 zero-duration fixture scope optimization\" for parent task context.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "338",
+        "title": "Extract shared seeding helper to eliminate duplicated fixture setup",
+        "description": "In tests/test_review.py, extract a module-level helper `_build_zero_duration_app(db_path: str) -> FastAPI` that contains the shared seeding logic (CatalogDB setup, init_default_gates(), and the two _seed_narrative calls for n-zero and n-none). Refactor `zero_duration_app` (class-scoped, uses `tmp_path_factory`) and `_roundtrip_app` (function-scoped, uses `tmp_path`) to each call this helper with their respective `db_path`. The scope difference and tmp_path mechanism become the only meaningful difference between the two fixtures.\n\nMemory hints: search \"task 224 zero-duration fixture scope optimization\" for parent task context; search \"task 109 conftest fixture consolidation\" for related fixture work.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": "339",
+        "title": "Convert client fixtures to yield-based teardown with context manager",
+        "description": "In tests/test_review.py, convert `zero_duration_client` and `_roundtrip_client` from bare `return TestClient(app)` to yield-based fixtures using the context manager pattern:\n\n```python\nwith TestClient(app) as client:\n    yield client\n```\n\nThis ensures lifespan events are fired and the underlying httpx transport is explicitly closed rather than deferred to GC, preventing file handle accumulation across the test run.\n\nMemory hints: search \"task 224 zero-duration fixture scope optimization\" for parent task context.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "340",
+        "title": "Add None-duration roundtrip test to TestZeroDurationRoundtrip",
+        "description": "In tests/test_review.py, add `test_update_none_duration_roundtrip` to `TestZeroDurationRoundtrip`. The test should: (1) PUT `{\"proposed_duration_seconds\": null}` to `/api/narratives/n-none` and assert `proposed_duration_seconds` is `null`/absent in the JSON response; (2) GET `/api/narratives/n-none?edit=1` with `HX-Request: true` and assert the `proposed_duration_seconds` input contains `value=\"\"`. The `_roundtrip_app` fixture already seeds `n-none` but no test exercises this code path, leaving null serialisation in the PUT handler and edit-form renderer untested.\n\nMemory hints: search \"task 224 zero-duration fixture scope optimization\" for parent task context.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:10:42.037Z",
-      "taskCount": 281,
-      "completedCount": 185,
+      "lastModified": "2026-04-04T23:08:35.409Z",
+      "taskCount": 340,
+      "completedCount": 205,
       "tags": [
         "master"
       ]

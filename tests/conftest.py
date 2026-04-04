@@ -153,6 +153,38 @@ def _seed_narrative(
     db.conn.commit()
 
 
+def _seed_cluster(
+    db: CatalogDB,
+    cluster_id: str = "c-1",
+    **overrides: object,
+) -> None:
+    """Insert an activity cluster with sensible defaults, overridable via kwargs."""
+    defaults: dict[str, object] = {
+        "label": "Morning Activity",
+        "description": "Walking the dog",
+        "time_start": "2025-01-01T08:00:00",
+        "time_end": "2025-01-01T09:00:00",
+        "location_label": "Park",
+        "gps_center_lat": 37.7749,
+        "gps_center_lon": -122.4194,
+        "clip_ids_json": '["clip-1","clip-2"]',
+    }
+    defaults.update(overrides)
+    db.insert_activity_cluster(cluster_id, **defaults)  # type: ignore[arg-type]
+    db.conn.commit()
+
+
+def _seed_cluster_via_db(app: object, cluster_id: str = "c-1", **overrides: object) -> None:
+    """Insert a cluster directly into the app's database."""
+    from autopilot.db import CatalogDB as _CatalogDB
+
+    db = _CatalogDB(app.state.db_path)  # type: ignore[union-attr]
+    try:
+        _seed_cluster(db, cluster_id, **overrides)
+    finally:
+        db.close()
+
+
 @pytest.fixture
 def app(tmp_path: Path):
     """Create a FastAPI app with a file-backed CatalogDB and default gates."""
