@@ -5395,6 +5395,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 301,
+        "title": "Add test for graceful degradation with missing activity clusters",
+        "description": "In tests/test_youtube.py, there is no test covering what `_build_upload_metadata` returns when `activity_cluster_ids_json` references cluster IDs that do not exist in the DB. Since `activity_cluster_ids_json` is a plain TEXT column with no FK constraint, a missing-cluster scenario silently succeeds at insert time but may produce empty/wrong tags at query time. This failure mode is reachable in production if cluster data is deleted or missing.\n\nAdd a test like:\n```python\ndef test_tags_missing_activity_clusters_gracefully_degrades(self, catalog_db, youtube_config):\n    \"\"\"Tags fall back to detection-only values when referenced clusters don't exist.\"\"\"\n    self._setup_media_with_detections(\n        catalog_db,\n        [(\"m1\", 0, json.dumps([{\"class\": \"person\", \"confidence\": 0.9}]))],\n        activity_cluster_ids=[\"nonexistent_c1\"],\n    )\n    meta = _build_upload_metadata(\"n1\", catalog_db, youtube_config)\n    tags = meta[\"snippet\"][\"tags\"]\n    # Should not raise; detection tags should still be present\n    assert \"person\" in tags\n```\n\nMemory hints: search \"activity_cluster_ids _build_upload_metadata tags\" for implementation details.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5407,7 +5418,7 @@
       ],
       "created": "2026-04-04T18:17:36.986Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:18:10.784Z"
+      "updated": "2026-04-04T18:18:17.457Z"
     }
   }
 }
