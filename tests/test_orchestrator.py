@@ -1173,6 +1173,35 @@ class TestEdlStage:
         with pytest.raises(RuntimeError, match="All narratives failed"):
             _run_edl(config=minimal_config, db=db)
 
+    @patch("autopilot.plan.otio_export")
+    @patch("autopilot.plan.validator")
+    @patch("autopilot.plan.edl")
+    def test_edl_upsert_only_passes_otio_path(
+        self, mock_edl, mock_validator, mock_otio, minimal_config
+    ):
+        """_run_edl upsert_edit_plan only passes otio_path, not edl_json or validation_json.
+
+        generate_edl() already persists edl_json and a rich validation_json.
+        The orchestrator should only add otio_path after OTIO export.
+        """
+        from autopilot.orchestrator import _run_edl
+
+        db = MagicMock()
+        db.list_narratives.return_value = [{"narrative_id": "n1"}]
+        db.get_narrative_script.return_value = {"scenes": []}
+        db.get_edit_plan.return_value = None
+        mock_edl.generate_edl.return_value = {"timeline": []}
+        mock_validator.validate_edl.return_value = MagicMock(passed=True)
+
+        _run_edl(config=minimal_config, db=db)
+
+        db.upsert_edit_plan.assert_called_once()
+        call_args = db.upsert_edit_plan.call_args
+        # Should only pass narrative_id and otio_path
+        assert call_args.args == ("n1",), f"Expected only nid positional arg, got {call_args.args}"
+        assert "otio_path" in call_args.kwargs, "otio_path kwarg missing"
+        assert "validation_json" not in call_args.kwargs, "validation_json should not be passed"
+
 
 class TestSourceStage:
     """Tests for the real _run_source_assets stage function."""
