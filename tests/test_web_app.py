@@ -301,6 +301,17 @@ class TestExtractFunctionBody:
         body = _extract_function_body(js, "makeStageHandler")
         assert body == "{ return 1; }"
 
+    def test_targets_correct_function_among_multiple(self) -> None:
+        """Each function in a multi-function source can be individually targeted."""
+        js = (
+            "function alpha() { return 1; }\n"
+            "function beta() { return 2; }\n"
+            "function gamma() { return 3; }"
+        )
+        assert _extract_function_body(js, "beta") == "{ return 2; }"
+        assert _extract_function_body(js, "alpha") == "{ return 1; }"
+        assert _extract_function_body(js, "gamma") == "{ return 3; }"
+
 
 class TestExtractListenerBody:
     """Tests for the _extract_listener_body helper hardening."""
