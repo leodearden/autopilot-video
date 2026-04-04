@@ -4535,10 +4535,11 @@
         "description": "In tests/test_otio_export.py: (1) At lines 449-450, 577-578, and the 3 other call sites — replace the `transitions = [item for item in track_items if isinstance(item, otio.schema.Transition)]` + `assert len(transitions) == 1` pattern with `transition = track_items[1]`, then use `transition` directly in subsequent assertions. The helper already guarantees this structure. (2) In `test_crossfade_duration_correct` (lines 489-490), replace `track_items = list(video_tracks[0]); assert isinstance(track_items[1], otio.schema.Transition)` with a call to the structural helper, keeping `trans = track_items[1]` unchanged.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-04T14:11:24.748Z"
       },
       {
         "id": "240",
@@ -4800,7 +4801,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:11:23.592Z",
+      "lastModified": "2026-04-04T14:11:24.748Z",
       "taskCount": 262,
       "completedCount": 177,
       "tags": [
