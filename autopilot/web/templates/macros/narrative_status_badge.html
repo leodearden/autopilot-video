@@ -4,6 +4,7 @@
     {%- elif status == 'rejected' %} bg-red-900 text-red-300
     {%- elif status == 'proposed' %} bg-amber-900 text-amber-300
     {%- elif status == 'scripted' %} bg-blue-900 text-blue-300
+    {%- elif status == 'planned' %} bg-indigo-900 text-indigo-300
     {%- else %} bg-purple-900 text-purple-300{% endif %}">
     {{ status or 'unknown' }}
 </span>
