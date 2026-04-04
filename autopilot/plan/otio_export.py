@@ -63,6 +63,7 @@ _DEFAULT_FPS = 30.0
 # ['approximation'] to detect this semantic gap programmatically.
 # TODO: Implement proper fade-to/from-black via otio.schema.Effect with an
 # opacity keyframe ramp, replacing the SMPTE_Dissolve approximation.
+# Types not in this map emit a WARNING and fall back to SMPTE_Dissolve (see _insert_transitions).
 _TRANSITION_TYPE_MAP = {
     "crossfade": "SMPTE_Dissolve",
     "dissolve": "SMPTE_Dissolve",
@@ -130,7 +131,7 @@ def _insert_transitions(
         trans_track = trans_data.get("track", 1)
         if trans_track != track_num:
             continue  # skip transitions for other tracks
-        pos = trans_data.get("position", 0)
+        pos = trans_data.get("position") or 0
         transitions_by_pos[pos] = trans_data
 
     if not transitions_by_pos:
@@ -147,8 +148,8 @@ def _insert_transitions(
     # Insert transitions in reverse order to avoid index shifting
     for pos in sorted(transitions_by_pos.keys(), reverse=True):
         trans_data = transitions_by_pos[pos]
-        trans_type = trans_data.get("type", "cut")
-        duration_secs = float(trans_data.get("duration", 0.5))
+        trans_type = trans_data.get("type", "")
+        duration_secs = float(trans_data.get("duration") or 0.5)
 
         otio_type = _TRANSITION_TYPE_MAP.get(trans_type)
         if otio_type is None:
@@ -160,7 +161,7 @@ def _insert_transitions(
         half_dur = otio.opentime.RationalTime.from_seconds(duration_secs / 2.0, fps)
 
         transition = otio.schema.Transition(
-            name=trans_type,
+            name=trans_type or "",
             transition_type=otio_type,
             in_offset=half_dur,
             out_offset=half_dur,

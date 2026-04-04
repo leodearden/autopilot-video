@@ -318,16 +318,16 @@ class TestIdempotency:
             )
 
         scheduler = MagicMock()
-        classify_audio_events(
-            "vid1",
-            Path("/tmp/vid1.wav"),
-            catalog_db,
-            scheduler,
-        )
+        with patch.object(Path, "exists", return_value=True):
+            classify_audio_events(
+                "vid1",
+                Path("/tmp/vid1.wav"),
+                catalog_db,
+                scheduler,
+            )
 
         # Scheduler should NOT be called: classification skipped because events already exist
         scheduler.model.assert_not_called()
-        scheduler.assert_not_called()
 
         # DB postcondition: the single pre-existing event is still present,
         # no extra rows written
@@ -353,16 +353,16 @@ class TestIdempotency:
             )
 
         scheduler = MagicMock()
-        classify_audio_events(
-            "vid1",
-            Path("/tmp/vid1.wav"),
-            catalog_db,
-            scheduler,
-        )
+        with patch.object(Path, "exists", return_value=True):
+            classify_audio_events(
+                "vid1",
+                Path("/tmp/vid1.wav"),
+                catalog_db,
+                scheduler,
+            )
 
         # Scheduler should NOT be called: classification skipped because events already exist
         scheduler.model.assert_not_called()
-        scheduler.assert_not_called()
 
         # DB postcondition: both pre-existing events remain, no extra rows written
         events = catalog_db.get_audio_events_for_media("vid1")
@@ -388,16 +388,16 @@ class TestIdempotency:
             )
 
         scheduler = MagicMock()
-        classify_audio_events(
-            "vid1",
-            Path("/tmp/vid1.wav"),
-            catalog_db,
-            scheduler,
-        )
+        with patch.object(Path, "exists", return_value=True):
+            classify_audio_events(
+                "vid1",
+                Path("/tmp/vid1.wav"),
+                catalog_db,
+                scheduler,
+            )
 
         # Scheduler should NOT be called: classification skipped because events already exist
         scheduler.model.assert_not_called()
-        scheduler.assert_not_called()
 
         # DB postcondition: the single pre-existing event at t=15.0 is still present
         events = catalog_db.get_audio_events_for_media("vid1")

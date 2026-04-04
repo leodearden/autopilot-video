@@ -3553,6 +3553,111 @@ class TestRunFinalization:
         assert "duration" in payload
 
 
+class TestNotificationEvents:
+    """Tests for 'notification' events emitted alongside native pipeline events."""
+
+    def test_notification_emitted_on_stage_error(self) -> None:
+        """stage_error also emits a 'notification' event with error details."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            if stage.name == "INGEST":
+                stage.func = MagicMock(side_effect=RuntimeError("boom"))
+            else:
+                stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        insert_event_calls = mock_db.insert_event.call_args_list
+        notif_calls = [
+            c for c in insert_event_calls if c[1].get("event_type") == "notification"
+        ]
+        # At least one notification for the stage error
+        error_notifs = [
+            c for c in notif_calls
+            if "INGEST" in json.loads(c[1]["payload_json"]).get("message", "")
+            and "failed" in json.loads(c[1]["payload_json"]).get("message", "").lower()
+        ]
+        assert len(error_notifs) >= 1
+        payload = json.loads(error_notifs[0][1]["payload_json"])
+        assert payload["type"] == "error"
+
+    def test_notification_emitted_on_run_completed(self) -> None:
+        """Successful run emits a 'notification' event with success details."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        insert_event_calls = mock_db.insert_event.call_args_list
+        notif_calls = [
+            c for c in insert_event_calls if c[1].get("event_type") == "notification"
+        ]
+        completed_notifs = [
+            c for c in notif_calls
+            if "finished" in json.loads(c[1]["payload_json"]).get("message", "").lower()
+        ]
+        assert len(completed_notifs) == 1
+        payload = json.loads(completed_notifs[0][1]["payload_json"])
+        assert payload["type"] == "success"
+
+    def test_notification_emitted_on_run_failed(self) -> None:
+        """Failed run emits a 'notification' event with failure details."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            if stage.name == "ANALYZE":
+                stage.func = MagicMock(side_effect=ValueError("analyze error"))
+            else:
+                stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        insert_event_calls = mock_db.insert_event.call_args_list
+        notif_calls = [
+            c for c in insert_event_calls if c[1].get("event_type") == "notification"
+        ]
+        failed_notifs = [
+            c for c in notif_calls
+            if "Pipeline failed" in json.loads(c[1]["payload_json"]).get("message", "")
+        ]
+        assert len(failed_notifs) == 1
+        payload = json.loads(failed_notifs[0][1]["payload_json"])
+        assert payload["type"] == "error"
+
+    def test_notification_emitted_on_gate_waiting(self, catalog_db) -> None:
+        """gate_waiting also emits a 'notification' event."""
+        catalog_db.init_default_gates()
+        catalog_db.update_gate("ingest", mode="pause")
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+
+        call_count = 0
+        original_get_gate = catalog_db.get_gate
+
+        def fake_get_gate(stage):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 2:
+                catalog_db.update_gate(stage, status="approved", decided_by="human")
+            return original_get_gate(stage)
+
+        catalog_db.get_gate = fake_get_gate
+
+        with patch("autopilot.orchestrator.time.sleep"):
+            orch._check_gate("INGEST")
+
+        events = catalog_db.get_events_since(0)
+        notif_events = [e for e in events if e["event_type"] == "notification"]
+        assert len(notif_events) >= 1
+        payload = json.loads(notif_events[0]["payload_json"])
+        assert "paused" in payload["message"].lower() or "Review required" in payload["message"]
+        assert payload["type"] == "info"
+
+
 class TestBudgetRemainingTracking:
     """Tests for budget_remaining_seconds updates after each stage."""
 
