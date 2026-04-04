@@ -4205,7 +4205,15 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T14:02:22.030Z"
+        "updatedAt": "2026-04-04T14:02:22.030Z",
+        "metadata": {
+          "memory_hints": {
+            "entities": [],
+            "queries": [
+              "resolution for: Add _make_db() test helper to eliminate repeated mock setup boilerplate"
+            ]
+          }
+        }
       },
       {
         "id": "219",
@@ -4526,11 +4534,11 @@
         "description": "TestUpdateMethodsDelegateValidation only tests the rejection path (disallowed columns). There are no success-path tests verifying that valid column updates actually mutate the record for update_gate, update_job, and update_run. Add tests that: insert a record, call the update method with allowed columns, fetch the record, and assert the fields changed. This guards against regressions where the SET clause construction could be accidentally broken.\n\nMemory hints: search for \"CatalogDB update methods\" and \"test_db_validate_helper\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T13:25:10.351Z"
+        "updatedAt": "2026-04-04T14:02:51.543Z"
       },
       {
         "id": "245",
@@ -4590,9 +4598,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T14:02:22.031Z",
+      "lastModified": "2026-04-04T14:02:51.543Z",
       "taskCount": 249,
-      "completedCount": 168,
+      "completedCount": 169,
       "tags": [
         "master"
       ]
