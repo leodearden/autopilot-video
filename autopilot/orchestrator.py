@@ -224,7 +224,7 @@ def _run_ingest(
     """INGEST stage: scan directory, insert media, normalize audio, mark duplicates."""
     from autopilot.ingest import dedup, normalizer, scanner
 
-    files = scanner.scan_directory(config.input_dir, max_workers=None)
+    files = scanner.scan_directory(config.input_dir, max_workers=config.processing.num_cpu_workers)
     norm_dir = config.output_dir / "normalized"
     norm_dir.mkdir(parents=True, exist_ok=True)
 
@@ -434,6 +434,7 @@ def _run_analyze(
                                 scheduler,
                                 config.models,
                                 sparse=False,
+                                batch_size=config.processing.batch_size_yolo,
                             )
                     else:
                         objects.detect_objects(
@@ -443,6 +444,7 @@ def _run_analyze(
                             scheduler,
                             config.models,
                             sparse=False,
+                            batch_size=config.processing.batch_size_yolo,
                         )
                 if force or not db.has_faces(media_id):
                     if run_id is not None:
@@ -1177,6 +1179,11 @@ class PipelineOrchestrator:
             # Set gate to waiting and emit event
             self._db.update_gate(gate_name, status="waiting")
             self._emit_event("gate_waiting", stage=stage_name)
+            self._emit_notification(
+                f"Pipeline paused at {stage_name}. Review required.",
+                "info",
+                stage=stage_name,
+            )
             logger.info("[GATE-WAITING] %s — waiting for external approval", stage_name)
 
             timeout_hours = gate.get("timeout_hours")
@@ -1247,6 +1254,28 @@ class PipelineOrchestrator:
             logger.debug("Event: %s stage=%s", event_type, stage)
         except Exception as exc:
             logger.warning("Failed to emit event %s: %s", event_type, exc)
+
+    def _emit_notification(
+        self,
+        message: str,
+        ntype: str = "info",
+        stage: str | None = None,
+    ) -> None:
+        """Emit a user-facing notification event.
+
+        This is a thin wrapper around _emit_event that emits a 'notification'
+        event with a structured {message, type} payload for badge/toast display.
+
+        Args:
+            message: Human-readable notification text.
+            ntype: Notification type ('info', 'success', 'error').
+            stage: Optional stage name associated with the notification.
+        """
+        self._emit_event(
+            "notification",
+            stage=stage,
+            payload={"message": message, "type": ntype},
+        )
 
     def execution_order(self) -> list[str]:
         """Return stage names in topologically sorted execution order.
@@ -1417,6 +1446,11 @@ class PipelineOrchestrator:
                         stage=stage_name,
                         payload={"error": str(exc)},
                     )
+                    self._emit_notification(
+                        f"Stage {stage_name} failed: {exc}",
+                        "error",
+                        stage=stage_name,
+                    )
                 logger.error("[ERROR] %s: %s", stage_name, exc)
 
             # Progress reporting after each stage
@@ -1479,11 +1513,24 @@ class PipelineOrchestrator:
                     "run_failed",
                     payload={"duration": total_elapsed},
                 )
+                self._emit_notification(
+                    f"Pipeline failed at {', '.join(sorted(errored_stages))}",
+                    "error",
+                )
             else:
                 self._emit_event(
                     "run_completed",
                     payload={"duration": total_elapsed},
                 )
+                done_count = sum(
+                    1 for r in results.values() if r.status == StageStatus.DONE
+                )
+                msg = (
+                    f"Pipeline finished. {done_count} of"
+                    f" {len(order)} stages completed"
+                    f" in {total_elapsed:.1f}s."
+                )
+                self._emit_notification(msg, "success")
 
         # Check budget
         if self.budget_seconds is not None and total_elapsed > self.budget_seconds:

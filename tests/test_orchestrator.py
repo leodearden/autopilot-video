@@ -54,6 +54,38 @@ EXPECTED_DEPS = {
 }
 
 
+@pytest.fixture()
+def mock_db():
+    """Return a fresh MagicMock with list_narratives.return_value = [].
+
+    Opt-in fixture for narrate/gate tests that need a mock DB with the
+    'no existing narratives' precondition pre-set.
+    """
+    db = MagicMock()
+    db.list_narratives.return_value = []
+    return db
+
+
+class TestMockDbFixture:
+    """Validates the mock_db fixture contract."""
+
+    def test_returns_magicmock(self, mock_db):
+        """mock_db should be a MagicMock instance."""
+        assert isinstance(mock_db, MagicMock)
+
+    def test_list_narratives_returns_empty(self, mock_db):
+        """mock_db.list_narratives.return_value should be an empty list."""
+        assert mock_db.list_narratives.return_value == []
+
+    def test_fresh_per_test(self, mock_db):
+        """Each invocation returns a fresh instance (no cross-test leakage)."""
+        # A fresh mock should have no prior calls
+        assert mock_db.list_narratives.call_count == 0
+        # Call it to "dirty" the mock – won't carry to next test
+        mock_db.list_narratives()
+        assert mock_db.list_narratives.call_count == 1
+
+
 class TestStageDefinition:
     """Tests for StageDefinition dataclass and StageStatus enum."""
 
@@ -411,7 +443,7 @@ class TestIngestStage:
     def test_ingest_calls_scan_directory(
         self, mock_scanner, mock_normalizer, mock_dedup, minimal_config
     ):
-        """_run_ingest calls scanner.scan_directory with config.input_dir."""
+        """_run_ingest calls scanner.scan_directory with config.processing.num_cpu_workers."""
         from autopilot.orchestrator import _run_ingest
 
         mock_file = MagicMock()
@@ -422,7 +454,28 @@ class TestIngestStage:
         _run_ingest(config=minimal_config, db=db)
 
         mock_scanner.scan_directory.assert_called_once_with(
-            minimal_config.input_dir, max_workers=None
+            minimal_config.input_dir, max_workers=12
+        )
+
+    @patch("autopilot.ingest.dedup")
+    @patch("autopilot.ingest.normalizer")
+    @patch("autopilot.ingest.scanner")
+    def test_ingest_passes_custom_num_cpu_workers(
+        self, mock_scanner, mock_normalizer, mock_dedup, minimal_config
+    ):
+        """_run_ingest passes a custom num_cpu_workers value to scan_directory."""
+        from autopilot.orchestrator import _run_ingest
+
+        minimal_config.processing.num_cpu_workers = 4
+        mock_file = MagicMock()
+        mock_file.file_path = Path("/fake/video.mp4")
+        mock_scanner.scan_directory.return_value = [mock_file]
+        db = MagicMock()
+
+        _run_ingest(config=minimal_config, db=db)
+
+        mock_scanner.scan_directory.assert_called_once_with(
+            minimal_config.input_dir, max_workers=4
         )
 
     @patch("autopilot.ingest.dedup")
@@ -828,6 +881,85 @@ class TestAnalyzeStage:
 
         assert any("2/3" in r.message for r in caplog.records)
 
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
+    def test_analyze_passes_default_batch_size_yolo(
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
+    ):
+        """_run_analyze passes config.processing.batch_size_yolo (default=16) to detect_objects."""
+        from autopilot.orchestrator import _run_analyze
+
+        db = MagicMock()
+        db.list_all_media.return_value = [
+            {"id": "m1", "file_path": "/fake/v1.mp4", "status": "ingested"},
+        ]
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(config=minimal_config, db=db)
+
+        mock_objects.detect_objects.assert_called_once()
+        call_kwargs = mock_objects.detect_objects.call_args[1]
+        assert call_kwargs.get("batch_size") == 16
+
+    @patch("autopilot.analyze.gpu_scheduler.GPUScheduler")
+    @patch("autopilot.analyze.faces")
+    @patch("autopilot.analyze.audio_events")
+    @patch("autopilot.analyze.embeddings")
+    @patch("autopilot.analyze.objects")
+    @patch("autopilot.analyze.scenes")
+    @patch("autopilot.analyze.asr")
+    def test_analyze_passes_custom_batch_size_yolo(
+        self,
+        mock_asr,
+        mock_scenes,
+        mock_objects,
+        mock_embeddings,
+        mock_audio_events,
+        mock_faces,
+        mock_gpu_cls,
+        minimal_config,
+    ):
+        """_run_analyze passes a custom batch_size_yolo (32) to detect_objects."""
+        from autopilot.orchestrator import _run_analyze
+
+        minimal_config.processing.batch_size_yolo = 32
+        db = MagicMock()
+        db.list_all_media.return_value = [
+            {"id": "m1", "file_path": "/fake/v1.mp4", "status": "ingested"},
+        ]
+        db.has_transcript.return_value = False
+        db.has_boundaries.return_value = False
+        db.has_detections.return_value = False
+        db.has_faces.return_value = False
+        db.has_embeddings.return_value = False
+        db.has_audio_events.return_value = False
+        mock_gpu_cls.return_value = MagicMock()
+
+        _run_analyze(config=minimal_config, db=db)
+
+        mock_objects.detect_objects.assert_called_once()
+        call_kwargs = mock_objects.detect_objects.call_args[1]
+        assert call_kwargs.get("batch_size") == 32
+
 
 class TestClassifyStage:
     """Tests for the real _run_classify stage function."""
@@ -861,37 +993,35 @@ class TestNarrateStage:
     """Tests for the real _run_narrate stage function."""
 
     @patch("autopilot.organize.narratives")
-    def test_narrate_builds_storyboard(self, mock_narratives, minimal_config):
+    def test_narrate_builds_storyboard(self, mock_narratives, minimal_config, mock_db):
         """_run_narrate calls build_master_storyboard with db."""
         from autopilot.orchestrator import _run_narrate
 
         mock_narratives.build_master_storyboard.return_value = "storyboard text"
         mock_narratives.propose_narratives.return_value = []
         mock_narratives.format_for_review.return_value = ""
-        db = MagicMock()
-        db.list_narratives.return_value = []  # no checkpoint hit
 
-        _run_narrate(config=minimal_config, db=db)
+        _run_narrate(config=minimal_config, db=mock_db)
 
-        mock_narratives.build_master_storyboard.assert_called_once_with(db)
+        mock_narratives.build_master_storyboard.assert_called_once_with(mock_db)
 
     @patch("autopilot.organize.narratives")
-    def test_narrate_proposes_narratives(self, mock_narratives, minimal_config):
+    def test_narrate_proposes_narratives(self, mock_narratives, minimal_config, mock_db):
         """_run_narrate calls propose_narratives with storyboard, db, config."""
         from autopilot.orchestrator import _run_narrate
 
         mock_narratives.build_master_storyboard.return_value = "storyboard"
         mock_narratives.propose_narratives.return_value = []
         mock_narratives.format_for_review.return_value = ""
-        db = MagicMock()
-        db.list_narratives.return_value = []  # no checkpoint hit
 
-        _run_narrate(config=minimal_config, db=db)
+        _run_narrate(config=minimal_config, db=mock_db)
 
-        mock_narratives.propose_narratives.assert_called_once_with("storyboard", db, minimal_config)
+        mock_narratives.propose_narratives.assert_called_once_with(
+            "storyboard", mock_db, minimal_config
+        )
 
     @patch("autopilot.organize.narratives")
-    def test_narrate_calls_human_review_callback(self, mock_narratives, minimal_config):
+    def test_narrate_calls_human_review_callback(self, mock_narratives, minimal_config, mock_db):
         """_run_narrate invokes human_review_fn with formatted text and narratives."""
         from autopilot.orchestrator import _run_narrate
 
@@ -900,16 +1030,14 @@ class TestNarrateStage:
         mock_narratives.build_master_storyboard.return_value = "sb"
         mock_narratives.propose_narratives.return_value = [narr]
         mock_narratives.format_for_review.return_value = "review text"
-        db = MagicMock()
-        db.list_narratives.return_value = []  # no checkpoint hit
 
         review_fn = MagicMock(return_value=["n1"])
-        _run_narrate(config=minimal_config, db=db, human_review_fn=review_fn)
+        _run_narrate(config=minimal_config, db=mock_db, human_review_fn=review_fn)
 
         review_fn.assert_called_once_with("review text", [narr])
 
     @patch("autopilot.organize.narratives")
-    def test_narrate_auto_approves_when_no_callback(self, mock_narratives, minimal_config):
+    def test_narrate_auto_approves_when_no_callback(self, mock_narratives, minimal_config, mock_db):
         """Without human_review_fn all narratives get status='approved'."""
         from autopilot.orchestrator import _run_narrate
 
@@ -918,15 +1046,13 @@ class TestNarrateStage:
         mock_narratives.build_master_storyboard.return_value = "sb"
         mock_narratives.propose_narratives.return_value = [narr]
         mock_narratives.format_for_review.return_value = ""
-        db = MagicMock()
-        db.list_narratives.return_value = []  # no checkpoint hit
 
-        _run_narrate(config=minimal_config, db=db)
+        _run_narrate(config=minimal_config, db=mock_db)
 
-        db.update_narrative_status.assert_any_call("n1", "approved")
+        mock_db.update_narrative_status.assert_any_call("n1", "approved")
 
     @patch("autopilot.organize.narratives")
-    def test_narrate_respects_review_rejections(self, mock_narratives, minimal_config):
+    def test_narrate_respects_review_rejections(self, mock_narratives, minimal_config, mock_db):
         """human_review_fn returns subset of IDs; rejected ones get status='rejected'."""
         from autopilot.orchestrator import _run_narrate
 
@@ -937,15 +1063,13 @@ class TestNarrateStage:
         mock_narratives.build_master_storyboard.return_value = "sb"
         mock_narratives.propose_narratives.return_value = [narr1, narr2]
         mock_narratives.format_for_review.return_value = "review"
-        db = MagicMock()
-        db.list_narratives.return_value = []  # no checkpoint hit
 
         # Only approve n1, reject n2
         review_fn = MagicMock(return_value=["n1"])
-        _run_narrate(config=minimal_config, db=db, human_review_fn=review_fn)
+        _run_narrate(config=minimal_config, db=mock_db, human_review_fn=review_fn)
 
-        db.update_narrative_status.assert_any_call("n1", "approved")
-        db.update_narrative_status.assert_any_call("n2", "rejected")
+        mock_db.update_narrative_status.assert_any_call("n1", "approved")
+        mock_db.update_narrative_status.assert_any_call("n2", "rejected")
 
 
 class TestNarrateResume:
@@ -964,6 +1088,8 @@ class TestNarrateResume:
 
         _run_narrate(config=minimal_config, db=db)
 
+        db.list_narratives.assert_called_once_with("approved")
+        mock_narratives.build_master_storyboard.assert_not_called()
         mock_narratives.propose_narratives.assert_not_called()
 
     @patch("autopilot.organize.narratives")
@@ -984,6 +1110,7 @@ class TestNarrateResume:
         assert any(
             "Resuming NARRATE" in r.message and "3" in r.message for r in caplog.records
         )
+        db.list_narratives.assert_called_once_with("approved")
 
     @patch("autopilot.organize.narratives")
     def test_narrate_force_repropose_even_with_existing(self, mock_narratives, minimal_config):
@@ -1000,6 +1127,7 @@ class TestNarrateResume:
 
         _run_narrate(config=minimal_config, db=db, force=True)
 
+        db.list_narratives.assert_not_called()
         mock_narratives.propose_narratives.assert_called_once()
 
     @patch("autopilot.organize.narratives")
@@ -3425,6 +3553,111 @@ class TestRunFinalization:
         assert "duration" in payload
 
 
+class TestNotificationEvents:
+    """Tests for 'notification' events emitted alongside native pipeline events."""
+
+    def test_notification_emitted_on_stage_error(self) -> None:
+        """stage_error also emits a 'notification' event with error details."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            if stage.name == "INGEST":
+                stage.func = MagicMock(side_effect=RuntimeError("boom"))
+            else:
+                stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        insert_event_calls = mock_db.insert_event.call_args_list
+        notif_calls = [
+            c for c in insert_event_calls if c[1].get("event_type") == "notification"
+        ]
+        # At least one notification for the stage error
+        error_notifs = [
+            c for c in notif_calls
+            if "INGEST" in json.loads(c[1]["payload_json"]).get("message", "")
+            and "failed" in json.loads(c[1]["payload_json"]).get("message", "").lower()
+        ]
+        assert len(error_notifs) >= 1
+        payload = json.loads(error_notifs[0][1]["payload_json"])
+        assert payload["type"] == "error"
+
+    def test_notification_emitted_on_run_completed(self) -> None:
+        """Successful run emits a 'notification' event with success details."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        insert_event_calls = mock_db.insert_event.call_args_list
+        notif_calls = [
+            c for c in insert_event_calls if c[1].get("event_type") == "notification"
+        ]
+        completed_notifs = [
+            c for c in notif_calls
+            if "finished" in json.loads(c[1]["payload_json"]).get("message", "").lower()
+        ]
+        assert len(completed_notifs) == 1
+        payload = json.loads(completed_notifs[0][1]["payload_json"])
+        assert payload["type"] == "success"
+
+    def test_notification_emitted_on_run_failed(self) -> None:
+        """Failed run emits a 'notification' event with failure details."""
+        orch = PipelineOrchestrator()
+        for stage in orch.stages:
+            if stage.name == "ANALYZE":
+                stage.func = MagicMock(side_effect=ValueError("analyze error"))
+            else:
+                stage.func = MagicMock()
+
+        mock_db = MagicMock()
+        orch.run(config=MagicMock(), db=mock_db)
+
+        insert_event_calls = mock_db.insert_event.call_args_list
+        notif_calls = [
+            c for c in insert_event_calls if c[1].get("event_type") == "notification"
+        ]
+        failed_notifs = [
+            c for c in notif_calls
+            if "Pipeline failed" in json.loads(c[1]["payload_json"]).get("message", "")
+        ]
+        assert len(failed_notifs) == 1
+        payload = json.loads(failed_notifs[0][1]["payload_json"])
+        assert payload["type"] == "error"
+
+    def test_notification_emitted_on_gate_waiting(self, catalog_db) -> None:
+        """gate_waiting also emits a 'notification' event."""
+        catalog_db.init_default_gates()
+        catalog_db.update_gate("ingest", mode="pause")
+        orch = PipelineOrchestrator()
+        orch._db = catalog_db
+        orch._run_id = "test-run-id"
+
+        call_count = 0
+        original_get_gate = catalog_db.get_gate
+
+        def fake_get_gate(stage):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 2:
+                catalog_db.update_gate(stage, status="approved", decided_by="human")
+            return original_get_gate(stage)
+
+        catalog_db.get_gate = fake_get_gate
+
+        with patch("autopilot.orchestrator.time.sleep"):
+            orch._check_gate("INGEST")
+
+        events = catalog_db.get_events_since(0)
+        notif_events = [e for e in events if e["event_type"] == "notification"]
+        assert len(notif_events) >= 1
+        payload = json.loads(notif_events[0]["payload_json"])
+        assert "paused" in payload["message"].lower() or "Review required" in payload["message"]
+        assert payload["type"] == "info"
+
+
 class TestBudgetRemainingTracking:
     """Tests for budget_remaining_seconds updates after each stage."""
 
@@ -4303,6 +4536,7 @@ class TestNarrateJobTracking:
         self,
         mock_narratives,
         minimal_config,
+        mock_db,
     ):
         """Creates 'build_storyboard' and 'propose_narratives' jobs."""
         from autopilot.orchestrator import _run_narrate
@@ -4310,21 +4544,19 @@ class TestNarrateJobTracking:
         mock_narratives.build_master_storyboard.return_value = MagicMock()
         mock_narratives.propose_narratives.return_value = []
         mock_narratives.format_for_review.return_value = ""
-        db = MagicMock()
-        db.list_narratives.return_value = []  # no checkpoint hit
 
         _run_narrate(
             config=minimal_config,
-            db=db,
+            db=mock_db,
             run_id="run_n",
             emit_fn=MagicMock(),
         )
 
-        assert db.insert_job.call_count == 2
-        job_types = [c[0][2] for c in db.insert_job.call_args_list]
+        assert mock_db.insert_job.call_count == 2
+        job_types = [c[0][2] for c in mock_db.insert_job.call_args_list]
         assert "build_storyboard" in job_types
         assert "propose_narratives" in job_types
-        for call in db.insert_job.call_args_list:
+        for call in mock_db.insert_job.call_args_list:
             assert call[0][1] == "NARRATE"
             assert call[1]["worker"] == "cpu"
 
@@ -4333,6 +4565,7 @@ class TestNarrateJobTracking:
         self,
         mock_narratives,
         minimal_config,
+        mock_db,
     ):
         """When run_id=None, no insert_job calls."""
         from autopilot.orchestrator import _run_narrate
@@ -4340,12 +4573,10 @@ class TestNarrateJobTracking:
         mock_narratives.build_master_storyboard.return_value = MagicMock()
         mock_narratives.propose_narratives.return_value = []
         mock_narratives.format_for_review.return_value = ""
-        db = MagicMock()
-        db.list_narratives.return_value = []  # no checkpoint hit
 
-        _run_narrate(config=minimal_config, db=db)
+        _run_narrate(config=minimal_config, db=mock_db)
 
-        db.insert_job.assert_not_called()
+        mock_db.insert_job.assert_not_called()
 
 
 class TestScriptJobTracking:
@@ -5298,7 +5529,7 @@ class TestGateBackwardsCompat:
     """Tests for backwards compatibility of gate system with human_review_fn."""
 
     @patch("autopilot.organize.narratives")
-    def test_human_review_fn_still_invoked_with_auto_gate(self, mock_narratives) -> None:
+    def test_human_review_fn_still_invoked_with_auto_gate(self, mock_narratives, mock_db) -> None:
         """With human_review_fn and NARRATE gate mode='auto', callback is still used."""
         narr = MagicMock()
         narr.narrative_id = "n1"
@@ -5314,7 +5545,6 @@ class TestGateBackwardsCompat:
             if stage.name != "NARRATE":
                 stage.func = MagicMock()
 
-        mock_db = MagicMock()
         mock_db.get_all_gates.return_value = [
             {"stage": s}
             for s in (
@@ -5330,7 +5560,6 @@ class TestGateBackwardsCompat:
             )
         ]
         mock_db.get_gate.return_value = {"mode": "auto", "status": "idle", "timeout_hours": None}
-        mock_db.list_narratives.return_value = []  # no checkpoint hit
 
         results = orch.run(config=MagicMock(), db=mock_db)
 
@@ -5338,7 +5567,7 @@ class TestGateBackwardsCompat:
         review_fn.assert_called_once()
         assert results["NARRATE"].status == StageStatus.DONE
 
-    def test_existing_narrate_test_still_passes(self) -> None:
+    def test_existing_narrate_test_still_passes(self, mock_db) -> None:
         """The existing test_narrate_calls_human_review_callback pattern still works.
 
         This is a meta-test confirming the gate system doesn't break
@@ -5352,11 +5581,9 @@ class TestGateBackwardsCompat:
             mock_narratives.build_master_storyboard.return_value = "sb"
             mock_narratives.propose_narratives.return_value = [narr]
             mock_narratives.format_for_review.return_value = "review text"
-            db = MagicMock()
-            db.list_narratives.return_value = []  # no checkpoint hit
 
             review_fn = MagicMock(return_value=["n1"])
-            _run_narrate(config=MagicMock(), db=db, human_review_fn=review_fn)
+            _run_narrate(config=MagicMock(), db=mock_db, human_review_fn=review_fn)
 
             review_fn.assert_called_once_with("review text", [narr])
 

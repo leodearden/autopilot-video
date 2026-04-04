@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import click
+import pytest
 from click.testing import CliRunner
 
 from autopilot.cli import main
@@ -549,3 +550,184 @@ class TestForceFlag:
                         assert call[1].get("force") is True, (
                             f"{cmd_name}: stage func not called with force=True"
                         )
+
+
+# Mapping from CLI subcommand name → stage names it would normally execute
+SUBCOMMAND_STAGES = {
+    "ingest": ["INGEST"],
+    "analyze": ["ANALYZE", "CLASSIFY"],
+    "plan": ["NARRATE", "SCRIPT"],
+    "edit": ["EDL", "SOURCE_ASSETS"],
+    "render": ["RENDER"],
+    "upload": ["UPLOAD"],
+}
+
+
+class TestDryRunSubcommands:
+    """Tests that --dry-run prevents stage functions from being called."""
+
+    @pytest.mark.parametrize("cmd_name", list(SUBCOMMAND_STAGES.keys()))
+    def test_dry_run_does_not_call_stage_func(self, tmp_path: Path, cmd_name: str) -> None:
+        """'<cmd> --dry-run' does NOT call any stage function."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+            mock_db_cls.return_value = MagicMock()
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch = MagicMock()
+                mock_orch_cls.return_value = mock_orch
+                stage_func = MagicMock()
+                mock_orch._stage_map.__getitem__.return_value.func = stage_func
+
+                result = runner.invoke(
+                    main,
+                    ["--config", str(config_file), cmd_name, "--dry-run"],
+                )
+                assert result.exit_code == 0, (
+                    f"{cmd_name} --dry-run failed: {result.output}"
+                )
+                assert not stage_func.called, (
+                    f"{cmd_name} --dry-run should NOT call any stage function"
+                )
+
+    @pytest.mark.parametrize(
+        "cmd_name,expected_stages",
+        list(SUBCOMMAND_STAGES.items()),
+    )
+    def test_dry_run_logs_stage_names(
+        self, tmp_path: Path, cmd_name: str, expected_stages: list[str]
+    ) -> None:
+        """'<cmd> --dry-run' outputs '[DRY-RUN] Would execute: <STAGE_NAMES>' and exits 0."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+            mock_db_cls.return_value = MagicMock()
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch = MagicMock()
+                mock_orch_cls.return_value = mock_orch
+
+                result = runner.invoke(
+                    main,
+                    ["--config", str(config_file), cmd_name, "--dry-run"],
+                )
+                assert result.exit_code == 0, (
+                    f"{cmd_name} --dry-run failed: {result.output}"
+                )
+                assert "[DRY-RUN]" in result.output, (
+                    f"{cmd_name} --dry-run should print [DRY-RUN] marker"
+                )
+                for stage_name in expected_stages:
+                    assert stage_name in result.output, (
+                        f"{cmd_name} --dry-run should mention stage {stage_name}"
+                    )
+
+
+class TestDryRunZeroSideEffects:
+    """Tests that --dry-run on subcommands causes zero side effects.
+
+    These tests assert that load_config, CatalogDB, and PipelineOrchestrator
+    are never called when --dry-run is active. This verifies the dry-run guard
+    runs BEFORE _setup_context().
+    """
+
+    @pytest.mark.parametrize("cmd_name", list(SUBCOMMAND_STAGES.keys()))
+    def test_dry_run_no_side_effects(self, cmd_name: str) -> None:
+        """'<cmd> --dry-run' does NOT call load_config, CatalogDB, or PipelineOrchestrator."""
+        runner = CliRunner()
+
+        with patch("autopilot.cli.load_config") as mock_load:
+            with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+                with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                    result = runner.invoke(
+                        main,
+                        ["--config", "dummy.yaml", cmd_name, "--dry-run"],
+                    )
+                    assert result.exit_code == 0, (
+                        f"{cmd_name} --dry-run failed: {result.output}"
+                    )
+                    assert not mock_load.called, (
+                        f"{cmd_name} --dry-run should NOT call load_config"
+                    )
+                    assert not mock_db_cls.called, (
+                        f"{cmd_name} --dry-run should NOT instantiate CatalogDB"
+                    )
+                    assert not mock_orch_cls.called, (
+                        f"{cmd_name} --dry-run should NOT instantiate PipelineOrchestrator"
+                    )
+
+
+
+class TestRunDryRunDelegation:
+    """Tests that 'run --dry-run' still calls _setup_context and delegates to orchestrator.
+
+    Unlike the 6 subcommands, the 'run' command intentionally keeps _setup_context
+    because the orchestrator needs a live config and db to handle dry_run per-stage.
+    """
+
+    def test_run_dry_run_calls_load_config(self, tmp_path: Path) -> None:
+        """'run --dry-run' calls load_config (needs config for orchestrator)."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.load_config", wraps=load_config) as mock_load:
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch_cls.return_value = MagicMock()
+                result = runner.invoke(
+                    main,
+                    ["--config", str(config_file), "run", "--dry-run"],
+                )
+                assert result.exit_code == 0, f"run --dry-run failed: {result.output}"
+                mock_load.assert_called_once_with(str(config_file))
+
+    def test_run_dry_run_calls_catalog_db(self, tmp_path: Path) -> None:
+        """'run --dry-run' instantiates CatalogDB (needs db for orchestrator)."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+        expected_db_path = str(tmp_path / "output" / "catalog.db")
+
+        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+            mock_db_cls.return_value = MagicMock()
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch_cls.return_value = MagicMock()
+                result = runner.invoke(
+                    main,
+                    ["--config", str(config_file), "run", "--dry-run"],
+                )
+                assert result.exit_code == 0, f"run --dry-run failed: {result.output}"
+                mock_db_cls.assert_called_once_with(expected_db_path)
+
+    def test_run_dry_run_delegates_to_orchestrator(self, tmp_path: Path) -> None:
+        """'run --dry-run' passes dry_run=True to orchestrator.run()."""
+        config_file = _write_minimal_config(tmp_path)
+        runner = CliRunner()
+
+        with patch("autopilot.cli.CatalogDB") as mock_db_cls:
+            mock_db_cls.return_value = MagicMock()
+            with patch("autopilot.cli.PipelineOrchestrator") as mock_orch_cls:
+                mock_orch = MagicMock()
+                mock_orch_cls.return_value = mock_orch
+                result = runner.invoke(
+                    main,
+                    ["--config", str(config_file), "run", "--dry-run"],
+                )
+                assert result.exit_code == 0, f"run --dry-run failed: {result.output}"
+                mock_orch.run.assert_called_once()
+                call_kwargs = mock_orch.run.call_args.kwargs
+                assert call_kwargs["dry_run"] is True
+
+
+class TestHandleDryRunDocstring:
+    """Verify that _handle_dry_run documents its Click-context requirement."""
+
+    def test_docstring_mentions_click_context(self) -> None:
+        """_handle_dry_run docstring should mention 'Click context'."""
+        from autopilot.cli import (
+            _handle_dry_run,  # noqa: PLC0415 — local import avoids module-level coupling
+        )
+
+        assert _handle_dry_run.__doc__ is not None, "_handle_dry_run must have a docstring"
+        assert "Click context" in _handle_dry_run.__doc__, (
+            "_handle_dry_run docstring should document its Click context requirement"
+        )
