@@ -4305,6 +4305,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 230,
+        "title": "Update _brace_match_from docstring to include bounds-check contract",
+        "description": "In tests/test_web_app.py lines 203-204, update the docstring to mention the bounds-check failure mode. Change the current text to: 'Raises AssertionError if *start* is out of range, if `source[start]` is not `{`, or if the braces are unbalanced.'\n\nmemory_hints: search for \"_brace_match_from docstring contract\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -4317,7 +4328,7 @@
       ],
       "created": "2026-04-04T13:15:17.693Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T13:15:17.694Z"
+      "updated": "2026-04-04T13:15:20.308Z"
     }
   }
 }
