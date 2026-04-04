@@ -4964,6 +4964,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 271,
+        "title": "Add atomicity assertions to both single-column and multi-column rejection tests",
+        "description": "In tests/test_db_pipeline.py: (1) After the `pytest.raises` block in `test_rejects_single_disallowed_column` (line 626–627), add: `row = spec['get'](catalog_db); assert row is not None; assert row[spec['valid_col']] == spec['default_val']`. (2) After the `pytest.raises` block in `test_rejects_multiple_disallowed_columns` (line 653–660), add: `row = spec['get'](catalog_db); assert row is not None` — mirroring the atomicity pattern in `test_rejects_mix_of_valid_and_invalid`.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -4976,7 +4987,7 @@
       ],
       "created": "2026-04-04T14:20:14.591Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T14:20:18.582Z"
+      "updated": "2026-04-04T14:20:22.862Z"
     }
   }
 }
