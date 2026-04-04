@@ -5588,6 +5588,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 316,
+        "title": "Strengthen graceful-degradation test assertions and add mixed cluster-ID edge case",
+        "description": "Improve `test_tags_missing_activity_clusters_gracefully_degrades` in `tests/test_youtube.py` (around line 237):\n\n1. **Replace brittle length assertion with explicit negative assertion** (3 reviewers flagged this independently): Replace `assert len(tags) == 1` with `assert 'nonexistent_c1' not in tags` (or `assert tags == ['person']`). The current `len` check is implicit about the core claim (missing clusters produce no tag) and breaks if any default tags are added in the future.\n\n2. **Add a second detection class** to make the \"detection tags still appear\" (plural) claim falsifiable. Add e.g. `{\"class\": \"dog\", \"confidence\": 0.7}` alongside the existing person detection, then assert both appear.\n\n3. **Add a new test for mixed valid/nonexistent cluster IDs**: Insert one valid cluster (e.g. 'c1' with label 'hiking') and reference both it and a nonexistent ID. Assert 'hiking' appears in tags and the nonexistent ID contributes nothing. This catches bugs where the loop bails on first miss.\n\nMemory hints: search \"test_tags_from_activity_labels_and_detections _setup_media_with_detections\" for existing test patterns.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5600,7 +5611,7 @@
       ],
       "created": "2026-04-04T18:27:05.081Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:27:05.083Z"
+      "updated": "2026-04-04T18:27:13.594Z"
     }
   }
 }
