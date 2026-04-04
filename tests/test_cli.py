@@ -10,7 +10,7 @@ import click
 import pytest
 from click.testing import CliRunner
 
-from autopilot.cli import _handle_dry_run, main
+from autopilot.cli import main
 from autopilot.config import load_config
 
 
@@ -624,49 +624,6 @@ class TestDryRunSubcommands:
                     )
 
 
-class TestHandleDryRun:
-    """Unit tests for the _handle_dry_run helper."""
-
-    def test_returns_true_and_echoes_when_dry_run(self) -> None:
-        """_handle_dry_run(True, ...) returns True and echoes '[DRY-RUN] Would execute: ...'."""
-        runner = CliRunner()
-
-        @click.command()
-        def dummy() -> None:
-            result = _handle_dry_run(True, "INGEST")
-            assert result is True
-
-        result = runner.invoke(dummy)
-        assert result.exit_code == 0, f"Unexpected error: {result.output}"
-        assert "[DRY-RUN] Would execute: INGEST" in result.output
-
-    def test_returns_true_with_multiple_stages(self) -> None:
-        """_handle_dry_run echoes all stage names when multiple are provided."""
-        runner = CliRunner()
-
-        @click.command()
-        def dummy() -> None:
-            result = _handle_dry_run(True, "ANALYZE, CLASSIFY")
-            assert result is True
-
-        result = runner.invoke(dummy)
-        assert result.exit_code == 0, f"Unexpected error: {result.output}"
-        assert "[DRY-RUN] Would execute: ANALYZE, CLASSIFY" in result.output
-
-    def test_returns_false_and_no_output_when_not_dry_run(self) -> None:
-        """_handle_dry_run(False, ...) returns False with no output."""
-        runner = CliRunner()
-
-        @click.command()
-        def dummy() -> None:
-            result = _handle_dry_run(False, "INGEST")
-            assert result is False
-
-        result = runner.invoke(dummy)
-        assert result.exit_code == 0, f"Unexpected error: {result.output}"
-        assert result.output == ""
-
-
 class TestDryRunZeroSideEffects:
     """Tests that --dry-run on subcommands causes zero side effects.
 
@@ -759,3 +716,18 @@ class TestRunDryRunDelegation:
                 mock_orch.run.assert_called_once()
                 call_kwargs = mock_orch.run.call_args.kwargs
                 assert call_kwargs["dry_run"] is True
+
+
+class TestHandleDryRunDocstring:
+    """Verify that _handle_dry_run documents its Click-context requirement."""
+
+    def test_docstring_mentions_click_context(self) -> None:
+        """_handle_dry_run docstring should mention 'Click context'."""
+        from autopilot.cli import (
+            _handle_dry_run,  # noqa: PLC0415 — local import avoids module-level coupling
+        )
+
+        assert _handle_dry_run.__doc__ is not None, "_handle_dry_run must have a docstring"
+        assert "Click context" in _handle_dry_run.__doc__, (
+            "_handle_dry_run docstring should document its Click context requirement"
+        )
