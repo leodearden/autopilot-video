@@ -5199,6 +5199,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 285,
+        "title": "Harden browser Notification API usage in app.js",
+        "description": "In autopilot/web/static/app.js, make four related fixes to the notification event handler (around lines 129-135): (1) Chain .then(perm => { if (perm==='granted') new Notification(...); }) on Notification.requestPermission() so the triggering notification is not silently dropped. (2) Add a module-level _permissionRequested flag so rapid notification events don't accumulate pending permission dialogs. (3) Guard data.message with a null/type check before passing to showToast and Notification: var msg = (data && typeof data.message === 'string') ? data.message : '(no message)'. (4) Add a comment documenting the SSE reconnect gap (events emitted during disconnection window are lost; Last-Event-ID replay would be the robust fix).",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -5211,7 +5222,7 @@
       ],
       "created": "2026-04-04T18:12:47.315Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T18:12:47.317Z"
+      "updated": "2026-04-04T18:12:54.449Z"
     }
   }
 }
