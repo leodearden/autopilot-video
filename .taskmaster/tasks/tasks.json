@@ -6102,6 +6102,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 352,
+        "title": "Fix RoutingError message phrasing for log consistency",
+        "description": "In autopilot/render/router.py line 161: change the error message from 'Internal error: clip {i} reached DB lookup without clip_id' to imperative phrasing consistent with the surrounding RoutingError messages (e.g. 'clip {i} has no clip_id at DB lookup stage (defense-in-depth guard)'). This aligns with lines 143–145, 165–167, 170–172, and 179–182.\n\nmemory_hints:\n- search: \"RoutingError message phrasing convention router.py\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -6114,7 +6125,7 @@
       ],
       "created": "2026-04-04T23:16:16.824Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T23:16:21.298Z"
+      "updated": "2026-04-04T23:16:24.850Z"
     }
   }
 }
