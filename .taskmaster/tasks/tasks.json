@@ -4327,6 +4327,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 232,
+        "title": "Strengthen unbalanced-brace and out-of-range test assertions",
+        "description": "Three related assertion quality fixes in tests/test_web_app.py TestBraceMatchFrom:\n1. Line 354: tighten match=r'depth \\d+' to match=r'depth 2' since the input '{ open { but no close' opens exactly 2 braces and closes none.\n2. In the parametrized out-of-range test (after refactor), add a label-presence check to the match pattern, e.g. match=f'out of range.*{label}', mirroring the coverage in test_label_appears_in_error_message.\n3. In test_unbalanced_error_includes_depth (line 354), use a distinct input from test_raises_on_unbalanced_braces (e.g. '{ a { b { c }') to make each test self-contained, or merge the depth assertion into test_raises_on_unbalanced_braces.\n\nmemory_hints: search for \"TestBraceMatchFrom assertion precision\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -4339,7 +4350,7 @@
       ],
       "created": "2026-04-04T13:15:17.693Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-04T13:15:23.903Z"
+      "updated": "2026-04-04T13:15:30.205Z"
     }
   }
 }
