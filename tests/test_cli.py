@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import click
+import pytest
 from click.testing import CliRunner
 
 from autopilot.cli import main
@@ -549,9 +550,6 @@ class TestForceFlag:
                         assert call[1].get("force") is True, (
                             f"{cmd_name}: stage func not called with force=True"
                         )
-
-
-import pytest
 
 
 # Mapping from CLI subcommand name → stage names it would normally execute
