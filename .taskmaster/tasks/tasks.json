@@ -4466,11 +4466,11 @@
         "description": "Three fixes in `tests/test_review.py` within the zero-duration test class:\n\n1. **Restore slim `|| null` negative guard** (suggestions 1, 2, 4): The deleted `test_edit_form_js_does_not_use_falsy_or_null` test covered a real gap that the roundtrip test does NOT cover. The roundtrip test sends JSON directly via `put(..., json={...})` and never inspects the rendered hx-vals inline JS. Restore a slim test that GETs the edit form and asserts `'|| null' not in response.text` — this is a fast, isolated regression guard against the template being reverted from the safe `!isNaN(parseFloat(v))` pattern to the dangerous `v || null` pattern. Do NOT assert on `isNaN` (that was the implementation-detail assertion task 220 correctly removed).\n\n2. **Fix misleading docstring** (suggestions 2, 4): In `test_update_zero_duration_roundtrip` (line ~1093-1098), the docstring says \"This behavioural roundtrip also subsumes JS-pattern regression coverage\" — this is factually wrong. The TestClient makes direct HTTP/JSON calls and never executes browser-side JS. Correct the docstring to accurately state it covers server-side persistence and rendering only.\n\n3. **Tighten `value=\"\"` assertion** (suggestions 3, 5): In `test_edit_form_renders_empty_for_none_duration` (line ~1087), `assert 'value=\"\"' in response.text` could match any empty-value input on the page. Tie the assertion to the specific field, e.g. parse the HTML to find the input with `name=\"proposed_duration_seconds\"` and check its value attribute, or use a regex/substring that combines field name and value in the same element.\n\nMemory hints: search \"behavioral tests vs implementation-detail assertions convention\", get_entity \"narrative_edit_form.html\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "blocked",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:13:33.905Z",
+        "updatedAt": "2026-04-04T18:16:33.624Z",
         "metadata": {
           "modules": [
             "tests/test_review.py"
@@ -5304,7 +5304,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-04T18:16:29.664Z",
+      "lastModified": "2026-04-04T18:16:33.624Z",
       "taskCount": 292,
       "completedCount": 186,
       "tags": [
