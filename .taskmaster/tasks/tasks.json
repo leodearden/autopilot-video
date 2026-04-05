@@ -6180,7 +6180,19 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T23:18:08.643Z"
+        "updatedAt": "2026-04-04T23:18:08.643Z",
+        "metadata": {
+          "memory_hints": {
+            "entities": [
+              "status_badge"
+            ],
+            "queries": [
+              "status_badge macro Tailwind utility classes conflicting",
+              "extra_classes override pattern Tailwind macros",
+              "color map duplication templates badge"
+            ]
+          }
+        }
       },
       {
         "id": 356,
