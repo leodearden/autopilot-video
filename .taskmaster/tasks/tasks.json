@@ -6204,7 +6204,21 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T23:18:18.618Z"
+        "updatedAt": "2026-04-04T23:18:18.618Z",
+        "metadata": {
+          "memory_hints": {
+            "entities": [
+              "status_badge",
+              "narrative_status_badge"
+            ],
+            "queries": [
+              "color map duplication templates media stage job",
+              "narrative_status_badge wrapper pattern",
+              "narrative status values Tailwind color mappings scattered no single source of truth",
+              "domain-specific badge wrapper macro pattern"
+            ]
+          }
+        }
       },
       {
         "id": 357,
