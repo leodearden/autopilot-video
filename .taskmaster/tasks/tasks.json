@@ -6241,6 +6241,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 359,
+        "title": "Investigate resurgent DLQ: 55 dead letters as of 2026-04-06",
+        "description": "The autopilot_video fused-memory DLQ has grown from 3 dead letters (when task 122 was closed on 2026-03-28) to 55 dead letters as of 2026-04-06, with retry=1 indicating at least one write-path failure is actively recurring. No tracking task existed for this period of growth.\n\nInvestigate:\n1. Inspect dead-letter records in the DLQ (use get_queue_stats and replay_dead_letters tools) to identify the failing operation types.\n2. Determine root cause: Qdrant write-path failure vs FalkorDB write-path failure vs processor logic error.\n3. Check whether replaying dead letters re-fails (prior pattern: persistent write-path defect rather than transient).\n4. If root cause identified, fix and replay. If replay re-fails, document defect and open targeted fix task.\n5. After resolution, verify DLQ count returns to 0 or near-0.\n\nmemory_hints:\n- search: \"DLQ dead letters Qdrant FalkorDB write-path failure\"\n- search: \"Task 122 dead letters resolved investigation\"\n- search: \"processor failure root cause write-path defect\"\n- entity: \"Task-122\" (prior DLQ fix context)",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -6252,7 +6263,8 @@
         "master"
       ],
       "created": "2026-04-05T20:07:36.949Z",
-      "description": "Tasks for master context"
+      "description": "Tasks for master context",
+      "updated": "2026-04-06T13:05:50.373Z"
     }
   }
 }
