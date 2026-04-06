@@ -6251,7 +6251,22 @@
         "status": "pending",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "memory_hints": {
+            "entities": [
+              "DurableWriteQueue",
+              "Task-122"
+            ],
+            "queries": [
+              "DLQ dead letters Qdrant FalkorDB write-path failure autopilot_video",
+              "Task 122 dead letters resolved investigation autopilot_video",
+              "processor failure root cause write-path defect replay_dead_letters",
+              "DLQ resurgence 55 dead letters 2026-04-06 autopilot_video"
+            ]
+          },
+          "_causation_id": "e205e633-3ec6-4fb4-97ca-6c7d25aa9f89"
+        }
       },
       {
         "id": 360,
