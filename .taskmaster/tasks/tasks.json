@@ -6252,6 +6252,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 360,
+        "title": "Fix: Mem0 universal memory_ids=[] write-path ID routing for autopilot_video",
+        "description": "Every add_memory call for project autopilot_video returns stores_written=[\"mem0\"] but memory_ids=[]. Confirmed in at least 4 consecutive reconciliation runs (including e205e633, 52a13eb1). Content IS written to Qdrant but IDs are never returned synchronously. Affects ALL categories universally. Root cause likely: Qdrant collection-level ID routing misconfiguration for the autopilot_video namespace. Consequence: ID-based deletion/update of Mem0 entries is impossible; behavioral guardrails have failed to persist across 3+ reconciliation cycles.\\n\\nInvestigation steps:\\n1. Inspect the Qdrant autopilot_video collection config — check if ID field mapping differs from dark_factory collection.\\n2. Trace the add_memory code path for autopilot_video through the fused-memory server — where is the ID returned (or not returned) from Qdrant?\\n3. Check if the collection was created with a different schema (e.g., missing payload index on id field).\\n4. Test fix by calling add_memory with a probe entry and verifying a non-empty memory_ids response.\\n5. After fix, re-run reconciliation to re-write the lost guardrails (see linked task).\\n\\nmemory_hints:\\n- search: \\\"Mem0 memory_ids empty ID routing Qdrant collection autopilot_video\\\"\\n- search: \\\"Qdrant collection schema configuration autopilot_video\\\"\\n- search: \\\"fused-memory add_memory write path ID return\\\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -6264,7 +6275,7 @@
       ],
       "created": "2026-04-05T20:07:36.949Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-06T13:05:50.373Z"
+      "updated": "2026-04-06T13:15:42.252Z"
     }
   }
 }
