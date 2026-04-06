@@ -6277,7 +6277,24 @@
         "status": "pending",
         "dependencies": [],
         "priority": "high",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "memory_hints": {
+            "entities": [
+              "Mem0",
+              "Qdrant",
+              "DurableWriteQueue"
+            ],
+            "queries": [
+              "Mem0 memory_ids empty Qdrant collection ID routing autopilot_video",
+              "Qdrant collection schema configuration autopilot_video namespace",
+              "fused-memory add_memory write path ID return synchronous",
+              "Mem0 universal write-path defect root cause confirmed",
+              "autopilot_video Qdrant collection ID field mapping differs dark_factory"
+            ]
+          },
+          "_causation_id": "5f66b984-91d7-4c42-968f-79d9899da387"
+        }
       },
       {
         "id": 361,
