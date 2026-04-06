@@ -6307,7 +6307,22 @@
           360
         ],
         "priority": "high",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "memory_hints": {
+            "entities": [
+              "Task-360"
+            ],
+            "queries": [
+              "attribution stub anti-pattern triage agent autopilot_video guardrail",
+              "nav hints anti-pattern triage agent autopilot_video guardrail",
+              "autopilot_video triage agent behavioral norms preferences_and_norms",
+              "Mem0 dual_write preferences_and_norms ID anchoring",
+              "guardrail content irrecoverable re-author first principles"
+            ]
+          },
+          "_causation_id": "5f66b984-91d7-4c42-968f-79d9899da387"
+        }
       }
     ],
     "metadata": {
