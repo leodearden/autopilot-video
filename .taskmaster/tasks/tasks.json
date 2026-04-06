@@ -6278,6 +6278,19 @@
         "dependencies": [],
         "priority": "high",
         "subtasks": []
+      },
+      {
+        "id": 361,
+        "title": "Re-author lost triage agent guardrails: attribution stub anti-pattern + nav hints anti-pattern",
+        "description": "Two behavioral guardrails for autopilot_video triage agents were written across 3+ reconciliation cycles but never persisted due to the Mem0 universal memory_ids=[] bug (see task 360). Their original content is irrecoverable from all current stores (Graphiti + Mem0). Human operator must re-author both from first principles.\\n\\nGuardrails needed:\\n1. **Attribution stub anti-pattern** — describes a failure mode triage agents must avoid when handling attribution/source metadata. Original content lost. Author as a preferences_and_norms entry explaining: what the anti-pattern is, how to detect it, and the correct behavior.\\n2. **Nav hints anti-pattern** — describes a failure mode triage agents must avoid when generating or consuming navigation hints. Original content lost. Author as a preferences_and_norms entry explaining: what the anti-pattern is, how to detect it, and the correct behavior.\\n\\nAfter re-authoring, write both as dual_write=true with category=preferences_and_norms.\\n\\n**Prerequisites**: Task 360 (Mem0 ID routing fix) should be resolved first so IDs are returned on write and the guardrails are anchored for future update/deletion.\\n\\nmemory_hints:\\n- search: \\\"attribution stub anti-pattern triage agent guardrail\\\"\\n- search: \\\"nav hints anti-pattern triage agent guardrail\\\"\\n- search: \\\"Mem0 memory_ids empty ID routing Qdrant autopilot_video\\\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [
+          360
+        ],
+        "priority": "high",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -6290,7 +6303,7 @@
       ],
       "created": "2026-04-05T20:07:36.949Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-06T13:15:42.252Z"
+      "updated": "2026-04-06T13:16:14.653Z"
     }
   }
 }
