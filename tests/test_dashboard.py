@@ -487,6 +487,16 @@ class TestSSEIntegration:
         assert match is not None, "DEBOUNCE_MS numeric literal not found in app.js"
         assert int(match.group(1)) > 0, "DEBOUNCE_MS must be a positive integer"
 
+    def test_app_js_debounce_ms_uses_const(self) -> None:
+        """DEBOUNCE_MS must be declared with const (not var)."""
+        content = _APP_JS.read_text()
+        assert re.search(r"\bconst\s+DEBOUNCE_MS\s*=", content), (
+            "DEBOUNCE_MS must be declared with 'const', not 'var'"
+        )
+        assert not re.search(r"\bvar\s+DEBOUNCE_MS\b", content), (
+            "'var DEBOUNCE_MS' still present in app.js; change to 'const'"
+        )
+
     def test_app_js_has_debounced_refresh_function(self) -> None:
         """app.js contains debouncedRefreshStageCard wrapping clearTimeout/setTimeout."""
         content = _APP_JS.read_text()
