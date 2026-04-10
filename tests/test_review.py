@@ -1119,20 +1119,8 @@ class TestBuildZeroDurationApp:
 def zero_duration_app(tmp_path_factory: pytest.TempPathFactory) -> FastAPI:
     """App with narratives seeded with proposed_duration_seconds=0 and None."""
     tmp_path = tmp_path_factory.mktemp("zero_dur")
-
-    def _seed(db: CatalogDB) -> None:
-        _seed_narrative(
-            db, "n-zero",
-            title="Zero Duration",
-            proposed_duration_seconds=0,
-        )
-        _seed_narrative(
-            db, "n-none",
-            title="No Duration",
-            proposed_duration_seconds=None,
-        )
-
-    return _make_review_app(tmp_path, _seed)
+    db_path = str(tmp_path / "catalog.db")
+    return _build_zero_duration_app(db_path)
 
 
 @pytest.fixture(scope="class")
