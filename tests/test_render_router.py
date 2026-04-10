@@ -815,11 +815,7 @@ class TestErrorHandling:
         from autopilot.render.router import RoutingError, route_and_render
 
         edl = _make_edl()
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         config = _make_config()
 
         timeout_exc = _subprocess.TimeoutExpired(cmd="ffmpeg", timeout=1800)
@@ -838,11 +834,7 @@ class TestErrorHandling:
         from autopilot.render.router import CONCAT_TIMEOUT_SECONDS, route_and_render
 
         edl = _make_edl()
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         config = _make_config()
 
         with (
@@ -862,11 +854,7 @@ class TestErrorHandling:
         from autopilot.render.router import RoutingError, route_and_render
 
         edl = _make_edl()
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         config = _make_config()
 
         with (
@@ -892,10 +880,7 @@ class TestErrorHandling:
         from autopilot.render.router import RoutingError, route_and_render
 
         edl = _make_edl()
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db = _make_db(edl=edl)
         config = _make_config()
 
         with (
@@ -911,8 +896,7 @@ class TestErrorHandling:
         """Corrupt edl_json should raise RoutingError."""
         from autopilot.render.router import RoutingError, route_and_render
 
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
+        db = _make_db()
         db.get_edit_plan.return_value = {"edl_json": "not valid json{{{"}
         config = _make_config()
 
@@ -924,11 +908,8 @@ class TestErrorHandling:
         from autopilot.render.router import route_and_render
 
         edl = _make_edl()
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db = _make_db(edl=edl)
         db.get_narrative.return_value = None
-        db.get_transcript.return_value = None
         config = _make_config()
 
         with patch("autopilot.render.router.render_simple") as mock_rs, patch("subprocess.run"):
