@@ -244,15 +244,22 @@ def _extract_listener_body(js_source: str, event_type: str) -> str:
     .. note::
 
        This helper only works for **inline function** listeners, e.g.
-       ``source.addEventListener('event', function(e) { ... })``.  It does
-       **not** work for factory-pattern listeners like ``stage_error`` where
-       the callback is a function call (``makeStageHandler(...)``).
+       ``source.addEventListener('event', function(e) { ... })``.  For
+       factory-pattern listeners (e.g. ``makeStageHandler(...)``), a clear
+       :class:`AssertionError` is raised — it will **not** silently return
+       a subsequent listener's body.
     """
     marker = f"addEventListener('{event_type}'"
     listener_start = js_source.find(marker)
     assert listener_start != -1, f"{event_type} event listener not found in app.js"
 
-    func_start = js_source.find("function", listener_start)
+    # Bound the search for 'function' to this listener's extent only — stop
+    # before the next addEventListener( so a factory-pattern callback does not
+    # silently fall through to a subsequent inline listener.
+    next_listener = js_source.find("addEventListener(", listener_start + 1)
+    search_end = next_listener if next_listener != -1 else len(js_source)
+
+    func_start = js_source.find("function", listener_start, search_end)
     assert func_start != -1, f"function keyword not found in {event_type} listener"
 
     body_start = js_source.find("{", func_start)
