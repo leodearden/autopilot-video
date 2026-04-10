@@ -302,6 +302,15 @@ class TestSummarizeHealth:
         for entry in summary["unhealthy_groups"]:
             assert set(entry.keys()) == {"group_id", "dead", "retry", "pending"}
 
+    def test_surfaces_oldest_unhealthy_age_seconds_from_kwarg(self) -> None:
+        stats = {("g", "dead"): 1}
+        summary = summarize_health(stats, oldest_unhealthy_age_seconds=123.4)
+        assert summary["oldest_unhealthy_age_seconds"] == 123.4
+
+    def test_oldest_unhealthy_age_seconds_defaults_to_none(self) -> None:
+        summary = summarize_health({})
+        assert summary["oldest_unhealthy_age_seconds"] is None
+
 
 # ===========================================================================
 # TestFilterByProject
