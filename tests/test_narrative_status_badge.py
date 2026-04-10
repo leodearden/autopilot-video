@@ -129,7 +129,7 @@ class TestNarrativeCardBadge:
     def test_source_uses_macro_import(self) -> None:
         source_path = TEMPLATES_DIR / "partials" / "narrative_card.html"
         source = source_path.read_text(encoding="utf-8")
-        assert _IMPORT_RE.search(source)
+        assert _IMPORT_RE.search(source), f"{source_path} does not contain the expected macro import statement"
 
 
 class TestNarrativeEditFormBadge:
@@ -149,7 +149,7 @@ class TestNarrativeEditFormBadge:
     def test_source_uses_macro_import(self) -> None:
         source_path = TEMPLATES_DIR / "partials" / "narrative_edit_form.html"
         source = source_path.read_text(encoding="utf-8")
-        assert _IMPORT_RE.search(source)
+        assert _IMPORT_RE.search(source), f"{source_path} does not contain the expected macro import statement"
 
 
 class TestReviewNarrativesBadge:
