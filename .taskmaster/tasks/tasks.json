@@ -5358,7 +5358,7 @@
         "description": "Resolve idiom divergence in Jinja templates for nullable field handling:\n\nThe edit form (narrative_edit_form.html) now uses `{{ x if x is not none else '' }}` for string fields (title, description), while 9 other templates use `{{ x or '' }}`. For string fields, `or ''` is functionally identical and is the established project convention.\n\nRecommended resolution:\n- Revert narrative_edit_form.html lines 4 and 11 to `{{ narrative.title or '' }}` / `{{ narrative.description or '' }}` (consistent with the 9-site project convention).\n- Add a comment on the proposed_duration_seconds field explaining why `is not none` is required there (numeric field where 0 is meaningful).\n- This satisfies task 223's comment-or-standardize requirement without introducing inconsistency.\n\nReference templates using `or ''`: narrative_card.html:7, cluster_card.html:14, review/narratives.html:29, media/list.html:24, and others.\n\nMemory hints: search \"zero-value falsy handling Jinja\" for the convention from task 167; search \"or '' Jinja template convention\" for related norms.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
@@ -5369,7 +5369,8 @@
           "modules": [
             "autopilot/web/templates"
           ]
-        }
+        },
+        "updatedAt": "2026-04-10T07:05:32.784Z"
       },
       {
         "id": "284",
@@ -6922,7 +6923,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T07:05:31.794Z",
+      "lastModified": "2026-04-10T07:05:32.784Z",
       "taskCount": 362,
       "completedCount": 211,
       "tags": [
