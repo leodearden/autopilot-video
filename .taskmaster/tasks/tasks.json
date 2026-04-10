@@ -6465,7 +6465,17 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/conftest.py",
+            "tests/test_youtube.py",
+            "tests/test_cluster_review.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 343,
