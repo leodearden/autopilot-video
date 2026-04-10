@@ -103,6 +103,33 @@ def test_update_spec_is_typeddict_with_expected_fields() -> None:
     )
 
 
+def test_non_pk_allowlist_parametrize_uses_frozensets() -> None:
+    """parametrize on test_non_pk_columns_match_allowlist passes frozensets directly."""
+    from autopilot.db import CatalogDB
+
+    fn = TestPipelineSchema.test_non_pk_columns_match_allowlist
+    markers = [m for m in fn.pytestmark if m.name == "parametrize"]
+    assert len(markers) == 1, f"Expected 1 parametrize marker, got {len(markers)}"
+    marker = markers[0]
+
+    # (a) argnames uses 'allowed', not 'allowed_attr'
+    assert marker.args[0] == "table, allowed", (
+        f"argnames: expected 'table, allowed', got {marker.args[0]!r}"
+    )
+
+    # (b) each argvalues tuple has shape (str, frozenset)
+    argvalues = marker.args[1]
+    for i, av in enumerate(argvalues):
+        assert isinstance(av[1], frozenset), (
+            f"argvalues[{i}][1] is not a frozenset: {type(av[1])}"
+        )
+
+    # (c) the three frozenset values match the CatalogDB class attributes
+    assert argvalues[0][1] == CatalogDB._GATE_ALLOWED_COLUMNS
+    assert argvalues[1][1] == CatalogDB._JOB_ALLOWED_COLUMNS
+    assert argvalues[2][1] == CatalogDB._RUN_ALLOWED_COLUMNS
+
+
 # -- Schema tests for pipeline tables ----------------------------------------
 
 
