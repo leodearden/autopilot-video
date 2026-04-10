@@ -316,6 +316,7 @@ class TestBuildUploadMetadata:
     @pytest.mark.parametrize(
         "detections_json",
         [
+            # 'class_name' was renamed to 'class'; old key must not silently produce tags
             [
                 {"class_name": "person", "confidence": 0.9},
                 {"class_name": "car", "confidence": 0.8},
