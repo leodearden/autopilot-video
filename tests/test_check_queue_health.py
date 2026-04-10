@@ -424,3 +424,18 @@ class TestMain:
         assert "/nonexistent/path.db" in captured.err
         # Report banner must NOT appear on diagnostic failure
         assert "HEALTH:" not in captured.out
+
+    def test_main_exits_with_code_2_on_missing_write_queue_table(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        # Create a valid SQLite file but without the write_queue table
+        db_path = tmp_path / "empty.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.close()
+
+        rc = main(["--db-path", str(db_path)])
+        captured = capsys.readouterr()
+
+        assert rc == 2
+        assert str(db_path) in captured.err
+        assert "HEALTH:" not in captured.out
