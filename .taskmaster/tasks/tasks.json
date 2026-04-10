@@ -7018,6 +7018,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 371,
+        "title": "Fix duplicate Jinja truthiness bug in narrative list template",
+        "description": "Task 221 fixed `{% if narrative.proposed_duration_seconds %}` -> `is not none` in autopilot/web/templates/partials/narrative_card.html, but the exact same bug still exists verbatim at autopilot/web/templates/review/narratives.html:30. A narrative whose `proposed_duration_seconds` has been cleared (null) or set to 0 will have the Duration line hidden in the list view while the card partial (rendered after edit/HTMX swap) correctly shows it, producing an inconsistent UX.\n\nFix (prefer option b): either (a) change line 30 to `{% if narrative.proposed_duration_seconds is not none %}`, or (b) refactor review/narratives.html to `{% include 'partials/narrative_card.html' with context %}` so there is only one source of truth for per-narrative rendering. Option (b) eliminates the duplication that allowed this drift, but requires confirming the list-view specific controls (bulk-select checkbox) are preserved or moved into the card partial behind a flag.\n\nAdd a regression test in tests/test_review.py that GETs the list view with a narrative whose proposed_duration_seconds is 0 (or None) and asserts the Duration line renders correctly (or is suppressed correctly for None, depending on the chosen semantics — keep consistent with the card partial).\n\nSource: post-merge review of task 221 (PR merging task/221 into main). Reviewer: reviewer_comprehensive.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -7030,7 +7041,7 @@
       ],
       "created": "2026-04-10T07:16:21.999Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-10T07:17:31.821Z"
+      "updated": "2026-04-10T07:17:53.146Z"
     }
   }
 }
