@@ -6086,7 +6086,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_settings.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 323,
