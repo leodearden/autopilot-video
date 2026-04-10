@@ -437,3 +437,33 @@ class TestMain:
         assert rc == 2
         assert str(db_path) in captured.err
         assert "HEALTH:" not in captured.out
+
+    def test_default_db_path_resolves_from_fused_memory_queue_db_env_var(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        db_path = _make_queue_db(tmp_path)
+        monkeypatch.setenv("FUSED_MEMORY_QUEUE_DB", str(db_path))
+
+        # No --db-path flag — should fall back to env var
+        rc = main([])
+        captured = capsys.readouterr()
+
+        # 0 (healthy) or 1 (unhealthy) — NOT 2 (diagnostic failure)
+        assert rc in (0, 1)
+        assert "HEALTH:" in captured.out
+
+    def test_main_exits_with_code_2_when_no_db_path_and_no_env_var(
+        self,
+        capsys: pytest.CaptureFixture,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("FUSED_MEMORY_QUEUE_DB", raising=False)
+
+        rc = main([])
+        captured = capsys.readouterr()
+
+        assert rc == 2
+        assert "--db-path" in captured.err or "FUSED_MEMORY_QUEUE_DB" in captured.err
