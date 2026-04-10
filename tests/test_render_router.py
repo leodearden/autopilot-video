@@ -1315,14 +1315,7 @@ class TestSourcePathResolution:
         # Capture deserialized clip dicts that json.loads produces inside the
         # router.  This lets us assert on the actual objects the router operates
         # on — the only way to detect in-place mutation at router.py line 154.
-        _real_loads = json.loads
-        parsed_clips: list[dict] = []
-
-        def _capturing_loads(*args, **kwargs):
-            result = _real_loads(*args, **kwargs)
-            if isinstance(result, dict) and "clips" in result:
-                parsed_clips.extend(result["clips"])
-            return result
+        _capturing_loads, parsed_clips = _make_capturing_loads()
 
         with (
             patch("autopilot.render.router.json.loads", _capturing_loads),
