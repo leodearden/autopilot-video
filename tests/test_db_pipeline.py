@@ -175,6 +175,30 @@ def test_update_column_validation_parametrizes_use_update_specs_keys() -> None:
         )
 
 
+def test_update_specs_have_distinct_invalid_cols() -> None:
+    """Every _UPDATE_SPECS entry has a non-empty invalid_col and all values are distinct."""
+    invalid_cols = [spec["invalid_col"] for spec in _UPDATE_SPECS.values()]
+    for entity, col in zip(_UPDATE_SPECS, invalid_cols):
+        assert col, f"_UPDATE_SPECS[{entity!r}]['invalid_col'] is empty"
+    assert len(set(invalid_cols)) == len(_UPDATE_SPECS), (
+        f"invalid_col values are not all distinct: {invalid_cols}"
+    )
+
+
+def test_rejects_single_disallowed_column_has_bad_col_kind_parametrize() -> None:
+    """test_rejects_single_disallowed_column has a bad_col_kind parametrize with 'generic'/'specific'."""
+    fn = TestUpdateColumnValidation.test_rejects_single_disallowed_column
+    markers = [m for m in fn.pytestmark if m.name == "parametrize"]
+    bad_col_kind_markers = [m for m in markers if m.args[0] == "bad_col_kind"]
+    assert len(bad_col_kind_markers) == 1, (
+        f"Expected exactly one 'bad_col_kind' parametrize marker, "
+        f"got {len(bad_col_kind_markers)}"
+    )
+    argvalues = list(bad_col_kind_markers[0].args[1])
+    assert "generic" in argvalues, f"'generic' missing from bad_col_kind argvalues: {argvalues}"
+    assert "specific" in argvalues, f"'specific' missing from bad_col_kind argvalues: {argvalues}"
+
+
 # -- Schema tests for pipeline tables ----------------------------------------
 
 
