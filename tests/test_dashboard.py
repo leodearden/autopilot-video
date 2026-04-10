@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -427,6 +428,35 @@ class TestStageCardPartial:
 _APP_JS = Path(__file__).resolve().parent.parent / "autopilot" / "web" / "static" / "app.js"
 
 
+def _extract_js_function(content: str, func_name: str) -> str:
+    """Extract the body of a named JS function by brace-matching.
+
+    Locates ``function <func_name>`` in *content* using a word-boundary regex
+    (avoids prefix collisions e.g. 'makeStageHandler' vs 'makeStageHandlerV2'),
+    finds the opening ``{``, then brace-counts to the matching ``}``.
+
+    Returns the outermost ``{ ... }`` block (braces included).
+
+    Raises :class:`AssertionError` with *func_name* in the message if the
+    function is not found or if the braces are unbalanced.
+    """
+    match = re.search(rf'\bfunction\s+{re.escape(func_name)}\b', content)
+    assert match is not None, f"{func_name} function not found in source"
+    body_start = content.find("{", match.end())
+    assert body_start != -1, f"opening brace not found for {func_name}"
+    depth = 0
+    i = body_start
+    while i < len(content):
+        if content[i] == "{":
+            depth += 1
+        elif content[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return content[body_start : i + 1]
+        i += 1
+    raise AssertionError(f"unbalanced braces for {func_name} (depth {depth} at end)")
+
+
 class TestSSEIntegration:
     """Verify app.js contains SSE event handlers for dashboard updates."""
 
@@ -447,6 +477,36 @@ class TestSSEIntegration:
         """Handlers contain htmx.ajax or fetch call to /dashboard/stage/ for card updates."""
         content = _APP_JS.read_text()
         assert "htmx.ajax" in content or "/dashboard/stage/" in content
+
+    def test_app_js_has_debounce_timer_map(self) -> None:
+        """app.js declares _refreshTimers map and DEBOUNCE_MS constant with positive value."""
+        content = _APP_JS.read_text()
+        assert "_refreshTimers" in content, "_refreshTimers not found in app.js"
+        assert "DEBOUNCE_MS" in content, "DEBOUNCE_MS not found in app.js"
+        match = re.search(r"\bDEBOUNCE_MS\s*=\s*(\d+)", content)
+        assert match is not None, "DEBOUNCE_MS numeric literal not found in app.js"
+        assert int(match.group(1)) > 0, "DEBOUNCE_MS must be a positive integer"
+
+    def test_app_js_has_debounced_refresh_function(self) -> None:
+        """app.js contains debouncedRefreshStageCard wrapping clearTimeout/setTimeout."""
+        content = _APP_JS.read_text()
+        body = _extract_js_function(content, "debouncedRefreshStageCard")
+        assert "clearTimeout" in body, "clearTimeout not found in debouncedRefreshStageCard body"
+        assert "setTimeout" in body, "setTimeout not found in debouncedRefreshStageCard body"
+        assert "refreshStageCard" in body, (
+            "refreshStageCard not found in debouncedRefreshStageCard body"
+        )
+
+    def test_app_js_sse_handlers_use_debounced_refresh(self) -> None:
+        """makeStageHandler/setupDashboardSSE use debouncedRefreshStageCard, not bare."""
+        content = _APP_JS.read_text()
+        for func_name in ("makeStageHandler", "setupDashboardSSE"):
+            body = _extract_js_function(content, func_name)
+            bare_calls = re.findall(r"(?<!debounced)refreshStageCard\s*\(", body)
+            assert bare_calls == [], (
+                f"{func_name} contains {len(bare_calls)} bare refreshStageCard call(s); "
+                "use debouncedRefreshStageCard instead"
+            )
 
 
 # ---------------------------------------------------------------------------
