@@ -1692,18 +1692,11 @@ class TestResolvedClipsList:
         config = _make_config()
 
         # Capture the deserialized clips to verify non-mutation
-        parsed_clips: list[dict] = []
-        _real_loads = json.loads
-
-        def _capturing_loads(s: object, *a: object, **kw: object) -> object:
-            result = _real_loads(str(s), *a, **kw)  # type: ignore[arg-type]
-            if isinstance(result, dict) and "clips" in result:
-                parsed_clips.extend(result["clips"])
-            return result
+        _capturing_loads, parsed_clips = _make_capturing_loads()
 
         rendered_clips_collected: list[dict] = []
         with (
-            patch("autopilot.render.router.json.loads", side_effect=_capturing_loads),
+            patch("autopilot.render.router.json.loads", _capturing_loads),
             patch("autopilot.render.router.render_simple") as mock_rs,
             patch("subprocess.run"),
         ):
