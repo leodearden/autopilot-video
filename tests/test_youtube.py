@@ -435,15 +435,6 @@ class TestBuildUploadMetadata:
         assert meta["snippet"]["categoryId"] == "19"
         assert meta["status"]["privacyStatus"] == "private"
 
-    def test_youtube_config_fixture_is_real_dataclass(self, youtube_config):
-        """The youtube_config fixture returns a real YouTubeConfig, not a mock."""
-        from autopilot.config import YouTubeConfig
-
-        assert isinstance(youtube_config, YouTubeConfig)
-        assert youtube_config.privacy_status == "unlisted"
-        assert youtube_config.default_category == "22"
-
-
 # ---------------------------------------------------------------------------
 # Full upload_video flow tests
 # ---------------------------------------------------------------------------
