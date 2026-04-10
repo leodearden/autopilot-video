@@ -71,3 +71,24 @@ def test_all_task_ids_are_strings(tasks_data: dict) -> None:
         f"Found {len(violations)} task(s) with non-string id:\n"
         + "\n".join(violations)
     )
+
+
+# ---------------------------------------------------------------------------
+# Dependency entry type invariant
+# ---------------------------------------------------------------------------
+
+
+def test_all_dependency_entries_are_strings(tasks_data: dict) -> None:
+    """Every entry in each task's 'dependencies' list must be a str."""
+    violations = []
+    for task in tasks_data["master"]["tasks"]:
+        task_id = task.get("id", "<unknown>")
+        for dep in task.get("dependencies", []):
+            if not isinstance(dep, str):
+                violations.append(
+                    f"  task id={task_id!r}: dependency={dep!r} (type={type(dep).__name__})"
+                )
+    assert not violations, (
+        f"Found {len(violations)} non-string dependency reference(s):\n"
+        + "\n".join(violations)
+    )
