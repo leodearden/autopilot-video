@@ -5247,7 +5247,7 @@
         "description": "The `_execute_kwargs_update` helper in `autopilot/db.py` (line ~75) interpolates `table` and `pk_col` directly into the SQL string. While all current callers pass hardcoded string literals (no active risk), there is no defence-in-depth against future misuse.\n\nAdd assertions at the top of `_execute_kwargs_update`:\n```python\nassert table.isidentifier(), f\"Invalid table name: {table}\"\nassert pk_col.isidentifier(), f\"Invalid pk_col: {pk_col}\"\n```\n\nAlternatively, define a private allowlist of valid (table, pk_col) pairs. The `noqa: S608` comment claims \"column names validated against allowlist\" but that only covers SET-clause keys via `_validate_update_kwargs`, not table/pk_col.\n\nMemory hints: search for \"_execute_kwargs_update SQL safety\" and \"CatalogDB update pattern\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
@@ -5260,7 +5260,8 @@
             "autopilot",
             "tests"
           ]
-        }
+        },
+        "updatedAt": "2026-04-10T07:13:48.966Z"
       },
       {
         "id": "278",
@@ -7004,7 +7005,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T07:13:48.572Z",
+      "lastModified": "2026-04-10T07:13:48.980Z",
       "taskCount": 369,
       "completedCount": 217,
       "tags": [
