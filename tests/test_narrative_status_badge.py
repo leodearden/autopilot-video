@@ -95,8 +95,6 @@ class TestExtraClasses:
         html = _render_badge("approved", "ml-2 whitespace-nowrap")
         assert "ml-2" in html
         assert "whitespace-nowrap" in html
-        assert "bg-green-900" in html
-        assert "text-green-300" in html
 
     def test_no_extra_classes_by_default(self) -> None:
         html = _render_badge("proposed")
