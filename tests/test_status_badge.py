@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import jinja2
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "autopilot" / "web" / "templates"
+
+
+def _extract_classes(html: str) -> list[str]:
+    """Parse the class attribute of the first span in the rendered HTML into a list."""
+    m = re.search(r'<span[^>]+class="([^"]*)"', html)
+    if not m:
+        return []
+    return m.group(1).split()
 
 
 def _render_badge(
@@ -24,6 +33,40 @@ def _render_badge(
     template = env.get_template("macros/status_badge.html")
     module = template.module
     kwargs: dict = {"color_map": color_map, "extra_classes": extra_classes, "default": default}
+    if label is not None:
+        kwargs["label"] = label
+    return module.status_badge(status, **kwargs)  # type: ignore[reportAttributeAccessIssue]
+
+
+def _render_badge_ext(
+    status: str,
+    color_map: dict[str, str],
+    extra_classes: str = "",
+    label: str | None = None,
+    default: str = "bg-gray-700 text-gray-300",
+    px: str = "px-2",
+    py: str = "py-1",
+    rounded: str = "rounded",
+    text_size: str = "text-xs",
+    font_weight: str = "font-medium",
+) -> str:
+    """Render the generic status_badge macro with named override parameters."""
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(str(TEMPLATES_DIR)),
+        autoescape=True,
+    )
+    template = env.get_template("macros/status_badge.html")
+    module = template.module
+    kwargs: dict = {
+        "color_map": color_map,
+        "extra_classes": extra_classes,
+        "default": default,
+        "px": px,
+        "py": py,
+        "rounded": rounded,
+        "text_size": text_size,
+        "font_weight": font_weight,
+    }
     if label is not None:
         kwargs["label"] = label
     return module.status_badge(status, **kwargs)  # type: ignore[reportAttributeAccessIssue]
@@ -128,6 +171,61 @@ class TestDefaultColorOverride:
         assert "bg-gray-700" not in html
 
 
+class TestClassNormalization:
+    """Verify whitespace is normalized in the rendered class attribute."""
+
+    SAMPLE_MAP = {"ok": "bg-green-900 text-green-300"}
+
+    def test_no_double_space_when_extra_classes_empty(self) -> None:
+        html = _render_badge("ok", self.SAMPLE_MAP)
+        m = re.search(r'class="([^"]*)"', html)
+        assert m is not None
+        assert "  " not in m.group(1)
+
+
+class TestOverrideParameters:
+    """Verify named override parameters for layout/typography classes."""
+
+    SAMPLE_MAP = {"ok": "bg-green-900 text-green-300"}
+
+    def test_px_override_replaces_default(self) -> None:
+        html = _render_badge_ext("ok", self.SAMPLE_MAP, px="px-3")
+        classes = _extract_classes(html)
+        px_classes = [c for c in classes if c.startswith("px-")]
+        assert len(px_classes) == 1
+        assert px_classes[0] == "px-3"
+
+    def test_py_override_replaces_default(self) -> None:
+        html = _render_badge_ext("ok", self.SAMPLE_MAP, py="py-0.5")
+        classes = _extract_classes(html)
+        py_classes = [c for c in classes if c.startswith("py-")]
+        assert len(py_classes) == 1
+        assert py_classes[0] == "py-0.5"
+
+    def test_rounded_override_replaces_default(self) -> None:
+        html = _render_badge_ext("ok", self.SAMPLE_MAP, rounded="rounded-full")
+        classes = _extract_classes(html)
+        assert "rounded-full" in classes
+        assert "rounded" not in classes
+
+    def test_text_size_override_replaces_default(self) -> None:
+        html = _render_badge_ext("ok", self.SAMPLE_MAP, text_size="text-sm")
+        classes = _extract_classes(html)
+        assert "text-sm" in classes
+        assert "text-xs" not in classes
+
+    def test_font_weight_empty_drops_class(self) -> None:
+        html = _render_badge_ext("ok", self.SAMPLE_MAP, font_weight="")
+        classes = _extract_classes(html)
+        assert not any(c.startswith("font-") for c in classes)
+
+    def test_override_does_not_duplicate_default(self) -> None:
+        html = _render_badge_ext("ok", self.SAMPLE_MAP, px="px-3")
+        classes = _extract_classes(html)
+        px_classes = [c for c in classes if c.startswith("px-")]
+        assert len(px_classes) == 1
+
+
 # ---------------------------------------------------------------------------
 # Template integration tests — source + render assertions
 # ---------------------------------------------------------------------------
@@ -217,6 +315,29 @@ class TestPipelineIndexBadges:
         )
         assert "bg-amber-900" in html
 
+    def test_stage_card_badge_no_font_medium(self) -> None:
+        env = _make_env()
+        html = env.get_template("pipeline/index.html").render(
+            page_title="Pipeline",
+            run={
+                "run_id": "r-1", "status": "running",
+                "current_stage": "ingest", "started_at": "now",
+            },
+            stages=[{
+                "name": "ingest", "status": "done",
+                "done": 3, "total": 3, "gate_mode": "auto",
+            }],
+            runs=[],
+        )
+        # Find all span elements with class attributes containing bg-green-900
+        # The run badge is bg-green-900 only when status=completed; here run.status=running
+        # so bg-green-900 belongs to the stage done badge in the stage grid
+        spans = re.findall(r'<span[^>]+class="([^"]*bg-green-900[^"]*)"', html)
+        assert len(spans) >= 1
+        # The stage card badge — find it (run is 'running' so bg-green-900 is stage badge)
+        stage_badge_classes = spans[0].split()
+        assert "font-medium" not in stage_badge_classes
+
 
 class TestPipelineStagesBadges:
     """Verify pipeline/stages.html uses the generic status_badge macro."""
@@ -244,6 +365,20 @@ class TestPipelineStagesBadges:
                       "gate_mode": "auto", "counts": {"done": 3}}],
         )
         assert "done: 3" in html
+
+    def test_stage_badge_no_font_medium(self) -> None:
+        env = _make_env()
+        html = env.get_template("pipeline/stages.html").render(
+            page_title="Stages",
+            run={"run_id": "r-1"},
+            stages=[{"name": "ingest", "status": "done", "done": 3, "total": 3,
+                      "gate_mode": "auto", "counts": {}}],
+        )
+        # The stage status badge has bg-green-900; find its class list
+        m = re.search(r'<span[^>]+class="([^"]*bg-green-900[^"]*)"', html)
+        assert m is not None
+        classes = m.group(1).split()
+        assert "font-medium" not in classes
 
 
 class TestPipelineJobsBadges:
@@ -316,6 +451,23 @@ class TestMediaDetailBadge:
         )
         assert "bg-blue-900" in html
 
+    def test_no_duplicate_py_classes(self) -> None:
+        env = _make_env()
+        env.globals["format_duration"] = lambda s: f"{s}s"
+        html = env.get_template("media/detail.html").render(
+            media={"id": "m-1", "file_path": "/v/test.mp4", "status": "analyzed",
+                   "duration_seconds": 60, "resolution_w": 1920, "resolution_h": 1080,
+                   "fps": 30, "codec": "h264", "file_size_bytes": 1000,
+                   "created_at": "2024-01-01"},
+        )
+        # Find the analyzed badge span (identified by its color class)
+        m = re.search(r'<span[^>]+class="([^"]*bg-green-900[^"]*)"', html)
+        assert m is not None
+        classes = m.group(1).split()
+        py_classes = [c for c in classes if c.startswith("py-")]
+        assert len(py_classes) == 1
+        assert py_classes[0] == "py-0.5"
+
 
 class TestMediaRowBadge:
     """Verify partials/media_row.html uses the generic status_badge macro."""
@@ -347,6 +499,24 @@ class TestMediaRowBadge:
                   "has_audio_events": False, "has_captions": False},
         )
         assert "bg-gray-700" in html
+
+    def test_no_duplicate_py_classes(self) -> None:
+        env = _make_env()
+        env.globals["format_duration"] = lambda s: f"{s}s"
+        html = env.get_template("partials/media_row.html").render(
+            item={"id": "m-1", "file_path": "/v/test.mp4", "status": "analyzed",
+                  "duration_seconds": 60, "resolution_w": 1920, "resolution_h": 1080,
+                  "created_at": "2024-01-01", "has_transcript": False,
+                  "has_detections": False, "has_faces": False, "has_embeddings": False,
+                  "has_audio_events": False, "has_captions": False},
+        )
+        # Find the analyzed badge span (identified by its color class)
+        m = re.search(r'<span[^>]+class="([^"]*bg-green-900[^"]*)"', html)
+        assert m is not None
+        classes = m.group(1).split()
+        py_classes = [c for c in classes if c.startswith("py-")]
+        assert len(py_classes) == 1
+        assert py_classes[0] == "py-0.5"
 
 
 class TestReviewUploadsBadge:
@@ -409,6 +579,38 @@ class TestReviewRendersBadge:
             has_render=False, scenes=[],
         )
         assert "bg-red-900" in html
+
+    def test_no_conflicting_classes(self) -> None:
+        env = _make_env()
+        html = env.get_template("review/renders.html").render(
+            page_title="Render Review",
+            narrative={
+                "narrative_id": "n-1", "title": "T",
+                "description": "D", "status": "approved",
+            },
+            edit_plan={"validation": {"passes": True}},
+            has_render=False, scenes=[],
+        )
+        # The validation badge has bg-green-900; find that span's classes
+        m = re.search(r'<span[^>]+class="([^"]*bg-green-900[^"]*)"', html)
+        assert m is not None
+        classes = m.group(1).split()
+        # exactly one px-* class and it must be px-3
+        px_classes = [c for c in classes if c.startswith("px-")]
+        assert len(px_classes) == 1
+        assert px_classes[0] == "px-3"
+        # no standalone 'rounded' (rounded-full is present, not rounded)
+        assert "rounded" not in classes
+        assert "rounded-full" in classes
+        # exactly one text-* size class and it must be text-sm (no text-xs)
+        text_size_classes = [
+            c for c in classes if c.startswith("text-") and c not in ("text-green-300",)
+        ]
+        assert "text-sm" in text_size_classes
+        assert "text-xs" not in text_size_classes
+        # layout classes present
+        assert "inline-flex" in classes
+        assert "items-center" in classes
 
 
 class TestReviewHubBadge:

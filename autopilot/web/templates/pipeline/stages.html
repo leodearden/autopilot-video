@@ -20,7 +20,7 @@
                 <div class="flex items-center space-x-3">
                     <h2 class="text-xl font-semibold text-white capitalize">{{ stage.name }}</h2>
                     {% set stage_colors = {'running': 'bg-blue-900 text-blue-300', 'done': 'bg-green-900 text-green-300', 'error': 'bg-red-900 text-red-300', 'waiting': 'bg-amber-900 text-amber-300'} %}
-                    {{ status_badge(stage.status, stage_colors) }}
+                    {{ status_badge(stage.status, stage_colors, font_weight='') }}
                     <span class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300">gate: {{ stage.gate_mode }}</span>
                 </div>
                 <a href="/pipeline/jobs?stage={{ stage.name }}"

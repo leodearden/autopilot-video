@@ -49,7 +49,7 @@
             <div class="flex items-center justify-between mb-2">
                 <h3 class="text-white font-semibold capitalize">{{ stage.name }}</h3>
                 {% set stage_colors = {'running': 'bg-blue-900 text-blue-300', 'done': 'bg-green-900 text-green-300', 'error': 'bg-red-900 text-red-300', 'waiting': 'bg-amber-900 text-amber-300'} %}
-                {{ status_badge(stage.status, stage_colors) }}
+                {{ status_badge(stage.status, stage_colors, font_weight='') }}
             </div>
             <div class="flex items-center justify-between text-sm text-gray-400">
                 <span>{{ stage.done }}/{{ stage.total }} jobs done</span>
