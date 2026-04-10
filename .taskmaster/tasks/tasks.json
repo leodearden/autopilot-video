@@ -6763,7 +6763,24 @@
               "narrative status values Tailwind color mappings scattered no single source of truth",
               "domain-specific badge wrapper macro pattern"
             ]
-          }
+          },
+          "files": [
+            "autopilot/web/templates/macros/color_maps.html",
+            "autopilot/web/templates/media/detail.html",
+            "autopilot/web/templates/partials/media_row.html",
+            "autopilot/web/templates/pipeline/index.html",
+            "autopilot/web/templates/pipeline/stages.html",
+            "autopilot/web/templates/pipeline/jobs.html",
+            "autopilot/web/templates/review/hub.html",
+            "autopilot/web/templates/review/renders.html"
+          ],
+          "modules": [
+            "autopilot/web/templates/macros",
+            "autopilot/web/templates/media",
+            "autopilot/web/templates/partials",
+            "autopilot/web/templates/pipeline",
+            "autopilot/web/templates/review"
+          ]
         }
       },
       {
