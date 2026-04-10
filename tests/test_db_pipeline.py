@@ -736,6 +736,10 @@ class TestUpdateColumnValidation:
         spec["setup"](catalog_db)
         with pytest.raises(ValueError, match="evil_col"):
             spec["update"](catalog_db, evil_col="bad")
+        # Row must be untouched (atomicity): disallowed-only call issues no SQL.
+        row = spec["get"](catalog_db)
+        assert row is not None
+        assert row[spec["valid_col"]] == spec["default_val"]
 
     @pytest.mark.parametrize("entity", ["gate", "job", "run"])
     def test_rejects_mix_of_valid_and_invalid(
@@ -769,6 +773,9 @@ class TestUpdateColumnValidation:
         assert "zzz_col" in msg
         # sorted() order: 'aaa_col' appears before 'zzz_col'.
         assert msg.index("aaa_col") < msg.index("zzz_col")
+        # Row must still exist (atomicity): disallowed-only call issues no SQL.
+        row = spec["get"](catalog_db)
+        assert row is not None
 
 
 # -- Cross-table integration tests ------------------------------------------
