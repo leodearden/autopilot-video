@@ -3,6 +3,11 @@
 Each update_* method wraps _execute_kwargs_update which returns an int
 rowcount.  These tests verify the contract: 1 for an existing row,
 0 for a nonexistent primary key, 0 for empty kwargs.
+
+ValueError paths for disallowed columns (raised by _validate_update_kwargs
+when kwargs contain keys outside the per-table allowlist) are intentionally
+tested elsewhere — see tests/test_db_validate_helper.py for direct coverage
+of the _validate_update_kwargs and _execute_kwargs_update helpers.
 """
 
 from __future__ import annotations
