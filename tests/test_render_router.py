@@ -158,7 +158,13 @@ def _make_config(
 
 
 def _make_edl(clips: list[dict] | None = None, **kwargs: object) -> dict:
-    """Create a minimal EDL dict for testing."""
+    """Create a minimal EDL dict for testing.
+
+    The default clip includes ``source_path`` so that tests not exercising
+    the source-path resolution code path are immune to silent MagicMock leakage.
+    Tests that need to exercise resolution should use ``_make_edl_no_source_path()``
+    or pass explicit ``clips`` without ``source_path``.
+    """
     edl: dict = {
         "edl_version": "1",
         "clips": clips
@@ -168,6 +174,7 @@ def _make_edl(clips: list[dict] | None = None, **kwargs: object) -> dict:
                 "in_timecode": "00:00:00.000",
                 "out_timecode": "00:00:10.000",
                 "track": 1,
+                "source_path": "/fake/source.mp4",
             }
         ],
         "transitions": {},
@@ -179,6 +186,24 @@ def _make_edl(clips: list[dict] | None = None, **kwargs: object) -> dict:
     }
     edl.update(kwargs)
     return edl
+
+
+def _make_edl_no_source_path(clips: list[dict] | None = None, **kwargs: object) -> dict:
+    """Create a minimal EDL dict whose default clip has NO source_path.
+
+    Use this in tests that exercise the source-path resolution code path
+    (i.e. TestSourcePathResolution), where the router must call db.get_media
+    to look up the file path.
+    """
+    default_clips = clips or [
+        {
+            "clip_id": "clip_1",
+            "in_timecode": "00:00:00.000",
+            "out_timecode": "00:00:10.000",
+            "track": 1,
+        }
+    ]
+    return _make_edl(clips=default_clips, **kwargs)
 
 
 def _make_db(
