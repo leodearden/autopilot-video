@@ -4260,11 +4260,11 @@
         "description": "Add three new tests to `TestEditFormZeroDuration` in `tests/test_review.py`:\n1. **Null-clear roundtrip**: seed a narrative with `proposed_duration_seconds=120`, PUT `{\"proposed_duration_seconds\": null}`, then GET the edit form and assert `value=\"\"` is present and `value=\"None\"` is absent. Also add a docstring or comment to `NarrativeUpdate` in `autopilot/web/routes/review.py` clarifying that sending `null` for `proposed_duration_seconds` is the supported way to clear it.\n2. **HTMX roundtrip**: add a variant of `test_update_zero_duration_roundtrip` that sends `headers={\"HX-Request\": \"true\"}` on the PUT and asserts the returned HTML partial displays `0` or `0.0` as the duration, confirming the card template reflects the zero value.\n\nMemory hints: search \"NarrativeUpdate model exclude_unset\" for API contract context.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T13:16:42.514Z",
+        "updatedAt": "2026-04-10T07:01:46.906Z",
         "metadata": {
           "modules": [
             "autopilot/web/routes/review.py",
@@ -6909,7 +6909,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T07:01:46.803Z",
+      "lastModified": "2026-04-10T07:01:46.906Z",
       "taskCount": 361,
       "completedCount": 210,
       "tags": [
