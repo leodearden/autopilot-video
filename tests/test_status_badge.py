@@ -343,6 +343,20 @@ class TestPipelineStagesBadges:
         )
         assert "done: 3" in html
 
+    def test_stage_badge_no_font_medium(self) -> None:
+        env = _make_env()
+        html = env.get_template("pipeline/stages.html").render(
+            page_title="Stages",
+            run={"run_id": "r-1"},
+            stages=[{"name": "ingest", "status": "done", "done": 3, "total": 3,
+                      "gate_mode": "auto", "counts": {}}],
+        )
+        # The stage status badge has bg-green-900; find its class list
+        m = re.search(r'<span[^>]+class="([^"]*bg-green-900[^"]*)"', html)
+        assert m is not None
+        classes = m.group(1).split()
+        assert "font-medium" not in classes
+
 
 class TestPipelineJobsBadges:
     """Verify pipeline/jobs.html uses the generic status_badge macro."""
