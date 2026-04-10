@@ -5282,7 +5282,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_narrative_status_badge.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 280,
@@ -5293,7 +5301,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_narrative_status_badge.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 281,
