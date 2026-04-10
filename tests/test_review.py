@@ -1138,6 +1138,38 @@ class TestEditFormZeroDuration:
         assert response.status_code == 200
         assert "|| null" not in response.text
 
+    def test_null_clear_roundtrip(
+        self, _null_clear_client: TestClient,
+    ) -> None:
+        """Clearing proposed_duration_seconds with null persists as NULL and renders empty.
+
+        Regression test: PUT {proposed_duration_seconds: null} should persist NULL in the
+        database and the subsequent GET edit form should render the duration input with
+        value="" (not value="None"). This locks in the null-clear contract driven by
+        body.model_dump(exclude_unset=True) preserving explicitly-sent null values.
+        """
+        # PUT null to clear the duration
+        put_resp = _null_clear_client.put(
+            "/api/narratives/n-duration",
+            json={"proposed_duration_seconds": None},
+        )
+        assert put_resp.status_code == 200
+        assert put_resp.json()["proposed_duration_seconds"] is None
+
+        # GET edit form and verify duration input is empty
+        get_resp = _null_clear_client.get(
+            "/api/narratives/n-duration?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert get_resp.status_code == 200
+        assert 'value="None"' not in get_resp.text
+        match = re.search(
+            r'<input[^>]*name="proposed_duration_seconds"[^>]*>',
+            get_resp.text,
+        )
+        assert match is not None, "proposed_duration_seconds input not found"
+        assert 'value=""' in match.group(0)
+
 
 # ---------------------------------------------------------------------------
 # TestZeroDurationRoundtrip — task-224
@@ -1166,6 +1198,26 @@ def _roundtrip_app(tmp_path: Path) -> FastAPI:
 def _roundtrip_client(_roundtrip_app: FastAPI) -> TestClient:
     """Function-scoped TestClient for mutating zero-duration roundtrip tests."""
     return TestClient(_roundtrip_app)
+
+
+@pytest.fixture
+def _null_clear_app(tmp_path: Path) -> FastAPI:
+    """Function-scoped app for null-clear roundtrip test."""
+    db_path = str(tmp_path / "catalog.db")
+    with CatalogDB(db_path) as _db:
+        _db.init_default_gates()
+        _seed_narrative(
+            _db, "n-duration",
+            title="Has Duration",
+            proposed_duration_seconds=120.0,
+        )
+    return create_app(db_path)
+
+
+@pytest.fixture
+def _null_clear_client(_null_clear_app: FastAPI) -> TestClient:
+    """Function-scoped TestClient for null-clear roundtrip test."""
+    return TestClient(_null_clear_app)
 
 
 class TestZeroDurationRoundtrip:
