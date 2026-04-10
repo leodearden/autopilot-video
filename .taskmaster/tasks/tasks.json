@@ -7461,6 +7461,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 409,
+        "title": "test_check_queue_health: simplify fragile status_col assertion in long-group-id alignment test",
+        "description": "Clean up fragile assertion logic in tests/test_check_queue_health.py::test_per_group_breakdown_aligns_with_long_group_ids (test_quality suggestion from esc-382-48).",
+        "details": "From esc-382-48 (reviewer_comprehensive, tests/test_check_queue_health.py:462-479):\n\nThe `status_col` inner helper in `test_per_group_breakdown_aligns_with_long_group_ids` does `stripped[len(stripped.split()[0]):]` then `row.index(after_group.lstrip(), 2)`. The logic is hard to follow, and if both breakdown rows happen to contain identical status words at identical offsets the test can pass for reasons unrelated to width calculation.\n\nFix: replace the `status_col` helper with a simpler direct assertion. Two options:\n- `assert data_lines[0].index('dead') == data_lines[1].index('completed')` — direct index comparison on the known status words for each row.\n- Assert the exact expected rendered rows (most explicit, but couples the test to the exact formatting string).\n\nPrefer the direct-index approach — it's still width-agnostic but dramatically clearer. Keep the `f\"{long_id}dead\" not in report` overflow guard, that one is fine.\n\nScope: tests/test_check_queue_health.py only. No production code changes.",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -7473,7 +7484,7 @@
       ],
       "created": "2026-04-10T10:16:53.515Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-10T10:17:09.281Z"
+      "updated": "2026-04-10T10:17:18.528Z"
     }
   }
 }
