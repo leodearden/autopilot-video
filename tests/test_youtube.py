@@ -429,22 +429,11 @@ class TestBuildUploadMetadata:
     def test_uses_config_privacy_status_and_category(self, catalog_db):
         """Privacy and category come from YouTubeConfig."""
         catalog_db.insert_narrative("n1", title="Title", description="desc")
-        config = MagicMock()
-        config.privacy_status = "private"
-        config.default_category = "19"
+        config = YouTubeConfig(privacy_status="private", default_category="19")
 
         meta = _build_upload_metadata("n1", catalog_db, config)
         assert meta["snippet"]["categoryId"] == "19"
         assert meta["status"]["privacyStatus"] == "private"
-
-    def test_youtube_config_fixture_is_real_dataclass(self, youtube_config):
-        """The youtube_config fixture returns a real YouTubeConfig, not a mock."""
-        from autopilot.config import YouTubeConfig
-
-        assert isinstance(youtube_config, YouTubeConfig)
-        assert youtube_config.privacy_status == "unlisted"
-        assert youtube_config.default_category == "22"
-
 
 # ---------------------------------------------------------------------------
 # Full upload_video flow tests
