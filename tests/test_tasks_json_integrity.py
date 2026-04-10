@@ -51,3 +51,23 @@ def test_tasks_json_loads_and_has_expected_structure(tasks_data: dict) -> None:
     assert len(tasks) > 0, (
         "tasks.json['master']['tasks'] must be non-empty"
     )
+
+
+# ---------------------------------------------------------------------------
+# Task ID type invariant
+# ---------------------------------------------------------------------------
+
+
+def test_all_task_ids_are_strings(tasks_data: dict) -> None:
+    """Every task.id must be a str (regression guard for int→str migration)."""
+    violations = []
+    for idx, task in enumerate(tasks_data["master"]["tasks"]):
+        task_id = task.get("id")
+        if not isinstance(task_id, str):
+            violations.append(
+                f"  tasks[{idx}]: id={task_id!r} (type={type(task_id).__name__})"
+            )
+    assert not violations, (
+        f"Found {len(violations)} task(s) with non-string id:\n"
+        + "\n".join(violations)
+    )
