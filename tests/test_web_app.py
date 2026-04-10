@@ -545,6 +545,11 @@ class TestSSEHandlerFactory:
         assert "debouncedRefreshStageCard" in make_stage_handler_body, (
             "debouncedRefreshStageCard call not found in makeStageHandler"
         )
+        # NOTE: the 'if (refreshCard)' guard below is verified only by static text-matching.
+        # The runtime branch where refreshCard=false and debouncedRefreshStageCard is NOT
+        # invoked is never exercised by any test.  A proper behavioural test (jsdom/Playwright)
+        # is still needed to close this gap.  No current call site passes refreshCard=false
+        # (stage_error is handled via the notification channel), so the false branch is dead.
         assert "if (refreshCard)" in make_stage_handler_body, (
             "conditional guard 'if (refreshCard)' not found in makeStageHandler. "
             "debouncedRefreshStageCard must only be called when the refreshCard param is true."
