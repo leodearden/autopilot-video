@@ -300,7 +300,7 @@ class TestExtractFunctionBody:
     def test_raises_on_unclosed_braces(self) -> None:
         """Raises AssertionError when braces are not balanced (malformed JS)."""
         js = "function broken() { if (true) { return 1; }"
-        with pytest.raises(AssertionError):
+        with pytest.raises(AssertionError, match='unbalanced'):
             _extract_function_body(js, "broken")
 
     def test_does_not_match_prefix_name_collision(self) -> None:
