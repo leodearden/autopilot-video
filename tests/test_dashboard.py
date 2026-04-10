@@ -478,6 +478,15 @@ class TestSSEIntegration:
         content = _APP_JS.read_text()
         assert "htmx.ajax" in content or "/dashboard/stage/" in content
 
+    def test_app_js_has_debounce_timer_map(self) -> None:
+        """app.js declares _refreshTimers map and DEBOUNCE_MS constant with positive value."""
+        content = _APP_JS.read_text()
+        assert "_refreshTimers" in content, "_refreshTimers not found in app.js"
+        assert "DEBOUNCE_MS" in content, "DEBOUNCE_MS not found in app.js"
+        match = re.search(r"\bDEBOUNCE_MS\s*=\s*(\d+)", content)
+        assert match is not None, "DEBOUNCE_MS numeric literal not found in app.js"
+        assert int(match.group(1)) > 0, "DEBOUNCE_MS must be a positive integer"
+
 
 # ---------------------------------------------------------------------------
 # Step 13: GET / redirect test
