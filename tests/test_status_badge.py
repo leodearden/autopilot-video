@@ -315,6 +315,29 @@ class TestPipelineIndexBadges:
         )
         assert "bg-amber-900" in html
 
+    def test_stage_card_badge_no_font_medium(self) -> None:
+        env = _make_env()
+        html = env.get_template("pipeline/index.html").render(
+            page_title="Pipeline",
+            run={
+                "run_id": "r-1", "status": "running",
+                "current_stage": "ingest", "started_at": "now",
+            },
+            stages=[{
+                "name": "ingest", "status": "done",
+                "done": 3, "total": 3, "gate_mode": "auto",
+            }],
+            runs=[],
+        )
+        # Find all span elements with class attributes containing bg-green-900
+        # The run badge is bg-green-900 only when status=completed; here run.status=running
+        # so bg-green-900 belongs to the stage done badge in the stage grid
+        spans = re.findall(r'<span[^>]+class="([^"]*bg-green-900[^"]*)"', html)
+        assert len(spans) >= 1
+        # The stage card badge — find it (run is 'running' so bg-green-900 is stage badge)
+        stage_badge_classes = spans[0].split()
+        assert "font-medium" not in stage_badge_classes
+
 
 class TestPipelineStagesBadges:
     """Verify pipeline/stages.html uses the generic status_badge macro."""
