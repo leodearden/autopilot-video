@@ -37,6 +37,7 @@ class _UpdateSpec(TypedDict):
     valid_col: str
     valid_val: str
     default_val: str
+    invalid_col: str
 
 
 _UPDATE_SPECS: dict[str, _UpdateSpec] = {
@@ -47,6 +48,7 @@ _UPDATE_SPECS: dict[str, _UpdateSpec] = {
         "valid_col": "mode",
         "valid_val": "manual",
         "default_val": "auto",
+        "invalid_col": "hacked",
     },
     "job": {
         "setup": lambda db: db.insert_job("j-val", "ingest", "media_import"),
@@ -55,6 +57,7 @@ _UPDATE_SPECS: dict[str, _UpdateSpec] = {
         "valid_col": "status",
         "valid_val": "done",
         "default_val": "pending",
+        "invalid_col": "injected",
     },
     "run": {
         "setup": lambda db: db.insert_run(
@@ -65,6 +68,7 @@ _UPDATE_SPECS: dict[str, _UpdateSpec] = {
         "valid_col": "status",
         "valid_val": "completed",
         "default_val": "running",
+        "invalid_col": "corrupted",
     },
 }
 
