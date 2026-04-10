@@ -6559,7 +6559,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_web_app.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 348,
