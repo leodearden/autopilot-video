@@ -5529,7 +5529,7 @@
         "description": "Three cleanup items in the TestIdempotency class (tests/test_audio_events.py):\n\n1. **Remove dead `patch.object(Path, 'exists', return_value=True)` wrappers** from the three idempotency tests (`test_skip_when_events_exist`, `test_skip_when_events_exist_at_nonzero_timestamp`, `test_skip_when_events_exist_beyond_range`). These patches are dead code — the idempotency guard (`db.has_audio_events`) at audio_events.py:95-98 fires and returns early before `audio_path.exists()` at line 101 is ever reached. The patches create misleading signal.\n\n2. **Update test comments** to clarify why `scheduler.assert_not_called()` is absent. Current comments say \"Scheduler should NOT be called\" which is ambiguous. Change to something like \"Scheduler model should NOT be loaded (scheduler.model is the only entry point)\" or add an inline comment explaining `scheduler()` is never called directly, only `scheduler.model(...)`.\n\n3. **Add two defensive tests**:\n   a. A test proving idempotency short-circuits even when the file does NOT exist: pre-insert events, call with nonexistent path (no Path.exists patch), assert no exception and scheduler.model not called. This guards against future reordering of the idempotency check vs path check.\n   b. A test for the AudioEventError path: no prior events in DB, call with nonexistent path, assert `AudioEventError` is raised. This covers audio_events.py:101-102 which is currently untested.\n\nmemory_hints:\n- search: \"classify_audio_events idempotency guard has_audio_events early return\"\n- search: \"AudioEventError audio file not found test coverage\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
@@ -5541,7 +5541,7 @@
             "tests"
           ]
         },
-        "updatedAt": "2026-04-10T08:14:26.280Z"
+        "updatedAt": "2026-04-10T10:02:35.182Z"
       },
       {
         "id": "293",
@@ -7292,9 +7292,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T10:02:20.674Z",
+      "lastModified": "2026-04-10T10:02:35.183Z",
       "taskCount": 393,
-      "completedCount": 239,
+      "completedCount": 240,
       "tags": [
         "master"
       ]
