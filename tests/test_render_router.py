@@ -106,6 +106,31 @@ class TestClassifyClip:
         crop_modes = {}  # no entry for c1
         assert _classify_clip(clip, crop_modes) == "fast"
 
+    def test_no_clip_id_with_overlay_returns_slow(self) -> None:
+        """Clip with overlay but no clip_id should classify as 'slow'.
+
+        The overlay branch fires before the clip_id lookup, so a pip
+        overlay forces the slow path even when clip_id is absent.
+        """
+        from autopilot.render.router import _classify_clip
+
+        clip = {"source_path": "/x.mp4", "overlay": "pip"}
+        crop_modes: dict[str, str] = {}
+        assert _classify_clip(clip, crop_modes) == "slow"
+
+    def test_no_clip_id_no_overlay_returns_fast(self) -> None:
+        """Clip with no clip_id and no overlay should classify as 'fast'.
+
+        Without an overlay the clip_id lookup path is reached.  When
+        clip_id is absent the function should short-circuit to 'fast'
+        rather than probing crop_modes with a sentinel value.
+        """
+        from autopilot.render.router import _classify_clip
+
+        clip = {"source_path": "/x.mp4"}
+        crop_modes: dict[str, str] = {}
+        assert _classify_clip(clip, crop_modes) == "fast"
+
 
 # ---------------------------------------------------------------------------
 # Helpers for integration tests
