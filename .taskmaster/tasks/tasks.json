@@ -5341,7 +5341,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_review.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 283,
