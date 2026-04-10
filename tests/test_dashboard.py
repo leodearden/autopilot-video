@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -425,6 +426,35 @@ class TestStageCardPartial:
 # ---------------------------------------------------------------------------
 
 _APP_JS = Path(__file__).resolve().parent.parent / "autopilot" / "web" / "static" / "app.js"
+
+
+def _extract_js_function(content: str, func_name: str) -> str:
+    """Extract the body of a named JS function by brace-matching.
+
+    Locates ``function <func_name>`` in *content* using a word-boundary regex
+    (avoids prefix collisions e.g. 'makeStageHandler' vs 'makeStageHandlerV2'),
+    finds the opening ``{``, then brace-counts to the matching ``}``.
+
+    Returns the outermost ``{ ... }`` block (braces included).
+
+    Raises :class:`AssertionError` with *func_name* in the message if the
+    function is not found or if the braces are unbalanced.
+    """
+    match = re.search(rf'\bfunction\s+{re.escape(func_name)}\b', content)
+    assert match is not None, f"{func_name} function not found in source"
+    body_start = content.find("{", match.end())
+    assert body_start != -1, f"opening brace not found for {func_name}"
+    depth = 0
+    i = body_start
+    while i < len(content):
+        if content[i] == "{":
+            depth += 1
+        elif content[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return content[body_start : i + 1]
+        i += 1
+    raise AssertionError(f"unbalanced braces for {func_name} (depth {depth} at end)")
 
 
 class TestSSEIntegration:
