@@ -5094,11 +5094,11 @@
         "description": "In tests/test_db_pipeline.py: (1) Define a TypedDict `_UpdateSpec` with fields setup/update/get: Callable, valid_col/valid_val/default_val: str, and change the annotation on line 32 from `dict[str, dict]` to `dict[str, _UpdateSpec]`. (2) In `test_non_pk_columns_match_allowlist` (lines 153–177), replace the three `(table, allowed_attr)` string-literal tuples with `(table, frozenset)` tuples that reference `CatalogDB._GATE_ALLOWED_COLUMNS` etc. directly, eliminating the `getattr(catalog_db, allowed_attr)` indirection on line 172.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T23:18:05.645Z",
+        "updatedAt": "2026-04-10T07:01:46.368Z",
         "metadata": {
           "files": [
             "tests/test_db_pipeline.py"
@@ -6908,7 +6908,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T07:01:46.336Z",
+      "lastModified": "2026-04-10T07:01:46.368Z",
       "taskCount": 361,
       "completedCount": 210,
       "tags": [
