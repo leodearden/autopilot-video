@@ -5928,7 +5928,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/cli.py"
+          ],
+          "modules": [
+            "autopilot"
+          ]
+        }
       },
       {
         "id": 314,
