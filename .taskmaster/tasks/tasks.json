@@ -2345,11 +2345,11 @@
         "description": "Several test fragilities in TestSSEIntegration need fixing:\n\n1. Replace the fragile 400-char slice in test_app_js_has_debounced_refresh_function (line 472) with the brace-counting extraction already used in the adjacent test.\n2. Extract a shared `_extract_js_function(content, func_name)` helper using brace-counting, usable by both tests.\n3. Add a guard assertion `assert func_end > func_start` after the brace-counting loop in test_app_js_sse_handlers_use_debounced_refresh to prevent silent false-negative on extraction failure.\n4. Add a DEBOUNCE_MS value assertion (> 0) in test_app_js_has_debounce_timer_map so DEBOUNCE_MS=0 doesn't silently pass.\n5. Move `import re` from inside test_app_js_sse_handlers_use_debounced_refresh to module top-level.\n\nmemory_hints: search \"test_dashboard SSE debounce tests\" for current test structure",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-10T07:01:47.616Z",
+        "updatedAt": "2026-04-10T08:04:07.190Z",
         "metadata": {
           "files": [
             "tests/test_dashboard.py",
@@ -7096,9 +7096,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T08:04:01.558Z",
+      "lastModified": "2026-04-10T08:04:07.191Z",
       "taskCount": 376,
-      "completedCount": 222,
+      "completedCount": 223,
       "tags": [
         "master"
       ]
