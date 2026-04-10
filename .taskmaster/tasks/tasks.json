@@ -6143,7 +6143,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_notifications.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 326,
