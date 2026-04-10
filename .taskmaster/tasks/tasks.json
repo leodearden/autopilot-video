@@ -5320,7 +5320,17 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/conftest.py",
+            "tests/test_narrative_status_badge.py",
+            "tests/test_cluster_card.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 282,
