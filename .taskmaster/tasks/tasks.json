@@ -5800,7 +5800,16 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_db_update_rowcount.py",
+            "tests/conftest.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 307,
@@ -5811,7 +5820,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_db_update_rowcount.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 308,
