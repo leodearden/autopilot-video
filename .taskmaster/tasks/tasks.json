@@ -7126,6 +7126,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 380,
+        "title": "Tighten debounce test assertions in test_dashboard.py",
+        "description": "In tests/test_dashboard.py: (1) In test_app_js_has_debounce_timer_map, assert _refreshTimers and DEBOUNCE_MS appear inside the debouncedRefreshStageCard function body (use _extract_js_function), not just anywhere in the file. (2) In test_app_js_sse_handlers_use_debounced_refresh, remove setupDashboardSSE from the iteration since its body never contains refreshStageCard directly. (3) Assert DEBOUNCE_MS value is within 50-500ms range instead of just > 0.\n\nmemory_hints: search(\"debounce test dashboard\") ; get_entity(\"test_app_js_has_debounce_timer_map\")",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -7138,7 +7149,7 @@
       ],
       "created": "2026-04-10T08:06:43.240Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-10T08:06:43.260Z"
+      "updated": "2026-04-10T08:06:45.661Z"
     }
   }
 }
