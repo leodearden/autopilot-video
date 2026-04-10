@@ -108,7 +108,7 @@ class TestSourceUsesGenericMacro:
 
     def test_source_uses_generic_macro(self) -> None:
         source_path = TEMPLATES_DIR / "macros" / "narrative_status_badge.html"
-        source = source_path.read_text()
+        source = source_path.read_text(encoding="utf-8")
         expected = "{% from 'macros/status_badge.html' import status_badge as _generic_badge %}"
         assert expected in source
 
@@ -128,8 +128,10 @@ class TestNarrativeCardBadge:
 
     def test_source_uses_macro_import(self) -> None:
         source_path = TEMPLATES_DIR / "partials" / "narrative_card.html"
-        source = source_path.read_text()
-        assert _IMPORT_RE.search(source)
+        source = source_path.read_text(encoding="utf-8")
+        assert _IMPORT_RE.search(source), (
+            f"{source_path} does not contain the expected macro import statement"
+        )
 
 
 class TestNarrativeEditFormBadge:
@@ -148,8 +150,10 @@ class TestNarrativeEditFormBadge:
 
     def test_source_uses_macro_import(self) -> None:
         source_path = TEMPLATES_DIR / "partials" / "narrative_edit_form.html"
-        source = source_path.read_text()
-        assert _IMPORT_RE.search(source)
+        source = source_path.read_text(encoding="utf-8")
+        assert _IMPORT_RE.search(source), (
+            f"{source_path} does not contain the expected macro import statement"
+        )
 
 
 class TestReviewNarrativesBadge:
