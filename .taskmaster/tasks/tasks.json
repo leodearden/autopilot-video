@@ -6280,11 +6280,11 @@
         "description": "In tests/test_render_router.py, extract the `_capturing_loads` inner function (currently copy-pasted in ~line 1274, 1634, and 1758) into a module-level `_make_capturing_loads()` factory. In the two new copies (lines 1634 and 1758), fix the `_real_loads(str(s), ...)` coercion to `_real_loads(s, ...)` — the str() cast silently corrupts bytes inputs and produces misleading JSONDecodeErrors. Also narrow the capture guard from `'clips' in result` to also check for an EDL-specific key (e.g., `'edl_version'`) so that future json.loads calls returning dicts with a 'clips' key don't corrupt parsed_clips.\n\nmemory_hints:\n- search: \"_capturing_loads str coercion EDL filter test helper\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T23:08:35.328Z",
+        "updatedAt": "2026-04-10T07:08:13.651Z",
         "metadata": {
           "modules": [
             "tests/test_render_router.py"
@@ -6923,7 +6923,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T07:08:13.511Z",
+      "lastModified": "2026-04-10T07:08:13.651Z",
       "taskCount": 362,
       "completedCount": 212,
       "tags": [
