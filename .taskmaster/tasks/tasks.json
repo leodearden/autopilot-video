@@ -5317,7 +5317,7 @@
         "description": "Add two session-scoped fixtures to `tests/conftest.py`:\n```python\n@pytest.fixture(scope='session')\ndef templates_dir(project_root: Path) -> Path:\n    return project_root / 'autopilot' / 'web' / 'templates'\n\n@pytest.fixture(scope='session')\ndef jinja_env(templates_dir: Path) -> jinja2.Environment:\n    return jinja2.Environment(\n        loader=jinja2.FileSystemLoader(str(templates_dir)),\n        autoescape=True,\n    )\n```\nThen remove the module-level `TEMPLATES_DIR` constant and `_ENV` from `tests/test_narrative_status_badge.py` (lines 10–15) and the local `TEMPLATES_DIR` + inline `env` construction from `tests/test_cluster_card.py` (lines 10 and 23–26), replacing them with the shared fixtures. Covers suggestion [5] from task 248 review.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
@@ -5330,7 +5330,8 @@
           "modules": [
             "tests"
           ]
-        }
+        },
+        "updatedAt": "2026-04-10T08:19:43.803Z"
       },
       {
         "id": "282",
@@ -7236,7 +7237,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T08:19:42.894Z",
+      "lastModified": "2026-04-10T08:19:43.804Z",
       "taskCount": 388,
       "completedCount": 234,
       "tags": [
