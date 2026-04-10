@@ -26,6 +26,7 @@ import argparse
 import os
 import sqlite3
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -57,6 +58,40 @@ def collect_queue_stats(db_path: str | Path) -> dict[tuple[str, str], int]:
         return {(row[0], row[1]): row[2] for row in cursor.fetchall()}
     finally:
         conn.close()
+
+
+def get_oldest_unhealthy_age_seconds(
+    db_path: str | Path,
+    *,
+    now: float | None = None,
+) -> float | None:
+    """Return the age in seconds of the oldest unhealthy row (pending/retry/dead).
+
+    Opens the database in read-only URI mode (never acquires a write lock).
+
+    Args:
+        db_path: Path to the SQLite write_queue database file.
+        now: Override for the current time (seconds since epoch). Defaults to
+            ``time.time()``. Useful for deterministic testing.
+
+    Returns:
+        ``(now - MIN(created_at))`` for rows with status in
+        ``('pending', 'retry', 'dead')``, or ``None`` when no such rows exist.
+    """
+    db_path = str(db_path)
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        cursor = conn.execute(
+            "SELECT MIN(created_at) FROM write_queue"
+            " WHERE status IN ('pending', 'retry', 'dead')"
+        )
+        row = cursor.fetchone()
+    finally:
+        conn.close()
+
+    if row is None or row[0] is None:
+        return None
+    return (now if now is not None else time.time()) - row[0]
 
 
 def summarize_health(stats: dict[tuple[str, str], int]) -> dict[str, Any]:
