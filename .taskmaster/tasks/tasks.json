@@ -7041,6 +7041,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 373,
+        "title": "Move null-clear contract docstring from NarrativeUpdate model to api_update_narrative handler",
+        "description": "Task 221 added a detailed null-clear contract docstring to `NarrativeUpdate` (autopilot/web/routes/review.py:205-216), describing behavior that actually depends on `body.model_dump(exclude_unset=True)` — which lives in the route handler at line 241, not on the pydantic model. If a different route ever constructs `NarrativeUpdate` and passes it through `model_dump()` (without `exclude_unset`), or through `model_dump(exclude_none=True)`, the docstring will be wrong for that caller even though the model is unchanged. The model is just a schema; it has no control over how callers serialize it.\n\nRefactor: shorten the `NarrativeUpdate` docstring to a pointer such as \"Request body for updating narrative fields. See `api_update_narrative` for the null-clear semantics.\", and move the detailed contract explanation (null vs. omit behavior, the `exclude_unset=True` call, and why that preserves explicitly-sent nulls) to a docstring or comment on `api_update_narrative` at line 231-253, right next to the `updates = body.model_dump(exclude_unset=True)` line where the behavior actually lives.\n\nSource: post-merge review of task 221. Reviewer: reviewer_comprehensive. Category: abstraction_boundary.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -7053,7 +7064,7 @@
       ],
       "created": "2026-04-10T07:18:13.362Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-10T07:18:13.390Z"
+      "updated": "2026-04-10T07:18:21.817Z"
     }
   }
 }
