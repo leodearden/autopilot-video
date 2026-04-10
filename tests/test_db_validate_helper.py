@@ -58,9 +58,22 @@ class TestExecuteKwargsUpdate:
                 frozenset({"label"}), "widget", {"evil_col": "bad"},
             )
 
+    def test_returns_zero_when_pk_not_found(self, catalog_db):
+        """Returns 0 when the primary-key value is not found (docstring promise)."""
+        result = catalog_db._execute_kwargs_update(
+            "activity_clusters", "cluster_id", "does_not_exist",
+            frozenset({"label"}), "cluster", {"label": "X"},
+        )
+        assert result == 0
+
     def test_executes_update_and_returns_rowcount(self, catalog_db):
-        """Builds SET clause, executes UPDATE, and returns affected row count."""
-        catalog_db.insert_activity_cluster(cluster_id="ac1", label="Original")
+        """Builds SET clause, executes UPDATE, returns row count.
+
+        Non-updated columns remain unchanged.
+        """
+        catalog_db.insert_activity_cluster(
+            cluster_id="ac1", label="Original", location_label="Park"
+        )
         rowcount = catalog_db._execute_kwargs_update(
             "activity_clusters", "cluster_id", "ac1",
             frozenset({"label", "description"}), "cluster",
@@ -70,6 +83,7 @@ class TestExecuteKwargsUpdate:
         row = catalog_db.get_activity_cluster("ac1")
         assert row["label"] == "Updated"
         assert row["description"] == "New desc"
+        assert row["location_label"] == "Park"
 
     def test_single_column_update(self, catalog_db):
         """Handles single-column update correctly (no trailing comma bug)."""
