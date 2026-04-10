@@ -488,15 +488,17 @@ class TestSSEIntegration:
         assert int(match.group(1)) > 0, "DEBOUNCE_MS must be a positive integer"
 
     def test_app_js_has_debounced_refresh_function(self) -> None:
-        """app.js contains debouncedRefreshStageCard wrapping clearTimeout/setTimeout/refreshStageCard."""
+        """app.js contains debouncedRefreshStageCard wrapping clearTimeout/setTimeout."""
         content = _APP_JS.read_text()
         body = _extract_js_function(content, "debouncedRefreshStageCard")
         assert "clearTimeout" in body, "clearTimeout not found in debouncedRefreshStageCard body"
         assert "setTimeout" in body, "setTimeout not found in debouncedRefreshStageCard body"
-        assert "refreshStageCard" in body, "refreshStageCard not found in debouncedRefreshStageCard body"
+        assert "refreshStageCard" in body, (
+            "refreshStageCard not found in debouncedRefreshStageCard body"
+        )
 
     def test_app_js_sse_handlers_use_debounced_refresh(self) -> None:
-        """makeStageHandler and setupDashboardSSE use debouncedRefreshStageCard, not bare refreshStageCard."""
+        """makeStageHandler/setupDashboardSSE use debouncedRefreshStageCard, not bare."""
         content = _APP_JS.read_text()
         for func_name in ("makeStageHandler", "setupDashboardSSE"):
             body = _extract_js_function(content, func_name)
