@@ -7393,6 +7393,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 403,
+        "title": "Tighten and parametrize graceful-degradation cluster-ID tests in test_youtube.py",
+        "description": "Follow-up to task 316. Post-merge review of tests/test_youtube.py around `test_tags_missing_activity_clusters_gracefully_degrades` (lines 250-275) and the new `test_tags_mixed_valid_and_nonexistent_cluster_ids` (lines 277-309) surfaced four minor improvements:\n\n1. Lock exact tag set in `test_tags_missing_activity_clusters_gracefully_degrades`: replace/augment membership checks with `assert sorted(tags) == ['dog', 'person']` (or `assert len(tags) == 2`) so the regression guard also catches stray appended tags or duplicates. The original brittleness concern that motivated dropping `len() == 1` does not apply once the expected set is fully enumerated.\n\n2. Lock exact tag set in `test_tags_mixed_valid_and_nonexistent_cluster_ids`: add `assert sorted(tags) == ['hiking', 'person']` alongside the existing membership checks to guard against unexpected additions or duplication of 'hiking'.\n\n3. Expand ordering coverage in `test_tags_mixed_valid_and_nonexistent_cluster_ids`: the stated goal is to catch a bail-on-first-miss bug. Current single ordering `['nonexistent_c0', 'c1']` only covers pre-valid failure. Either parametrize over `['bad','good']`, `['good','bad']`, `['bad','good','bad']`, or add a second test case with ordering `['c1', 'nonexistent_c0']` to exercise the post-valid-miss path.\n\n4. Reduce duplication: the setup bodies for `test_tags_missing_activity_clusters_gracefully_degrades`, `test_tags_mixed_valid_and_nonexistent_cluster_ids`, and `test_uses_targeted_cluster_lookup_not_full_scan` are nearly identical (insert cluster(s) → `_setup_media_with_detections` → `_build_upload_metadata`). Extract a `_build_meta_with(cluster_ids, detections, clusters_to_insert)` helper, or parametrize via `pytest.mark.parametrize` over `(cluster_ids, expected_tags)`.\n\nAll four items are scoped to `tests/test_youtube.py`; no production code changes expected.\n\nMemory hints: search \"test_tags_missing_activity_clusters_gracefully_degrades\" and \"_setup_media_with_detections\" for existing patterns; see Task 316 for the original motivation.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -7405,7 +7416,7 @@
       ],
       "created": "2026-04-10T10:12:49.620Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-10T10:12:49.625Z"
+      "updated": "2026-04-10T10:12:54.175Z"
     }
   }
 }
