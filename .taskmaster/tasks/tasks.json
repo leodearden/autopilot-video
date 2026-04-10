@@ -5743,7 +5743,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_render_router.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 304,
@@ -5754,7 +5762,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_render_router.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 305,
