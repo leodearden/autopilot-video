@@ -4845,11 +4845,11 @@
         "description": "In tests/test_youtube.py, there is no test covering the case where `activity_cluster_ids_json` in a narrative references cluster IDs that don't exist in the DB (stale/dangling references). The existing `test_tags_from_activity_labels_and_detections` always inserts matching clusters.\n\nAdd a test like `test_tags_empty_when_activity_clusters_missing` that:\n1. Calls `_setup_media_with_detections` with `activity_cluster_ids_json=json.dumps([\"nonexistent\"])` (or the updated `activity_cluster_ids=[\"nonexistent\"]` parameter if the interface improvement task lands first)\n2. Does NOT call `insert_activity_cluster`\n3. Asserts `_build_upload_metadata` produces no activity-label tags (graceful handling, not an error)\n\nMemory hints: search \"task 202 _setup_media_with_detections\" for helper context.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-10T07:01:48.176Z",
+        "updatedAt": "2026-04-10T07:08:13.511Z",
         "metadata": {
           "modules": [
             "tests/test_youtube.py"
@@ -6923,9 +6923,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T07:05:32.784Z",
+      "lastModified": "2026-04-10T07:08:13.511Z",
       "taskCount": 362,
-      "completedCount": 211,
+      "completedCount": 212,
       "tags": [
         "master"
       ]
