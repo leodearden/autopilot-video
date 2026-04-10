@@ -104,11 +104,18 @@ def get_oldest_unhealthy_age_seconds(
     return (now if now is not None else time.time()) - row[0]
 
 
-def summarize_health(stats: dict[tuple[str, str], int]) -> dict[str, Any]:
+def summarize_health(
+    stats: dict[tuple[str, str], int],
+    *,
+    oldest_unhealthy_age_seconds: float | None = None,
+) -> dict[str, Any]:
     """Aggregate per-(group, status) counts into an overall health summary.
 
     Args:
         stats: Output of :func:`collect_queue_stats` (or a filtered subset).
+        oldest_unhealthy_age_seconds: Age in seconds of the oldest unhealthy
+            row, as returned by :func:`get_oldest_unhealthy_age_seconds`.
+            Defaults to ``None`` (omitted from report when not provided).
 
     Returns:
         Dict with keys:
@@ -118,6 +125,8 @@ def summarize_health(stats: dict[tuple[str, str], int]) -> dict[str, Any]:
         - ``dead`` (int): Rows in "dead" status.
         - ``retry`` (int): Rows in "retry" status.
         - ``pending`` (int): Rows in "pending" status.
+        - ``oldest_unhealthy_age_seconds`` (float | None): Age of the oldest
+          unhealthy row, or ``None`` if none exist.
         - ``unhealthy_groups`` (list[dict]): One entry per group that has any
           non-zero dead / retry / pending count, sorted by group_id.
           Each entry: ``{group_id, dead, retry, pending}``.
@@ -169,6 +178,7 @@ def summarize_health(stats: dict[tuple[str, str], int]) -> dict[str, Any]:
         "dead": dead,
         "retry": retry,
         "pending": totals["pending"],
+        "oldest_unhealthy_age_seconds": oldest_unhealthy_age_seconds,
         "unhealthy_groups": unhealthy_groups,
     }
 
