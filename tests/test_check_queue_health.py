@@ -302,6 +302,45 @@ class TestFormatReport:
         report = format_report(stats, summary)
         assert "Unhealthy groups:" not in report
 
+    def test_summary_line_includes_in_flight_count(self) -> None:
+        """format_report summary line must emit in_flight=N so arithmetic is visible."""
+        stats = {
+            ("autopilot_video", "completed"): 5,
+            ("mem0_reify", "in_flight"): 2,
+        }
+        summary = summarize_health(stats)
+        report = format_report(stats, summary)
+
+        assert "in_flight=2" in report
+        assert "total_rows=7" in report
+        # All five fields present in the summary line
+        lines = report.splitlines()
+        summary_line = lines[1]  # second line after the HEALTH: header
+        assert "completed=5" in summary_line
+        assert "in_flight=2" in summary_line
+        assert "dead=0" in summary_line
+        assert "retry=0" in summary_line
+        assert "pending=0" in summary_line
+
+    def test_summary_line_arithmetic_sums_to_total_rows(self) -> None:
+        """Parsing the summary line must yield counts that sum to total_rows."""
+        import re
+
+        stats = {
+            ("autopilot_video", "completed"): 10,
+            ("mem0_reify", "in_flight"): 3,
+            ("dark_factory", "dead"): 2,
+            ("dark_factory", "retry"): 1,
+            ("autopilot_video", "pending"): 4,
+        }
+        summary = summarize_health(stats)
+        report = format_report(stats, summary)
+
+        summary_line = report.splitlines()[1]
+        counts = {k: int(v) for k, v in re.findall(r"(\w+)=(\d+)", summary_line)}
+        total = counts.pop("total_rows")
+        assert sum(counts.values()) == total
+
 
 # ===========================================================================
 # TestMain

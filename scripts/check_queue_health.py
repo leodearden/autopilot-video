@@ -172,6 +172,7 @@ def format_report(
     lines.append(
         f"total_rows={summary['total_rows']}"
         f" completed={summary['completed']}"
+        f" in_flight={summary['in_flight']}"
         f" dead={summary['dead']}"
         f" retry={summary['retry']}"
         f" pending={summary['pending']}"
