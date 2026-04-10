@@ -6710,11 +6710,11 @@
         "description": "The status_badge macro at autopilot/web/templates/macros/status_badge.html:2 hardcodes px-2, py-1, rounded, text-xs, and font-medium unconditionally. This causes silent visual bugs: (1) media/detail.html:16 and media_row.html:23 pass extra_classes='py-0.5', producing duplicate py-1+py-0.5 where Tailwind's stylesheet order (not HTML order) determines the winner; (2) renders.html:39 passes extra_classes='inline-flex items-center px-3 rounded-full text-sm', conflicting with px-2, rounded, and text-xs; (3) font-medium is added to stage badges that originally had none, changing visual weight; (4) when extra_classes is empty the class string has a redundant double space. Fix: redesign the macro to accept named override parameters (px, py, rounded, text_size, font_weight) or strip conflicting base classes and require callers to supply all layout/spacing via extra_classes. Update tests in tests/test_status_badge.py to assert the correct non-conflicting class strings are rendered.\n\nmemory_hints: search \"status_badge macro Tailwind utility classes\", get_entity \"status_badge\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T23:18:08.643Z",
+        "updatedAt": "2026-04-10T07:01:46.483Z",
         "metadata": {
           "memory_hints": {
             "entities": [
@@ -6746,11 +6746,11 @@
         "description": "Four separate color-map duplication problems: (1) media_colors defined identically in media/detail.html:15 and partials/media_row.html:22; (2) stage_colors defined identically in pipeline/index.html and pipeline/stages.html:22; (3) job_count_colors (stages.html:46) and job_colors (jobs.html:58) map the same four job statuses to identical classes; (4) review/hub.html:16 passes empty color_map {} to force the default branch — misleading API usage. Additionally, review/renders.html:38 bakes domain key-inspection logic (key == 'passes' and value) into the template. Fix: create a macros/color_maps.html (or thin wrapper macros like narrative_status_badge.html) exposing media_status_badge, stage_status_badge, job_status_badge; fix hub.html to pass {'waiting': 'bg-amber-900 text-amber-300'} explicitly; move validation status logic to the view context or a dedicated validation_badge macro.\n\nmemory_hints: search \"color map duplication templates\", search \"narrative_status_badge wrapper pattern\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T23:18:18.618Z",
+        "updatedAt": "2026-04-10T07:01:46.521Z",
         "metadata": {
           "memory_hints": {
             "entities": [
@@ -6908,7 +6908,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T07:01:46.442Z",
+      "lastModified": "2026-04-10T07:01:46.521Z",
       "taskCount": 361,
       "completedCount": 210,
       "tags": [
