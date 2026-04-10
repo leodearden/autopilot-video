@@ -301,6 +301,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         stats = collect_queue_stats(db_path)
+        oldest_age = get_oldest_unhealthy_age_seconds(db_path)
     except (sqlite3.OperationalError, FileNotFoundError) as exc:
         print(
             f"error: failed to read queue DB at {db_path}: {exc}",
@@ -309,7 +310,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.project:
         stats = filter_by_project(stats, args.project)
-    summary = summarize_health(stats)
+    summary = summarize_health(stats, oldest_unhealthy_age_seconds=oldest_age)
     print(format_report(stats, summary))
     return 0 if summary["healthy"] else 1
 
