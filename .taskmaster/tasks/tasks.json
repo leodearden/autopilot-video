@@ -5169,7 +5169,7 @@
         "description": "In tests/test_db_pipeline.py: (1) Add a comment above or within `_UPDATE_SPECS` (near line 32) noting that the hardcoded IDs ('j-val', 'r-val', 'ingest') are safe only because `catalog_db` is function-scoped — a session-scoped fixture would cause PK conflicts. (2) Add a comment near the `msg.index` ordering assertion (line 660) or in the `update_*` method docstrings documenting that the sorted-order contract is intentional and tested.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
@@ -5180,7 +5180,8 @@
           "modules": [
             "tests"
           ]
-        }
+        },
+        "updatedAt": "2026-04-10T11:14:01.029Z"
       },
       {
         "id": "274",
@@ -7564,7 +7565,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T11:13:52.526Z",
+      "lastModified": "2026-04-10T11:14:01.029Z",
       "taskCount": 415,
       "completedCount": 254,
       "tags": [
