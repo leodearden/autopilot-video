@@ -3299,11 +3299,11 @@
         "description": "In tests/test_web_app.py: (1) Add a happy-path unit test to TestExtractListenerBody: `js = \"source.addEventListener('myEvent', function(e) { doThing(); })\"; body = _extract_listener_body(js, 'myEvent'); assert body == '{ doThing(); }'`. (2) Pin `test_raises_on_unclosed_braces` to the correct assertion by adding `match='unbalanced'` to `pytest.raises(AssertionError)` — matching the actual assertion message. Do the same for the corresponding TestExtractListenerBody test.",
         "details": "Follow-up from task 151 review (test coverage). Currently the happy path for _extract_listener_body is only tested indirectly through integration tests against real app.js. The unclosed-braces tests would pass even on the wrong AssertionError without match= pinning. Memory hints: search for \"task 151 test helpers\" and \"_extract_listener_body\".",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:19:15.214Z",
+        "updatedAt": "2026-04-10T07:01:47.687Z",
         "metadata": {
           "modules": [
             "tests/test_web_app.py"
@@ -6910,7 +6910,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T07:01:47.616Z",
+      "lastModified": "2026-04-10T07:01:47.687Z",
       "taskCount": 361,
       "completedCount": 210,
       "tags": [
