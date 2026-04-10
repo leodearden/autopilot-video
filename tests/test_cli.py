@@ -10,7 +10,7 @@ import click
 import pytest
 from click.testing import CliRunner
 
-from autopilot.cli import _handle_dry_run, main
+from autopilot.cli import handle_dry_run, main
 from autopilot.config import load_config
 
 
@@ -623,16 +623,16 @@ class TestDryRunSubcommands:
 
 
 class TestHandleDryRun:
-    """Unit tests for the _handle_dry_run helper."""
+    """Unit tests for the handle_dry_run helper."""
 
     def test_returns_true_and_echoes_when_dry_run(self) -> None:
-        """_handle_dry_run(True, ...) returns True and echoes '[DRY-RUN] Would execute: ...'."""
+        """handle_dry_run(True, ...) returns True and echoes '[DRY-RUN] Would execute: ...'."""
         runner = CliRunner()
         with runner.isolated_filesystem():
 
             @click.command()
             def dummy() -> None:
-                result = _handle_dry_run(True, "INGEST")
+                result = handle_dry_run(True, "INGEST")
                 assert result is True
 
             result = runner.invoke(dummy)
@@ -640,12 +640,12 @@ class TestHandleDryRun:
             assert "[DRY-RUN] Would execute: INGEST" in result.output
 
     def test_returns_true_with_multiple_stages(self) -> None:
-        """_handle_dry_run echoes all stage names when multiple are provided."""
+        """handle_dry_run echoes all stage names when multiple are provided."""
         runner = CliRunner()
 
         @click.command()
         def dummy() -> None:
-            result = _handle_dry_run(True, "ANALYZE, CLASSIFY")
+            result = handle_dry_run(True, "ANALYZE, CLASSIFY")
             assert result is True
 
         result = runner.invoke(dummy)
@@ -653,12 +653,12 @@ class TestHandleDryRun:
         assert "[DRY-RUN] Would execute: ANALYZE, CLASSIFY" in result.output
 
     def test_returns_false_and_no_output_when_not_dry_run(self) -> None:
-        """_handle_dry_run(False, ...) returns False with no output."""
+        """handle_dry_run(False, ...) returns False with no output."""
         runner = CliRunner()
 
         @click.command()
         def dummy() -> None:
-            result = _handle_dry_run(False, "INGEST")
+            result = handle_dry_run(False, "INGEST")
             assert result is False
 
         result = runner.invoke(dummy)
