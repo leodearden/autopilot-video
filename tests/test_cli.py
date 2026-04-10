@@ -665,6 +665,13 @@ class TestHandleDryRun:
         assert result.exit_code == 0, f"Unexpected error: {result.output}"
         assert result.output == ""
 
+    def test_handle_dry_run_is_public_api(self) -> None:
+        """handle_dry_run is exported in __all__ and accessible without underscore prefix."""
+        import autopilot.cli as cli_module
+
+        assert "handle_dry_run" in cli_module.__all__
+        assert hasattr(cli_module, "handle_dry_run")
+
 
 class TestDryRunZeroSideEffects:
     """Tests that --dry-run on subcommands causes zero side effects.
