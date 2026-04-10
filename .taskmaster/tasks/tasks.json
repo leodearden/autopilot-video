@@ -3652,11 +3652,11 @@
         "description": "Every call to get_db() in autopilot/web/deps.py constructs a new CatalogDB instance, which opens a SQLite connection, fires two PRAGMAs (journal_mode=WAL, foreign_keys=ON), and runs _create_schema() — an executescript with 19 CREATE TABLE IF NOT EXISTS statements. This overhead is paid on every HTTP request.\n\nNow that get_db() is the single canonical entry point (after task 137 consolidated duplicates), this is the right place to optimize. Options:\n1. Store a shared CatalogDB instance on app.state at startup and have get_db() return it (CatalogDB already uses check_same_thread=False and WAL mode).\n2. At minimum, move _create_schema() behind a once-flag so the 19 DDL statements don't re-execute every request.\n\nNote: Prior decision accepted SSE long-lived DB connection as-is for single-user localhost, so this is low priority but still worth doing for correctness.\n\nmemory_hints: search \"CatalogDB connection get_db deps.py\", search \"SSE long-lived DB connection decision\", entity \"deps.py\", entity \"CatalogDB\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T09:05:01.331Z",
+        "updatedAt": "2026-04-10T08:05:19.676Z",
         "metadata": {
           "modules": [
             "autopilot/db.py",
@@ -7119,7 +7119,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T08:04:58.213Z",
+      "lastModified": "2026-04-10T08:05:19.676Z",
       "taskCount": 378,
       "completedCount": 225,
       "tags": [
