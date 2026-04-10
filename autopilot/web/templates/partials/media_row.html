@@ -20,7 +20,7 @@
     </td>
     <td class="px-4 py-3">
         {% set media_colors = {'analyzed': 'bg-green-900 text-green-300', 'ingested': 'bg-blue-900 text-blue-300'} %}
-        {{ status_badge(item.status, media_colors, extra_classes='py-0.5') }}
+        {{ status_badge(item.status, media_colors, py='py-0.5') }}
     </td>
     <td class="px-4 py-3">
         <div class="flex gap-1">
