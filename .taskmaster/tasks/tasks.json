@@ -5890,7 +5890,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_otio_export.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 312,
@@ -5901,7 +5909,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_cli.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 313,
