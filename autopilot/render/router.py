@@ -58,7 +58,9 @@ def _classify_clip(clip: dict, crop_modes: dict) -> str:
         return "slow"
 
     # Check crop mode
-    clip_id = clip.get("clip_id", "")
+    clip_id = clip.get("clip_id")
+    if clip_id is None:
+        return "fast"
     mode = crop_modes.get(clip_id, "center")  # default to center (fast)
 
     if mode in _SLOW_CROP_MODES:
