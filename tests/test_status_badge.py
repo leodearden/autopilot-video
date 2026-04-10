@@ -414,6 +414,23 @@ class TestMediaDetailBadge:
         )
         assert "bg-blue-900" in html
 
+    def test_no_duplicate_py_classes(self) -> None:
+        env = _make_env()
+        env.globals["format_duration"] = lambda s: f"{s}s"
+        html = env.get_template("media/detail.html").render(
+            media={"id": "m-1", "file_path": "/v/test.mp4", "status": "analyzed",
+                   "duration_seconds": 60, "resolution_w": 1920, "resolution_h": 1080,
+                   "fps": 30, "codec": "h264", "file_size_bytes": 1000,
+                   "created_at": "2024-01-01"},
+        )
+        # Find the analyzed badge span (identified by its color class)
+        m = re.search(r'<span[^>]+class="([^"]*bg-green-900[^"]*)"', html)
+        assert m is not None
+        classes = m.group(1).split()
+        py_classes = [c for c in classes if c.startswith("py-")]
+        assert len(py_classes) == 1
+        assert py_classes[0] == "py-0.5"
+
 
 class TestMediaRowBadge:
     """Verify partials/media_row.html uses the generic status_badge macro."""
