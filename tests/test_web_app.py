@@ -541,13 +541,13 @@ class TestSSEHandlerFactory:
     def test_make_stage_handler_calls_refresh_stage_card(
         self, make_stage_handler_body: str,
     ) -> None:
-        """makeStageHandler calls refreshStageCard when stage is present."""
-        assert "refreshStageCard" in make_stage_handler_body, (
-            "refreshStageCard call not found in makeStageHandler"
+        """makeStageHandler calls debouncedRefreshStageCard when stage is present."""
+        assert "debouncedRefreshStageCard" in make_stage_handler_body, (
+            "debouncedRefreshStageCard call not found in makeStageHandler"
         )
         assert "if (refreshCard)" in make_stage_handler_body, (
             "conditional guard 'if (refreshCard)' not found in makeStageHandler. "
-            "refreshStageCard must only be called when the refreshCard param is true."
+            "debouncedRefreshStageCard must only be called when the refreshCard param is true."
         )
 
     def test_setup_dashboard_sse_uses_factory(self, app_js_source: str) -> None:

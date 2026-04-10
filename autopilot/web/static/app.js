@@ -97,7 +97,7 @@ function makeStageHandler(eventType, toastMsg, toastType, toastDuration, refresh
             var stage = data.stage;
             if (stage) {
                 if (refreshCard) {
-                    refreshStageCard(stage);
+                    debouncedRefreshStageCard(stage);
                 }
                 if (toastMsg) {
                     showToast(toastMsg.replace('{stage}', stage), toastType || 'info', toastDuration);
