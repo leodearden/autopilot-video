@@ -7426,10 +7426,11 @@
         "description": "Add a lightweight test (e.g. tests/test_tasks_json_integrity.py) that loads .taskmaster/tasks/tasks.json and asserts the post-migration invariants: (1) every task.id is a str, (2) every dependency entry is a str, (3) every dependency string resolves to an existing task id. This protects the int→str migration from regression if a script/agent forgets to stringify a new task id — otherwise int-typed deps become dangling references under string equality matching. Currently 404 task IDs and 115 dependency refs are strings per runtime inspection; no schema check enforces this going forward.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-10T10:31:28.690Z"
       },
       {
         "id": "406",
@@ -7489,7 +7490,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T10:31:28.583Z",
+      "lastModified": "2026-04-10T10:31:28.690Z",
       "taskCount": 410,
       "completedCount": 250,
       "tags": [
