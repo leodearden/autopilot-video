@@ -605,6 +605,10 @@ class TestSSEHandlerFactory:
             "'unknown' fallback string not found in makeStageHandler else branch. "
             "When stage is missing, '{stage}' must be replaced by 'unknown' in the toast."
         )
+        assert ".replace('{stage}', 'unknown')" in else_body, (
+            "makeStageHandler else branch must call .replace('{stage}', 'unknown') to substitute "
+            "the placeholder — a bare 'unknown' substring does not prove the replacement contract."
+        )
 
 
 class TestSSERunHandlerRobustness:
