@@ -5360,7 +5360,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/web/templates/narrative_edit_form.html"
+          ],
+          "modules": [
+            "autopilot/web/templates"
+          ]
+        }
       },
       {
         "id": 284,
@@ -5371,7 +5379,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/web/static/app.js"
+          ],
+          "modules": [
+            "autopilot/web/static"
+          ]
+        }
       },
       {
         "id": 285,
