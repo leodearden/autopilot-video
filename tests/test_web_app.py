@@ -545,6 +545,11 @@ class TestSSEHandlerFactory:
         assert "debouncedRefreshStageCard" in make_stage_handler_body, (
             "debouncedRefreshStageCard call not found in makeStageHandler"
         )
+        # NOTE: the 'if (refreshCard)' guard below is verified only by static text-matching.
+        # The runtime branch where refreshCard=false and debouncedRefreshStageCard is NOT
+        # invoked is never exercised by any test.  A proper behavioural test (jsdom/Playwright)
+        # is still needed to close this gap.  No current call site passes refreshCard=false
+        # (stage_error is handled via the notification channel), so the false branch is dead.
         assert "if (refreshCard)" in make_stage_handler_body, (
             "conditional guard 'if (refreshCard)' not found in makeStageHandler. "
             "debouncedRefreshStageCard must only be called when the refreshCard param is true."
@@ -557,6 +562,31 @@ class TestSSEHandlerFactory:
         for event_type in ("stage_started", "stage_completed", "job_progress"):
             assert f"makeStageHandler('{event_type}'" in dashboard_body, (
                 f"setupDashboardSSE does not use makeStageHandler for '{event_type}'"
+            )
+
+    def test_dashboard_factory_calls_use_default_refresh_card(self, app_js_source: str) -> None:
+        """setupDashboardSSE factory calls do not explicitly disable refreshCard.
+
+        makeStageHandler has exactly one boolean positional parameter (refreshCard,
+        5th position).  Any literal ``false`` token in a call's argument list would
+        mean refreshCard was explicitly set to false, which would silently break
+        dashboard card refresh for events whose entire purpose is to refresh the
+        stage card.  This test asserts that no such token is present in any of the
+        three dashboard-wiring calls.
+        """
+        dashboard_body = _extract_function_body(app_js_source, "setupDashboardSSE")
+
+        for event_type in ("stage_started", "stage_completed", "job_progress"):
+            match = re.search(
+                rf"makeStageHandler\('{event_type}'[^)]*\)", dashboard_body
+            )
+            assert match is not None, (
+                f"makeStageHandler('{event_type}' ...) call not found in setupDashboardSSE"
+            )
+            call_text = match.group(0)
+            assert "false" not in call_text, (
+                f"makeStageHandler('{event_type}') call contains literal 'false', "
+                f"which means refreshCard is explicitly disabled for this event: {call_text!r}"
             )
 
     def test_stage_error_handled_via_notification(self, app_js_source: str) -> None:
