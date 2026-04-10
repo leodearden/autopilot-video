@@ -327,6 +327,12 @@ class TestExtractFunctionBody:
 class TestExtractListenerBody:
     """Tests for the _extract_listener_body helper hardening."""
 
+    def test_extracts_simple_listener_body(self) -> None:
+        """Extracts the body of an inline addEventListener callback."""
+        js = "source.addEventListener('myEvent', function(e) { doThing(); })"
+        body = _extract_listener_body(js, "myEvent")
+        assert body == "{ doThing(); }"
+
     def test_raises_on_unclosed_braces(self) -> None:
         """_extract_listener_body raises AssertionError on malformed JS with unclosed braces."""
         malformed_js = (
