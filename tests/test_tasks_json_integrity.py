@@ -92,3 +92,26 @@ def test_all_dependency_entries_are_strings(tasks_data: dict) -> None:
         f"Found {len(violations)} non-string dependency reference(s):\n"
         + "\n".join(violations)
     )
+
+
+# ---------------------------------------------------------------------------
+# Dependency resolution invariant
+# ---------------------------------------------------------------------------
+
+
+def test_all_dependencies_resolve_to_existing_tasks(tasks_data: dict) -> None:
+    """Every dependency reference must point to an existing task id."""
+    tasks = tasks_data["master"]["tasks"]
+    known_ids = {task["id"] for task in tasks if isinstance(task.get("id"), str)}
+
+    dangling = []
+    for task in tasks:
+        task_id = task.get("id", "<unknown>")
+        for dep in task.get("dependencies", []):
+            if isinstance(dep, str) and dep not in known_ids:
+                dangling.append(f"  task id={task_id!r} → unresolved dep={dep!r}")
+
+    assert not dangling, (
+        f"Found {len(dangling)} dangling dependency reference(s):\n"
+        + "\n".join(dangling)
+    )
