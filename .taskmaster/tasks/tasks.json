@@ -6996,11 +6996,11 @@
         "description": "Follow-up to task 228 review. Three tightly-coupled improvements in autopilot/db.py:1484 and tests/test_db_pipeline.py:537-541.\n\n1. **Reject bool (robustness gap).** `isinstance(hours, int)` currently accepts `bool` because `bool` subclasses `int` in Python. `prune_events(hours=True)` bypasses the guard (`True <= 0` is False), then formats as f\"-{True} hours\" -> \"-True hours\", which SQLite's datetime() modifier cannot parse — reproducing the exact silent-NULL/zero-rows-deleted failure mode this guard exists to prevent. `hours=False` is only incidentally caught by `False <= 0`.\n\n   Fix at autopilot/db.py:1484:\n   ```python\n   if not isinstance(hours, int) or isinstance(hours, bool) or hours <= 0:\n       msg = f\"hours must be a positive integer, got {hours!r}\"\n       raise ValueError(msg)\n   ```\n   (Or equivalently `type(hours) is not int or hours <= 0`.)\n\n2. **Extend bad-hours parametrize.** tests/test_db_pipeline.py:537 currently covers `[0.5, 1.5, -0.5, \"24\"]`. Add at least `None`, `True`, `False` to exercise the tightened guard. `None` is a plausible accidental value from optional-config plumbing.\n\n3. **Strengthen assertion at tests/test_db_pipeline.py:540.** `match=\"integer\"` only checks the word appears — it does not lock in the `!r` formatting contract the task-228 patch introduced. Sibling tests already verify the value is surfaced (e.g. `match=\"-5\"`). Either:\n   - Parametrize an `(bad_hours, expected_fragment)` tuple so each case asserts its own repr appears (e.g. `\"0.5\"`, `\"'24'\"`, `\"None\"`, `\"True\"`), or\n   - Add a second assertion on `excinfo.value` matching the repr of the offending value.\n\nVerification:\n- `uv run pytest tests/test_db_pipeline.py -k prune_events -v` must pass with new parametrize cases.\n- Manually confirm `prune_events(hours=True)` now raises `ValueError` rather than silently deleting zero rows.\n\nSource: reviewer_comprehensive suggestions on task 228 PR.\n\nmemory_hints:\n- search: \"prune_events guard bool isinstance\"\n- search: \"task 228 ValueError msg convention\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-10T07:14:03.885Z",
+        "updatedAt": "2026-04-10T08:14:49.042Z",
         "metadata": {
           "modules": [
             "autopilot/db.py",
@@ -7202,7 +7202,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T08:14:48.928Z",
+      "lastModified": "2026-04-10T08:14:49.042Z",
       "taskCount": 385,
       "completedCount": 231,
       "tags": [
