@@ -927,8 +927,9 @@ class TestErrorHandling:
 class TestSourcePathResolution:
     """Verify route_and_render resolves source_path via db.get_media when missing."""
 
-    def test_db_get_media_called_for_clip_without_source_path(self) -> None:
-        """When clip has clip_id but no source_path, db.get_media should be called."""
+    def test_db_get_media_called_and_source_path_passed_to_renderer(self) -> None:
+        """When clip has clip_id but no source_path, db.get_media should be called AND
+        the resolved path should be set on the clip dict passed to the renderer."""
         from autopilot.render.router import route_and_render
 
         clips = [
@@ -951,30 +952,6 @@ class TestSourcePathResolution:
             route_and_render("n1", db, config, Path("/tmp/test_output"))
 
         db.get_media.assert_called_with("clip_1")
-
-    def test_resolved_source_path_passed_to_renderer(self) -> None:
-        """The resolved source_path should be set on the clip dict passed to renderer."""
-        from autopilot.render.router import route_and_render
-
-        clips = [
-            {
-                "clip_id": "clip_1",
-                "in_timecode": "00:00:00.000",
-                "out_timecode": "00:00:10.000",
-                "track": 1,
-            }
-        ]
-        edl = _make_edl(clips=clips)
-        db = _make_db(edl=edl, media_file_path="/resolved/clip.mp4")
-        config = _make_config()
-
-        with (
-            patch("autopilot.render.router.render_simple") as mock_rs,
-            patch("subprocess.run"),
-        ):
-            mock_rs.return_value = Path("/tmp/seg.mp4")
-            route_and_render("n1", db, config, Path("/tmp/test_output"))
-
         rendered_clip = mock_rs.call_args[0][0]
         assert rendered_clip["source_path"] == "/resolved/clip.mp4"
 
