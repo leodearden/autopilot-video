@@ -224,7 +224,7 @@ def format_report(
 
     health_label = "HEALTHY" if summary["healthy"] else "UNHEALTHY"
     lines.append(f"HEALTH: {health_label}")
-    lines.append(
+    summary_line = (
         f"total_rows={summary['total_rows']}"
         f" completed={summary['completed']}"
         f" in_flight={summary['in_flight']}"
@@ -232,6 +232,10 @@ def format_report(
         f" retry={summary['retry']}"
         f" pending={summary['pending']}"
     )
+    oldest = summary.get("oldest_unhealthy_age_seconds")
+    if oldest is not None:
+        summary_line += f" oldest_dead_age={_format_age(oldest)}"
+    lines.append(summary_line)
 
     # Per-(group, status) table, sorted for stable output
     if stats:
