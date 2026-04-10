@@ -513,7 +513,9 @@ class TestSSEIntegration:
         body = _extract_js_function(content, "debouncedRefreshStageCard")
         first_refresh = body.find("refreshStageCard(stage)")
         first_set_timeout = body.find("setTimeout")
-        assert first_refresh != -1, "refreshStageCard(stage) not found in debouncedRefreshStageCard body"
+        assert first_refresh != -1, (
+            "refreshStageCard(stage) not found in debouncedRefreshStageCard body"
+        )
         assert first_set_timeout != -1, "setTimeout not found in debouncedRefreshStageCard body"
         assert first_refresh < first_set_timeout, (
             "refreshStageCard(stage) must appear before setTimeout in debouncedRefreshStageCard "
