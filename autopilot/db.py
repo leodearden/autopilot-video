@@ -1489,7 +1489,7 @@ class CatalogDB:
 
     def prune_events(self, *, hours: int = 24) -> None:
         """Delete events older than *hours* hours."""
-        if not isinstance(hours, int) or hours <= 0:
+        if not isinstance(hours, int) or isinstance(hours, bool) or hours <= 0:
             msg = f"hours must be a positive integer, got {hours!r}"
             raise ValueError(msg)
         self.conn.execute(

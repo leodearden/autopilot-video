@@ -604,10 +604,23 @@ class TestEventsCRUD:
         with pytest.raises(ValueError, match="-5"):
             catalog_db.prune_events(hours=-5)
 
-    @pytest.mark.parametrize("bad_hours", [0.5, 1.5, -0.5, "24"])
-    def test_prune_events_rejects_non_integer_hours(self, catalog_db, bad_hours):
+    @pytest.mark.parametrize(
+        "bad_hours, expected_fragment",
+        [
+            (0.5, "0.5"),
+            (1.5, "1.5"),
+            (-0.5, "-0.5"),
+            ("24", "'24'"),
+            (None, "None"),
+            (True, "True"),
+            (False, "False"),
+        ],
+    )
+    def test_prune_events_rejects_non_integer_hours(
+        self, catalog_db, bad_hours, expected_fragment
+    ):
         """prune_events() raises ValueError for non-integer hours values."""
-        with pytest.raises(ValueError, match="integer"):
+        with pytest.raises(ValueError, match=expected_fragment):
             catalog_db.prune_events(hours=bad_hours)
 
     def test_prune_events_accepts_positive_hours(self, catalog_db):
