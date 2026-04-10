@@ -1248,21 +1248,14 @@ class TestEditFormZeroDuration:
 
 @pytest.fixture
 def _roundtrip_app(tmp_path: Path) -> FastAPI:
-    """Function-scoped app for mutating zero-duration roundtrip tests."""
+    """Function-scoped app for mutating zero-duration roundtrip tests.
+
+    Function scope (vs. class scope of zero_duration_app) ensures each test
+    gets an isolated database, preventing mutation from one test leaking into
+    the next.
+    """
     db_path = str(tmp_path / "catalog.db")
-    with CatalogDB(db_path) as _db:
-        _db.init_default_gates()
-        _seed_narrative(
-            _db, "n-zero",
-            title="Zero Duration",
-            proposed_duration_seconds=0,
-        )
-        _seed_narrative(
-            _db, "n-none",
-            title="No Duration",
-            proposed_duration_seconds=None,
-        )
-    return create_app(db_path)
+    return _build_zero_duration_app(db_path)
 
 
 @pytest.fixture
