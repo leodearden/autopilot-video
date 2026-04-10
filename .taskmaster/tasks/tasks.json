@@ -5383,7 +5383,7 @@
         "description": "Update the JSDoc comment on setupNotificationSSE in autopilot/web/static/app.js lines 112-117. Replace the outdated 'Shows the badge when gate_waiting events arrive and hides it when gates are approved or skipped' with accurate documentation of the unified notification model: increments unread badge on each notification event, bell click resets count to zero.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
@@ -5394,7 +5394,8 @@
           "modules": [
             "autopilot/web/static"
           ]
-        }
+        },
+        "updatedAt": "2026-04-10T08:11:12.935Z"
       },
       {
         "id": "285",
@@ -7199,7 +7200,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T08:11:12.758Z",
+      "lastModified": "2026-04-10T08:11:12.935Z",
       "taskCount": 385,
       "completedCount": 230,
       "tags": [
