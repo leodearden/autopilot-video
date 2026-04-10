@@ -6072,11 +6072,11 @@
         "description": "Follow-up from task 223 review suggestions:\n\nS1 - Test assertion scoping (architect, robustness, test analyst):\n- tests/test_review.py TestEditFormNullTitleDescription: title test asserts value=\"\" exists anywhere in HTML, not specifically on the title input. Use a regex to scope the assertion to the title input element.\n- Description test lacks a positive assertion that the textarea is actually empty. Add a positive assertion.\n\nS2 - Missing roundtrip test (test analyst):\n- TestEditFormZeroDuration has a roundtrip test (PUT zero duration -> GET edit form). TestEditFormNullTitleDescription has no equivalent. Add a test that PUTs empty title/description and verifies the edit form re-renders correctly.\n\nS4 - Fixture boilerplate (reuse auditor, performance):\n- 6th identical app/client fixture pair in test_review.py. Consider a shared factory or helper to reduce duplication. Also consider promoting fixtures to class scope since tests are read-only.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-10T07:01:46.442Z",
+        "updatedAt": "2026-04-10T07:19:33.265Z",
         "metadata": {
           "modules": [
             "tests/conftest.py",
@@ -7057,7 +7057,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T07:19:32.651Z",
+      "lastModified": "2026-04-10T07:19:33.265Z",
       "taskCount": 373,
       "completedCount": 219,
       "tags": [
