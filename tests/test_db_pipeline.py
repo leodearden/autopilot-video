@@ -773,7 +773,7 @@ class TestRunsCRUD:
 class TestUpdateColumnValidation:
     """Cross-entity tests for update method column rejection."""
 
-    @pytest.mark.parametrize("entity", ["gate", "job", "run"])
+    @pytest.mark.parametrize("entity", list(_UPDATE_SPECS))
     def test_rejects_single_disallowed_column(
         self, catalog_db: CatalogDB, entity: str
     ) -> None:
@@ -787,7 +787,7 @@ class TestUpdateColumnValidation:
         assert row is not None
         assert row[spec["valid_col"]] == spec["default_val"]
 
-    @pytest.mark.parametrize("entity", ["gate", "job", "run"])
+    @pytest.mark.parametrize("entity", list(_UPDATE_SPECS))
     def test_rejects_mix_of_valid_and_invalid(
         self, catalog_db: CatalogDB, entity: str
     ) -> None:
@@ -804,7 +804,7 @@ class TestUpdateColumnValidation:
         assert row is not None
         assert row[spec["valid_col"]] == spec["default_val"]
 
-    @pytest.mark.parametrize("entity", ["gate", "job", "run"])
+    @pytest.mark.parametrize("entity", list(_UPDATE_SPECS))
     def test_rejects_multiple_disallowed_columns(
         self, catalog_db: CatalogDB, entity: str
     ) -> None:
