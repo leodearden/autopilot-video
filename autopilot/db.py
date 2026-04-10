@@ -100,7 +100,7 @@ class CatalogDB:
         set_clause = ", ".join(f"{k} = ?" for k in kwargs)
         values = [*kwargs.values(), pk_val]
         cur = self.conn.execute(
-            f"UPDATE {table} SET {set_clause} WHERE {pk_col} = ?",  # noqa: S608 — column names validated against allowlist
+            f"UPDATE {table} SET {set_clause} WHERE {pk_col} = ?",  # noqa: S608 — table/pk_col validated as identifiers above; column names validated via _validate_update_kwargs
             values,
         )
         rc = cur.rowcount
