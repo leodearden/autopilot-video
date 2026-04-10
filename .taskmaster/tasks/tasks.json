@@ -7444,10 +7444,11 @@
         "description": "Three related post-merge correctness issues in scripts/check_queue_health.py surfaced by reviewer_comprehensive on esc-382-48, all touching the oldest-age pipeline and the summary line.",
         "details": "Three related suggestions from esc-382-48 (reviewer_comprehensive) on scripts/check_queue_health.py. All touch the oldest_age pipeline and are best fixed together to keep the report internally consistent.\n\n1. **Oldest-age ignores --project filter (lines 294-313, robustness_correctness):** When `--project` is passed, `stats` is filtered via `filter_by_project` but `oldest_age` is still computed globally across all groups via `get_oldest_unhealthy_age_seconds(db_path)`. A user running `--project autopilot_video` during a dark_factory incident would see dark_factory's oldest age surfaced under an autopilot_video-scoped report. Fix: either (a) add an optional `project_id` arg to `get_oldest_unhealthy_age_seconds` that filters `group_id IN (?, ?)` for `project_id` and `mem0_{project_id}` (matching the existing `filter_by_project` semantics), or (b) recompute oldest age from the already-filtered stats after filtering (requires including created_at in collect_queue_stats), or (c) explicitly document the global-only behavior. Option (a) is preferred — it keeps the scoping consistent with filter_by_project and preserves the SQL-driven MIN() efficiency.\n\n2. **`oldest_dead_age` label is misleading (line 236, naming_clarity):** The output field is labeled `oldest_dead_age` but it is derived from `oldest_unhealthy_age_seconds`, which includes pending/retry/dead rows per the SQL `WHERE status IN ('pending', 'retry', 'dead')`. A slow `pending` row will surface as `oldest_dead_age=Xh` with no dead rows present. The existing test `test_summary_line_includes_oldest_dead_age_when_present` (tests/test_check_queue_health.py:485+) locks in the mislabel. Fix: rename the output label in `format_report` to `oldest_unhealthy_age` (matching the summary key) and update the test name + assertion. Do NOT restrict the SQL to `status = 'dead'` — the early-warning signal on pending/retry rows is the whole point of Task 359's DLQ-resurgence-detection story.\n\n3. **Two separate SQLite connections + race window (lines 302-304, performance_efficiency):** `main` now opens two back-to-back read-only connections (`collect_queue_stats` then `get_oldest_unhealthy_age_seconds`). This introduces a small race window where rows can change between queries — the report can show e.g. dead=0 with oldest_unhealthy_age set. Fix: either expose a single helper that opens one read-only connection and returns `(stats, oldest_age)`, or accept an optional `conn: sqlite3.Connection` argument on both query functions and open the connection once in main(). Prefer the single-helper approach — cleaner API and guarantees atomicity.\n\nAll three fixes are coordinated — shipping them in one change keeps the test suite and documentation coherent. Update tests/test_check_queue_health.py accordingly.",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-10T11:05:15.796Z"
       },
       {
         "id": "407",
@@ -7507,7 +7508,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T11:05:15.691Z",
+      "lastModified": "2026-04-10T11:05:15.796Z",
       "taskCount": 411,
       "completedCount": 251,
       "tags": [
