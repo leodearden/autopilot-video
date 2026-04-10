@@ -18,6 +18,7 @@ from check_queue_health import (  # noqa: E402  (import after sys.path mutation)
     collect_queue_stats,
     filter_by_project,
     format_report,
+    get_oldest_unhealthy_age_seconds,
     main,
     summarize_health,
 )
@@ -76,6 +77,58 @@ def _insert_row(
         """,
         (group_id, operation, status, attempts, created_at, completed_at, error),
     )
+
+
+# ===========================================================================
+# TestGetOldestUnhealthyAgeSeconds
+# ===========================================================================
+
+
+class TestGetOldestUnhealthyAgeSeconds:
+    def test_returns_age_from_min_created_at_across_pending_retry_dead(
+        self, tmp_path: Path
+    ) -> None:
+        db_path = _make_queue_db(tmp_path)
+        conn = sqlite3.connect(str(db_path))
+        try:
+            _insert_row(conn, group_id="g", status="pending", created_at=100.0)
+            _insert_row(conn, group_id="g", status="retry", created_at=200.0)
+            _insert_row(conn, group_id="g", status="dead", created_at=150.0)
+            _insert_row(conn, group_id="g", status="completed", created_at=50.0)
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = get_oldest_unhealthy_age_seconds(db_path, now=1000.0)
+        # min(100, 200, 150) = 100; completed@50 must not be included
+        assert result == 900.0
+
+    def test_returns_none_when_no_unhealthy_rows(self, tmp_path: Path) -> None:
+        db_path = _make_queue_db(tmp_path)
+        conn = sqlite3.connect(str(db_path))
+        try:
+            _insert_row(conn, group_id="g", status="completed", created_at=1.0)
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = get_oldest_unhealthy_age_seconds(db_path, now=1000.0)
+        assert result is None
+
+    def test_ignores_completed_rows_in_min_computation(
+        self, tmp_path: Path
+    ) -> None:
+        db_path = _make_queue_db(tmp_path)
+        conn = sqlite3.connect(str(db_path))
+        try:
+            _insert_row(conn, group_id="g", status="completed", created_at=1.0)
+            _insert_row(conn, group_id="g", status="pending", created_at=900.0)
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = get_oldest_unhealthy_age_seconds(db_path, now=1000.0)
+        assert result == 100.0  # 1000 - 900, not 1000 - 1
 
 
 # ===========================================================================
