@@ -96,6 +96,41 @@ class TestExecuteKwargsUpdate:
         row = catalog_db.get_activity_cluster("ac2")
         assert row["label"] == "After"
 
+    def test_raises_valueerror_on_non_identifier_table(self, catalog_db):
+        """SQL-injection-style table name raises ValueError."""
+        with pytest.raises(ValueError, match=r"Invalid table name"):
+            catalog_db._execute_kwargs_update(
+                "users; DROP TABLE users; --",
+                "cluster_id", "ac1",
+                frozenset({"label"}), "cluster", {"label": "x"},
+            )
+
+    def test_raises_valueerror_on_non_identifier_pk_col(self, catalog_db):
+        """SQL-injection-style pk_col raises ValueError."""
+        with pytest.raises(ValueError, match=r"Invalid pk_col"):
+            catalog_db._execute_kwargs_update(
+                "activity_clusters",
+                "cluster_id; DROP TABLE x",
+                "ac1",
+                frozenset({"label"}), "cluster", {"label": "x"},
+            )
+
+    def test_raises_valueerror_on_empty_table(self, catalog_db):
+        """Empty-string table raises ValueError."""
+        with pytest.raises(ValueError, match=r"Invalid table name"):
+            catalog_db._execute_kwargs_update(
+                "", "cluster_id", "ac1",
+                frozenset({"label"}), "cluster", {"label": "x"},
+            )
+
+    def test_validates_table_even_with_empty_kwargs(self, catalog_db):
+        """Bad table raises ValueError even when kwargs={} (ordering invariant)."""
+        with pytest.raises(ValueError, match=r"Invalid table name"):
+            catalog_db._execute_kwargs_update(
+                "bad table", "cluster_id", "ac1",
+                frozenset({"label"}), "cluster", {},
+            )
+
 
 class TestUpdateMethodsDelegateValidation:
     """Verify each public update method delegates to _validate_update_kwargs."""

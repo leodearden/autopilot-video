@@ -83,16 +83,24 @@ class CatalogDB:
     ) -> int:
         """Validate, build, and execute a kwargs-based UPDATE statement.
 
+        *table* and *pk_col* must be valid Python identifiers (checked via
+        ``str.isidentifier()``).  Any other value raises ``ValueError`` before
+        any SQL is executed, regardless of whether *kwargs* is empty.
+
         Returns the number of rows affected (0 when *kwargs* is empty or the
         primary-key value is not found).
         """
+        if not isinstance(table, str) or not table.isidentifier():
+            raise ValueError(f"Invalid table name: {table!r}")
+        if not isinstance(pk_col, str) or not pk_col.isidentifier():
+            raise ValueError(f"Invalid pk_col: {pk_col!r}")
         if not kwargs:
             return 0
         self._validate_update_kwargs(allowed, kwargs, entity)
         set_clause = ", ".join(f"{k} = ?" for k in kwargs)
         values = [*kwargs.values(), pk_val]
         cur = self.conn.execute(
-            f"UPDATE {table} SET {set_clause} WHERE {pk_col} = ?",  # noqa: S608 — column names validated against allowlist
+            f"UPDATE {table} SET {set_clause} WHERE {pk_col} = ?",  # noqa: S608 — table/pk_col validated as identifiers above; column names validated via _validate_update_kwargs
             values,
         )
         rc = cur.rowcount
