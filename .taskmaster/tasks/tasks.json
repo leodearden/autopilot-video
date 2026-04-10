@@ -7126,11 +7126,11 @@
         "description": "In autopilot/web/static/app.js: (1) Change debouncedRefreshStageCard from pure trailing-edge debounce to leading+trailing (fire immediately on first event, then coalesce until burst ends and fire once more). This prevents the dashboard from appearing frozen during sustained job_progress bursts. (2) Change `var DEBOUNCE_MS = 150` to `const DEBOUNCE_MS = 150`.\n\nmemory_hints: search(\"debounce refreshStageCard SSE\") ; get_entity(\"debouncedRefreshStageCard\")",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-10T08:14:48.928Z",
+        "updatedAt": "2026-04-10T10:10:01.487Z",
         "metadata": {
           "modules": [
             "autopilot/web/static/app.js",
@@ -7329,9 +7329,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T10:09:18.185Z",
+      "lastModified": "2026-04-10T10:10:01.487Z",
       "taskCount": 396,
-      "completedCount": 242,
+      "completedCount": 243,
       "tags": [
         "master"
       ]
