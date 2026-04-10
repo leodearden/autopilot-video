@@ -213,6 +213,20 @@ class TestSummarizeHealth:
         assert summary["retry"] == 0
         assert summary["unhealthy_groups"] == []
 
+    def test_unhealthy_groups_entries_have_exact_key_set(self) -> None:
+        """Each unhealthy_groups entry must have exactly {group_id, dead, retry, pending}."""
+        stats = {
+            ("g1", "dead"): 2,
+            ("g1", "retry"): 1,
+            ("g1", "in_flight"): 3,
+            ("g1", "pending"): 4,
+            ("g2", "dead"): 1,
+        }
+        summary = summarize_health(stats)
+
+        for entry in summary["unhealthy_groups"]:
+            assert set(entry.keys()) == {"group_id", "dead", "retry", "pending"}
+
 
 # ===========================================================================
 # TestFilterByProject
