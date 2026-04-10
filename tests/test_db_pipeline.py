@@ -773,6 +773,9 @@ class TestUpdateColumnValidation:
         assert "zzz_col" in msg
         # sorted() order: 'aaa_col' appears before 'zzz_col'.
         assert msg.index("aaa_col") < msg.index("zzz_col")
+        # Row must still exist (atomicity): disallowed-only call issues no SQL.
+        row = spec["get"](catalog_db)
+        assert row is not None
 
 
 # -- Cross-table integration tests ------------------------------------------
