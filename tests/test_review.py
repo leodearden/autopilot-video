@@ -1170,6 +1170,25 @@ class TestEditFormZeroDuration:
         assert match is not None, "proposed_duration_seconds input not found"
         assert 'value=""' in match.group(0)
 
+    def test_update_zero_duration_htmx_roundtrip(
+        self, _roundtrip_client: TestClient,
+    ) -> None:
+        """Zero duration is displayed in the card partial when HX-Request is set.
+
+        Covers the card-partial branch of api_update_narrative: when HX-Request
+        is present the route returns partials/narrative_card.html instead of JSON.
+        Ensures that zero values are not hidden by Jinja truthiness ({% if 0 %}
+        evaluates to false, which would suppress the Duration row entirely).
+        """
+        put_resp = _roundtrip_client.put(
+            "/api/narratives/n-zero",
+            json={"proposed_duration_seconds": 0},
+            headers={"HX-Request": "true"},
+        )
+        assert put_resp.status_code == 200
+        # The card should display the Duration line with a zero value
+        assert "Duration: 0s" in put_resp.text or "Duration: 0.0s" in put_resp.text
+
 
 # ---------------------------------------------------------------------------
 # TestZeroDurationRoundtrip — task-224
