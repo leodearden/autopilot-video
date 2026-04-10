@@ -603,7 +603,9 @@ class TestReviewRendersBadge:
         assert "rounded" not in classes
         assert "rounded-full" in classes
         # exactly one text-* size class and it must be text-sm (no text-xs)
-        text_size_classes = [c for c in classes if c.startswith("text-") and c not in ("text-green-300",)]
+        text_size_classes = [
+            c for c in classes if c.startswith("text-") and c not in ("text-green-300",)
+        ]
         assert "text-sm" in text_size_classes
         assert "text-xs" not in text_size_classes
         # layout classes present
