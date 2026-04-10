@@ -33,7 +33,7 @@ KNOWN_STAGES = [
 class _UpdateSpec(TypedDict):
     setup: Callable[..., object]
     update: Callable[..., object]
-    get: Callable[..., object]
+    get: Callable[..., dict | None]
     valid_col: str
     valid_val: str
     default_val: str
