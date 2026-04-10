@@ -58,6 +58,40 @@ _UPDATE_SPECS: dict[str, dict] = {
     },
 }
 
+# -- Meta-tests: lock structural/type refactors in place ----------------------
+
+
+def test_update_spec_is_typeddict_with_expected_fields() -> None:
+    """_UpdateSpec is a TypedDict with exactly the six expected fields."""
+    import sys
+    import typing
+
+    module = sys.modules[__name__]
+
+    # (a) _UpdateSpec exists in the module namespace
+    assert hasattr(module, "_UpdateSpec"), "_UpdateSpec not found in module namespace"
+    _UpdateSpec = getattr(module, "_UpdateSpec")  # noqa: N806
+
+    # (b) it is a TypedDict
+    assert typing.is_typeddict(_UpdateSpec), "_UpdateSpec is not a TypedDict"
+
+    # (c) the keys of get_type_hints equal the expected set
+    hints = typing.get_type_hints(_UpdateSpec)
+    expected_keys = {"setup", "update", "get", "valid_col", "valid_val", "default_val"}
+    assert set(hints.keys()) == expected_keys, f"Keys mismatch: {set(hints.keys())}"
+
+    # (d) str-typed fields are exactly str
+    assert hints["valid_col"] is str, f"valid_col: expected str, got {hints['valid_col']}"
+    assert hints["valid_val"] is str, f"valid_val: expected str, got {hints['valid_val']}"
+    assert hints["default_val"] is str, f"default_val: expected str, got {hints['default_val']}"
+
+    # (e) _UPDATE_SPECS annotation mentions _UpdateSpec (covers the annotation change)
+    ann = module.__annotations__.get("_UPDATE_SPECS", "")
+    assert "_UpdateSpec" in str(ann), (
+        f"_UPDATE_SPECS annotation doesn't mention _UpdateSpec: {ann}"
+    )
+
+
 # -- Schema tests for pipeline tables ----------------------------------------
 
 
