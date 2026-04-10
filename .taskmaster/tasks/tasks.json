@@ -6162,7 +6162,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_notifications.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 327,
@@ -6197,7 +6205,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/plan/otio_export.py"
+          ],
+          "modules": [
+            "autopilot/plan"
+          ]
+        }
       },
       {
         "id": 329,
