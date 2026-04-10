@@ -7450,6 +7450,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 408,
+        "title": "check_queue_health: defensive hardening (broader exceptions, negative-age clamp, minimum column width)",
+        "description": "Three small defensive fixes to scripts/check_queue_health.py surfaced by reviewer_comprehensive on esc-382-48.",
+        "details": "Three small defensive suggestions from esc-382-48 (reviewer_comprehensive) on scripts/check_queue_health.py. Each is a one- or two-line fix plus a test, but they collectively harden the diagnostic's failure modes.\n\n1. **Narrow exception handling (line 305, error_handling):** The diagnostic-failure branch catches only `sqlite3.OperationalError` and `FileNotFoundError`. A corrupt DB raises `sqlite3.DatabaseError` (not OperationalError), and a permission error on the file raises `PermissionError`. Both would produce an unhandled traceback instead of the documented exit code 2 for diagnostic failure. Fix: broaden `except (sqlite3.OperationalError, FileNotFoundError)` to `except (sqlite3.Error, OSError)`. Both cover the intended failure classes and give the script consistent exit-2 semantics. Add tests for the corrupt-DB and unreadable-file cases.\n\n2. **`_format_age` doesn't handle negative inputs (lines 38-45, robustness):** Because `now` can be smaller than `created_at` under clock skew (NTP correction, container clock jump, row written after `now` was sampled), `_format_age` will render nonsense like `-7s` or `-2h55m` (negative integer division in Python rounds toward negative infinity, producing e.g. `-2h55m` instead of `-1h5m`). `get_oldest_unhealthy_age_seconds` can plausibly produce small negatives. Fix: clamp at zero at the top of `_format_age` — `seconds = max(0.0, seconds)`. Add a test case asserting `_format_age(-5) == \"0s\"`.\n\n3. **`width` collapses when all group_ids are short (line 241, formatting_ux):** `width = max((len(g) for (g, _) in stats), default=20)` uses 20 only as a fallback when stats is empty (in which case the branch isn't even taken). When all group IDs are short (e.g. `x`), width collapses to that short length, producing a cramped column. Previously a fixed 40 was used, which was more readable. Fix: `width = max(20, max(len(g) for (g, _) in stats))` so the column has a sensible minimum width even with short IDs, while still expanding for long IDs. Update tests/test_check_queue_health.py to cover the short-id minimum-width case.\n\nAll fixes live in scripts/check_queue_health.py + tests/test_check_queue_health.py.",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -7462,7 +7473,7 @@
       ],
       "created": "2026-04-10T10:16:53.515Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-10T10:16:59.851Z"
+      "updated": "2026-04-10T10:17:09.281Z"
     }
   }
 }
