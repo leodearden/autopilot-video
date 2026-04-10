@@ -6942,6 +6942,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 365,
+        "title": "Consolidate narrative badge source-check tests into single parametrized test (all 4 templates)",
+        "description": "The parametrized source-check in tests/test_narrative_status_badge.py::test_review_template_source_uses_macro_import_and_call currently covers only review/narratives.html and review/scripts.html. Meanwhile TestNarrativeCardBadge.test_source_uses_macro_import (lines 129-132) and TestNarrativeEditFormBadge.test_source_uses_macro_import (lines 149-152) still carry per-class versions of the same check. Complete the refactor: extend the parametrize list to include partials/narrative_card.html and partials/narrative_edit_form.html, and delete the duplicate per-class source-check methods. While consolidating, also consider hardening the call-site check: the current `assert 'status_badge(' in source` would silently pass for commented-out invocations like `{# status_badge(x) #}` and breaks if the import is aliased. Either (a) use a regex that excludes Jinja comment blocks, or (b) drop the literal source check entirely and rely on the render-based tests, which already exercise the macro via rendered CSS class tokens.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -6954,7 +6965,7 @@
       ],
       "created": "2026-04-10T07:10:08.791Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-10T07:10:08.794Z"
+      "updated": "2026-04-10T07:10:11.387Z"
     }
   }
 }
