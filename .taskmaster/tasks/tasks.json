@@ -6792,7 +6792,17 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/web/templates/pipeline/index.html",
+            "autopilot/web/templates/pipeline/stages.html",
+            "autopilot/web/templates/pipeline/jobs.html"
+          ],
+          "modules": [
+            "autopilot/web/templates/pipeline"
+          ]
+        }
       },
       {
         "id": 358,
@@ -6803,7 +6813,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_status_badge.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 359,
