@@ -7368,10 +7368,11 @@
         "description": "Reviewer flagged three coupled robustness gaps in test_dashboard_factory_calls_use_default_refresh_card (tests/test_web_app.py:567-590), added in task 188. Rework the test so it actually pins the refreshCard=default property rather than relying on fragile substring/regex heuristics. Also consolidate with the neighbouring test_setup_dashboard_sse_uses_factory to remove duplicate extraction/iteration.",
         "details": "Follow-up from task 188 review (esc-188-45). Three coupled issues in the same test:\n\n1. Naive substring guard (line 587): `assert \"false\" not in call_text` matches any identifier/string literal containing the substring \"false\" (e.g. `'False alarm resolved'`, `falseAlarmMsg`, `isFalsey`). Fix: parse the argument list (balanced-comma split) and assert specifically that the 5th positional argument is either absent or literally `true`. Word-boundary / tokenized matching at minimum.\n\n2. Regex truncates on nested parens (lines 580-582): `makeStageHandler\\('{event_type}'[^)]*\\)` stops at the first `)`, so any future call with nested parens (`makeStageHandler('stage_started', getMsg())`) silently hides trailing arguments — including the 5th slot the test is trying to inspect. Fix: use the existing `_brace_match_from` helper (or an equivalent balanced-paren scanner) to capture the full argument list regardless of nesting.\n\n3. Unverified signature assumption (lines 567-590): The docstring asserts that makeStageHandler's 5th parameter is `refreshCard`, but nothing in the test pins the signature. A refactor that adds/renames/reorders params would silently degrade the test to a no-op. Fix: parse the `function makeStageHandler(...)` declaration and assert the exact expected parameter list (or at least that position 5 is named `refreshCard`).\n\n4. Duplication with test_setup_dashboard_sse_uses_factory (also lines 567-590 vs. the test immediately above). Both iterate the same three event types and look up the same makeStageHandler calls. Extract a helper `_get_dashboard_factory_call(body, event_type)` (or parametrize over event_type via `pytest.mark.parametrize`) so both tests share the extraction logic.\n\nDeliverable: the robustified, parametrized test(s) plus a short comment explaining why substring/regex shortcuts are insufficient, so future edits don't regress to them.\n\nmemory_hints: search for \"refreshCard assertion\" and \"task 188 review\".",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-10T10:13:15.201Z"
       },
       {
         "id": "401",
@@ -7420,7 +7421,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T10:13:14.944Z",
+      "lastModified": "2026-04-10T10:13:15.201Z",
       "taskCount": 404,
       "completedCount": 246,
       "tags": [
