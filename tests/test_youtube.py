@@ -257,7 +257,12 @@ class TestBuildUploadMetadata:
                 (
                     "m1",
                     0,
-                    json.dumps([{"class": "person", "confidence": 0.9}]),
+                    json.dumps(
+                        [
+                            {"class": "person", "confidence": 0.9},
+                            {"class": "dog", "confidence": 0.7},
+                        ]
+                    ),
                 ),
             ],
             activity_cluster_ids=["nonexistent_c1"],
@@ -266,7 +271,8 @@ class TestBuildUploadMetadata:
         meta = _build_upload_metadata("n1", catalog_db, youtube_config)
         tags = meta["snippet"]["tags"]
         assert "person" in tags
-        assert len(tags) == 1
+        assert "dog" in tags
+        assert "nonexistent_c1" not in tags
 
     def test_uses_targeted_cluster_lookup_not_full_scan(
         self, catalog_db, youtube_config
