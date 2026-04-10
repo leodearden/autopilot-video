@@ -487,6 +487,14 @@ class TestSSEIntegration:
         assert match is not None, "DEBOUNCE_MS numeric literal not found in app.js"
         assert int(match.group(1)) > 0, "DEBOUNCE_MS must be a positive integer"
 
+    def test_app_js_has_debounced_refresh_function(self) -> None:
+        """app.js contains debouncedRefreshStageCard wrapping clearTimeout/setTimeout/refreshStageCard."""
+        content = _APP_JS.read_text()
+        body = _extract_js_function(content, "debouncedRefreshStageCard")
+        assert "clearTimeout" in body, "clearTimeout not found in debouncedRefreshStageCard body"
+        assert "setTimeout" in body, "setTimeout not found in debouncedRefreshStageCard body"
+        assert "refreshStageCard" in body, "refreshStageCard not found in debouncedRefreshStageCard body"
+
 
 # ---------------------------------------------------------------------------
 # Step 13: GET / redirect test
