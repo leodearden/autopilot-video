@@ -1065,6 +1065,52 @@ class TestDepsImportRefactor:
         )
 
 
+def _build_zero_duration_app(db_path: str) -> FastAPI:
+    """Shared builder for zero-duration fixtures.
+
+    Opens a CatalogDB at ``db_path``, initialises default gates, seeds two
+    narratives (``n-zero`` with ``proposed_duration_seconds=0`` and ``n-none``
+    with ``proposed_duration_seconds=None``), then returns a FastAPI instance
+    bound to that database path.
+
+    Takes ``db_path: str`` directly so both the class-scoped and the
+    function-scoped fixture can derive their own temp path and pass only the
+    final string — the tmp-path mechanism remains the caller's responsibility.
+    """
+    with CatalogDB(db_path) as _db:
+        _db.init_default_gates()
+        _seed_narrative(_db, "n-zero", title="Zero Duration", proposed_duration_seconds=0)
+        _seed_narrative(_db, "n-none", title="No Duration", proposed_duration_seconds=None)
+    return create_app(db_path)
+
+
+# ---------------------------------------------------------------------------
+# TestBuildZeroDurationApp — task-338
+# ---------------------------------------------------------------------------
+
+
+class TestBuildZeroDurationApp:
+    """Unit tests for the _build_zero_duration_app module-level helper."""
+
+    def test_helper_seeds_narratives_and_gates(self, tmp_path: Path) -> None:
+        """_build_zero_duration_app creates a fully seeded FastAPI app."""
+        db_path = str(tmp_path / "catalog.db")
+        app = _build_zero_duration_app(db_path)
+        assert isinstance(app, FastAPI)
+        assert app.state.db_path == db_path
+        with CatalogDB(db_path) as db:
+            n_zero = db.get_narrative("n-zero")
+            assert n_zero is not None
+            assert n_zero["title"] == "Zero Duration"
+            assert n_zero["proposed_duration_seconds"] == 0
+            n_none = db.get_narrative("n-none")
+            assert n_none is not None
+            assert n_none["title"] == "No Duration"
+            assert n_none["proposed_duration_seconds"] is None
+            gate_count = db.conn.execute("SELECT COUNT(*) FROM pipeline_gates").fetchone()[0]
+            assert gate_count > 0
+
+
 # ---------------------------------------------------------------------------
 # Zero-duration fixtures — task-167
 # ---------------------------------------------------------------------------
@@ -1073,20 +1119,8 @@ class TestDepsImportRefactor:
 def zero_duration_app(tmp_path_factory: pytest.TempPathFactory) -> FastAPI:
     """App with narratives seeded with proposed_duration_seconds=0 and None."""
     tmp_path = tmp_path_factory.mktemp("zero_dur")
-
-    def _seed(db: CatalogDB) -> None:
-        _seed_narrative(
-            db, "n-zero",
-            title="Zero Duration",
-            proposed_duration_seconds=0,
-        )
-        _seed_narrative(
-            db, "n-none",
-            title="No Duration",
-            proposed_duration_seconds=None,
-        )
-
-    return _make_review_app(tmp_path, _seed)
+    db_path = str(tmp_path / "catalog.db")
+    return _build_zero_duration_app(db_path)
 
 
 @pytest.fixture(scope="class")
@@ -1214,21 +1248,14 @@ class TestEditFormZeroDuration:
 
 @pytest.fixture
 def _roundtrip_app(tmp_path: Path) -> FastAPI:
-    """Function-scoped app for mutating zero-duration roundtrip tests."""
+    """Function-scoped app for mutating zero-duration roundtrip tests.
+
+    Function scope (vs. class scope of zero_duration_app) ensures each test
+    gets an isolated database, preventing mutation from one test leaking into
+    the next.
+    """
     db_path = str(tmp_path / "catalog.db")
-    with CatalogDB(db_path) as _db:
-        _db.init_default_gates()
-        _seed_narrative(
-            _db, "n-zero",
-            title="Zero Duration",
-            proposed_duration_seconds=0,
-        )
-        _seed_narrative(
-            _db, "n-none",
-            title="No Duration",
-            proposed_duration_seconds=None,
-        )
-    return create_app(db_path)
+    return _build_zero_duration_app(db_path)
 
 
 @pytest.fixture
