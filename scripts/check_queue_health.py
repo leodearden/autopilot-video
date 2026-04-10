@@ -36,6 +36,16 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 
+def _format_age(seconds: float) -> str:
+    """Render a duration in seconds as a compact human-readable string."""
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    elif seconds < 3600:
+        return f"{int(seconds // 60)}m"
+    else:
+        return f"{int(seconds // 3600)}h{int((seconds % 3600) // 60)}m"
+
+
 def collect_queue_stats(db_path: str | Path) -> dict[tuple[str, str], int]:
     """Query the write_queue DB and return per-(group_id, status) counts.
 
