@@ -318,13 +318,12 @@ class TestIdempotency:
             )
 
         scheduler = MagicMock()
-        with patch.object(Path, "exists", return_value=True):
-            classify_audio_events(
-                "vid1",
-                Path("/tmp/vid1.wav"),
-                catalog_db,
-                scheduler,
-            )
+        classify_audio_events(
+            "vid1",
+            Path("/tmp/vid1.wav"),
+            catalog_db,
+            scheduler,
+        )
 
         # Scheduler should NOT be called: classification skipped because events already exist
         scheduler.model.assert_not_called()
@@ -353,13 +352,12 @@ class TestIdempotency:
             )
 
         scheduler = MagicMock()
-        with patch.object(Path, "exists", return_value=True):
-            classify_audio_events(
-                "vid1",
-                Path("/tmp/vid1.wav"),
-                catalog_db,
-                scheduler,
-            )
+        classify_audio_events(
+            "vid1",
+            Path("/tmp/vid1.wav"),
+            catalog_db,
+            scheduler,
+        )
 
         # Scheduler should NOT be called: classification skipped because events already exist
         scheduler.model.assert_not_called()
@@ -388,13 +386,12 @@ class TestIdempotency:
             )
 
         scheduler = MagicMock()
-        with patch.object(Path, "exists", return_value=True):
-            classify_audio_events(
-                "vid1",
-                Path("/tmp/vid1.wav"),
-                catalog_db,
-                scheduler,
-            )
+        classify_audio_events(
+            "vid1",
+            Path("/tmp/vid1.wav"),
+            catalog_db,
+            scheduler,
+        )
 
         # Scheduler should NOT be called: classification skipped because events already exist
         scheduler.model.assert_not_called()
