@@ -257,7 +257,12 @@ class TestBuildUploadMetadata:
                 (
                     "m1",
                     0,
-                    json.dumps([{"class": "person", "confidence": 0.9}]),
+                    json.dumps(
+                        [
+                            {"class": "person", "confidence": 0.9},
+                            {"class": "dog", "confidence": 0.7},
+                        ]
+                    ),
                 ),
             ],
             activity_cluster_ids=["nonexistent_c1"],
@@ -266,7 +271,42 @@ class TestBuildUploadMetadata:
         meta = _build_upload_metadata("n1", catalog_db, youtube_config)
         tags = meta["snippet"]["tags"]
         assert "person" in tags
-        assert len(tags) == 1
+        assert "dog" in tags
+        assert "nonexistent_c1" not in tags
+
+    def test_tags_mixed_valid_and_nonexistent_cluster_ids(
+        self, catalog_db, youtube_config
+    ):
+        """Valid cluster label is included even when a nonexistent cluster ID precedes it.
+
+        Placing the nonexistent ID first catches a hypothetical bug where the
+        cluster loop bails on first miss (return/break instead of continue),
+        which would prevent the valid 'c1' cluster from being processed.
+        """
+        # Insert ONE valid cluster before the narrative that references it
+        catalog_db.insert_activity_cluster("c1", label="hiking")
+
+        self._setup_media_with_detections(
+            catalog_db,
+            [
+                (
+                    "m1",
+                    0,
+                    json.dumps([{"class": "person", "confidence": 0.9}]),
+                ),
+            ],
+            # nonexistent_c0 FIRST: a bail-on-first-miss bug would skip 'c1'
+            activity_cluster_ids=["nonexistent_c0", "c1"],
+        )
+
+        meta = _build_upload_metadata("n1", catalog_db, youtube_config)
+        tags = meta["snippet"]["tags"]
+        # Valid cluster label must still appear despite the preceding bad ID
+        assert "hiking" in tags
+        # The nonexistent ID must not be treated as a tag
+        assert "nonexistent_c0" not in tags
+        # Detection tags are unaffected
+        assert "person" in tags
 
     def test_uses_targeted_cluster_lookup_not_full_scan(
         self, catalog_db, youtube_config
