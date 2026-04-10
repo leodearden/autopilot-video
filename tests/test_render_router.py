@@ -181,6 +181,26 @@ def _make_edl(clips: list[dict] | None = None, **kwargs: object) -> dict:
     return edl
 
 
+def _make_db(
+    edl: dict | None = None,
+    narrative_title: str = "Test",
+    narrative_id: str = "n1",
+    media_file_path: str = "/fake/source.mp4",
+    transcript_segments: list[dict] | None = None,
+) -> MagicMock:
+    """Create a MagicMock DB pre-configured with sensible defaults for render_router tests."""
+    db = MagicMock()
+    db.get_media.return_value = {"file_path": media_file_path}
+    db.get_narrative.return_value = {"narrative_id": narrative_id, "title": narrative_title}
+    if edl is not None:
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+    if transcript_segments is not None:
+        db.get_transcript.return_value = {"segments_json": json.dumps(transcript_segments)}
+    else:
+        db.get_transcript.return_value = None
+    return db
+
+
 def _make_capturing_loads() -> tuple[Callable[..., object], list[dict]]:
     """Return a (wrapper, captured_clips) pair for patching json.loads in tests.
 
