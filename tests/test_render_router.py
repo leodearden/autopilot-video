@@ -358,11 +358,7 @@ class TestClipDispatching:
         from autopilot.render.router import route_and_render
 
         edl = _make_edl(crop_modes={"clip_1": "center"})
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         config = _make_config()
 
         with (
@@ -381,11 +377,7 @@ class TestClipDispatching:
         from autopilot.render.router import route_and_render
 
         edl = _make_edl(crop_modes={"clip_1": "auto_subject"})
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         config = _make_config()
 
         with (
@@ -418,10 +410,7 @@ class TestClipDispatching:
             },
         ]
         edl = _make_edl(clips=clips, crop_modes={"c1": "center", "c2": "auto_subject"})
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         db.get_media.side_effect = lambda mid: {"file_path": f"/resolved/{mid}.mp4"}
         config = _make_config()
 
@@ -456,11 +445,7 @@ class TestCropPathLoading:
             ],
         )
         crop_data = np.full((30, 2), [100, 50], dtype=np.float64)
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         db.get_crop_path.return_value = {"path_data": crop_data.tolist()}
         config = _make_config()
 
@@ -486,10 +471,7 @@ class TestCropPathLoading:
                 {"clip_id": "clip_1", "mode": "auto_subject", "subject_track_id": "face_0"}
             ],
         )
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db = _make_db(edl=edl)
         db.get_crop_path.return_value = None
         config = _make_config()
 
@@ -515,11 +497,7 @@ class TestFinalConcatenation:
         from autopilot.render.router import route_and_render
 
         edl = _make_edl()
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         config = _make_config()
 
         with (
@@ -541,11 +519,7 @@ class TestFinalConcatenation:
         from autopilot.render.router import route_and_render
 
         edl = _make_edl()
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "My Video"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl, narrative_title="My Video")
         config = _make_config()
 
         with patch("autopilot.render.router.render_simple") as mock_rs, patch("subprocess.run"):
@@ -560,11 +534,7 @@ class TestFinalConcatenation:
         from autopilot.render.router import route_and_render
 
         edl = _make_edl(music=[{"path": "/tmp/music.mp3", "level": -6}])
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         config = _make_config()
 
         with (
@@ -584,11 +554,7 @@ class TestFinalConcatenation:
         from autopilot.render.router import route_and_render
 
         edl = _make_edl(music=[{"path": "/tmp/music.mp3", "level": -6}])
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         config = _make_config()
 
         with (
