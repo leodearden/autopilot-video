@@ -7244,6 +7244,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 390,
+        "title": "Clean up status_badge test suite: dedupe helpers, parametrize edge cases, fix fragile assertions",
+        "description": "Post-merge review follow-up from task 355 (esc-355-34). Five related improvements in tests/test_status_badge.py:\n\n1. **Fold `_render_badge_ext` into `_render_badge`** (lines 41–72): The extended helper duplicates almost all of `_render_badge` — the only differences are that it hard-codes five extra kwargs that already have defaults in the macro. Any future change to the rendering setup (e.g. adding a global, changing the loader) has to be applied twice. Accept the override params as optional kwargs (`px=None`, `py=None`, `rounded=None`, `text_size=None`, `font_weight=None`) and only include them in the kwargs dict when non-None, then delete `_render_badge_ext`.\n\n2. **Parametrize empty-override coverage** (lines 217–220): `test_font_weight_empty_drops_class` is the only test that exercises empty-string handling. The macro's `.split() | join(' ')` normalization should drop empty overrides for all axes, but only `font_weight=''` is tested. If future refactoring replaces `.split()` with naive concat, `px=''`/`py=''`/`rounded=''`/`text_size=''` regressions will slip through. Parametrize across all five override axes, asserting that an empty string drops the corresponding class prefix entirely.\n\n3. **Remove or broaden duplicate test** (lines 222–226): `test_override_does_not_duplicate_default` is functionally identical to `test_px_override_replaces_default` (lines 191–196) — both render with `px='px-3'` and assert exactly one `px-*` class equal to `px-3`. Either delete it, or broaden it into a single parametrized test asserting no duplication across all five axes (px, py, rounded, text_size, font_weight).\n\n4. **Fix fragile stage-card badge assertion** (lines 335–339): `test_stage_card_badge_no_font_medium` finds every span whose class contains `bg-green-900` and only asserts `spans[0]` lacks `font-medium`. It works today only because `run.status='running'` (so the run badge is blue, not green) and the stage done badge is the sole green span. If any other unrelated span in `pipeline/index.html` gains `bg-green-900` or the stages list moves, the index shifts and the test could silently pass on the wrong element. Either iterate every matched span and assert none contain `font-medium`, or narrow the regex/use an HTML parser to find the stage card container explicitly (e.g. match `rounded-lg p-4` context).\n\n5. **Replace hard-coded color exclusion with size inclusion list** (lines 583–613, `test_no_conflicting_classes`): Currently filters out `text-green-300` from the `text-*` scan by name. If `validation_colors` ever uses a different green shade (e.g. `text-emerald-300`), the test mis-classifies it as a text-size class and fails confusingly. Replace with an inclusion list: `c in {'text-xs','text-sm','text-base','text-lg','text-xl','text-2xl'}`.\n\n**Memory hints:** search \"status_badge macro Tailwind utility classes\"",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -7256,7 +7267,7 @@
       ],
       "created": "2026-04-10T08:20:19.418Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-10T08:20:19.424Z"
+      "updated": "2026-04-10T08:20:38.325Z"
     }
   }
 }
