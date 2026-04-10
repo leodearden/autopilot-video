@@ -5227,7 +5227,7 @@
         "description": "Add two missing test scenarios to `TestExecuteKwargsUpdate` in `tests/test_db_validate_helper.py`:\n\n1. **PK-not-found test**: Call `_execute_kwargs_update` with non-empty kwargs and a pk_val that was never inserted. Assert return value is 0 and no exception is raised. The docstring promises \"0 when the primary-key value is not found\" but this is never tested.\n\n2. **Unchanged column assertion**: In `test_executes_update_and_returns_rowcount`, after updating `label` and `description`, also assert that at least one other column (e.g. `location_label`) remains unchanged. Currently a regression that zeroed out non-updated columns would go undetected.\n\nExample for PK-not-found:\n```python\ndef test_returns_zero_when_pk_not_found(self, catalog_db):\n    rowcount = catalog_db._execute_kwargs_update(\n        \"activity_clusters\", \"cluster_id\", \"does_not_exist\",\n        frozenset({\"label\"}), \"cluster\", {\"label\": \"X\"},\n    )\n    assert rowcount == 0\n```\n\nMemory hints: search for \"_execute_kwargs_update helper\" and \"CatalogDB test patterns\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
@@ -5238,7 +5238,8 @@
           "modules": [
             "tests"
           ]
-        }
+        },
+        "updatedAt": "2026-04-10T07:01:48.451Z"
       },
       {
         "id": "277",
@@ -6910,7 +6911,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T07:01:48.250Z",
+      "lastModified": "2026-04-10T07:01:48.451Z",
       "taskCount": 361,
       "completedCount": 210,
       "tags": [
