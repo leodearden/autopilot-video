@@ -797,15 +797,17 @@ class TestRunsCRUD:
 class TestUpdateColumnValidation:
     """Cross-entity tests for update method column rejection."""
 
+    @pytest.mark.parametrize("bad_col_kind", ["generic", "specific"])
     @pytest.mark.parametrize("entity", list(_UPDATE_SPECS))
     def test_rejects_single_disallowed_column(
-        self, catalog_db: CatalogDB, entity: str
+        self, catalog_db: CatalogDB, entity: str, bad_col_kind: str
     ) -> None:
         """update_*() raises ValueError naming the bad column."""
         spec = _UPDATE_SPECS[entity]
+        bad_col = "evil_col" if bad_col_kind == "generic" else spec["invalid_col"]
         spec["setup"](catalog_db)
-        with pytest.raises(ValueError, match="evil_col"):
-            spec["update"](catalog_db, evil_col="bad")
+        with pytest.raises(ValueError, match=bad_col):
+            spec["update"](catalog_db, **{bad_col: "bad"})
         # Row must be untouched (atomicity): disallowed-only call issues no SQL.
         row = spec["get"](catalog_db)
         assert row is not None
