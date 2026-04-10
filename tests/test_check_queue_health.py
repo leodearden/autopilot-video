@@ -13,6 +13,7 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
+# isort: split
 from check_queue_health import (  # noqa: E402  (import after sys.path mutation)
     collect_queue_stats,
     filter_by_project,
@@ -20,7 +21,6 @@ from check_queue_health import (  # noqa: E402  (import after sys.path mutation)
     main,
     summarize_health,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helper: create a minimal write_queue DB in a tmp_path file
