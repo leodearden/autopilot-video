@@ -4677,11 +4677,11 @@
         "description": "The current `patch.object(catalog_db, 'conn', wraps=catalog_db.conn)` wraps the connection object itself, but child attributes like `mock_conn.execute` become plain MagicMocks that do NOT forward calls to the real `conn.execute`. This means `prune_events()` no longer actually runs the DELETE against the in-memory DB during this test.\n\nFix by patching only the execute method: `patch.object(catalog_db.conn, 'execute', wraps=catalog_db.conn.execute) as mock_exec` and inspecting `mock_exec.call_args_list` directly. This preserves real DB I/O while still capturing call args.\n\nAlso:\n1. Move all assertions inside the `with` block (conventional idiom, avoids readability confusion about mock lifecycle).\n2. Add a second parametrized edge case for `hours=1` to verify parameterization works for the common default boundary value.\n\nmemory_hints: search \"test_prune_events mock pattern\" and \"task 208 mock wrapping decision\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T18:21:16.974Z",
+        "updatedAt": "2026-04-10T07:01:46.227Z",
         "metadata": {
           "modules": [
             "tests/test_db_pipeline.py"
@@ -6908,7 +6908,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T07:01:46.194Z",
+      "lastModified": "2026-04-10T07:01:46.227Z",
       "taskCount": 361,
       "completedCount": 210,
       "tags": [
