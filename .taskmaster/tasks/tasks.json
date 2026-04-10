@@ -5129,7 +5129,7 @@
         "description": "In tests/test_db_pipeline.py: (1) After the `pytest.raises` block in `test_rejects_single_disallowed_column` (line 626–627), add: `row = spec['get'](catalog_db); assert row is not None; assert row[spec['valid_col']] == spec['default_val']`. (2) After the `pytest.raises` block in `test_rejects_multiple_disallowed_columns` (line 653–660), add: `row = spec['get'](catalog_db); assert row is not None` — mirroring the atomicity pattern in `test_rejects_mix_of_valid_and_invalid`.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
@@ -5141,7 +5141,7 @@
             "tests"
           ]
         },
-        "updatedAt": "2026-04-10T10:03:03.372Z"
+        "updatedAt": "2026-04-10T10:08:55.678Z"
       },
       {
         "id": "272",
@@ -7318,9 +7318,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T10:05:29.849Z",
+      "lastModified": "2026-04-10T10:08:55.678Z",
       "taskCount": 395,
-      "completedCount": 241,
+      "completedCount": 242,
       "tags": [
         "master"
       ]
