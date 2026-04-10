@@ -258,8 +258,7 @@ class TestEDLLoading:
         """When narrative has no edit plan, should raise RoutingError."""
         from autopilot.render.router import RoutingError, route_and_render
 
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
+        db = _make_db()
         db.get_edit_plan.return_value = None
         config = _make_config()
 
@@ -271,11 +270,7 @@ class TestEDLLoading:
         from autopilot.render.router import route_and_render
 
         edl = _make_edl()
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "narr_1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         config = _make_config()
 
         with (
@@ -291,7 +286,8 @@ class TestEDLLoading:
         mock_rs.assert_called_once()
         rendered_clip = mock_rs.call_args[0][0]
         assert rendered_clip["clip_id"] == "clip_1"
-        # Regression guard: source_path must be the resolved mock value
+        # source_path should flow through to the renderer (now carried by the default EDL
+        # clip; see TestSourcePathResolution for the resolution path)
         assert rendered_clip["source_path"] == "/fake/source.mp4"
 
 
@@ -308,11 +304,7 @@ class TestWorkDirCleanup:
         from autopilot.render.router import route_and_render
 
         edl = _make_edl()
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         config = _make_config()
 
         work = tmp_path / "render_work"
@@ -338,10 +330,7 @@ class TestWorkDirCleanup:
         from autopilot.render.router import RoutingError, route_and_render
 
         edl = _make_edl()
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db = _make_db(edl=edl)
         config = _make_config()
 
         work = tmp_path / "render_work"
