@@ -5,7 +5,7 @@
         {{ status_badge(narrative.status) }}
     </div>
     <p class="text-gray-400 text-sm mb-2">{{ narrative.description or '' }}</p>
-    {% if narrative.proposed_duration_seconds %}
+    {% if narrative.proposed_duration_seconds is not none %}
     <p class="text-gray-500 text-xs mb-3">Duration: {{ narrative.proposed_duration_seconds }}s</p>
     {% endif %}
     {% if narrative.status == 'proposed' %}
