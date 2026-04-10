@@ -1313,6 +1313,39 @@ class TestZeroDurationRoundtrip:
         assert get_resp.status_code == 200
         assert 'value="0"' in get_resp.text or 'value="0.0"' in get_resp.text
 
+    def test_update_none_duration_roundtrip(
+        self, _roundtrip_client: TestClient,
+    ) -> None:
+        """None duration survives a save→render roundtrip via JSON API + edit form.
+
+        Exercises the null→null identity path: PUT {proposed_duration_seconds: null}
+        against a narrative already seeded with proposed_duration_seconds=None, then
+        GET the edit form and verify the duration input renders with value="" (not
+        value="None"). Locks in the null-identity contract of api_update_narrative
+        and partials/narrative_edit_form.html.
+        """
+        # PUT null duration via JSON API (null→null identity path)
+        put_resp = _roundtrip_client.put(
+            "/api/narratives/n-none",
+            json={"proposed_duration_seconds": None},
+        )
+        assert put_resp.status_code == 200
+        assert put_resp.json().get("proposed_duration_seconds") is None
+
+        # GET edit form and verify None is rendered as empty, not "None"
+        get_resp = _roundtrip_client.get(
+            "/api/narratives/n-none?edit=1",
+            headers={"HX-Request": "true"},
+        )
+        assert get_resp.status_code == 200
+        assert 'value="None"' not in get_resp.text
+        match = re.search(
+            r'<input[^>]*name="proposed_duration_seconds"[^>]*>',
+            get_resp.text,
+        )
+        assert match is not None, "proposed_duration_seconds input not found"
+        assert 'value=""' in match.group(0)
+
 
 # ---------------------------------------------------------------------------
 # Null-title/description fixtures — task-223
