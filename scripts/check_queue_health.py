@@ -5,30 +5,29 @@ so that DLQ resurgences are caught quickly.
 
 Usage examples::
 
-    # Check the default dark-factory queue
-    python scripts/check_queue_health.py
+    # Use the env var to point at the queue DB
+    FUSED_MEMORY_QUEUE_DB=/path/to/write_queue.db python scripts/check_queue_health.py
 
     # Scope the report to a single project
-    python scripts/check_queue_health.py --project autopilot_video
+    python scripts/check_queue_health.py --db-path /path/to/write_queue.db --project autopilot_video
 
-    # Point at an alternate DB
+    # Point at an alternate DB explicitly
     python scripts/check_queue_health.py --db-path /path/to/write_queue.db
 
 Exit codes:
     0 — queue is healthy (no dead or retry rows)
     1 — queue is unhealthy
-    2 — diagnostic failed (missing DB, missing write_queue table, etc.)
+    2 — diagnostic failed (missing DB, missing write_queue table, no path configured, etc.)
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sqlite3
 import sys
 from pathlib import Path
 from typing import Any
-
-_DEFAULT_DB_PATH = "/home/leo/src/dark-factory/data/queue/write_queue.db"
 
 
 # ---------------------------------------------------------------------------
@@ -221,10 +220,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--db-path",
-        default=_DEFAULT_DB_PATH,
+        default=None,
         help=(
-            "Path to the write_queue SQLite database "
-            f"(default: {_DEFAULT_DB_PATH})"
+            "Path to the write_queue SQLite database. "
+            "Falls back to the FUSED_MEMORY_QUEUE_DB environment variable."
         ),
     )
     parser.add_argument(
@@ -234,11 +233,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    db_path = args.db_path or os.environ.get("FUSED_MEMORY_QUEUE_DB")
+    if not db_path:
+        print(
+            "error: --db-path is required (or set FUSED_MEMORY_QUEUE_DB env var)",
+            file=sys.stderr,
+        )
+        return 2
+
     try:
-        stats = collect_queue_stats(args.db_path)
+        stats = collect_queue_stats(db_path)
     except (sqlite3.OperationalError, FileNotFoundError) as exc:
         print(
-            f"error: failed to read queue DB at {args.db_path}: {exc}",
+            f"error: failed to read queue DB at {db_path}: {exc}",
             file=sys.stderr,
         )
         return 2
