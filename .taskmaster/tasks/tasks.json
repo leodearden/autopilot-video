@@ -4897,11 +4897,11 @@
         "description": "Two related gaps in autopilot/render/router.py and tests/test_render_router.py: (1) Line 61 of router.py uses `clip.get('clip_id', '')` (empty-string sentinel) while the rest of `route_and_render` uses `str | None`. Change to `clip.get('clip_id')` and add `if clip_id is None: return 'fast'` before the crop_modes lookup. (2) Add a unit test in TestClassifyClip covering `_classify_clip({'source_path': '/x.mp4', 'overlay': 'pip'}, {})` — a clip with no clip_id key — to document that the overlay branch fires before the clip_id lookup.\n\nmemory_hints:\n- search: \"_classify_clip clip_id empty string None convention\"\n- entity: \"render_router\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-04T23:16:47.924Z",
+        "updatedAt": "2026-04-10T07:01:46.299Z",
         "metadata": {
           "modules": [
             "autopilot/render/router.py",
@@ -4962,11 +4962,11 @@
         "description": "The test classes TestReviewScriptsBadge and TestReviewNarrativesBadge in tests/test_narrative_status_badge.py only perform static source-text checks (verifying the import line exists). They do not render the templates or verify the macro is actually invoked. Several improvements are needed:\n\n1. **Parametrize source checks** (lines 130-145): TestReviewScriptsBadge and TestReviewNarrativesBadge are structurally identical — same assertion, only the file path differs. Replace both classes with a single parametrized test: `@pytest.mark.parametrize('template', ['review/narratives.html', 'review/scripts.html'])` to avoid spawning a new class per template.\n\n2. **Add `status_badge(` call assertion** (lines 142-145): The current source check only asserts the import line exists, not that `status_badge(...)` is actually called. Add `assert 'status_badge(' in source` alongside the import assertion.\n\n3. **Add render-level tests for review templates**: Add end-to-end render tests similar to TestNarrativeCardBadge.test_renders_approved_badge — construct a minimal context, render the template, and assert expected CSS classes appear. This would catch regressions if the macro call is removed. Note: the old inline badge in scripts.html used gray fallback colors, but the macro uses purple — this behavioral change is currently unverified.\n\n**Files to modify:**\n- tests/test_narrative_status_badge.py",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "pending",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T23:18:50.653Z",
+        "updatedAt": "2026-04-10T07:01:46.336Z",
         "metadata": {
           "modules": [
             "tests/test_narrative_status_badge.py"
@@ -6908,7 +6908,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T07:01:46.266Z",
+      "lastModified": "2026-04-10T07:01:46.336Z",
       "taskCount": 361,
       "completedCount": 210,
       "tags": [
