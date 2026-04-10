@@ -413,3 +413,14 @@ class TestMain:
         parser.add_argument("--project", default=None)
         ns = parser.parse_args([])
         assert ns.db_path == "/home/leo/src/dark-factory/data/queue/write_queue.db"
+
+    def test_main_exits_with_code_2_on_missing_db_file(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        rc = main(["--db-path", "/nonexistent/path.db"])
+        captured = capsys.readouterr()
+
+        assert rc == 2
+        assert "/nonexistent/path.db" in captured.err
+        # Report banner must NOT appear on diagnostic failure
+        assert "HEALTH:" not in captured.out
