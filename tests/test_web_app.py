@@ -206,13 +206,29 @@ def _brace_match_from(source: str, start: int, label: str) -> str:
     assert 0 <= start < len(source), f"start {start} out of range for {label}"
     assert source[start] == "{", f"expected '{{' at position {start} in {label}"
     brace_depth = 0
-    for i in range(start, len(source)):
-        if source[i] == "{":
+    i = start
+    while i < len(source):
+        ch = source[i]
+        if ch in ("'", '"', "`"):
+            # Skip over the entire JS string literal, honoring backslash escapes.
+            quote_char = ch
+            i += 1
+            while i < len(source):
+                if source[i] == "\\":
+                    i += 2  # skip escape sequence
+                elif source[i] == quote_char:
+                    i += 1  # consume closing quote
+                    break
+                else:
+                    i += 1
+            continue
+        if ch == "{":
             brace_depth += 1
-        elif source[i] == "}":
+        elif ch == "}":
             brace_depth -= 1
             if brace_depth == 0:
                 return source[start : i + 1]
+        i += 1
     raise AssertionError(
         f"unbalanced braces in {label} (depth {brace_depth} after scan)"
     )
