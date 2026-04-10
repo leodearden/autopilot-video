@@ -67,8 +67,13 @@ class TestExecuteKwargsUpdate:
         assert result == 0
 
     def test_executes_update_and_returns_rowcount(self, catalog_db):
-        """Builds SET clause, executes UPDATE, returns row count; non-updated columns remain unchanged."""
-        catalog_db.insert_activity_cluster(cluster_id="ac1", label="Original", location_label="Park")
+        """Builds SET clause, executes UPDATE, returns row count.
+
+        Non-updated columns remain unchanged.
+        """
+        catalog_db.insert_activity_cluster(
+            cluster_id="ac1", label="Original", location_label="Park"
+        )
         rowcount = catalog_db._execute_kwargs_update(
             "activity_clusters", "cluster_id", "ac1",
             frozenset({"label", "description"}), "cluster",
