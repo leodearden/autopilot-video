@@ -463,6 +463,24 @@ class TestMediaRowBadge:
         )
         assert "bg-gray-700" in html
 
+    def test_no_duplicate_py_classes(self) -> None:
+        env = _make_env()
+        env.globals["format_duration"] = lambda s: f"{s}s"
+        html = env.get_template("partials/media_row.html").render(
+            item={"id": "m-1", "file_path": "/v/test.mp4", "status": "analyzed",
+                  "duration_seconds": 60, "resolution_w": 1920, "resolution_h": 1080,
+                  "created_at": "2024-01-01", "has_transcript": False,
+                  "has_detections": False, "has_faces": False, "has_embeddings": False,
+                  "has_audio_events": False, "has_captions": False},
+        )
+        # Find the analyzed badge span (identified by its color class)
+        m = re.search(r'<span[^>]+class="([^"]*bg-green-900[^"]*)"', html)
+        assert m is not None
+        classes = m.group(1).split()
+        py_classes = [c for c in classes if c.startswith("py-")]
+        assert len(py_classes) == 1
+        assert py_classes[0] == "py-0.5"
+
 
 class TestReviewUploadsBadge:
     """Verify review/uploads.html uses the generic status_badge macro."""
