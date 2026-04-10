@@ -4990,11 +4990,11 @@
         "description": "Two surgical edits to tests/test_youtube.py:\n1. Delete `test_youtube_config_fixture_is_real_dataclass` (lines 295-301) entirely — it is a tautological meta-test with no production coverage.\n2. In `test_uses_config_privacy_status_and_category` (lines 287-289), replace `config = MagicMock(); config.privacy_status = 'private'; config.default_category = '19'` with `config = YouTubeConfig(privacy_status='private', default_category='19')` so the test exercises real dataclass behaviour consistently with the rest of the suite.\n\nmemory_hints: search for \"YouTubeConfig dataclass\" and \"MagicMock replacement pattern test_youtube\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T23:03:03.609Z",
+        "updatedAt": "2026-04-10T07:09:11.267Z",
         "metadata": {
           "modules": [
             "tests/test_youtube.py"
@@ -6934,7 +6934,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T07:08:59.702Z",
+      "lastModified": "2026-04-10T07:09:11.267Z",
       "taskCount": 363,
       "completedCount": 213,
       "tags": [
