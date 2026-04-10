@@ -339,7 +339,7 @@ class TestExtractListenerBody:
             "source.addEventListener('broken_event', function(event) "
             "{ if (true) { doStuff(); }"
         )
-        with pytest.raises(AssertionError):
+        with pytest.raises(AssertionError, match='unbalanced'):
             _extract_listener_body(malformed_js, "broken_event")
 
 
