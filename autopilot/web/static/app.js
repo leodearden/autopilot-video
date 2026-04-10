@@ -48,7 +48,7 @@ function connectSSE(url) {
 /* Per-stage debounce timers — coalesces burst SSE updates for the same stage */
 var _refreshTimers = {};
 /* Debounce delay in ms — minimum interval between DOM refreshes for a given stage */
-var DEBOUNCE_MS = 150;
+const DEBOUNCE_MS = 150;
 
 /**
  * Refresh a single stage card via HTMX ajax.
