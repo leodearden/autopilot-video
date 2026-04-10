@@ -8,35 +8,6 @@ lock_depth: 4
 module_overrides:
   tests: 2
 
-# Iteration limits
-max_execute_iterations: 10
-max_verify_attempts: 5
-max_review_cycles: 2
-
-# Models per role
-models:
-  architect: "opus"
-  implementer: "opus"
-  debugger: "opus"
-  reviewer: "sonnet"
-  merger: "opus"
-
-# Budget per invocation (USD)
-budgets:
-  architect: 5.0
-  implementer: 10.0
-  debugger: 5.0
-  reviewer: 2.0
-  merger: 5.0
-
-# Turn limits per invocation
-max_turns:
-  architect: 50
-  implementer: 80
-  debugger: 50
-  reviewer: 30
-  merger: 50
-
 # Verification commands
 test_command: "pytest"
 lint_command: "ruff check"
@@ -47,16 +18,7 @@ fused_memory:
   url: "http://localhost:8002"
   project_id: "autopilot_video"
   config_path: "/home/leo/src/autopilot-video/fused-memory-config.yaml"
-  server_command:
-    - "uv"
-    - "run"
-    - "--project"
-    - "fused-memory"
-    - "python"
-    - "-m"
-    - "fused_memory.server.main"
-    - "--transport"
-    - "http"
+  server_command: []
 
 # Sandbox (disabled: bwrap uid map not permitted on this kernel)
 sandbox:
