@@ -64,6 +64,22 @@ function refreshStageCard(stage) {
 }
 
 /**
+ * Debounced wrapper around refreshStageCard.
+ * Coalesces burst SSE updates for a single stage into one DOM refresh,
+ * preventing unnecessary re-renders when multiple events arrive rapidly.
+ * @param {string} stage - The pipeline stage name.
+ */
+function debouncedRefreshStageCard(stage) {
+    if (_refreshTimers[stage]) {
+        clearTimeout(_refreshTimers[stage]);
+    }
+    _refreshTimers[stage] = setTimeout(function() {
+        delete _refreshTimers[stage];
+        refreshStageCard(stage);
+    }, DEBOUNCE_MS);
+}
+
+/**
  * Create an SSE event handler that parses JSON, optionally refreshes the stage card,
  * and optionally shows a toast notification.
  * @param {string} eventType - The SSE event type name (for error logging).
