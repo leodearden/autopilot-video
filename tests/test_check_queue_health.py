@@ -439,6 +439,23 @@ class TestFormatReport:
         total = counts.pop("total_rows")
         assert sum(counts.values()) == total
 
+    def test_summary_line_includes_oldest_dead_age_when_present(self) -> None:
+        stats = {("g", "dead"): 1}
+        summary = summarize_health(
+            stats, oldest_unhealthy_age_seconds=3 * 3600 + 42 * 60
+        )
+        report = format_report(stats, summary)
+
+        summary_line = report.splitlines()[1]
+        assert "oldest_dead_age=3h42m" in summary_line
+
+    def test_summary_line_omits_oldest_dead_age_when_none(self) -> None:
+        stats = {("g", "completed"): 1}
+        summary = summarize_health(stats)  # oldest_unhealthy_age_seconds=None
+        report = format_report(stats, summary)
+
+        assert "oldest_dead_age" not in report
+
 
 # ===========================================================================
 # TestMain
