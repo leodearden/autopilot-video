@@ -6953,6 +6953,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 366,
+        "title": "Add test for activity cluster with NULL/empty label in youtube tag building",
+        "description": "In tests/test_youtube.py, add a new test that inserts an activity cluster with label=None and another with label='' (empty string), references them from a narrative, and asserts that _build_upload_metadata skips them in the tags list. This covers the cluster.get('label') falsy-check at autopilot/upload/youtube.py which is currently untested.\n\nmemory_hints: search(\"youtube tag building cluster label\") ; get_entity(\"_build_upload_metadata\")",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -6965,7 +6976,7 @@
       ],
       "created": "2026-04-10T07:10:08.791Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-10T07:10:11.387Z"
+      "updated": "2026-04-10T07:10:13.174Z"
     }
   }
 }
