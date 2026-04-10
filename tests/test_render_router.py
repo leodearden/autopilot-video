@@ -159,6 +159,7 @@ def _make_config(
 def _make_edl(clips: list[dict] | None = None, **kwargs: object) -> dict:
     """Create a minimal EDL dict for testing."""
     edl: dict = {
+        "edl_version": "1",
         "clips": clips
         or [
             {
