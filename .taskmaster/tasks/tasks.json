@@ -5428,7 +5428,17 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/js_test_utils.py",
+            "tests/test_web_app.py",
+            "tests/test_notifications.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 288,
