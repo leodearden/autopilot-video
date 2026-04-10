@@ -6105,7 +6105,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_settings.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 324,
@@ -6116,7 +6124,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/web/static/app.js"
+          ],
+          "modules": [
+            "autopilot/web/static"
+          ]
+        }
       },
       {
         "id": 325,
