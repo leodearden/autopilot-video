@@ -495,6 +495,17 @@ class TestSSEIntegration:
         assert "setTimeout" in body, "setTimeout not found in debouncedRefreshStageCard body"
         assert "refreshStageCard" in body, "refreshStageCard not found in debouncedRefreshStageCard body"
 
+    def test_app_js_sse_handlers_use_debounced_refresh(self) -> None:
+        """makeStageHandler and setupDashboardSSE use debouncedRefreshStageCard, not bare refreshStageCard."""
+        content = _APP_JS.read_text()
+        for func_name in ("makeStageHandler", "setupDashboardSSE"):
+            body = _extract_js_function(content, func_name)
+            bare_calls = re.findall(r"(?<!debounced)refreshStageCard\s*\(", body)
+            assert bare_calls == [], (
+                f"{func_name} contains {len(bare_calls)} bare refreshStageCard call(s); "
+                "use debouncedRefreshStageCard instead"
+            )
+
 
 # ---------------------------------------------------------------------------
 # Step 13: GET / redirect test
