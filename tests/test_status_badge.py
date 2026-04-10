@@ -543,6 +543,36 @@ class TestReviewRendersBadge:
         )
         assert "bg-red-900" in html
 
+    def test_no_conflicting_classes(self) -> None:
+        env = _make_env()
+        html = env.get_template("review/renders.html").render(
+            page_title="Render Review",
+            narrative={
+                "narrative_id": "n-1", "title": "T",
+                "description": "D", "status": "approved",
+            },
+            edit_plan={"validation": {"passes": True}},
+            has_render=False, scenes=[],
+        )
+        # The validation badge has bg-green-900; find that span's classes
+        m = re.search(r'<span[^>]+class="([^"]*bg-green-900[^"]*)"', html)
+        assert m is not None
+        classes = m.group(1).split()
+        # exactly one px-* class and it must be px-3
+        px_classes = [c for c in classes if c.startswith("px-")]
+        assert len(px_classes) == 1
+        assert px_classes[0] == "px-3"
+        # no standalone 'rounded' (rounded-full is present, not rounded)
+        assert "rounded" not in classes
+        assert "rounded-full" in classes
+        # exactly one text-* size class and it must be text-sm (no text-xs)
+        text_size_classes = [c for c in classes if c.startswith("text-") and c not in ("text-green-300",)]
+        assert "text-sm" in text_size_classes
+        assert "text-xs" not in text_size_classes
+        # layout classes present
+        assert "inline-flex" in classes
+        assert "items-center" in classes
+
 
 class TestReviewHubBadge:
     """Verify review/hub.html uses the generic status_badge macro."""
