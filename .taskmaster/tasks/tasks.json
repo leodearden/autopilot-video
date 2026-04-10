@@ -7404,6 +7404,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 404,
+        "title": "Extract repeated dry-run guard in autopilot/cli.py into a decorator",
+        "description": "In autopilot/cli.py, six subcommands (`ingest`, `analyze`, `plan`, `edit`, `render`, `upload`) each open with the same three-line pattern:\n\n```\nif handle_dry_run(dry_run, \"<STAGES>\"):\n    return\n```\n\nThis is bounded duplication but a natural candidate for a `@dry_run_stage(\"INGEST\")` decorator (or a shared wrapper) that short-circuits the command when `--dry-run` is set, making the stage list declarative. The reviewer explicitly flagged this as \"not blocking — current form is readable.\" Treat as a low-priority refactor. Preserve existing behavior and keep `handle_dry_run` as the underlying helper. Source: post-merge review for task 310.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -7416,7 +7427,7 @@
       ],
       "created": "2026-04-10T10:12:49.620Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-10T10:12:54.175Z"
+      "updated": "2026-04-10T10:12:55.841Z"
     }
   }
 }
