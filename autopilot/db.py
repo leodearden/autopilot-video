@@ -92,6 +92,8 @@ class CatalogDB:
         """
         if not isinstance(table, str) or not table.isidentifier():
             raise ValueError(f"Invalid table name: {table!r}")
+        if not isinstance(pk_col, str) or not pk_col.isidentifier():
+            raise ValueError(f"Invalid pk_col: {pk_col!r}")
         if not kwargs:
             return 0
         self._validate_update_kwargs(allowed, kwargs, entity)
