@@ -5155,7 +5155,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_db_pipeline.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 273,
@@ -5166,7 +5174,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_db_pipeline.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 274,
