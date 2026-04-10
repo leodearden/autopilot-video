@@ -45,6 +45,11 @@ function connectSSE(url) {
     return source;
 }
 
+/* Per-stage debounce timers — coalesces burst SSE updates for the same stage */
+var _refreshTimers = {};
+/* Debounce delay in ms — minimum interval between DOM refreshes for a given stage */
+var DEBOUNCE_MS = 150;
+
 /**
  * Refresh a single stage card via HTMX ajax.
  * @param {string} stage - The pipeline stage name.
