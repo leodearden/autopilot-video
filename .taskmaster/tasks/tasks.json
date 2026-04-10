@@ -7221,6 +7221,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 388,
+        "title": "Harden subtitle-loop and cumulative-offset tests in test_render_router.py",
+        "description": "Post-merge hardening for the two subtitle tests introduced under task 334 in tests/test_render_router.py. Addresses 5 review suggestions from reviewer_comprehensive on commit c657bd7f0.\n\n1. test_subtitle_cumulative_offset_applied_per_clip (~line 1832-1916) — docstring claims \"the ffmpeg command still includes subtitles=, preserving end-to-end wiring coverage\" but there is no assertion enforcing it. Add `mock_run.call_args` capture and `assert 'subtitles=' in ' '.join(mock_run.call_args[0][0])`, matching the convention used in test_subtitle_loop_uses_resolved_clips.\n\n2. Move `import copy` out of the test body (line 1845) to the module-level imports, OR drop it entirely per item 3.\n\n3. Replace `copy.deepcopy(seg)` (line 1886) with `dict(seg)`. Segments hold only primitive float/str values, so deepcopy is overkill (~10x slower) and the \"deep-copy for snapshot safety\" comment is misleading — no nested mutable state exists. Taking this change makes item 2 moot.\n\n4. test_subtitle_loop_uses_resolved_clips (~line 1723-1830): the discriminating mechanism silently depends on the router taking the dict-spread branch at router.py:175 (i.e., parsed clips lack `source_path`). If a future fixture change preserves source_path, `resolved_clips.append(clip)` would append the original dict and mutations would be visible through resolved_clips too — the test would silently stop discriminating. Add a precondition assertion inside `_render_and_mutate_original` (or just before the mutation) like `assert 'source_path' not in original` so fixture drift fails loudly.\n\n5. `_render_and_mutate_original` (line 1778) currently signs as `clip: dict, *args, **kwargs`. If `render_simple`'s signature ever changes to make `clip` a kwarg, the side_effect could silently receive no clip arg and the test would degrade to asserting nothing while still passing. Either match the real `render_simple(clip, crop_path, segment_path, config)` signature exactly, or add `assert clip_id is not None, \"render_simple called without clip argument\"` after the `.get('clip_id')` line.\n\nAll changes are confined to tests/test_render_router.py. No production code changes expected. Verify by running `pytest tests/test_render_router.py::TestRouteAndRender::test_subtitle_loop_uses_resolved_clips tests/test_render_router.py::TestRouteAndRender::test_subtitle_cumulative_offset_applied_per_clip`.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -7233,7 +7244,7 @@
       ],
       "created": "2026-04-10T08:17:32.786Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-10T08:17:32.789Z"
+      "updated": "2026-04-10T08:19:13.062Z"
     }
   }
 }
