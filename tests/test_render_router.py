@@ -1721,7 +1721,21 @@ class TestResolvedClipsList:
         db.get_media.assert_called_once_with("c2")
 
     def test_subtitle_loop_uses_resolved_clips(self) -> None:
-        """Subtitle pass should work correctly when clips need source_path resolution."""
+        """Subtitle loop must iterate resolved_clips, not the raw parsed clips list.
+
+        Discriminating mechanism: references to the original parsed EDL clip dicts
+        are captured via _make_capturing_loads(), then mutated (clip_id → MUTATED_*)
+        inside the render_simple side_effect, right after each clip's resolved copy
+        has been appended to resolved_clips.
+
+        Because resolved_clips holds NEW dict instances (produced by the
+        ``{**clip, "source_path": ...}`` dict-spread in the router), mutations to
+        the original parsed dicts are invisible to resolved_clips but visible to the
+        raw clips list.  If the subtitle loop iterates resolved_clips (correct),
+        db.get_transcript is called with the original ids c1/c2.  If it iterates
+        raw clips (the bug), it would see MUTATED_c1/MUTATED_c2 instead — and the
+        last two assertions would fail with a clear message.
+        """
         from autopilot.render.router import route_and_render
 
         clips = [
@@ -1757,22 +1771,149 @@ class TestResolvedClipsList:
         db.get_transcript.side_effect = _get_transcript
         config = _make_config()
 
+        # Capture references to the parsed EDL clip dicts so we can mutate them
+        # from inside the render_simple side_effect.
+        _capturing_loads, parsed_clips = _make_capturing_loads()
+
+        def _render_and_mutate_original(clip: dict, *args: object, **kwargs: object) -> Path:
+            """Return a dummy path, then mutate the original parsed dict for this clip_id.
+
+            At call time, resolved_clips already contains the NEW dict for this clip
+            (appended by the router before calling render_simple), so the subtitle loop
+            will see the un-mutated id when iterating resolved_clips.  The raw clips
+            list (which the router also keeps) still references the original dicts —
+            any code reading from there will see MUTATED_* instead.
+            """
+            clip_id = clip.get("clip_id")
+            for original in parsed_clips:
+                if original.get("clip_id") == clip_id:
+                    original["clip_id"] = f"MUTATED_{clip_id}"
+                    break
+            return Path("/tmp/seg.mp4")
+
         with (
-            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("autopilot.render.router.json.loads", _capturing_loads),
+            patch(
+                "autopilot.render.router.render_simple",
+                side_effect=_render_and_mutate_original,
+            ),
             patch("subprocess.run") as mock_run,
         ):
-            mock_rs.return_value = Path("/tmp/seg.mp4")
             route_and_render("n1", db, config, Path("/tmp/test_output"))
 
-        # Verify subtitles filter appears in the ffmpeg command
+        # Sanity: subtitle pipeline ran end-to-end
         concat_cmd = mock_run.call_args[0][0]
         cmd_str = " ".join(concat_cmd)
         assert "subtitles=" in cmd_str
 
-        # Both clips' transcripts should have been fetched
+        # Subtitle loop must have called get_transcript with ORIGINAL ids
         transcript_ids = [c[0][0] for c in db.get_transcript.call_args_list]
-        assert "c1" in transcript_ids
-        assert "c2" in transcript_ids
+        assert "c1" in transcript_ids, (
+            "db.get_transcript not called with 'c1' — subtitle loop may be "
+            "iterating resolved_clips incorrectly"
+        )
+        assert "c2" in transcript_ids, (
+            "db.get_transcript not called with 'c2' — subtitle loop may be "
+            "iterating resolved_clips incorrectly"
+        )
+
+        # If the subtitle loop iterated raw clips instead of resolved_clips it
+        # would see the mutated ids here.  Either failure means the loop reads
+        # from the wrong list.
+        assert "MUTATED_c1" not in transcript_ids, (
+            "db.get_transcript called with 'MUTATED_c1' — subtitle loop is "
+            "iterating the raw clips list instead of resolved_clips"
+        )
+        assert "MUTATED_c2" not in transcript_ids, (
+            "db.get_transcript called with 'MUTATED_c2' — subtitle loop is "
+            "iterating the raw clips list instead of resolved_clips"
+        )
+
+    def test_subtitle_cumulative_offset_applied_per_clip(self) -> None:
+        """cumulative_offset in the subtitle loop must shift each clip's segments
+        by the sum of all prior clips' durations.
+
+        With two 5-second clips (in_timecode=00:00:00.000, out_timecode=00:00:05.000),
+        the first clip's segments should appear at their original timestamps (no
+        offset), and the second clip's segments should be shifted by +5.0 s.
+
+        Segments are captured by patching _generate_srt with a side_effect so we
+        observe the in-memory list directly, without file-system coupling.  Because
+        the side_effect does not raise OSError, srt_path remains set and the ffmpeg
+        command still includes 'subtitles=', preserving end-to-end wiring coverage.
+        """
+        import copy
+
+        from autopilot.render.router import route_and_render
+
+        clips = [
+            {
+                "clip_id": "c1",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:05.000",
+                "track": 1,
+            },
+            {
+                "clip_id": "c2",
+                "in_timecode": "00:00:00.000",
+                "out_timecode": "00:00:05.000",
+                "track": 1,
+            },
+        ]
+        edl = _make_edl(clips=clips)
+        seg1 = [{"start": 0.0, "end": 2.0, "text": "first"}]
+        seg2 = [{"start": 0.0, "end": 2.0, "text": "second"}]
+
+        db = MagicMock()
+        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
+        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db.get_media.side_effect = lambda mid: {"file_path": f"/resolved/{mid}.mp4"}
+
+        def _get_transcript(media_id: str):
+            if media_id == "c1":
+                return {"segments_json": json.dumps(seg1)}
+            elif media_id == "c2":
+                return {"segments_json": json.dumps(seg2)}
+            return None
+
+        db.get_transcript.side_effect = _get_transcript
+        config = _make_config()
+
+        # Collect segment dicts passed to _generate_srt; deep-copy for snapshot safety.
+        captured_srt_segments: list[dict] = []
+
+        def _capture_srt(segments: list[dict], srt_path: object) -> None:
+            captured_srt_segments.extend(copy.deepcopy(seg) for seg in segments)
+
+        with (
+            patch("autopilot.render.router.render_simple") as mock_rs,
+            patch("autopilot.render.router._generate_srt", side_effect=_capture_srt),
+            patch("subprocess.run"),
+        ):
+            mock_rs.return_value = Path("/tmp/seg.mp4")
+            route_and_render("n1", db, config, Path("/tmp/test_output"))
+
+        assert len(captured_srt_segments) == 2, (
+            f"Expected 2 subtitle segments, got {len(captured_srt_segments)}"
+        )
+
+        # First clip: cumulative_offset starts at 0.0 → no shift
+        assert captured_srt_segments[0]["start"] == pytest.approx(0.0), (
+            "First segment start should be 0.0 (no cumulative offset yet)"
+        )
+        assert captured_srt_segments[0]["end"] == pytest.approx(2.0), (
+            "First segment end should be 2.0 (no cumulative offset yet)"
+        )
+        assert captured_srt_segments[0]["text"] == "first"
+
+        # Second clip: cumulative_offset = 5.0 (c1 out_sec − in_sec = 5.0 − 0.0)
+        assert captured_srt_segments[1]["start"] == pytest.approx(5.0), (
+            "Second segment start should be 5.0 (shifted by first clip's 5 s duration)"
+        )
+        assert captured_srt_segments[1]["end"] == pytest.approx(7.0), (
+            "Second segment end should be 7.0 (shifted by first clip's 5 s duration)"
+        )
+        assert captured_srt_segments[1]["text"] == "second"
 
     def test_original_clips_unmodified_after_full_pipeline(self) -> None:
         """After render + subtitle pipeline, deserialized clips must lack source_path."""
