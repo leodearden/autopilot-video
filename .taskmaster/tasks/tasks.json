@@ -5507,7 +5507,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_cli_conventions.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 292,
