@@ -601,10 +601,6 @@ class TestSSEHandlerFactory:
             "showToast call not found in makeStageHandler else branch (missing-stage path). "
             "Error-level SSE events with no stage field should still show a fallback toast."
         )
-        assert "'unknown'" in else_body, (
-            "'unknown' fallback string not found in makeStageHandler else branch. "
-            "When stage is missing, '{stage}' must be replaced by 'unknown' in the toast."
-        )
         assert ".replace('{stage}', 'unknown')" in else_body, (
             "makeStageHandler else branch must call .replace('{stage}', 'unknown') to substitute "
             "the placeholder — a bare 'unknown' substring does not prove the replacement contract."
