@@ -5876,7 +5876,7 @@
         "description": "In autopilot/cli.py, rename `_handle_dry_run` → `handle_dry_run` (removing the underscore prefix) to make the design intent explicit — it is a tested, stable API. Update the module-level import in tests/test_cli.py line 13 accordingly (`from autopilot.cli import handle_dry_run, main`), and update all call sites within cli.py. Alternatively, if the function should remain private, revert the module-level import to a local import inside each TestHandleDryRun test method with a `# noqa: PLC0415` annotation.\n\nMemory hints: search for \"task 227 _handle_dry_run import coupling\", get_entity \"_handle_dry_run\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
@@ -5889,7 +5889,8 @@
             "autopilot",
             "tests"
           ]
-        }
+        },
+        "updatedAt": "2026-04-10T10:03:21.652Z"
       },
       {
         "id": "311",
@@ -7305,7 +7306,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T10:03:21.518Z",
+      "lastModified": "2026-04-10T10:03:21.652Z",
       "taskCount": 394,
       "completedCount": 241,
       "tags": [
