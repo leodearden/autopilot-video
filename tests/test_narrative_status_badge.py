@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 import jinja2
+import pytest
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "autopilot" / "web" / "templates"
 
@@ -17,6 +18,13 @@ _ENV = jinja2.Environment(
 _IMPORT_RE = re.compile(
     r"\{%-?\s*from\s+['\"]macros/narrative_status_badge\.html['\"]\s+import\s+status_badge\s*-?%\}"
 )
+
+
+@pytest.mark.parametrize("template", ["review/narratives.html", "review/scripts.html"])
+def test_review_template_source_uses_macro_import_and_call(template: str) -> None:
+    source = (TEMPLATES_DIR / template).read_text()
+    assert _IMPORT_RE.search(source), f"{template} missing status_badge import"
+    assert "status_badge(" in source, f"{template} missing status_badge() call"
 
 
 def _render_badge(status: str, extra_classes: str = "") -> str:
