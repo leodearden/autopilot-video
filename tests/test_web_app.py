@@ -206,13 +206,29 @@ def _brace_match_from(source: str, start: int, label: str) -> str:
     assert 0 <= start < len(source), f"start {start} out of range for {label}"
     assert source[start] == "{", f"expected '{{' at position {start} in {label}"
     brace_depth = 0
-    for i in range(start, len(source)):
-        if source[i] == "{":
+    i = start
+    while i < len(source):
+        ch = source[i]
+        if ch in ("'", '"', "`"):
+            # Skip over the entire JS string literal, honoring backslash escapes.
+            quote_char = ch
+            i += 1
+            while i < len(source):
+                if source[i] == "\\":
+                    i += 2  # skip escape sequence
+                elif source[i] == quote_char:
+                    i += 1  # consume closing quote
+                    break
+                else:
+                    i += 1
+            continue
+        if ch == "{":
             brace_depth += 1
-        elif source[i] == "}":
+        elif ch == "}":
             brace_depth -= 1
             if brace_depth == 0:
                 return source[start : i + 1]
+        i += 1
     raise AssertionError(
         f"unbalanced braces in {label} (depth {brace_depth} after scan)"
     )
@@ -228,15 +244,22 @@ def _extract_listener_body(js_source: str, event_type: str) -> str:
     .. note::
 
        This helper only works for **inline function** listeners, e.g.
-       ``source.addEventListener('event', function(e) { ... })``.  It does
-       **not** work for factory-pattern listeners like ``stage_error`` where
-       the callback is a function call (``makeStageHandler(...)``).
+       ``source.addEventListener('event', function(e) { ... })``.  For
+       factory-pattern listeners (e.g. ``makeStageHandler(...)``), a clear
+       :class:`AssertionError` is raised — it will **not** silently return
+       a subsequent listener's body.
     """
     marker = f"addEventListener('{event_type}'"
     listener_start = js_source.find(marker)
     assert listener_start != -1, f"{event_type} event listener not found in app.js"
 
-    func_start = js_source.find("function", listener_start)
+    # Bound the search for 'function' to this listener's extent only — stop
+    # before the next addEventListener( so a factory-pattern callback does not
+    # silently fall through to a subsequent inline listener.
+    next_listener = js_source.find("addEventListener(", listener_start + 1)
+    search_end = next_listener if next_listener != -1 else len(js_source)
+
+    func_start = js_source.find("function", listener_start, search_end)
     assert func_start != -1, f"function keyword not found in {event_type} listener"
 
     body_start = js_source.find("{", func_start)
@@ -342,6 +365,34 @@ class TestExtractListenerBody:
         with pytest.raises(AssertionError, match='unbalanced'):
             _extract_listener_body(malformed_js, "broken_event")
 
+    def test_extract_listener_body_ignores_function_keyword_from_next_listener(self) -> None:
+        """factory-pattern listener must not silently return the next listener's body.
+
+        When the target listener uses a factory callback (no 'function' keyword),
+        the unbounded find('function', ...) would walk into a subsequent inline
+        listener and return the wrong body.  After the fix, an AssertionError
+        referencing both 'function' and the event type must be raised instead.
+        """
+        js = (
+            "source.addEventListener('first_event', makeStageHandler('first_event')); "
+            "source.addEventListener('second_event', function(e) { doThing(); })"
+        )
+        with pytest.raises(AssertionError, match=r"function.*first_event|first_event.*function"):
+            _extract_listener_body(js, "first_event")
+
+    def test_extract_listener_body_finds_inline_listener_after_factory_listener(self) -> None:
+        """Inline listener following a factory-pattern listener still extracts correctly.
+
+        After bounding the search, an inline listener that comes *after* a factory
+        listener must still be extractable by its own event type.
+        """
+        js = (
+            "source.addEventListener('factory_event', makeStageHandler('factory_event')); "
+            "source.addEventListener('target_event', function(e) { targetThing(); })"
+        )
+        body = _extract_listener_body(js, "target_event")
+        assert body == "{ targetThing(); }"
+
 
 class TestBraceMatchFrom:
     """Tests for the _brace_match_from helper."""
@@ -392,6 +443,43 @@ class TestBraceMatchFrom:
         # empty source
         with pytest.raises(AssertionError, match="out of range"):
             _brace_match_from("", 0, "empty")
+
+    def test_skips_braces_inside_single_quoted_string(self) -> None:
+        """A closing '}' inside a single-quoted JS string does not end the block."""
+        source = "{ x = '}'; }"
+        result = _brace_match_from(source, 0, "sq")
+        assert result == source
+
+    def test_skips_braces_inside_double_quoted_string(self) -> None:
+        """A closing '}' inside a double-quoted JS string does not end the block."""
+        source = '{ x = "}"; }'
+        result = _brace_match_from(source, 0, "dq")
+        assert result == source
+
+    def test_skips_braces_inside_template_literal(self) -> None:
+        """A closing '}' inside a backtick template literal does not end the block."""
+        source = "{ x = `}`; }"
+        result = _brace_match_from(source, 0, "tl")
+        assert result == source
+
+    def test_skips_opening_braces_inside_strings(self) -> None:
+        """An opening '{' inside a string does not increment depth."""
+        # Without string-literal skipping, the '{' at position 7 would push
+        # depth to 2, and the lone '}' at the end would leave depth at 1,
+        # raising an unbalanced error.
+        source = "{ x = '{'; }"
+        result = _brace_match_from(source, 0, "open-in-str")
+        assert result == source
+
+    def test_respects_backslash_escape_in_string_literals(self) -> None:
+        """An escaped quote (\\') does not close the string; the following '}' stays inside."""
+        # JS: { x = '\'}'; }
+        # \\' is an escaped single-quote (keeps the string open), so the '}' at
+        # position 9 is still inside the JS string.  The real closing brace is
+        # the last character.
+        source = "{ x = '\\'}'; }"
+        result = _brace_match_from(source, 0, "escape")
+        assert result == source
 
 
 class TestFixtureSanity:
