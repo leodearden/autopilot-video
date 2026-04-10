@@ -51,6 +51,13 @@ class TestStatusBadgeMacro:
         assert "bg-blue-900" in html
         assert "text-blue-300" in html
 
+    def test_planned_indigo(self) -> None:
+        html = _render_badge("planned")
+        assert "bg-indigo-900" in html
+        assert "text-indigo-300" in html
+        assert "bg-purple-900" not in html
+        assert "text-purple-300" not in html
+
     def test_unknown_status_purple(self) -> None:
         html = _render_badge("draft")
         assert "bg-purple-900" in html
@@ -86,6 +93,16 @@ class TestExtraClasses:
     def test_no_extra_classes_by_default(self) -> None:
         html = _render_badge("proposed")
         assert "ml-2" not in html
+
+
+class TestSourceUsesGenericMacro:
+    """Verify narrative_status_badge.html delegates to the generic macro."""
+
+    def test_source_uses_generic_macro(self) -> None:
+        source_path = TEMPLATES_DIR / "macros" / "narrative_status_badge.html"
+        source = source_path.read_text()
+        expected = "{% from 'macros/status_badge.html' import status_badge as _generic_badge %}"
+        assert expected in source
 
 
 class TestNarrativeCardBadge:

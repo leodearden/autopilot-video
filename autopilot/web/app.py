@@ -42,6 +42,7 @@ def create_app(db_path: str) -> FastAPI:
         media_router,
         pipeline_router,
         review_router,
+        settings_router,
         sse_router,
     )
 
@@ -49,6 +50,7 @@ def create_app(db_path: str) -> FastAPI:
     app.include_router(gates_router)
     app.include_router(pipeline_router)
     app.include_router(review_router)
+    app.include_router(settings_router)
     app.include_router(sse_router)
     app.include_router(media_router)
 

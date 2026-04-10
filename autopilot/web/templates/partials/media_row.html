@@ -1,3 +1,4 @@
+{% from 'macros/status_badge.html' import status_badge %}
 <tr class="hover:bg-surface-800/50">
     <td class="px-4 py-3 font-medium text-gray-100">
         <a href="/media/{{ item.id }}" class="hover:text-blue-400 hover:underline transition-colors">
@@ -18,12 +19,8 @@
         {{ item.created_at[:10] if item.created_at else '&mdash;' }}
     </td>
     <td class="px-4 py-3">
-        <span class="px-2 py-0.5 rounded text-xs font-medium
-            {% if item.status == 'analyzed' %}bg-green-900 text-green-300
-            {% elif item.status == 'ingested' %}bg-blue-900 text-blue-300
-            {% else %}bg-gray-700 text-gray-300{% endif %}">
-            {{ item.status }}
-        </span>
+        {% set media_colors = {'analyzed': 'bg-green-900 text-green-300', 'ingested': 'bg-blue-900 text-blue-300'} %}
+        {{ status_badge(item.status, media_colors, extra_classes='py-0.5') }}
     </td>
     <td class="px-4 py-3">
         <div class="flex gap-1">

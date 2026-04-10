@@ -33,6 +33,12 @@ function connectSSE(url) {
     const source = new EventSource(url);
 
     source.onerror = function() {
+        /*
+         * NOTE: Events emitted by the server during reconnection are lost.
+         * EventSource will auto-reconnect, but there is no replay mechanism.
+         * A robust fix would be to track Last-Event-ID and have the server
+         * replay missed events on reconnect.
+         */
         console.warn('SSE connection lost, will retry...');
     };
 
@@ -112,6 +118,8 @@ function updateNotificationBadge(count) {
     }
 }
 
+var _permissionRequested = false;
+
 /**
  * Set up SSE event listeners for notification bell updates.
  * Shows the badge when gate_waiting events arrive and hides it
@@ -124,16 +132,28 @@ function setupNotificationSSE(source) {
     source.addEventListener('notification', function(event) {
         try {
             var data = JSON.parse(event.data);
+            if (!data || typeof data !== 'object') {
+                console.warn('SSE notification: unexpected payload', event.data);
+                return;
+            }
+            var msg = (data && typeof data.message === 'string') ? data.message : '(no message)';
             unreadCount++;
             updateNotificationBadge(unreadCount);
-            showToast(data.message, data.type || 'info');
+            showToast(msg, data.type || 'info');
 
             /* Browser Notification API (best-effort) */
             if (typeof Notification !== 'undefined') {
                 if (Notification.permission === 'granted') {
-                    new Notification('Autopilot Video', { body: data.message });
+                    new Notification('Autopilot Video', { body: msg });
                 } else if (Notification.permission !== 'denied') {
-                    Notification.requestPermission();
+                    if (!_permissionRequested) {
+                        _permissionRequested = true;
+                        Notification.requestPermission().then(function(perm) {
+                            if (perm === 'granted') {
+                                new Notification('Autopilot Video', { body: msg });
+                            }
+                        });
+                    }
                 }
             }
         } catch (e) {

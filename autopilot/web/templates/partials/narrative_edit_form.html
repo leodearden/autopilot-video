@@ -1,14 +1,14 @@
 {% from 'macros/narrative_status_badge.html' import status_badge %}
 <div id="narrative-{{ narrative.narrative_id }}" class="bg-surface-800 rounded-lg p-4 border border-gray-700">
     <div class="flex justify-between items-start mb-2">
-        <input type="text" name="title" value="{{ narrative.title or '' }}"
+        <input type="text" name="title" value="{{ narrative.title if narrative.title is not none else '' }}"
                class="text-lg font-semibold text-white bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none w-full"
                placeholder="Title">
         {{ status_badge(narrative.status, 'ml-2 whitespace-nowrap') }}
     </div>
     <textarea name="description"
               class="text-gray-400 text-sm mb-2 bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none w-full resize-none"
-              rows="2" placeholder="Description">{{ narrative.description or '' }}</textarea>
+              rows="2" placeholder="Description">{{ narrative.description if narrative.description is not none else '' }}</textarea>
     <div class="mb-3">
         <label class="text-gray-500 text-xs">Duration (seconds):</label>
         <input type="number" name="proposed_duration_seconds"

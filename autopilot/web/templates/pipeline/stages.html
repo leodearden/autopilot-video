@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from 'macros/status_badge.html' import status_badge %}
 
 {% block title %}{{ page_title }}{% endblock %}
 
@@ -18,14 +19,8 @@
             <div class="flex items-center justify-between mb-3">
                 <div class="flex items-center space-x-3">
                     <h2 class="text-xl font-semibold text-white capitalize">{{ stage.name }}</h2>
-                    <span class="text-xs px-2 py-1 rounded
-                        {% if stage.status == 'running' %}bg-blue-900 text-blue-300
-                        {% elif stage.status == 'done' %}bg-green-900 text-green-300
-                        {% elif stage.status == 'error' %}bg-red-900 text-red-300
-                        {% elif stage.status == 'waiting' %}bg-amber-900 text-amber-300
-                        {% else %}bg-gray-700 text-gray-300{% endif %}">
-                        {{ stage.status }}
-                    </span>
+                    {% set stage_colors = {'running': 'bg-blue-900 text-blue-300', 'done': 'bg-green-900 text-green-300', 'error': 'bg-red-900 text-red-300', 'waiting': 'bg-amber-900 text-amber-300'} %}
+                    {{ status_badge(stage.status, stage_colors) }}
                     <span class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300">gate: {{ stage.gate_mode }}</span>
                 </div>
                 <a href="/pipeline/jobs?stage={{ stage.name }}"
@@ -48,15 +43,9 @@
 
             <!-- Status breakdown -->
             <div class="flex flex-wrap gap-3 text-sm">
+                {% set job_count_colors = {'done': 'bg-green-900 text-green-300', 'running': 'bg-blue-900 text-blue-300', 'error': 'bg-red-900 text-red-300', 'pending': 'bg-gray-700 text-gray-300'} %}
                 {% for status, count in stage.counts.items() %}
-                <span class="inline-flex items-center px-2 py-1 rounded text-xs
-                    {% if status == 'done' %}bg-green-900 text-green-300
-                    {% elif status == 'running' %}bg-blue-900 text-blue-300
-                    {% elif status == 'error' %}bg-red-900 text-red-300
-                    {% elif status == 'pending' %}bg-gray-700 text-gray-300
-                    {% else %}bg-amber-900 text-amber-300{% endif %}">
-                    {{ status }}: {{ count }}
-                </span>
+                {{ status_badge(status, job_count_colors, extra_classes='inline-flex items-center', label=status ~ ': ' ~ count, default='bg-amber-900 text-amber-300') }}
                 {% endfor %}
                 <span class="text-gray-400">{{ stage.done }}/{{ stage.total }} complete</span>
             </div>
