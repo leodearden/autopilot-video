@@ -6396,11 +6396,11 @@
         "description": "In tests/test_review.py, extract a module-level helper `_build_zero_duration_app(db_path: str) -> FastAPI` that contains the shared seeding logic (CatalogDB setup, init_default_gates(), and the two _seed_narrative calls for n-zero and n-none). Refactor `zero_duration_app` (class-scoped, uses `tmp_path_factory`) and `_roundtrip_app` (function-scoped, uses `tmp_path`) to each call this helper with their respective `db_path`. The scope difference and tmp_path mechanism become the only meaningful difference between the two fixtures.\n\nMemory hints: search \"task 224 zero-duration fixture scope optimization\" for parent task context; search \"task 109 conftest fixture consolidation\" for related fixture work.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-10T08:13:35.918Z",
+        "updatedAt": "2026-04-10T10:02:20.674Z",
         "metadata": {
           "modules": [
             "tests/test_review.py"
@@ -7292,9 +7292,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T10:02:15.203Z",
+      "lastModified": "2026-04-10T10:02:20.674Z",
       "taskCount": 393,
-      "completedCount": 238,
+      "completedCount": 239,
       "tags": [
         "master"
       ]
