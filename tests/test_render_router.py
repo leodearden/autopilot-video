@@ -2026,3 +2026,61 @@ class TestMakeCapturingLoads:
         wrapper, captured = _make_capturing_loads()
         wrapper("42")
         assert captured == []
+
+
+# ---------------------------------------------------------------------------
+# _make_db factory unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestMakeDbHelper:
+    """Unit tests for the _make_db() factory helper."""
+
+    def test_make_db_returns_magicmock(self) -> None:
+        """_make_db() should return a MagicMock instance."""
+        db = _make_db()
+        assert isinstance(db, MagicMock)
+
+    def test_make_db_default_get_media(self) -> None:
+        """db.get_media(anything) should return {"file_path": "/fake/source.mp4"} by default."""
+        db = _make_db()
+        assert db.get_media("anything") == {"file_path": "/fake/source.mp4"}
+
+    def test_make_db_default_narrative(self) -> None:
+        """db.get_narrative(anything) should return default narrative dict."""
+        db = _make_db()
+        result = db.get_narrative("n1")
+        assert result == {"narrative_id": "n1", "title": "Test"}
+
+    def test_make_db_default_transcript_is_none(self) -> None:
+        """db.get_transcript(anything) should return None by default."""
+        db = _make_db()
+        assert db.get_transcript("anything") is None
+
+    def test_make_db_with_edl_sets_edit_plan(self) -> None:
+        """_make_db(edl=...) should wire get_edit_plan to return that edl as JSON."""
+        edl = _make_edl()
+        db = _make_db(edl=edl)
+        result = db.get_edit_plan("n1")
+        assert "edl_json" in result
+        parsed = json.loads(result["edl_json"])
+        assert parsed == edl
+
+    def test_make_db_custom_media_file_path(self) -> None:
+        """_make_db(media_file_path=...) should wire get_media to use custom path."""
+        db = _make_db(media_file_path="/custom/x.mp4")
+        assert db.get_media("c1") == {"file_path": "/custom/x.mp4"}
+
+    def test_make_db_custom_narrative_title(self) -> None:
+        """_make_db(narrative_title=...) should wire get_narrative with custom title."""
+        db = _make_db(narrative_title="My Video")
+        assert db.get_narrative("n1")["title"] == "My Video"
+
+    def test_make_db_with_transcript_segments(self) -> None:
+        """_make_db(transcript_segments=...) should wire get_transcript to return segments JSON."""
+        segments = [{"start": 0, "end": 1, "text": "hi"}]
+        db = _make_db(transcript_segments=segments)
+        result = db.get_transcript("c1")
+        assert "segments_json" in result
+        parsed = json.loads(result["segments_json"])
+        assert parsed == segments
