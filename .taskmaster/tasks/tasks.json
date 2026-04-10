@@ -7456,10 +7456,11 @@
         "description": "The tasks.json migration switched task IDs from int to str, which changes sort order from numeric to lexicographic (e.g. ['1','10','100','11','2'] instead of [1,2,10,11,100]). Audit any code that sorts or ranges over task ids — grep for sorted(...id...), min/max on ids, pagination by id — and fix ordering where it matters by sorting on int(id) explicitly or introducing a numeric sort_key field. Also document the string-id convention in CLAUDE.md so future agents don't reintroduce int ids.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-10T11:08:06.600Z"
       },
       {
         "id": "408",
@@ -7519,7 +7520,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T11:08:02.213Z",
+      "lastModified": "2026-04-10T11:08:06.600Z",
       "taskCount": 412,
       "completedCount": 252,
       "tags": [
