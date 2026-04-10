@@ -6408,7 +6408,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_review.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 340,
@@ -6436,7 +6444,17 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/db.py",
+            "tests/test_db_pipeline.py"
+          ],
+          "modules": [
+            "autopilot",
+            "tests"
+          ]
+        }
       },
       {
         "id": 342,
