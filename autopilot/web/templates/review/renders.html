@@ -36,7 +36,7 @@
                     {% set validation_colors = {'pass': 'bg-green-900 text-green-300', 'fail': 'bg-red-900 text-red-300'} %}
                     {% for key, value in edit_plan.validation.items() %}
                     {% set vs = 'pass' if (key == 'passes' and value) else ('fail' if key == 'passes' else 'other') %}
-                    {{ status_badge(vs, validation_colors, extra_classes='inline-flex items-center px-3 rounded-full text-sm', label=key ~ ': ' ~ value) }}
+                    {{ status_badge(vs, validation_colors, px='px-3', rounded='rounded-full', text_size='text-sm', extra_classes='inline-flex items-center', label=key ~ ': ' ~ value) }}
                     {% endfor %}
                 </div>
             </div>
