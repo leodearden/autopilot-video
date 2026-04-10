@@ -91,7 +91,9 @@ def test_update_spec_is_typeddict_with_expected_fields() -> None:
 
     # (c) the keys of get_type_hints equal the expected set
     hints = typing.get_type_hints(_UpdateSpec)
-    expected_keys = {"setup", "update", "get", "valid_col", "valid_val", "default_val", "invalid_col"}
+    expected_keys = {
+        "setup", "update", "get", "valid_col", "valid_val", "default_val", "invalid_col"
+    }
     assert set(hints.keys()) == expected_keys, f"Keys mismatch: {set(hints.keys())}"
 
     # (d) str-typed fields are exactly str
@@ -186,7 +188,8 @@ def test_update_specs_have_distinct_invalid_cols() -> None:
 
 
 def test_rejects_single_disallowed_column_has_bad_col_kind_parametrize() -> None:
-    """test_rejects_single_disallowed_column has a bad_col_kind parametrize with 'generic'/'specific'."""
+    """test_rejects_single_disallowed_column has a bad_col_kind parametrize
+    with 'generic'/'specific'."""
     fn = TestUpdateColumnValidation.test_rejects_single_disallowed_column
     markers = [m for m in fn.pytestmark if m.name == "parametrize"]
     bad_col_kind_markers = [m for m in markers if m.args[0] == "bad_col_kind"]
