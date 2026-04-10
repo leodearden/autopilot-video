@@ -3316,11 +3316,11 @@
         "description": "In tests/test_web_app.py: (1) Add minimal string-literal skipping to the brace-matching loop: when the scanner hits `'`, `\"`, or a backtick, advance past the closing quote respecting `\\` escapes before resuming brace counting. This prevents silent mis-extraction if app.js ever contains an unbalanced brace inside a string or template literal. (2) In `_extract_listener_body`, bound the `find('function', listener_start)` call with an upper-limit of the next `addEventListener(` occurrence to prevent silently extracting the next listener's body if the current one uses a factory pattern.",
         "details": "Follow-up from task 151 review (robustness). Currently safe because app.js braces in strings happen to be balanced, but there's no guard. The unbounded function search could silently extract the wrong listener body for factory-pattern listeners. Memory hints: search for \"task 151 brace matching\" and \"_extract_listener_body docstring factory pattern\".",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T08:21:41.191Z",
+        "updatedAt": "2026-04-10T07:09:37.282Z",
         "metadata": {
           "modules": [
             "tests/test_web_app.py"
@@ -6935,7 +6935,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T07:09:37.167Z",
+      "lastModified": "2026-04-10T07:09:37.283Z",
       "taskCount": 363,
       "completedCount": 213,
       "tags": [
