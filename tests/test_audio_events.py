@@ -404,6 +404,42 @@ class TestIdempotency:
         assert len(events) == 1
         assert float(events[0]["timestamp_seconds"]) == 15.0
 
+    def test_idempotency_short_circuits_when_file_missing(self, catalog_db):
+        """Idempotency check fires before path validation — no error even with missing file.
+
+        Regression guard: if a future refactor reorders audio_events.py:94-102 so that
+        audio_path.exists() is checked before has_audio_events(), this test will fail with
+        AudioEventError instead of returning cleanly, alerting the author that the contract
+        has been broken.
+        """
+        from autopilot.analyze.audio_events import classify_audio_events
+
+        catalog_db.insert_media("vid1", "/nonexistent/audio.wav")
+        with catalog_db:
+            catalog_db.batch_insert_audio_events(
+                [
+                    ("vid1", 0.0, json.dumps([{"class": "Speech", "probability": 0.9}])),
+                ]
+            )
+
+        scheduler = MagicMock()
+        # No Path.exists patch — the real filesystem will return False for this path.
+        # The function must return cleanly because has_audio_events() returns True first.
+        classify_audio_events(
+            "vid1",
+            Path("/nonexistent/audio.wav"),
+            catalog_db,
+            scheduler,
+        )
+
+        # Scheduler model should NOT be loaded (scheduler.model is the only entry point):
+        # classification skipped because events already exist
+        scheduler.model.assert_not_called()
+
+        # DB postcondition: the single pre-existing event is still present
+        events = catalog_db.get_audio_events_for_media("vid1")
+        assert len(events) == 1
+
     def test_processes_when_no_events(self, catalog_db):
         """Proceed with classification when no events exist."""
         from autopilot.analyze.audio_events import classify_audio_events
