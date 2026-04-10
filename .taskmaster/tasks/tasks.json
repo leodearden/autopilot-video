@@ -5249,7 +5249,17 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/db.py",
+            "tests/test_db_validate_helper.py"
+          ],
+          "modules": [
+            "autopilot",
+            "tests"
+          ]
+        }
       },
       {
         "id": 278,
