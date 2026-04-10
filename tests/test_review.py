@@ -1069,9 +1069,10 @@ class TestDepsImportRefactor:
 # Zero-duration fixtures — task-167
 # ---------------------------------------------------------------------------
 
-@pytest.fixture
-def zero_duration_app(tmp_path: Path) -> FastAPI:
+@pytest.fixture(scope="class")
+def zero_duration_app(tmp_path_factory: pytest.TempPathFactory) -> FastAPI:
     """App with narratives seeded with proposed_duration_seconds=0 and None."""
+    tmp_path = tmp_path_factory.mktemp("zero_dur")
 
     def _seed(db: CatalogDB) -> None:
         _seed_narrative(
@@ -1088,7 +1089,7 @@ def zero_duration_app(tmp_path: Path) -> FastAPI:
     return _make_review_app(tmp_path, _seed)
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def zero_duration_client(zero_duration_app: FastAPI) -> TestClient:
     """TestClient for the zero-duration app."""
     return TestClient(zero_duration_app)
@@ -1100,6 +1101,18 @@ def zero_duration_client(zero_duration_app: FastAPI) -> TestClient:
 
 class TestEditFormZeroDuration:
     """Tests for edit form rendering of zero and None duration values."""
+
+    def test_fixture_is_class_scoped(self, request: pytest.FixtureRequest) -> None:
+        """Guard: zero_duration_client must be class-scoped for perf."""
+        fixturedefs = request._fixturemanager.getfixturedefs(
+            "zero_duration_client", request.node,
+        )
+        assert fixturedefs is not None and len(fixturedefs) > 0, (
+            "zero_duration_client fixture not found"
+        )
+        assert fixturedefs[-1].scope == "class", (
+            f"Expected class scope, got {fixturedefs[-1].scope}"
+        )
 
     def test_edit_form_renders_zero_duration(
         self, zero_duration_client: TestClient,
@@ -1143,8 +1156,41 @@ class TestEditFormZeroDuration:
         assert response.status_code == 200
         assert "|| null" not in response.text
 
+
+# ---------------------------------------------------------------------------
+# TestZeroDurationRoundtrip — task-224
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def _roundtrip_app(tmp_path: Path) -> FastAPI:
+    """Function-scoped app for mutating zero-duration roundtrip tests."""
+    db_path = str(tmp_path / "catalog.db")
+    with CatalogDB(db_path) as _db:
+        _db.init_default_gates()
+        _seed_narrative(
+            _db, "n-zero",
+            title="Zero Duration",
+            proposed_duration_seconds=0,
+        )
+        _seed_narrative(
+            _db, "n-none",
+            title="No Duration",
+            proposed_duration_seconds=None,
+        )
+    return create_app(db_path)
+
+
+@pytest.fixture
+def _roundtrip_client(_roundtrip_app: FastAPI) -> TestClient:
+    """Function-scoped TestClient for mutating zero-duration roundtrip tests."""
+    return TestClient(_roundtrip_app)
+
+
+class TestZeroDurationRoundtrip:
+    """Mutating roundtrip tests for zero-duration values (isolated fixtures)."""
+
     def test_update_zero_duration_roundtrip(
-        self, zero_duration_client: TestClient,
+        self, _roundtrip_client: TestClient,
     ) -> None:
         """Zero duration survives a save→render roundtrip via JSON API + edit form.
 
@@ -1154,7 +1200,7 @@ class TestEditFormZeroDuration:
         template JS regression coverage.
         """
         # PUT zero duration via JSON API
-        put_resp = zero_duration_client.put(
+        put_resp = _roundtrip_client.put(
             "/api/narratives/n-zero",
             json={"proposed_duration_seconds": 0},
         )
@@ -1162,7 +1208,7 @@ class TestEditFormZeroDuration:
         assert put_resp.json()["proposed_duration_seconds"] == 0
 
         # GET edit form and verify zero is rendered, not blank
-        get_resp = zero_duration_client.get(
+        get_resp = _roundtrip_client.get(
             "/api/narratives/n-zero?edit=1",
             headers={"HX-Request": "true"},
         )

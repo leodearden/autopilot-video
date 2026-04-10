@@ -128,6 +128,7 @@ def route_and_render(
 
     # -- Render each clip ------------------------------------------------------
     segments: list[Path] = []
+    resolved_clips: list[dict] = []
 
     with tempfile.TemporaryDirectory(prefix="render_") as work_dir_str:
         work_dir = Path(work_dir_str)
@@ -152,8 +153,13 @@ def route_and_render(
 
             # Resolve source_path from DB when not already present in clip
             if "source_path" not in clip:
-                # clip_id is guaranteed non-None here (guard above raises otherwise)
-                assert clip_id is not None
+                # clip_id is guaranteed non-None here — the guard above raises
+                # RoutingError when clip_id is None and source_path is absent.
+                # Explicit raise (not assert) so python -O cannot strip it.
+                if clip_id is None:
+                    raise RoutingError(
+                        f"Internal error: clip {i} reached DB lookup without clip_id"
+                    )
                 media = db.get_media(clip_id)
                 if media is None:
                     raise RoutingError(
@@ -166,6 +172,7 @@ def route_and_render(
                     )
                 clip = {**clip, "source_path": str(file_path)}
 
+            resolved_clips.append(clip)
             classification = _classify_clip(clip, crop_modes)
 
             if classification == "slow" and clip_id is None:
@@ -260,7 +267,7 @@ def route_and_render(
         # -- Collect subtitle segments from per-clip transcripts ----------------
         all_subtitle_segs: list[dict] = []
         cumulative_offset = 0.0
-        for clip in clips:
+        for clip in resolved_clips:
             media_id: str | None = clip.get("clip_id")
             transcript = db.get_transcript(media_id) if media_id is not None else None
             if transcript and transcript.get("segments_json"):

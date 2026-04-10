@@ -1,8 +1,10 @@
 {% extends "base.html" %}
+{% from 'macros/status_badge.html' import status_badge %}
 
 {% block title %}{{ page_title }}{% endblock %}
 
 {% block content %}
+{% set run_colors = {'running': 'bg-blue-900 text-blue-300', 'completed': 'bg-green-900 text-green-300', 'failed': 'bg-red-900 text-red-300'} %}
 <div class="max-w-7xl mx-auto px-4 py-8">
     <h1 class="text-3xl font-bold text-white mb-6">{{ page_title }}</h1>
 
@@ -16,13 +18,7 @@
     <div class="bg-surface-800 rounded-lg p-4 border border-gray-700 mb-6">
         <div class="flex items-center justify-between mb-2">
             <h2 class="text-lg font-semibold text-white">Current Run</h2>
-            <span class="px-2 py-1 rounded text-xs font-medium
-                {% if run.status == 'running' %}bg-blue-900 text-blue-300
-                {% elif run.status == 'completed' %}bg-green-900 text-green-300
-                {% elif run.status == 'failed' %}bg-red-900 text-red-300
-                {% else %}bg-gray-700 text-gray-300{% endif %}">
-                {{ run.status }}
-            </span>
+            {{ status_badge(run.status, run_colors) }}
         </div>
         <dl class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
@@ -52,14 +48,8 @@
         <div class="bg-surface-800 rounded-lg p-4 border border-gray-700">
             <div class="flex items-center justify-between mb-2">
                 <h3 class="text-white font-semibold capitalize">{{ stage.name }}</h3>
-                <span class="text-xs px-2 py-1 rounded
-                    {% if stage.status == 'running' %}bg-blue-900 text-blue-300
-                    {% elif stage.status == 'done' %}bg-green-900 text-green-300
-                    {% elif stage.status == 'error' %}bg-red-900 text-red-300
-                    {% elif stage.status == 'waiting' %}bg-amber-900 text-amber-300
-                    {% else %}bg-gray-700 text-gray-300{% endif %}">
-                    {{ stage.status }}
-                </span>
+                {% set stage_colors = {'running': 'bg-blue-900 text-blue-300', 'done': 'bg-green-900 text-green-300', 'error': 'bg-red-900 text-red-300', 'waiting': 'bg-amber-900 text-amber-300'} %}
+                {{ status_badge(stage.status, stage_colors) }}
             </div>
             <div class="flex items-center justify-between text-sm text-gray-400">
                 <span>{{ stage.done }}/{{ stage.total }} jobs done</span>
@@ -104,13 +94,7 @@
                 <tr class="hover:bg-surface-700">
                     <td class="px-4 py-3 text-gray-300 text-sm font-mono">{{ r.run_id }}</td>
                     <td class="px-4 py-3">
-                        <span class="px-2 py-1 rounded text-xs font-medium
-                            {% if r.status == 'running' %}bg-blue-900 text-blue-300
-                            {% elif r.status == 'completed' %}bg-green-900 text-green-300
-                            {% elif r.status == 'failed' %}bg-red-900 text-red-300
-                            {% else %}bg-gray-700 text-gray-300{% endif %}">
-                            {{ r.status }}
-                        </span>
+                        {{ status_badge(r.status, run_colors) }}
                     </td>
                     <td class="px-4 py-3 text-gray-400 text-sm">{{ r.started_at }}</td>
                     <td class="px-4 py-3 text-gray-300 text-sm capitalize">{{ r.current_stage or 'N/A' }}</td>
