@@ -6964,6 +6964,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 367,
+        "title": "Add None/missing narrative_status render case for review template badge tests",
+        "description": "TestReviewScriptsBadge.test_renders_approved_badge and TestReviewNarrativesBadge.test_renders_badge_in_grid (tests/test_narrative_status_badge.py) only exercise the happy path with narrative_status='approved'. review/scripts.html and review/narratives.html reference item.narrative_status without a fallback, so a missing/None status (common upstream shape) silently renders as 'unknown' with bg-purple-900. Add a second rendering case with narrative_status=None (and optionally 'proposed') for both review templates to pin down the default-status path, mirroring the coverage breadth already present in TestStatusBadgeMacro (which has test_none_status and test_empty_string_status cases).",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -6976,7 +6987,7 @@
       ],
       "created": "2026-04-10T07:10:08.791Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-10T07:10:13.174Z"
+      "updated": "2026-04-10T07:10:17.561Z"
     }
   }
 }
