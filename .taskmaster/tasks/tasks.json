@@ -5297,7 +5297,7 @@
         "description": "Three changes in `tests/test_narrative_status_badge.py`: (1) Remove the `bg-green-900` and `text-green-300` assertions from `TestExtraClasses.test_extra_classes_included` (lines 83–84) — color mapping is already owned by `TestStatusBadgeMacro` [suggestion 8]. (2) In `TestReviewNarrativesBadge.test_renders_badge_in_grid`, tighten the assertion to confirm the color classes appear inside the badge element rather than anywhere in the page (e.g. narrow the rendered substring or use a regex anchored to the badge span) [suggestion 9]. (3) Add `TestReviewScriptsBadge.test_renders_badge_in_scripts` following the pattern of `test_renders_badge_in_grid`; the minimal render context needs `scripts=[{\"narrative_id\": \"s-1\", \"narrative_status\": \"approved\", \"narrative_title\": \"Test\", \"scenes\": []}]` based on `review/scripts.html` lines 18–19 [suggestion 10]. From task 248 review suggestions.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
@@ -5309,7 +5309,7 @@
             "tests"
           ]
         },
-        "updatedAt": "2026-04-10T08:04:58.209Z"
+        "updatedAt": "2026-04-10T08:17:22.531Z"
       },
       {
         "id": "281",
@@ -7214,9 +7214,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T08:17:06.949Z",
+      "lastModified": "2026-04-10T08:17:22.531Z",
       "taskCount": 386,
-      "completedCount": 232,
+      "completedCount": 233,
       "tags": [
         "master"
       ]
