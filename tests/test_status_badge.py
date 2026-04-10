@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import jinja2
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "autopilot" / "web" / "templates"
+
+
+def _extract_classes(html: str) -> list[str]:
+    """Parse the class attribute of the first span in the rendered HTML into a list."""
+    m = re.search(r'<span[^>]+class="([^"]*)"', html)
+    if not m:
+        return []
+    return m.group(1).split()
 
 
 def _render_badge(
@@ -24,6 +33,40 @@ def _render_badge(
     template = env.get_template("macros/status_badge.html")
     module = template.module
     kwargs: dict = {"color_map": color_map, "extra_classes": extra_classes, "default": default}
+    if label is not None:
+        kwargs["label"] = label
+    return module.status_badge(status, **kwargs)  # type: ignore[reportAttributeAccessIssue]
+
+
+def _render_badge_ext(
+    status: str,
+    color_map: dict[str, str],
+    extra_classes: str = "",
+    label: str | None = None,
+    default: str = "bg-gray-700 text-gray-300",
+    px: str = "px-2",
+    py: str = "py-1",
+    rounded: str = "rounded",
+    text_size: str = "text-xs",
+    font_weight: str = "font-medium",
+) -> str:
+    """Render the generic status_badge macro with named override parameters."""
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(str(TEMPLATES_DIR)),
+        autoescape=True,
+    )
+    template = env.get_template("macros/status_badge.html")
+    module = template.module
+    kwargs: dict = {
+        "color_map": color_map,
+        "extra_classes": extra_classes,
+        "default": default,
+        "px": px,
+        "py": py,
+        "rounded": rounded,
+        "text_size": text_size,
+        "font_weight": font_weight,
+    }
     if label is not None:
         kwargs["label"] = label
     return module.status_badge(status, **kwargs)  # type: ignore[reportAttributeAccessIssue]
@@ -126,6 +169,61 @@ class TestDefaultColorOverride:
             default="bg-purple-900 text-purple-300",
         )
         assert "bg-gray-700" not in html
+
+
+class TestClassNormalization:
+    """Verify whitespace is normalized in the rendered class attribute."""
+
+    SAMPLE_MAP = {"ok": "bg-green-900 text-green-300"}
+
+    def test_no_double_space_when_extra_classes_empty(self) -> None:
+        html = _render_badge("ok", self.SAMPLE_MAP)
+        m = re.search(r'class="([^"]*)"', html)
+        assert m is not None
+        assert "  " not in m.group(1)
+
+
+class TestOverrideParameters:
+    """Verify named override parameters for layout/typography classes."""
+
+    SAMPLE_MAP = {"ok": "bg-green-900 text-green-300"}
+
+    def test_px_override_replaces_default(self) -> None:
+        html = _render_badge_ext("ok", self.SAMPLE_MAP, px="px-3")
+        classes = _extract_classes(html)
+        px_classes = [c for c in classes if c.startswith("px-")]
+        assert len(px_classes) == 1
+        assert px_classes[0] == "px-3"
+
+    def test_py_override_replaces_default(self) -> None:
+        html = _render_badge_ext("ok", self.SAMPLE_MAP, py="py-0.5")
+        classes = _extract_classes(html)
+        py_classes = [c for c in classes if c.startswith("py-")]
+        assert len(py_classes) == 1
+        assert py_classes[0] == "py-0.5"
+
+    def test_rounded_override_replaces_default(self) -> None:
+        html = _render_badge_ext("ok", self.SAMPLE_MAP, rounded="rounded-full")
+        classes = _extract_classes(html)
+        assert "rounded-full" in classes
+        assert "rounded" not in classes
+
+    def test_text_size_override_replaces_default(self) -> None:
+        html = _render_badge_ext("ok", self.SAMPLE_MAP, text_size="text-sm")
+        classes = _extract_classes(html)
+        assert "text-sm" in classes
+        assert "text-xs" not in classes
+
+    def test_font_weight_empty_drops_class(self) -> None:
+        html = _render_badge_ext("ok", self.SAMPLE_MAP, font_weight="")
+        classes = _extract_classes(html)
+        assert not any(c.startswith("font-") for c in classes)
+
+    def test_override_does_not_duplicate_default(self) -> None:
+        html = _render_badge_ext("ok", self.SAMPLE_MAP, px="px-3")
+        classes = _extract_classes(html)
+        px_classes = [c for c in classes if c.startswith("px-")]
+        assert len(px_classes) == 1
 
 
 # ---------------------------------------------------------------------------
