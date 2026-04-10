@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, TypedDict
 from unittest.mock import patch
 
 import pytest
@@ -29,7 +30,17 @@ KNOWN_STAGES = [
 # exercise one of the three update_* methods.  The lambdas accept a CatalogDB
 # as first arg so the parametrize decorator only carries a string key.
 
-_UPDATE_SPECS: dict[str, dict] = {
+
+class _UpdateSpec(TypedDict):
+    setup: Callable[..., object]
+    update: Callable[..., object]
+    get: Callable[..., object]
+    valid_col: str
+    valid_val: str
+    default_val: str
+
+
+_UPDATE_SPECS: dict[str, _UpdateSpec] = {
     "gate": {
         "setup": lambda db: db.init_default_gates(),
         "update": lambda db, **kw: db.update_gate("ingest", **kw),
