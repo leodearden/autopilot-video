@@ -7183,6 +7183,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 385,
+        "title": "Add HTMX PUT narrative_card render test for empty title \"Untitled\" display",
+        "description": "Follow-up from task 321 review (reviewer_comprehensive, test_coverage):\n\nThe current null-title/description roundtrip test (tests/test_review.py:1365-1403) PUTs JSON without HX-Request header and only exercises the JSON PUT branch + HTMX edit-form GET branch. It does NOT exercise the HTMX PUT -> partials/narrative_card.html render path.\n\nnarrative_card.html line 4 uses `{{ narrative.title or 'Untitled' }}` — an empty-string title renders as \"Untitled\" because empty string is falsy in Jinja. This display behavior for empty/null titles is not pinned by any test.\n\nAdd a test (e.g. test_update_null_title_htmx_card_renders_untitled) that:\n1. PUTs {\"title\": \"\"} to /api/narratives/n-null-title with headers={\"HX-Request\": \"true\"}\n2. Asserts put_resp.status_code == 200\n3. Asserts \"Untitled\" appears in put_resp.text\n\nThis locks in the card-render fallback behavior for empty titles so future template changes surface as test failures.\n\nLocation: tests/test_review.py (near TestUpdateNullTitleDescriptionRoundtrip, around line 1365).",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -7195,7 +7206,7 @@
       ],
       "created": "2026-04-10T08:10:50.207Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-10T08:10:50.209Z"
+      "updated": "2026-04-10T08:10:58.129Z"
     }
   }
 }
