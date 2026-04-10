@@ -325,7 +325,8 @@ class TestIdempotency:
             scheduler,
         )
 
-        # Scheduler should NOT be called: classification skipped because events already exist
+        # Scheduler model should NOT be loaded (scheduler.model is the only entry point):
+        # classification skipped because events already exist
         scheduler.model.assert_not_called()
 
         # DB postcondition: the single pre-existing event is still present,
@@ -359,7 +360,8 @@ class TestIdempotency:
             scheduler,
         )
 
-        # Scheduler should NOT be called: classification skipped because events already exist
+        # Scheduler model should NOT be loaded (scheduler.model is the only entry point):
+        # classification skipped because events already exist
         scheduler.model.assert_not_called()
 
         # DB postcondition: both pre-existing events remain, no extra rows written
@@ -393,7 +395,8 @@ class TestIdempotency:
             scheduler,
         )
 
-        # Scheduler should NOT be called: classification skipped because events already exist
+        # Scheduler model should NOT be loaded (scheduler.model is the only entry point):
+        # classification skipped because events already exist
         scheduler.model.assert_not_called()
 
         # DB postcondition: the single pre-existing event at t=15.0 is still present
