@@ -6692,7 +6692,17 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_render_router.py",
+            "autopilot/render/router.py"
+          ],
+          "modules": [
+            "tests",
+            "autopilot/render"
+          ]
+        }
       },
       {
         "id": 355,
@@ -6715,7 +6725,19 @@
               "extra_classes override pattern Tailwind macros",
               "color map duplication templates badge"
             ]
-          }
+          },
+          "files": [
+            "autopilot/web/templates/macros/status_badge.html",
+            "tests/test_status_badge.py",
+            "autopilot/web/templates/media/detail.html",
+            "autopilot/web/templates/partials/media_row.html",
+            "autopilot/web/templates/renders.html"
+          ],
+          "modules": [
+            "autopilot/web/templates/macros",
+            "autopilot/web/templates",
+            "tests"
+          ]
         }
       },
       {
