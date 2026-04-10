@@ -3398,11 +3398,11 @@
         "description": "In autopilot/orchestrator.py _run_edl: remove both validator.validate_edl(edl, db) calls at lines 751 and 765 (return value is discarded; generate_edl already validates internally and the calls create a spurious failure surface). After removing, add an assertion or comment at line ~770 making it explicit that generate_edl() must have already persisted edl_json before db.upsert_edit_plan is called — e.g. assert db.get_edit_plan(nid) is not None. Also update tests/test_orchestrator.py: test_edl_generates_validates_exports_per_narrative (line 1103) currently asserts mock_validator.validate_edl.assert_called_once() — that assertion must be removed or inverted. Remove duplicate test test_edl_upsert_only_passes_otio_path (lines 1183-1207).",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
         "subtasks": [],
-        "updatedAt": "2026-04-10T07:01:46.194Z",
+        "updatedAt": "2026-04-10T07:01:46.803Z",
         "metadata": {
           "modules": [
             "autopilot/orchestrator.py",
@@ -6909,7 +6909,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T07:01:46.737Z",
+      "lastModified": "2026-04-10T07:01:46.803Z",
       "taskCount": 361,
       "completedCount": 210,
       "tags": [
