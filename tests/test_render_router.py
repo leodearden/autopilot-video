@@ -1826,3 +1826,62 @@ class TestResolvedClipsList:
             assert "source_path" not in original_clip, (
                 f"Original clip {original_clip.get('clip_id')} was mutated with source_path"
             )
+
+
+# ---------------------------------------------------------------------------
+# _make_capturing_loads factory unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestMakeCapturingLoads:
+    """Unit tests for the _make_capturing_loads() factory helper."""
+
+    def test_factory_returns_callable_and_empty_list(self) -> None:
+        """Factory should return a (callable, list) tuple; list starts empty."""
+        wrapper, captured = _make_capturing_loads()
+        assert callable(wrapper)
+        assert isinstance(captured, list)
+        assert len(captured) == 0
+
+    def test_wrapper_parses_str_input(self) -> None:
+        """Wrapper must parse a str JSON input and return the parsed value."""
+        wrapper, _ = _make_capturing_loads()
+        result = wrapper('{"x": 1}')
+        assert result == {"x": 1}
+
+    def test_wrapper_parses_bytes_input(self) -> None:
+        """Wrapper must parse bytes JSON without str() coercion.
+
+        str(b'{"a":1}') == "b'{\"a\":1}'" which is invalid JSON;
+        the wrapper must NOT coerce — json.loads accepts bytes natively.
+        """
+        wrapper, _ = _make_capturing_loads()
+        result = wrapper(b'{"a": 1}')
+        assert result == {"a": 1}
+
+    def test_wrapper_captures_edl_clips(self) -> None:
+        """Wrapper must capture 'clips' when parsed dict has BOTH 'clips' and 'edl_version'."""
+        wrapper, captured = _make_capturing_loads()
+        edl_json = json.dumps({"edl_version": "1", "clips": [{"clip_id": "c1"}]})
+        result = wrapper(edl_json)
+        assert result == {"edl_version": "1", "clips": [{"clip_id": "c1"}]}
+        assert captured == [{"clip_id": "c1"}]
+
+    def test_wrapper_does_not_capture_without_edl_version(self) -> None:
+        """Wrapper must NOT capture when parsed dict has 'clips' but NO 'edl_version'."""
+        wrapper, captured = _make_capturing_loads()
+        json_str = json.dumps({"clips": [{"clip_id": "c1"}]})
+        wrapper(json_str)
+        assert captured == []
+
+    def test_wrapper_does_not_capture_list_result(self) -> None:
+        """Wrapper must NOT capture when parsed result is a list (e.g. transcript segments)."""
+        wrapper, captured = _make_capturing_loads()
+        wrapper(json.dumps([{"start": 0, "end": 1, "text": "hi"}]))
+        assert captured == []
+
+    def test_wrapper_does_not_capture_primitives(self) -> None:
+        """Wrapper must NOT capture for primitive results like integers."""
+        wrapper, captured = _make_capturing_loads()
+        wrapper("42")
+        assert captured == []
