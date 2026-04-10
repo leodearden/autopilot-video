@@ -7533,6 +7533,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 414,
+        "title": "Extend entity-specific bad column coverage to test_rejects_mix_of_valid_and_invalid",
+        "description": "In tests/test_db_pipeline.py, `test_rejects_mix_of_valid_and_invalid` (line 819) still uses the hardcoded generic `evil_col` rather than also testing with `spec['invalid_col']`. This means entity-specific disallowed column names (e.g. 'hacked' for gate, 'injected' for job, 'corrupted' for run) are only tested in the single-column rejection scenario but not in the mixed (valid + invalid) scenario.\n\nAdd a `bad_col_kind` parametrize dimension to `test_rejects_mix_of_valid_and_invalid` (matching the pattern already used in `test_rejects_single_disallowed_column`) so that entity-specific invalid column names are also validated in the mixed-column path. Alternatively, use `spec['invalid_col']` instead of the generic `evil_col` if dual-parametrization is overkill.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -7545,7 +7556,7 @@
       ],
       "created": "2026-04-10T11:10:36.238Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-10T11:10:36.257Z"
+      "updated": "2026-04-10T11:10:41.277Z"
     }
   }
 }
