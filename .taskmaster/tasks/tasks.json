@@ -5488,7 +5488,7 @@
         "description": "In `test_prune_events_parameterizes_hours`, the assertion `str(hours) not in sql_arg` is fragile for `hours=1` because the single digit \"1\" commonly appears in SQL strings (e.g., `LIMIT 1`, version literals). Any future SQL change could cause a spurious failure.\n\nFix:\n1. Replace `hours=1` with a less collision-prone value like `hours=7` or drop the `str(hours) not in sql_arg` assertion entirely (the parameter-equality assertion already covers the parameterization contract).\n2. Drop the `expected_param` column from the parametrize decorator — it's derivable from `hours` via `f\"-{hours} hours\"`, creating a maintenance hazard. Simplify to `@pytest.mark.parametrize(\"hours\", [48, 7])` and compute expected inline.\n\nmemory_hints: search \"test_prune_events fragile assertion\" and \"task 245 review suggestions\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
@@ -5499,7 +5499,8 @@
           "modules": [
             "tests"
           ]
-        }
+        },
+        "updatedAt": "2026-04-10T07:10:30.734Z"
       },
       {
         "id": "291",
@@ -6979,7 +6980,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T07:10:30.624Z",
+      "lastModified": "2026-04-10T07:10:30.734Z",
       "taskCount": 367,
       "completedCount": 214,
       "tags": [
