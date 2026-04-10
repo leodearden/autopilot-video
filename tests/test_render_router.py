@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
@@ -178,6 +179,26 @@ def _make_edl(clips: list[dict] | None = None, **kwargs: object) -> dict:
     }
     edl.update(kwargs)
     return edl
+
+
+def _make_capturing_loads() -> tuple[Callable[..., object], list[dict]]:
+    """Return a (wrapper, captured_clips) pair for patching json.loads in tests.
+
+    The wrapper forwards all arguments to json.loads without any str() coercion
+    (json.loads accepts str, bytes, and bytearray natively since Python 3.6).
+    When the parsed result is a dict containing both 'clips' and 'edl_version',
+    the clips list is extended into ``captured_clips`` for later assertions.
+    """
+    _real_loads = json.loads
+    parsed_clips: list[dict] = []
+
+    def _loads(s: object, *args: object, **kwargs: object) -> object:
+        result = _real_loads(s, *args, **kwargs)  # type: ignore[arg-type]
+        if isinstance(result, dict) and "clips" in result and "edl_version" in result:
+            parsed_clips.extend(result["clips"])
+        return result
+
+    return _loads, parsed_clips
 
 
 # ---------------------------------------------------------------------------
