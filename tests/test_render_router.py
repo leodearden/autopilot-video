@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
@@ -159,6 +160,7 @@ def _make_config(
 def _make_edl(clips: list[dict] | None = None, **kwargs: object) -> dict:
     """Create a minimal EDL dict for testing."""
     edl: dict = {
+        "edl_version": "1",
         "clips": clips
         or [
             {
@@ -177,6 +179,26 @@ def _make_edl(clips: list[dict] | None = None, **kwargs: object) -> dict:
     }
     edl.update(kwargs)
     return edl
+
+
+def _make_capturing_loads() -> tuple[Callable[..., object], list[dict]]:
+    """Return a (wrapper, captured_clips) pair for patching json.loads in tests.
+
+    The wrapper forwards all arguments to json.loads without any str() coercion
+    (json.loads accepts str, bytes, and bytearray natively since Python 3.6).
+    When the parsed result is a dict containing both 'clips' and 'edl_version',
+    the clips list is extended into ``captured_clips`` for later assertions.
+    """
+    _real_loads = json.loads
+    parsed_clips: list[dict] = []
+
+    def _loads(s: object, *args: object, **kwargs: object) -> object:
+        result = _real_loads(s, *args, **kwargs)  # type: ignore[arg-type]
+        if isinstance(result, dict) and "clips" in result and "edl_version" in result:
+            parsed_clips.extend(result["clips"])
+        return result
+
+    return _loads, parsed_clips
 
 
 # ---------------------------------------------------------------------------
@@ -1293,14 +1315,7 @@ class TestSourcePathResolution:
         # Capture deserialized clip dicts that json.loads produces inside the
         # router.  This lets us assert on the actual objects the router operates
         # on — the only way to detect in-place mutation at router.py line 154.
-        _real_loads = json.loads
-        parsed_clips: list[dict] = []
-
-        def _capturing_loads(*args, **kwargs):
-            result = _real_loads(*args, **kwargs)
-            if isinstance(result, dict) and "clips" in result:
-                parsed_clips.extend(result["clips"])
-            return result
+        _capturing_loads, parsed_clips = _make_capturing_loads()
 
         with (
             patch("autopilot.render.router.json.loads", _capturing_loads),
@@ -1677,18 +1692,11 @@ class TestResolvedClipsList:
         config = _make_config()
 
         # Capture the deserialized clips to verify non-mutation
-        parsed_clips: list[dict] = []
-        _real_loads = json.loads
-
-        def _capturing_loads(s: object, *a: object, **kw: object) -> object:
-            result = _real_loads(str(s), *a, **kw)  # type: ignore[arg-type]
-            if isinstance(result, dict) and "clips" in result:
-                parsed_clips.extend(result["clips"])
-            return result
+        _capturing_loads, parsed_clips = _make_capturing_loads()
 
         rendered_clips_collected: list[dict] = []
         with (
-            patch("autopilot.render.router.json.loads", side_effect=_capturing_loads),
+            patch("autopilot.render.router.json.loads", _capturing_loads),
             patch("autopilot.render.router.render_simple") as mock_rs,
             patch("subprocess.run"),
         ):
@@ -1801,17 +1809,10 @@ class TestResolvedClipsList:
         config = _make_config()
 
         # Capture the deserialized clips to verify non-mutation
-        parsed_clips: list[dict] = []
-        _real_loads = json.loads
-
-        def _capturing_loads(s: object, *a: object, **kw: object) -> object:
-            result = _real_loads(str(s), *a, **kw)  # type: ignore[arg-type]
-            if isinstance(result, dict) and "clips" in result:
-                parsed_clips.extend(result["clips"])
-            return result
+        _capturing_loads, parsed_clips = _make_capturing_loads()
 
         with (
-            patch("autopilot.render.router.json.loads", side_effect=_capturing_loads),
+            patch("autopilot.render.router.json.loads", _capturing_loads),
             patch("autopilot.render.router.render_simple") as mock_rs,
             patch("subprocess.run"),
         ):
@@ -1825,3 +1826,62 @@ class TestResolvedClipsList:
             assert "source_path" not in original_clip, (
                 f"Original clip {original_clip.get('clip_id')} was mutated with source_path"
             )
+
+
+# ---------------------------------------------------------------------------
+# _make_capturing_loads factory unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestMakeCapturingLoads:
+    """Unit tests for the _make_capturing_loads() factory helper."""
+
+    def test_factory_returns_callable_and_empty_list(self) -> None:
+        """Factory should return a (callable, list) tuple; list starts empty."""
+        wrapper, captured = _make_capturing_loads()
+        assert callable(wrapper)
+        assert isinstance(captured, list)
+        assert len(captured) == 0
+
+    def test_wrapper_parses_str_input(self) -> None:
+        """Wrapper must parse a str JSON input and return the parsed value."""
+        wrapper, _ = _make_capturing_loads()
+        result = wrapper('{"x": 1}')
+        assert result == {"x": 1}
+
+    def test_wrapper_parses_bytes_input(self) -> None:
+        """Wrapper must parse bytes JSON without str() coercion.
+
+        str(b'{"a":1}') == "b'{\"a\":1}'" which is invalid JSON;
+        the wrapper must NOT coerce — json.loads accepts bytes natively.
+        """
+        wrapper, _ = _make_capturing_loads()
+        result = wrapper(b'{"a": 1}')
+        assert result == {"a": 1}
+
+    def test_wrapper_captures_edl_clips(self) -> None:
+        """Wrapper must capture 'clips' when parsed dict has BOTH 'clips' and 'edl_version'."""
+        wrapper, captured = _make_capturing_loads()
+        edl_json = json.dumps({"edl_version": "1", "clips": [{"clip_id": "c1"}]})
+        result = wrapper(edl_json)
+        assert result == {"edl_version": "1", "clips": [{"clip_id": "c1"}]}
+        assert captured == [{"clip_id": "c1"}]
+
+    def test_wrapper_does_not_capture_without_edl_version(self) -> None:
+        """Wrapper must NOT capture when parsed dict has 'clips' but NO 'edl_version'."""
+        wrapper, captured = _make_capturing_loads()
+        json_str = json.dumps({"clips": [{"clip_id": "c1"}]})
+        wrapper(json_str)
+        assert captured == []
+
+    def test_wrapper_does_not_capture_list_result(self) -> None:
+        """Wrapper must NOT capture when parsed result is a list (e.g. transcript segments)."""
+        wrapper, captured = _make_capturing_loads()
+        wrapper(json.dumps([{"start": 0, "end": 1, "text": "hi"}]))
+        assert captured == []
+
+    def test_wrapper_does_not_capture_primitives(self) -> None:
+        """Wrapper must NOT capture for primitive results like integers."""
+        wrapper, captured = _make_capturing_loads()
+        wrapper("42")
+        assert captured == []
