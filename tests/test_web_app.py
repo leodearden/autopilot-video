@@ -393,6 +393,43 @@ class TestBraceMatchFrom:
         with pytest.raises(AssertionError, match="out of range"):
             _brace_match_from("", 0, "empty")
 
+    def test_skips_braces_inside_single_quoted_string(self) -> None:
+        """A closing '}' inside a single-quoted JS string does not end the block."""
+        source = "{ x = '}'; }"
+        result = _brace_match_from(source, 0, "sq")
+        assert result == source
+
+    def test_skips_braces_inside_double_quoted_string(self) -> None:
+        """A closing '}' inside a double-quoted JS string does not end the block."""
+        source = '{ x = "}"; }'
+        result = _brace_match_from(source, 0, "dq")
+        assert result == source
+
+    def test_skips_braces_inside_template_literal(self) -> None:
+        """A closing '}' inside a backtick template literal does not end the block."""
+        source = "{ x = `}`; }"
+        result = _brace_match_from(source, 0, "tl")
+        assert result == source
+
+    def test_skips_opening_braces_inside_strings(self) -> None:
+        """An opening '{' inside a string does not increment depth."""
+        # Without string-literal skipping, the '{' at position 7 would push
+        # depth to 2, and the lone '}' at the end would leave depth at 1,
+        # raising an unbalanced error.
+        source = "{ x = '{'; }"
+        result = _brace_match_from(source, 0, "open-in-str")
+        assert result == source
+
+    def test_respects_backslash_escape_in_string_literals(self) -> None:
+        """An escaped quote (\\') does not close the string; the following '}' stays inside."""
+        # JS: { x = '\'}'; }
+        # \\' is an escaped single-quote (keeps the string open), so the '}' at
+        # position 9 is still inside the JS string.  The real closing brace is
+        # the last character.
+        source = "{ x = '\\'}'; }"
+        result = _brace_match_from(source, 0, "escape")
+        assert result == source
+
 
 class TestFixtureSanity:
     """Sanity checks for module-scoped caching fixtures."""
