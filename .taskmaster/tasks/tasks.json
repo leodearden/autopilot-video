@@ -6486,7 +6486,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_youtube.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 344,
@@ -6497,7 +6505,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_cli.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 345,
