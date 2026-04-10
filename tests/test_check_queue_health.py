@@ -400,19 +400,17 @@ class TestMain:
 
         assert "dark_factory" not in captured.out
 
-    def test_main_defaults_db_path_to_dark_factory_queue(self) -> None:
-        """The default --db-path should point at the dark-factory queue."""
-        import argparse
+    def test_default_db_path_does_not_contain_home_leo(self) -> None:
+        """Portability guard: the script must not hardcode /home/leo/src/dark-factory."""
+        import check_queue_health as cqh
 
-        # Reconstruct just the parser to check the default
-        parser = argparse.ArgumentParser()
-        parser.add_argument(
-            "--db-path",
-            default="/home/leo/src/dark-factory/data/queue/write_queue.db",
+        # Check the script source for the cross-project absolute path
+        source_path = Path(cqh.__file__)
+        source_text = source_path.read_text()
+        assert "/home/leo/src/dark-factory" not in source_text, (
+            "check_queue_health.py contains a hardcoded cross-project path; "
+            "use FUSED_MEMORY_QUEUE_DB env var or --db-path instead"
         )
-        parser.add_argument("--project", default=None)
-        ns = parser.parse_args([])
-        assert ns.db_path == "/home/leo/src/dark-factory/data/queue/write_queue.db"
 
     def test_main_exits_with_code_2_on_missing_db_file(
         self, capsys: pytest.CaptureFixture
