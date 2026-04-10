@@ -45,10 +45,11 @@ function connectSSE(url) {
     return source;
 }
 
-/* Per-stage debounce timers — coalesces burst SSE updates for the same stage */
+/* Per-stage debounce state — values are {timer, pending} objects that track
+ * an open debounce window and whether coalesced events arrived during it */
 var _refreshTimers = {};
 /* Debounce delay in ms — minimum interval between DOM refreshes for a given stage */
-var DEBOUNCE_MS = 150;
+const DEBOUNCE_MS = 150;
 
 /**
  * Refresh a single stage card via HTMX ajax.
@@ -64,18 +65,31 @@ function refreshStageCard(stage) {
 }
 
 /**
- * Debounced wrapper around refreshStageCard.
- * Coalesces burst SSE updates for a single stage into one DOM refresh,
- * preventing unnecessary re-renders when multiple events arrive rapidly.
+ * Leading+trailing edge debounce wrapper around refreshStageCard.
+ * Fires immediately on the first event in a window (leading edge), then
+ * coalesces all further events during the window into a single trailing fire
+ * when the window closes after DEBOUNCE_MS of silence.
+ * This prevents the dashboard from appearing frozen during sustained
+ * job_progress bursts while still ensuring a final refresh at burst end.
  * @param {string} stage - The pipeline stage name.
  */
 function debouncedRefreshStageCard(stage) {
     if (_refreshTimers[stage]) {
-        clearTimeout(_refreshTimers[stage]);
+        // Active debounce window — coalesce this event for a trailing fire
+        _refreshTimers[stage].pending = true;
+        return;
     }
-    _refreshTimers[stage] = setTimeout(function() {
+    // Leading edge: fire immediately, then open a debounce window
+    refreshStageCard(stage);
+    var state = { timer: null, pending: false };
+    _refreshTimers[stage] = state;
+    state.timer = setTimeout(function() {
+        clearTimeout(state.timer);
         delete _refreshTimers[stage];
-        refreshStageCard(stage);
+        if (state.pending) {
+            // Trailing edge: fire once more for coalesced events
+            refreshStageCard(stage);
+        }
     }, DEBOUNCE_MS);
 }
 

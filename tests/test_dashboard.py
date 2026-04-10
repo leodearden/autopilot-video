@@ -487,6 +487,16 @@ class TestSSEIntegration:
         assert match is not None, "DEBOUNCE_MS numeric literal not found in app.js"
         assert int(match.group(1)) > 0, "DEBOUNCE_MS must be a positive integer"
 
+    def test_app_js_debounce_ms_uses_const(self) -> None:
+        """DEBOUNCE_MS must be declared with const (not var)."""
+        content = _APP_JS.read_text()
+        assert re.search(r"\bconst\s+DEBOUNCE_MS\s*=", content), (
+            "DEBOUNCE_MS must be declared with 'const', not 'var'"
+        )
+        assert not re.search(r"\bvar\s+DEBOUNCE_MS\b", content), (
+            "'var DEBOUNCE_MS' still present in app.js; change to 'const'"
+        )
+
     def test_app_js_has_debounced_refresh_function(self) -> None:
         """app.js contains debouncedRefreshStageCard wrapping clearTimeout/setTimeout."""
         content = _APP_JS.read_text()
@@ -495,6 +505,31 @@ class TestSSEIntegration:
         assert "setTimeout" in body, "setTimeout not found in debouncedRefreshStageCard body"
         assert "refreshStageCard" in body, (
             "refreshStageCard not found in debouncedRefreshStageCard body"
+        )
+
+    def test_app_js_debounce_fires_leading_edge_before_timer(self) -> None:
+        """debouncedRefreshStageCard calls refreshStageCard before its first setTimeout."""
+        content = _APP_JS.read_text()
+        body = _extract_js_function(content, "debouncedRefreshStageCard")
+        first_refresh = body.find("refreshStageCard(stage)")
+        first_set_timeout = body.find("setTimeout")
+        assert first_refresh != -1, (
+            "refreshStageCard(stage) not found in debouncedRefreshStageCard body"
+        )
+        assert first_set_timeout != -1, "setTimeout not found in debouncedRefreshStageCard body"
+        assert first_refresh < first_set_timeout, (
+            "refreshStageCard(stage) must appear before setTimeout in debouncedRefreshStageCard "
+            "(leading-edge fire must happen in the outer scope, not inside the timer callback)"
+        )
+
+    def test_app_js_debounce_has_leading_and_trailing_refresh_calls(self) -> None:
+        """debouncedRefreshStageCard contains at least 2 refreshStageCard(stage) call-sites."""
+        content = _APP_JS.read_text()
+        body = _extract_js_function(content, "debouncedRefreshStageCard")
+        calls = re.findall(r"\brefreshStageCard\s*\(\s*stage\s*\)", body)
+        assert len(calls) >= 2, (
+            f"Expected >= 2 refreshStageCard(stage) calls in debouncedRefreshStageCard "
+            f"(one leading, one trailing) but found {len(calls)}"
         )
 
     def test_app_js_sse_handlers_use_debounced_refresh(self) -> None:
