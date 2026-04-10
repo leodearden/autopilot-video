@@ -134,6 +134,47 @@ def test_non_pk_allowlist_parametrize_uses_frozensets() -> None:
     assert argvalues[2][1] == CatalogDB._RUN_ALLOWED_COLUMNS
 
 
+def test_update_column_validation_parametrizes_use_update_specs_keys() -> None:
+    """Entity parametrize on each TestUpdateColumnValidation test derives from _UPDATE_SPECS.
+
+    Checks two invariants:
+    (a) The argvalues of the 'entity' parametrize marker equal list(_UPDATE_SPECS) by value.
+    (b) The source text of each test method contains the literal 'list(_UPDATE_SPECS)' so
+        that hardcoded lists cannot silently drift from _UPDATE_SPECS.
+    """
+    import inspect
+
+    test_methods = [
+        TestUpdateColumnValidation.test_rejects_single_disallowed_column,
+        TestUpdateColumnValidation.test_rejects_mix_of_valid_and_invalid,
+        TestUpdateColumnValidation.test_rejects_multiple_disallowed_columns,
+    ]
+
+    for fn in test_methods:
+        name = fn.__name__
+        markers = [m for m in fn.pytestmark if m.name == "parametrize"]
+        entity_markers = [m for m in markers if m.args[0] == "entity"]
+        assert len(entity_markers) == 1, (
+            f"{name}: expected exactly one 'entity' parametrize marker, "
+            f"got {len(entity_markers)}"
+        )
+        marker = entity_markers[0]
+
+        # (a) argvalues match _UPDATE_SPECS keys by value
+        assert list(marker.args[1]) == list(_UPDATE_SPECS), (
+            f"{name}: entity parametrize argvalues {list(marker.args[1])!r} "
+            f"!= list(_UPDATE_SPECS) {list(_UPDATE_SPECS)!r}"
+        )
+
+        # (b) source text must contain 'list(_UPDATE_SPECS)' to enforce the
+        #     source-of-truth invariant — hardcoded literals are disallowed
+        src = inspect.getsource(fn)
+        assert "list(_UPDATE_SPECS)" in src, (
+            f"{name}: parametrize decorator must use list(_UPDATE_SPECS), "
+            f"not a hardcoded literal"
+        )
+
+
 # -- Schema tests for pipeline tables ----------------------------------------
 
 
