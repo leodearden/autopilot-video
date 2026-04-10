@@ -167,6 +167,20 @@ class TestReviewNarrativesBadge:
 class TestReviewScriptsBadge:
     """Verify review/scripts.html uses the shared status_badge macro."""
 
+    def test_renders_approved_badge(self) -> None:
+        template = _ENV.get_template("review/scripts.html")
+        html = template.render(
+            page_title="Scripts Review",
+            scripts=[{
+                "narrative_id": "n-1",
+                "narrative_title": "Test",
+                "narrative_status": "approved",
+                "scenes": [],
+            }],
+        )
+        assert "bg-green-900" in html
+        assert "text-green-300" in html
+
     def test_source_uses_macro_import(self) -> None:
         source_path = TEMPLATES_DIR / "review" / "scripts.html"
         source = source_path.read_text()
