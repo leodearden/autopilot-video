@@ -5526,7 +5526,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_audio_events.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 293,
@@ -5537,7 +5545,17 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/web/templates/macros/narrative_status_badge.html",
+            "tests/test_narrative_status_badge.py"
+          ],
+          "modules": [
+            "autopilot/web/templates/macros",
+            "tests"
+          ]
+        }
       },
       {
         "id": 294,
