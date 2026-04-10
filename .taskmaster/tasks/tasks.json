@@ -5510,7 +5510,7 @@
         "description": "The convention guard in tests/test_cli_conventions.py currently only scans test_cli.py. Three improvements needed:\n\n1. **Scan all test files**: Change from hard-coded `test_cli.py` to iterating `Path(__file__).parent.glob('test_*.py')` (excluding the convention file itself). The project has 60+ test files that could independently reintroduce the anti-pattern.\n\n2. **Handle dotted mock names**: The regex `r\"assert\\s+not\\s+\\w+\\.called\\b\"` misses chained attribute patterns like `self.mock.called` or `mock_obj.child.called`. Replace `\\w+` with `[\\w.]+` to match dotted attribute chains.\n\n3. **Guard positive pattern too**: Add a second regex to catch `assert mock.called` (without `not`) which should use `mock.assert_called()` or `mock.assert_called_once()` instead.\n\n4. **Fix misleading docstring**: The module docstring incorrectly states the old pattern \"silently swallows custom messages when written as tuples.\" The actual motivation is that `mock.assert_not_called()` is the idiomatic Mock API producing richer failure output (call count, args). Update accordingly.\n\nmemory_hints: search for \"mock assert_not_called convention\" and \"convention guard test_cli_conventions\"",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
@@ -5522,7 +5522,7 @@
             "tests"
           ]
         },
-        "updatedAt": "2026-04-10T07:17:55.888Z"
+        "updatedAt": "2026-04-10T08:02:59.053Z"
       },
       {
         "id": "292",
@@ -7063,9 +7063,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T08:02:52.884Z",
+      "lastModified": "2026-04-10T08:02:59.054Z",
       "taskCount": 373,
-      "completedCount": 219,
+      "completedCount": 220,
       "tags": [
         "master"
       ]
