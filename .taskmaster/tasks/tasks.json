@@ -3900,11 +3900,11 @@
         "description": "In tests/test_web_app.py, class TestExtractListenerBody (line 296): add `test_extracts_listener_body` using a synthetic inline-function listener string (e.g. `\"source.addEventListener('click', function(e) { doStuff(); })\"`) that asserts the returned body equals `\"{ doStuff(); }\"`. This makes the class symmetric with TestExtractFunctionBody and removes reliance on real app.js for basic correctness verification.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T09:14:38.307Z",
+        "updatedAt": "2026-04-10T11:10:47.756Z",
         "metadata": {
           "modules": [
             "tests/test_web_app.py"
@@ -7553,7 +7553,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T11:10:47.444Z",
+      "lastModified": "2026-04-10T11:10:47.759Z",
       "taskCount": 414,
       "completedCount": 253,
       "tags": [
