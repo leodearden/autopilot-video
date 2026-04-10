@@ -7336,6 +7336,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 398,
+        "title": "Cleanup debouncedRefreshStageCard: dead clearTimeout, var→const, shape comment",
+        "description": "Follow-up cleanup for debouncedRefreshStageCard in autopilot/web/static/app.js introduced in task 379:\n\n1. Dead code (line 87): `clearTimeout(state.timer)` inside the setTimeout callback is a no-op — the timeout has already fired by the time the callback runs. Remove this line; only `delete _refreshTimers[stage];` and the trailing-fire logic are needed.\n\n2. Style consistency (line 84): Task 379 upgraded `var DEBOUNCE_MS` → `const DEBOUNCE_MS` and enforced it via test, but left `var state = { ... }` and `var _refreshTimers` unchanged. Change `var state` → `const state` (the object is mutated but the binding never is) and `var _refreshTimers` → `const _refreshTimers` for consistency with the direction of the change.\n\n3. Shape-change guard (line 77): `_refreshTimers[stage]` changed shape from a raw timer id (number) to an object `{timer, pending}`. Add a brief comment near the `_refreshTimers` declaration warning that values are `{timer, pending}` objects, not timer ids, so future callers don't attempt `clearTimeout(_refreshTimers[stage])`. Optionally add a test asserting no other file references `_refreshTimers`.\n\nmemory_hints: search(\"debouncedRefreshStageCard refreshTimers\")",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -7348,7 +7359,7 @@
       ],
       "created": "2026-04-10T10:10:12.124Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-10T10:10:12.127Z"
+      "updated": "2026-04-10T10:10:22.233Z"
     }
   }
 }
