@@ -5211,7 +5211,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_otio_export.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 276,
@@ -5222,7 +5230,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_db_validate_helper.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 277,
