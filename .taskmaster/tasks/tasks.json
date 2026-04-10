@@ -5869,7 +5869,17 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/cli.py",
+            "tests/test_cli.py"
+          ],
+          "modules": [
+            "autopilot",
+            "tests"
+          ]
+        }
       },
       {
         "id": 311,
