@@ -6334,7 +6334,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_render_router.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 336,
@@ -6345,7 +6353,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "autopilot/render/router.py"
+          ],
+          "modules": [
+            "autopilot/render"
+          ]
+        }
       },
       {
         "id": 337,
