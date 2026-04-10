@@ -165,8 +165,12 @@ class TestReviewNarrativesBadge:
             "title": "Test",
             "description": "desc",
         }])
-        assert "bg-green-900" in html
-        assert "text-green-300" in html
+        badge_re = re.compile(
+            r'<span class="[^"]*bg-green-900[^"]*text-green-300[^"]*">'
+        )
+        assert badge_re.search(html), (
+            "expected badge span with bg-green-900 and text-green-300 classes"
+        )
 
 
 class TestReviewScriptsBadge:
