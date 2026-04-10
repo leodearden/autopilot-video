@@ -358,6 +358,21 @@ class TestExtractListenerBody:
         with pytest.raises(AssertionError, match='unbalanced'):
             _extract_listener_body(malformed_js, "broken_event")
 
+    def test_extract_listener_body_ignores_function_keyword_from_next_listener(self) -> None:
+        """factory-pattern listener must not silently return the next listener's body.
+
+        When the target listener uses a factory callback (no 'function' keyword),
+        the unbounded find('function', ...) would walk into a subsequent inline
+        listener and return the wrong body.  After the fix, an AssertionError
+        referencing both 'function' and the event type must be raised instead.
+        """
+        js = (
+            "source.addEventListener('first_event', makeStageHandler('first_event')); "
+            "source.addEventListener('second_event', function(e) { doThing(); })"
+        )
+        with pytest.raises(AssertionError, match=r"function.*first_event|first_event.*function"):
+            _extract_listener_body(js, "first_event")
+
 
 class TestBraceMatchFrom:
     """Tests for the _brace_match_from helper."""
