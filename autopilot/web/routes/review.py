@@ -203,7 +203,17 @@ def api_reject_narrative(request: Request, narrative_id: str) -> Response:
 
 
 class NarrativeUpdate(BaseModel):
-    """Request body for updating narrative fields."""
+    """Request body for updating narrative fields.
+
+    Null-clear contract: sending ``null`` for ``proposed_duration_seconds``
+    (or any other Optional field) is the supported way to clear the field — it
+    persists as NULL in the database.  This works because the route uses
+    ``body.model_dump(exclude_unset=True)``, which preserves explicitly-provided
+    null values while omitting fields that were not present in the request body
+    at all.  A field omitted from the JSON payload is skipped entirely (no
+    database column is touched), whereas a field explicitly set to ``null`` in
+    the payload is passed through to ``db.update_narrative`` and stored as NULL.
+    """
 
     title: Optional[str] = None
     description: Optional[str] = None
