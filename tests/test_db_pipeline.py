@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import TypedDict
 from unittest.mock import patch
 
 import pytest
 
-if TYPE_CHECKING:
-    from autopilot.db import CatalogDB
+from autopilot.db import CatalogDB
 
 KNOWN_STAGES = [
     "ingest",
@@ -29,7 +29,17 @@ KNOWN_STAGES = [
 # exercise one of the three update_* methods.  The lambdas accept a CatalogDB
 # as first arg so the parametrize decorator only carries a string key.
 
-_UPDATE_SPECS: dict[str, dict] = {
+
+class _UpdateSpec(TypedDict):
+    setup: Callable[..., object]
+    update: Callable[..., object]
+    get: Callable[..., dict | None]
+    valid_col: str
+    valid_val: str
+    default_val: str
+
+
+_UPDATE_SPECS: dict[str, _UpdateSpec] = {
     "gate": {
         "setup": lambda db: db.init_default_gates(),
         "update": lambda db, **kw: db.update_gate("ingest", **kw),
@@ -57,6 +67,67 @@ _UPDATE_SPECS: dict[str, dict] = {
         "default_val": "running",
     },
 }
+
+# -- Meta-tests: lock structural/type refactors in place ----------------------
+
+
+def test_update_spec_is_typeddict_with_expected_fields() -> None:
+    """_UpdateSpec is a TypedDict with exactly the six expected fields."""
+    import sys
+    import typing
+
+    module = sys.modules[__name__]
+
+    # (a) _UpdateSpec exists in the module namespace
+    assert hasattr(module, "_UpdateSpec"), "_UpdateSpec not found in module namespace"
+    _UpdateSpec = getattr(module, "_UpdateSpec")  # noqa: N806
+
+    # (b) it is a TypedDict
+    assert typing.is_typeddict(_UpdateSpec), "_UpdateSpec is not a TypedDict"
+
+    # (c) the keys of get_type_hints equal the expected set
+    hints = typing.get_type_hints(_UpdateSpec)
+    expected_keys = {"setup", "update", "get", "valid_col", "valid_val", "default_val"}
+    assert set(hints.keys()) == expected_keys, f"Keys mismatch: {set(hints.keys())}"
+
+    # (d) str-typed fields are exactly str
+    assert hints["valid_col"] is str, f"valid_col: expected str, got {hints['valid_col']}"
+    assert hints["valid_val"] is str, f"valid_val: expected str, got {hints['valid_val']}"
+    assert hints["default_val"] is str, f"default_val: expected str, got {hints['default_val']}"
+
+    # (e) _UPDATE_SPECS annotation mentions _UpdateSpec (covers the annotation change)
+    ann = module.__annotations__.get("_UPDATE_SPECS", "")
+    assert "_UpdateSpec" in str(ann), (
+        f"_UPDATE_SPECS annotation doesn't mention _UpdateSpec: {ann}"
+    )
+
+
+def test_non_pk_allowlist_parametrize_uses_frozensets() -> None:
+    """parametrize on test_non_pk_columns_match_allowlist passes frozensets directly."""
+    from autopilot.db import CatalogDB
+
+    fn = TestPipelineSchema.test_non_pk_columns_match_allowlist
+    markers = [m for m in fn.pytestmark if m.name == "parametrize"]
+    assert len(markers) == 1, f"Expected 1 parametrize marker, got {len(markers)}"
+    marker = markers[0]
+
+    # (a) argnames uses 'allowed', not 'allowed_attr'
+    assert marker.args[0] == "table, allowed", (
+        f"argnames: expected 'table, allowed', got {marker.args[0]!r}"
+    )
+
+    # (b) each argvalues tuple has shape (str, frozenset)
+    argvalues = marker.args[1]
+    for i, av in enumerate(argvalues):
+        assert isinstance(av[1], frozenset), (
+            f"argvalues[{i}][1] is not a frozenset: {type(av[1])}"
+        )
+
+    # (c) the three frozenset values match the CatalogDB class attributes
+    assert argvalues[0][1] == CatalogDB._GATE_ALLOWED_COLUMNS
+    assert argvalues[1][1] == CatalogDB._JOB_ALLOWED_COLUMNS
+    assert argvalues[2][1] == CatalogDB._RUN_ALLOWED_COLUMNS
+
 
 # -- Schema tests for pipeline tables ----------------------------------------
 
@@ -151,16 +222,16 @@ class TestPipelineSchema:
         assert cols == ["created_at"]
 
     @pytest.mark.parametrize(
-        "table, allowed_attr",
+        "table, allowed",
         [
-            ("pipeline_gates", "_GATE_ALLOWED_COLUMNS"),
-            ("pipeline_jobs", "_JOB_ALLOWED_COLUMNS"),
-            ("pipeline_runs", "_RUN_ALLOWED_COLUMNS"),
+            ("pipeline_gates", CatalogDB._GATE_ALLOWED_COLUMNS),
+            ("pipeline_jobs", CatalogDB._JOB_ALLOWED_COLUMNS),
+            ("pipeline_runs", CatalogDB._RUN_ALLOWED_COLUMNS),
         ],
         ids=["gates", "jobs", "runs"],
     )
     def test_non_pk_columns_match_allowlist(
-        self, catalog_db: CatalogDB, table: str, allowed_attr: str
+        self, catalog_db: CatalogDB, table: str, allowed: frozenset[str]
     ) -> None:
         """Non-PK columns in the schema == the update allowlist frozenset.
 
@@ -169,7 +240,6 @@ class TestPipelineSchema:
         """
         cur = catalog_db.conn.execute(f"PRAGMA table_info({table})")  # noqa: S608
         non_pk_cols = {row[1] for row in cur.fetchall() if row[5] == 0}
-        allowed: frozenset[str] = getattr(catalog_db, allowed_attr)
         assert non_pk_cols == allowed, (
             f"Schema drift detected for {table}:\n"
             f"  in schema but not allowlist: {non_pk_cols - allowed}\n"
