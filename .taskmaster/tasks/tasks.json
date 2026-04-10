@@ -3702,11 +3702,11 @@
         "description": "In tests/test_web_app.py: (1) Replace assert \"'unknown'\" in else_body with assert \".replace('{stage}', 'unknown')\" in else_body to pin the precise replacement contract instead of matching incidental occurrences of 'unknown'. (2) Make the 5-param makeStageHandler call assertion resilient to whitespace changes by normalising whitespace before the substring search (e.g. re.sub(r'\\s+', ' ', js_source)) or by splitting into separate per-argument assertions.",
         "details": "Follow-up from task 152 review suggestions. The 'unknown' assertion currently passes if the string appears anywhere in the else block. The whitespace-sensitive exact-match assertion will break if app.js is auto-formatted.\n\nmemory_hints: search for \"makeStageHandler assertion\" and \"unknown fallback test\"",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T09:02:01.190Z",
+        "updatedAt": "2026-04-10T08:10:40.549Z",
         "metadata": {
           "modules": [
             "tests/test_web_app.py"
@@ -7176,7 +7176,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T08:10:40.282Z",
+      "lastModified": "2026-04-10T08:10:40.549Z",
       "taskCount": 383,
       "completedCount": 228,
       "tags": [
