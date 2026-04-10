@@ -5466,7 +5466,18 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_notifications.py",
+            "tests/test_web_app.py",
+            "tests/test_sse.py",
+            "tests/test_orchestrator.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 290,
@@ -5477,7 +5488,15 @@
         "status": "pending",
         "dependencies": [],
         "priority": "low",
-        "subtasks": []
+        "subtasks": [],
+        "metadata": {
+          "files": [
+            "tests/test_sse.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 291,
