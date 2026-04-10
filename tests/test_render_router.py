@@ -1261,10 +1261,7 @@ class TestClipIdValidation:
             }
         ]
         edl = _make_edl(clips=clips)
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         config = _make_config()
 
         with (
@@ -1295,10 +1292,7 @@ class TestClipIdValidation:
             }
         ]
         edl = _make_edl(clips=clips)
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         config = _make_config()
 
         with (
@@ -1333,10 +1327,7 @@ class TestClipIdValidation:
             }
         ]
         edl = _make_edl(clips=clips)
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         config = _make_config()
 
         with (
@@ -1370,10 +1361,7 @@ class TestClipIdValidation:
             }
         ]
         edl = _make_edl(clips=clips)
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         config = _make_config()
 
         with (
@@ -1410,10 +1398,7 @@ class TestClipIdValidation:
         ]
         segments = [{"start": 0.0, "end": 2.0, "text": "Hello"}]
         edl = _make_edl(clips=clips)
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_media.return_value = {"file_path": "/resolved/real_clip.mp4"}
+        db = _make_db(edl=edl, media_file_path="/resolved/real_clip.mp4")
 
         def _get_transcript(media_id: str):
             if media_id == "real_clip":
@@ -1471,10 +1456,7 @@ class TestClipIdValidation:
             }
         ]
         edl = _make_edl(clips=clips)
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         config = _make_config()
 
         with (
@@ -1504,14 +1486,10 @@ class TestClipIdValidation:
         ]
         crop_modes = [{"clip_id": "c1", "mode": "auto_subject"}]
         edl = _make_edl(clips=clips, crop_modes=crop_modes)
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_media.return_value = {"file_path": "/resolved/c1.mp4"}
+        db = _make_db(edl=edl, media_file_path="/resolved/c1.mp4")
         db.get_crop_path.return_value = {
             "path_data": [[0.0, 0.0, 100.0, 100.0]],
         }
-        db.get_transcript.return_value = None
         config = _make_config()
 
         with (
@@ -1580,10 +1558,7 @@ class TestResolvedClipsList:
             },
         ]
         edl = _make_edl(clips=clips)
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         db.get_media.side_effect = lambda mid: {"file_path": f"/resolved/{mid}.mp4"}
         config = _make_config()
 
@@ -1652,9 +1627,7 @@ class TestResolvedClipsList:
         seg1 = [{"start": 0.0, "end": 2.0, "text": "First clip sub"}]
         seg2 = [{"start": 0.0, "end": 2.0, "text": "Second clip sub"}]
 
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db = _make_db(edl=edl)
         db.get_media.side_effect = lambda mid: {"file_path": f"/resolved/{mid}.mp4"}
 
         def _get_transcript(media_id: str):
@@ -1760,9 +1733,7 @@ class TestResolvedClipsList:
         seg1 = [{"start": 0.0, "end": 2.0, "text": "first"}]
         seg2 = [{"start": 0.0, "end": 2.0, "text": "second"}]
 
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db = _make_db(edl=edl)
         db.get_media.side_effect = lambda mid: {"file_path": f"/resolved/{mid}.mp4"}
 
         def _get_transcript(media_id: str):
@@ -1832,9 +1803,7 @@ class TestResolvedClipsList:
         edl = _make_edl(clips=clips)
         seg1 = [{"start": 0.0, "end": 2.0, "text": "Hello"}]
 
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db = _make_db(edl=edl)
         db.get_media.side_effect = lambda mid: {"file_path": f"/resolved/{mid}.mp4"}
 
         def _get_transcript(media_id: str):
