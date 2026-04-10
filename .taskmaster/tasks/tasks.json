@@ -7370,6 +7370,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 401,
+        "title": "Close refreshCard=false dead-branch gap: add behavioural test or remove dead branch",
+        "description": "Task 188 added a NOTE above the `if (refreshCard)` assertion (tests/test_web_app.py:548-552) acknowledging that the runtime branch where refreshCard=false and debouncedRefreshStageCard is NOT invoked is never exercised by any test, and that no current call site passes refreshCard=false. A comment inside a test is not an enforcement mechanism — the reviewer asked for either a tracked follow-up or removal of the dead branch.",
+        "details": "Follow-up from task 188 review (esc-188-45). Pick one of:\n\n(a) Remove dead branch. Delete the `if (refreshCard) { ... }` guard around the debouncedRefreshStageCard call in static/app.js (inside makeStageHandler) and the corresponding `refreshCard` parameter, since no caller passes refreshCard=false. Update test_make_stage_handler_calls_refresh_stage_card to drop the `'if (refreshCard)' in body` assertion and the NOTE. Preferred option per reviewer — removing dead code is better than documenting it.\n\n(b) Add behavioural coverage. Stand up a jsdom or Playwright test that instantiates makeStageHandler with refreshCard=false, dispatches a synthetic SSE event with a valid stage, and asserts that debouncedRefreshStageCard was NOT invoked. Then replace the NOTE with a reference to the new test.\n\nEither resolution eliminates the current gap where the false branch is verified only by static text-match. Prefer (a) unless there is a forthcoming caller that actually needs refreshCard=false.\n\nScope check: option (a) edits static/app.js (the makeStageHandler function) and tests/test_web_app.py. Option (b) adds a new jsdom/Playwright test harness.\n\nmemory_hints: search for \"refreshCard dead branch\" and \"makeStageHandler refreshCard\".",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -7382,7 +7393,7 @@
       ],
       "created": "2026-04-10T10:11:27.459Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-10T10:11:27.461Z"
+      "updated": "2026-04-10T10:11:39.259Z"
     }
   }
 }
