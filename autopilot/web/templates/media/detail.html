@@ -13,7 +13,7 @@
             <p class="text-sm text-gray-400 mt-1">{{ media.file_path }}</p>
         </div>
         {% set media_colors = {'analyzed': 'bg-green-900 text-green-300', 'ingested': 'bg-blue-900 text-blue-300'} %}
-        {{ status_badge(media.status, media_colors, extra_classes='py-0.5') }}
+        {{ status_badge(media.status, media_colors, py='py-0.5') }}
     </div>
 
     <!-- Tab navigation -->
