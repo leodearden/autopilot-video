@@ -15,6 +15,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 # isort: split
 from check_queue_health import (  # noqa: E402  (import after sys.path mutation)
+    _format_age,
     collect_queue_stats,
     filter_by_project,
     format_report,
@@ -77,6 +78,27 @@ def _insert_row(
         """,
         (group_id, operation, status, attempts, created_at, completed_at, error),
     )
+
+
+# ===========================================================================
+# TestFormatAge
+# ===========================================================================
+
+
+class TestFormatAge:
+    @pytest.mark.parametrize(
+        "seconds, expected",
+        [
+            (0, "0s"),
+            (45, "45s"),
+            (120, "2m"),
+            (3600, "1h0m"),
+            (3 * 3600 + 42 * 60, "3h42m"),
+            (86400, "24h0m"),
+        ],
+    )
+    def test_format_age(self, seconds: float, expected: str) -> None:
+        assert _format_age(seconds) == expected
 
 
 # ===========================================================================
