@@ -176,6 +176,43 @@ class TestSummarizeHealth:
         assert summary["pending"] == 5
         assert summary["unhealthy_groups"] == []
 
+    def test_in_flight_rows_counted_and_arithmetic_consistent(self) -> None:
+        """in_flight must appear in summary and the arithmetic invariant must hold."""
+        stats = {
+            ("autopilot_video", "completed"): 10,
+            ("mem0_reify", "in_flight"): 1,
+            ("autopilot_video", "dead"): 2,
+            ("autopilot_video", "retry"): 1,
+            ("autopilot_video", "pending"): 3,
+        }
+        summary = summarize_health(stats)
+
+        assert summary["in_flight"] == 1
+        assert summary["total_rows"] == 17
+        # The arithmetic invariant: all buckets must sum to total_rows
+        assert (
+            summary["completed"]
+            + summary["in_flight"]
+            + summary["dead"]
+            + summary["retry"]
+            + summary["pending"]
+            == summary["total_rows"]
+        )
+
+    def test_in_flight_alone_does_not_flag_unhealthy(self) -> None:
+        """in_flight is transient worker activity — must NOT mark queue unhealthy."""
+        stats = {
+            ("autopilot_video", "completed"): 1636,
+            ("mem0_reify", "in_flight"): 1,
+        }
+        summary = summarize_health(stats)
+
+        assert summary["healthy"] is True
+        assert summary["in_flight"] == 1
+        assert summary["dead"] == 0
+        assert summary["retry"] == 0
+        assert summary["unhealthy_groups"] == []
+
 
 # ===========================================================================
 # TestFilterByProject
