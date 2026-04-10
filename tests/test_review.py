@@ -1066,6 +1066,33 @@ class TestDepsImportRefactor:
 
 
 # ---------------------------------------------------------------------------
+# TestBuildZeroDurationApp — task-338
+# ---------------------------------------------------------------------------
+
+
+class TestBuildZeroDurationApp:
+    """Unit tests for the _build_zero_duration_app module-level helper."""
+
+    def test_helper_seeds_narratives_and_gates(self, tmp_path: Path) -> None:
+        """_build_zero_duration_app creates a fully seeded FastAPI app."""
+        db_path = str(tmp_path / "catalog.db")
+        app = _build_zero_duration_app(db_path)
+        assert isinstance(app, FastAPI)
+        assert app.state.db_path == db_path
+        with CatalogDB(db_path) as db:
+            n_zero = db.get_narrative("n-zero")
+            assert n_zero is not None
+            assert n_zero["title"] == "Zero Duration"
+            assert n_zero["proposed_duration_seconds"] == 0
+            n_none = db.get_narrative("n-none")
+            assert n_none is not None
+            assert n_none["title"] == "No Duration"
+            assert n_none["proposed_duration_seconds"] is None
+            gate_count = db.conn.execute("SELECT COUNT(*) FROM gates").fetchone()[0]
+            assert gate_count > 0
+
+
+# ---------------------------------------------------------------------------
 # Zero-duration fixtures — task-167
 # ---------------------------------------------------------------------------
 
