@@ -7157,10 +7157,11 @@
         "description": "Post-merge review follow-ups for scripts/check_queue_health.py from Task 359. Bundle of related robustness/maintainability improvements to the DLQ diagnostic.",
         "details": "Review suggestions from esc-359-26 (reviewer_comprehensive):\n\n1. **Error handling (lines 51-63, main):** collect_queue_stats and main() do not catch sqlite3.OperationalError (missing DB, missing write_queue table) or FileNotFoundError. A missing DB emits a raw Python traceback and exits with the same exit code as \"unhealthy\", colliding with the documented 0=healthy/1=unhealthy contract. Fix: catch sqlite3.OperationalError and FileNotFoundError in main(), print a single-line error including the offending path, and return a distinct exit code (e.g. 2) so callers can distinguish \"unhealthy queue\" from \"diagnostic failed to run\".\n\n2. **Hardcoded cross-project default path (line 29):** _DEFAULT_DB_PATH = \"/home/leo/src/dark-factory/data/queue/write_queue.db\" bakes a machine-specific, cross-project absolute path into the autopilot-video repo. Fix: resolve the default from an environment variable (e.g. FUSED_MEMORY_QUEUE_DB) with a fallback, or require --db-path explicitly. Remove the hardcoded /home/leo/ path.\n\n3. **Dead per-group 'in_flight' state (lines 86-93):** summarize_health initializes 'in_flight' inside each per-group counter dict and increments it, but that field is never read — unhealthy_groups entries surface only dead/retry/pending. Fix: drop 'in_flight' from the per-group dict (keep it only in the global totals aggregation). If per-group in_flight surfacing is eventually desired, add it to unhealthy_groups entries at the same time.\n\n4. **Missing DLQ-age early-warning signal (lines 117-126):** The script reproduces counts-by-status via raw SQL but omits the \"oldest pending/dead age\" signal that fused_memory/services/durable_queue.py's DurableWriteQueue.get_stats() exposes. This is exactly the DLQ-resurgence-detection signal Task 359 is designed to catch. Fix: compute MIN(created_at) WHERE status IN ('pending','retry','dead') and surface it in the report as e.g. oldest_dead_age=3h42m.\n\n5. **Fixed-width group_id formatting (lines 180-182):** Per-group breakdown uses {group_id:<40s}. Group IDs longer than 40 chars (plausible for mem0_<longproject>_<suffix> variants) overflow and misalign the status column exactly in the unhealthy cases the tool is meant to diagnose. Fix: compute max(len(group_id)) once and use it as the width, or switch to tab/pipe-separated output.\n\nAll changes are scoped to scripts/check_queue_health.py and should be covered by corresponding tests in tests/test_check_queue_health.py.",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [],
+        "updatedAt": "2026-04-10T08:11:07.703Z"
       },
       {
         "id": "383",
@@ -7198,7 +7199,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T08:11:07.534Z",
+      "lastModified": "2026-04-10T08:11:07.703Z",
       "taskCount": 385,
       "completedCount": 229,
       "tags": [
