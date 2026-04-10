@@ -439,6 +439,49 @@ class TestFormatReport:
         total = counts.pop("total_rows")
         assert sum(counts.values()) == total
 
+    def test_per_group_breakdown_aligns_with_long_group_ids(self) -> None:
+        long_id = "mem0_some_very_long_project_identifier_with_suffix"  # 50 chars
+        short_id = "x"
+        stats = {
+            (long_id, "dead"): 3,
+            (short_id, "completed"): 1,
+        }
+        summary = summarize_health(stats)
+        report = format_report(stats, summary)
+
+        # Extract the Per-group breakdown section rows only
+        lines = report.splitlines()
+        in_breakdown = False
+        data_lines = []
+        for ln in lines:
+            if ln == "Per-group breakdown:":
+                in_breakdown = True
+                continue
+            if in_breakdown:
+                if ln == "" or not ln.startswith("  "):
+                    break
+                data_lines.append(ln)
+
+        assert len(data_lines) == 2, f"Expected 2 breakdown rows, got: {data_lines}"
+
+        # Status column must start at the same character offset in both rows
+        # (the status word follows two spaces + the padded group_id column)
+        def status_col(row: str) -> int:
+            # Status is the second whitespace-delimited token after leading spaces
+            stripped = row.lstrip()
+            # Remove the group_id token and find where the next non-space starts
+            after_group = stripped[len(stripped.split()[0]):]
+            return row.index(after_group.lstrip(), 2)
+
+        col0 = status_col(data_lines[0])
+        col1 = status_col(data_lines[1])
+        assert col0 == col1, (
+            f"Status column misaligned: row0 status at {col0}, row1 status at {col1}\n"
+            f"  {data_lines[0]!r}\n  {data_lines[1]!r}"
+        )
+        # Long group_id must not overflow into the status column with no separator
+        assert f"{long_id}dead" not in report and f"{long_id}completed" not in report
+
     def test_summary_line_includes_oldest_dead_age_when_present(self) -> None:
         stats = {("g", "dead"): 1}
         summary = summarize_health(
