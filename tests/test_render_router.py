@@ -589,11 +589,7 @@ class TestSubtitleSupport:
             {"start": 0.0, "end": 2.5, "text": "Hello world"},
             {"start": 2.5, "end": 5.0, "text": "Testing"},
         ]
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = {"segments_json": json.dumps(segments)}
+        db = _make_db(edl=edl, transcript_segments=segments)
         config = _make_config()
 
         with (
@@ -612,11 +608,7 @@ class TestSubtitleSupport:
         from autopilot.render.router import route_and_render
 
         edl = _make_edl()
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None
+        db = _make_db(edl=edl)
         config = _make_config()
 
         with (
@@ -645,11 +637,7 @@ class TestSubtitlesWithAudioMixing:
 
         segments = [{"start": 0.0, "end": 2.0, "text": "Hello"}]
         edl = _make_edl(music=[{"path": "/tmp/music.mp3", "level": -6}])
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = {"segments_json": json.dumps(segments)}
+        db = _make_db(edl=edl, transcript_segments=segments)
         config = _make_config()
 
         with (
@@ -692,11 +680,7 @@ class TestStreamCopyVsFilter:
 
         segments = [{"start": 0.0, "end": 2.0, "text": "Hello"}]
         edl = _make_edl()  # no music -> no audio mixing
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = {"segments_json": json.dumps(segments)}
+        db = _make_db(edl=edl, transcript_segments=segments)
         config = _make_config()
 
         with (
@@ -721,11 +705,7 @@ class TestStreamCopyVsFilter:
         from autopilot.render.router import route_and_render
 
         edl = _make_edl()  # no music, no voiceovers
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = None  # no subtitles
+        db = _make_db(edl=edl)  # transcript_segments=None -> no subtitles
         config = _make_config()
 
         with (
@@ -759,11 +739,7 @@ class TestTranscriptByMediaId:
 
         segments = [{"start": 0.0, "end": 2.5, "text": "Hello"}]
         edl = _make_edl()
-        db = MagicMock()
-        db.get_media.return_value = {"file_path": "/fake/source.mp4"}
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
-        db.get_transcript.return_value = {"segments_json": json.dumps(segments)}
+        db = _make_db(edl=edl, transcript_segments=segments)
         config = _make_config()
 
         with patch("autopilot.render.router.render_simple") as mock_rs, patch("subprocess.run"):
@@ -798,9 +774,7 @@ class TestTranscriptByMediaId:
         seg1 = [{"start": 0.0, "end": 2.0, "text": "First clip"}]
         seg2 = [{"start": 0.0, "end": 2.0, "text": "Second clip"}]
 
-        db = MagicMock()
-        db.get_edit_plan.return_value = {"edl_json": json.dumps(edl)}
-        db.get_narrative.return_value = {"narrative_id": "n1", "title": "Test"}
+        db = _make_db(edl=edl)
         db.get_media.side_effect = lambda mid: {"file_path": f"/resolved/{mid}.mp4"}
 
         def _get_transcript(media_id: str):
