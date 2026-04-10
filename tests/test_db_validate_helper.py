@@ -96,6 +96,15 @@ class TestExecuteKwargsUpdate:
         row = catalog_db.get_activity_cluster("ac2")
         assert row["label"] == "After"
 
+    def test_raises_valueerror_on_non_identifier_table(self, catalog_db):
+        """SQL-injection-style table name raises ValueError."""
+        with pytest.raises(ValueError, match=r"Invalid table name"):
+            catalog_db._execute_kwargs_update(
+                "users; DROP TABLE users; --",
+                "cluster_id", "ac1",
+                frozenset({"label"}), "cluster", {"label": "x"},
+            )
+
 
 class TestUpdateMethodsDelegateValidation:
     """Verify each public update method delegates to _validate_update_kwargs."""
