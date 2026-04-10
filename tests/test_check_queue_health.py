@@ -563,6 +563,7 @@ class TestMain:
         import check_queue_health as cqh
 
         # Check the script source for the cross-project absolute path
+        assert cqh.__file__ is not None
         source_path = Path(cqh.__file__)
         source_text = source_path.read_text()
         assert "/home/leo/src/dark-factory" not in source_text, (
