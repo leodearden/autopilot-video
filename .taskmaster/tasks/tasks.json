@@ -7439,6 +7439,17 @@
         "dependencies": [],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 407,
+        "title": "Audit task-id sort sites for lexicographic vs numeric ordering after string-id migration",
+        "description": "The tasks.json migration switched task IDs from int to str, which changes sort order from numeric to lexicographic (e.g. ['1','10','100','11','2'] instead of [1,2,10,11,100]). Audit any code that sorts or ranges over task ids — grep for sorted(...id...), min/max on ids, pagination by id — and fix ordering where it matters by sorting on int(id) explicitly or introducing a numeric sort_key field. Also document the string-id convention in CLAUDE.md so future agents don't reintroduce int ids.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -7451,7 +7462,7 @@
       ],
       "created": "2026-04-10T10:16:53.515Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-10T10:16:53.606Z"
+      "updated": "2026-04-10T10:16:59.851Z"
     }
   }
 }
