@@ -17,12 +17,14 @@ Usage examples::
 Exit codes:
     0 — queue is healthy (no dead or retry rows)
     1 — queue is unhealthy
+    2 — diagnostic failed (missing DB, missing write_queue table, etc.)
 """
 
 from __future__ import annotations
 
 import argparse
 import sqlite3
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -232,7 +234,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    stats = collect_queue_stats(args.db_path)
+    try:
+        stats = collect_queue_stats(args.db_path)
+    except (sqlite3.OperationalError, FileNotFoundError) as exc:
+        print(
+            f"error: failed to read queue DB at {args.db_path}: {exc}",
+            file=sys.stderr,
+        )
+        return 2
     if args.project:
         stats = filter_by_project(stats, args.project)
     summary = summarize_health(stats)
