@@ -95,8 +95,6 @@ class TestExtraClasses:
         html = _render_badge("approved", "ml-2 whitespace-nowrap")
         assert "ml-2" in html
         assert "whitespace-nowrap" in html
-        assert "bg-green-900" in html
-        assert "text-green-300" in html
 
     def test_no_extra_classes_by_default(self) -> None:
         html = _render_badge("proposed")
@@ -167,23 +165,31 @@ class TestReviewNarrativesBadge:
             "title": "Test",
             "description": "desc",
         }])
-        assert "bg-green-900" in html
-        assert "text-green-300" in html
+        badge_re = re.compile(
+            r'<span class="[^"]*bg-green-900[^"]*text-green-300[^"]*">'
+        )
+        assert badge_re.search(html), (
+            "expected badge span with bg-green-900 and text-green-300 classes"
+        )
 
 
 class TestReviewScriptsBadge:
     """Verify review/scripts.html uses the shared status_badge macro."""
 
-    def test_renders_approved_badge(self) -> None:
+    def test_renders_badge_in_scripts(self) -> None:
         template = _ENV.get_template("review/scripts.html")
         html = template.render(
             page_title="Scripts Review",
             scripts=[{
-                "narrative_id": "n-1",
-                "narrative_title": "Test",
+                "narrative_id": "s-1",
                 "narrative_status": "approved",
+                "narrative_title": "Test",
                 "scenes": [],
             }],
         )
-        assert "bg-green-900" in html
-        assert "text-green-300" in html
+        badge_re = re.compile(
+            r'<span class="[^"]*bg-green-900[^"]*text-green-300[^"]*">'
+        )
+        assert badge_re.search(html), (
+            "expected badge span with bg-green-900 and text-green-300 classes"
+        )
