@@ -7081,6 +7081,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 376,
+        "title": "Add test pinning _extract_listener_body behavior on nested addEventListener calls",
+        "description": "Add a test to tests/test_web_app.py TestExtractListenerBody covering the case where a listener callback body itself contains a nested addEventListener( call. With the bound introduced in task 165 (search_end = next 'addEventListener('), the outer listener's search_end is cut to the nested call's position — this still happens to work because 'function' appears before the nested call, but the behavior is subtle and worth pinning down with a test. Suggested js: `source.addEventListener('outer', function(e) { inner.addEventListener('click', function() {}); })`. Assert that _extract_listener_body(js, 'outer') returns the full outer body including the nested registration.",
+        "details": "Follow-up from task 165 review (reviewer_comprehensive, test-coverage). Test-only; no production code change. Memory hints: search for \"task 165 _extract_listener_body factory pattern bound\".",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -7093,7 +7104,7 @@
       ],
       "created": "2026-04-10T08:03:52.127Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-10T08:03:53.189Z"
+      "updated": "2026-04-10T08:03:58.402Z"
     }
   }
 }
