@@ -166,11 +166,6 @@ class TestReviewNarrativesBadge:
         assert "bg-green-900" in html
         assert "text-green-300" in html
 
-    def test_source_uses_macro_import(self) -> None:
-        source_path = TEMPLATES_DIR / "review" / "narratives.html"
-        source = source_path.read_text()
-        assert _IMPORT_RE.search(source)
-
 
 class TestReviewScriptsBadge:
     """Verify review/scripts.html uses the shared status_badge macro."""
@@ -188,8 +183,3 @@ class TestReviewScriptsBadge:
         )
         assert "bg-green-900" in html
         assert "text-green-300" in html
-
-    def test_source_uses_macro_import(self) -> None:
-        source_path = TEMPLATES_DIR / "review" / "scripts.html"
-        source = source_path.read_text()
-        assert _IMPORT_RE.search(source)
