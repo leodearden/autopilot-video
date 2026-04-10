@@ -143,8 +143,10 @@ var _permissionRequested = false;
 
 /**
  * Set up SSE event listeners for notification bell updates.
- * Shows the badge when gate_waiting events arrive and hides it
- * when gates are approved or skipped.
+ * Listens for the unified 'notification' SSE event, increments the unread
+ * badge on each event, shows a toast, and optionally raises a browser
+ * Notification. Also wires a click listener on #notification-bell that
+ * resets the unread count to zero.
  * @param {EventSource} source - The SSE EventSource connection.
  */
 function setupNotificationSSE(source) {

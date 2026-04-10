@@ -217,6 +217,37 @@ class TestNotificationSSESetup:
             "to prevent badge increment on invalid payloads"
         )
 
+    def test_setup_notification_sse_jsdoc_reflects_unified_model(self) -> None:
+        """JSDoc for setupNotificationSSE must describe the unified notification
+        model and must not contain stale gate_waiting / gates-are-approved references."""
+        content = _APP_JS.read_text()
+        func_idx = content.find("function setupNotificationSSE")
+        assert func_idx != -1, "setupNotificationSSE not found in app.js"
+        # Walk backward from the function declaration to isolate its JSDoc block
+        jsdoc_end = func_idx  # exclusive upper bound (the function line itself)
+        jsdoc_start = content.rfind("/**", 0, jsdoc_end)
+        assert jsdoc_start != -1, "No JSDoc block found before setupNotificationSSE"
+        jsdoc_block = content[jsdoc_start:jsdoc_end]
+
+        # Stale phrases must be absent
+        assert "gate_waiting" not in jsdoc_block, (
+            "JSDoc should not reference stale gate_waiting event"
+        )
+        assert "gates are approved or skipped" not in jsdoc_block, (
+            "JSDoc should not describe stale gate approval/skip behavior"
+        )
+
+        # Phrases describing the unified notification model must be present
+        assert "unread" in jsdoc_block.lower(), (
+            "JSDoc should mention unread badge behavior"
+        )
+        assert "notification" in jsdoc_block.lower(), (
+            "JSDoc should mention the unified notification event"
+        )
+        assert "bell" in jsdoc_block.lower(), (
+            "JSDoc should mention bell click resetting the count"
+        )
+
     def test_connectsse_no_duplicate_notification_listener(self) -> None:
         """connectSSE must not duplicate the notification listener."""
         content = _APP_JS.read_text()
