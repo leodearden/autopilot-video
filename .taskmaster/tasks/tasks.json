@@ -5114,7 +5114,7 @@
         "description": "In tests/test_db_pipeline.py line 654, change `spec['update'](catalog_db, aaa_col='x', zzz_col='y')` to `spec['update'](catalog_db, zzz_col='y', aaa_col='x')` so kwargs arrive in reverse alphabetical order. The existing assertion `msg.index('aaa_col') < msg.index('zzz_col')` then genuinely proves the implementation uses sorted() rather than preserving insertion order.",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
@@ -5125,7 +5125,8 @@
           "modules": [
             "tests"
           ]
-        }
+        },
+        "updatedAt": "2026-04-10T08:09:43.073Z"
       },
       {
         "id": "271",
@@ -7153,7 +7154,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T08:09:08.975Z",
+      "lastModified": "2026-04-10T08:09:43.073Z",
       "taskCount": 381,
       "completedCount": 228,
       "tags": [
