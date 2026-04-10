@@ -5098,7 +5098,15 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
-        "updatedAt": "2026-04-04T23:18:05.645Z"
+        "updatedAt": "2026-04-04T23:18:05.645Z",
+        "metadata": {
+          "files": [
+            "tests/test_db_pipeline.py"
+          ],
+          "modules": [
+            "tests"
+          ]
+        }
       },
       {
         "id": 270,
