@@ -6898,7 +6898,7 @@
         "description": "Two behavioral guardrails for autopilot_video triage agents were written across 3+ reconciliation cycles but never persisted due to the Mem0 universal memory_ids=[] bug (see task 360). Their original content is irrecoverable from all current stores (Graphiti + Mem0). Human operator must re-author both from first principles.\\n\\nGuardrails needed:\\n1. **Attribution stub anti-pattern** — describes a failure mode triage agents must avoid when handling attribution/source metadata. Original content lost. Author as a preferences_and_norms entry explaining: what the anti-pattern is, how to detect it, and the correct behavior.\\n2. **Nav hints anti-pattern** — describes a failure mode triage agents must avoid when generating or consuming navigation hints. Original content lost. Author as a preferences_and_norms entry explaining: what the anti-pattern is, how to detect it, and the correct behavior.\\n\\nAfter re-authoring, write both as dual_write=true with category=preferences_and_norms.\\n\\n**Prerequisites**: Task 360 (Mem0 ID routing fix) should be resolved first so IDs are returned on write and the guardrails are anchored for future update/deletion.\\n\\nmemory_hints:\\n- search: \\\"attribution stub anti-pattern triage agent guardrail\\\"\\n- search: \\\"nav hints anti-pattern triage agent guardrail\\\"\\n- search: \\\"Mem0 memory_ids empty ID routing Qdrant autopilot_video\\\"",
         "details": "",
         "testStrategy": "",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [
           "360"
         ],
@@ -6918,7 +6918,8 @@
             ]
           },
           "_causation_id": "5f66b984-91d7-4c42-968f-79d9899da387"
-        }
+        },
+        "updatedAt": "2026-04-10T10:17:47.499Z"
       },
       {
         "id": "362",
@@ -7477,7 +7478,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T10:17:36.008Z",
+      "lastModified": "2026-04-10T10:17:47.499Z",
       "taskCount": 409,
       "completedCount": 249,
       "tags": [
