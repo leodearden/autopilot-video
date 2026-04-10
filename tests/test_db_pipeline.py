@@ -749,7 +749,7 @@ class TestUpdateColumnValidation:
         spec = _UPDATE_SPECS[entity]
         spec["setup"](catalog_db)
         with pytest.raises(ValueError, match="Disallowed column") as exc_info:
-            spec["update"](catalog_db, aaa_col="x", zzz_col="y")
+            spec["update"](catalog_db, zzz_col="y", aaa_col="x")
         msg = str(exc_info.value)
         # Both bad column names appear in the error message.
         assert "aaa_col" in msg
