@@ -239,10 +239,11 @@ def format_report(
 
     # Per-(group, status) table, sorted for stable output
     if stats:
+        width = max((len(g) for (g, _) in stats), default=20)
         lines.append("")
         lines.append("Per-group breakdown:")
         for (group_id, status), count in sorted(stats.items()):
-            lines.append(f"  {group_id:<40s}  {status:<12s}  {count}")
+            lines.append(f"  {group_id:<{width}s}  {status:<12s}  {count}")
 
     # Unhealthy groups detail section
     if summary["unhealthy_groups"]:
