@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, TypedDict
+from typing import TypedDict
 from unittest.mock import patch
 
 import pytest
 
-if TYPE_CHECKING:
-    from autopilot.db import CatalogDB
+from autopilot.db import CatalogDB
 
 KNOWN_STAGES = [
     "ingest",
@@ -223,16 +222,16 @@ class TestPipelineSchema:
         assert cols == ["created_at"]
 
     @pytest.mark.parametrize(
-        "table, allowed_attr",
+        "table, allowed",
         [
-            ("pipeline_gates", "_GATE_ALLOWED_COLUMNS"),
-            ("pipeline_jobs", "_JOB_ALLOWED_COLUMNS"),
-            ("pipeline_runs", "_RUN_ALLOWED_COLUMNS"),
+            ("pipeline_gates", CatalogDB._GATE_ALLOWED_COLUMNS),
+            ("pipeline_jobs", CatalogDB._JOB_ALLOWED_COLUMNS),
+            ("pipeline_runs", CatalogDB._RUN_ALLOWED_COLUMNS),
         ],
         ids=["gates", "jobs", "runs"],
     )
     def test_non_pk_columns_match_allowlist(
-        self, catalog_db: CatalogDB, table: str, allowed_attr: str
+        self, catalog_db: CatalogDB, table: str, allowed: frozenset[str]
     ) -> None:
         """Non-PK columns in the schema == the update allowlist frozenset.
 
@@ -241,7 +240,6 @@ class TestPipelineSchema:
         """
         cur = catalog_db.conn.execute(f"PRAGMA table_info({table})")  # noqa: S608
         non_pk_cols = {row[1] for row in cur.fetchall() if row[5] == 0}
-        allowed: frozenset[str] = getattr(catalog_db, allowed_attr)
         assert non_pk_cols == allowed, (
             f"Schema drift detected for {table}:\n"
             f"  in schema but not allowlist: {non_pk_cols - allowed}\n"
