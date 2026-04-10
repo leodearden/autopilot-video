@@ -91,11 +91,10 @@ def summarize_health(stats: dict[tuple[str, str], int]) -> dict[str, Any]:
         # Update global totals
         if status in totals:
             totals[status] += count
-        # Update per-group counters (in_flight tracked per-group for internal
-        # bookkeeping but NOT surfaced in unhealthy_groups entries)
-        g = group_counts.setdefault(
-            group_id, {"in_flight": 0, "dead": 0, "retry": 0, "pending": 0}
-        )
+        # Update per-group counters; in_flight is NOT tracked per-group —
+        # global totals still aggregate it, but unhealthy_groups only needs
+        # dead/retry/pending.
+        g = group_counts.setdefault(group_id, {"dead": 0, "retry": 0, "pending": 0})
         if status in g:
             g[status] += count
 
