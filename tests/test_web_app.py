@@ -380,6 +380,19 @@ class TestExtractListenerBody:
         with pytest.raises(AssertionError, match=r"function.*first_event|first_event.*function"):
             _extract_listener_body(js, "first_event")
 
+    def test_extract_listener_body_finds_inline_listener_after_factory_listener(self) -> None:
+        """Inline listener following a factory-pattern listener still extracts correctly.
+
+        After bounding the search, an inline listener that comes *after* a factory
+        listener must still be extractable by its own event type.
+        """
+        js = (
+            "source.addEventListener('factory_event', makeStageHandler('factory_event')); "
+            "source.addEventListener('target_event', function(e) { targetThing(); })"
+        )
+        body = _extract_listener_body(js, "target_event")
+        assert body == "{ targetThing(); }"
+
 
 class TestBraceMatchFrom:
     """Tests for the _brace_match_from helper."""
