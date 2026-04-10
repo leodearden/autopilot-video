@@ -2049,6 +2049,38 @@ class TestMakeCapturingLoads:
 
 
 # ---------------------------------------------------------------------------
+# _make_edl / _make_edl_no_source_path factory unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestMakeEdlHelpers:
+    """Unit tests for _make_edl and _make_edl_no_source_path helpers."""
+
+    def test_make_edl_default_clip_has_source_path(self) -> None:
+        """Default _make_edl() clip should include source_path='/fake/source.mp4'."""
+        edl = _make_edl()
+        assert edl["clips"][0]["source_path"] == "/fake/source.mp4"
+
+    def test_make_edl_no_source_path_default_clip_omits_source_path(self) -> None:
+        """_make_edl_no_source_path() default clip must not have source_path."""
+        edl = _make_edl_no_source_path()
+        clip = edl["clips"][0]
+        assert "source_path" not in clip
+        # Standard fields must still be present
+        assert clip["clip_id"] == "clip_1"
+        assert clip["in_timecode"] == "00:00:00.000"
+        assert clip["out_timecode"] == "00:00:10.000"
+        assert clip["track"] == 1
+
+    def test_make_edl_no_source_path_accepts_custom_clips(self) -> None:
+        """_make_edl_no_source_path(clips=[...]) should use provided clips list."""
+        custom_clips = [{"clip_id": "x", "in_timecode": "00:00:00.000",
+                         "out_timecode": "00:00:05.000", "track": 2}]
+        edl = _make_edl_no_source_path(clips=custom_clips)
+        assert edl["clips"] == custom_clips
+
+
+# ---------------------------------------------------------------------------
 # _make_db factory unit tests
 # ---------------------------------------------------------------------------
 
