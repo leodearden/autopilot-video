@@ -7347,6 +7347,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 399,
+        "title": "Re-arm debouncedRefreshStageCard window on trailing fire to bound refresh cadence",
+        "description": "The leading+trailing debounce in autopilot/web/static/app.js (lines 76-94) deletes state unconditionally on trailing fire, so any event arriving immediately after produces a brand-new leading fire with no throttling. Under sustained-burst conditions this yields a 2-refresh cluster every ~DEBOUNCE_MS+ε (leading at t=0, trailing at t=150, leading at t=150+ε, trailing at t=300, ...) which partially defeats the coalescing goal.\n\nOption A: Re-arm the window on trailing fire — after calling `refreshStageCard(stage)` in the trailing branch, set a fresh timer with `pending=false` instead of deleting state so the next leading fire is delayed by a full DEBOUNCE_MS window. This matches standard leading+trailing implementations (e.g. lodash _.debounce with leading+trailing).\n\nOption B: Document explicitly that this is a simple leading+trailing (no re-arm) and add a runtime test asserting the observed refresh cadence under sustained input is acceptable (e.g. ≤ 1 refresh per DEBOUNCE_MS on average).\n\nPrefer Option A. Add behavioral tests covering the sustained-burst cadence.\n\nmemory_hints: search(\"debouncedRefreshStageCard leading trailing\")",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -7359,7 +7370,7 @@
       ],
       "created": "2026-04-10T10:10:12.124Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-10T10:10:22.233Z"
+      "updated": "2026-04-10T10:10:31.685Z"
     }
   }
 }
