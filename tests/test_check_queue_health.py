@@ -15,9 +15,11 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 # isort: split
 from check_queue_health import (  # noqa: E402  (import after sys.path mutation)
+    _format_age,
     collect_queue_stats,
     filter_by_project,
     format_report,
+    get_oldest_unhealthy_age_seconds,
     main,
     summarize_health,
 )
@@ -76,6 +78,79 @@ def _insert_row(
         """,
         (group_id, operation, status, attempts, created_at, completed_at, error),
     )
+
+
+# ===========================================================================
+# TestFormatAge
+# ===========================================================================
+
+
+class TestFormatAge:
+    @pytest.mark.parametrize(
+        "seconds, expected",
+        [
+            (0, "0s"),
+            (45, "45s"),
+            (120, "2m"),
+            (3600, "1h0m"),
+            (3 * 3600 + 42 * 60, "3h42m"),
+            (86400, "24h0m"),
+        ],
+    )
+    def test_format_age(self, seconds: float, expected: str) -> None:
+        assert _format_age(seconds) == expected
+
+
+# ===========================================================================
+# TestGetOldestUnhealthyAgeSeconds
+# ===========================================================================
+
+
+class TestGetOldestUnhealthyAgeSeconds:
+    def test_returns_age_from_min_created_at_across_pending_retry_dead(
+        self, tmp_path: Path
+    ) -> None:
+        db_path = _make_queue_db(tmp_path)
+        conn = sqlite3.connect(str(db_path))
+        try:
+            _insert_row(conn, group_id="g", status="pending", created_at=100.0)
+            _insert_row(conn, group_id="g", status="retry", created_at=200.0)
+            _insert_row(conn, group_id="g", status="dead", created_at=150.0)
+            _insert_row(conn, group_id="g", status="completed", created_at=50.0)
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = get_oldest_unhealthy_age_seconds(db_path, now=1000.0)
+        # min(100, 200, 150) = 100; completed@50 must not be included
+        assert result == 900.0
+
+    def test_returns_none_when_no_unhealthy_rows(self, tmp_path: Path) -> None:
+        db_path = _make_queue_db(tmp_path)
+        conn = sqlite3.connect(str(db_path))
+        try:
+            _insert_row(conn, group_id="g", status="completed", created_at=1.0)
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = get_oldest_unhealthy_age_seconds(db_path, now=1000.0)
+        assert result is None
+
+    def test_ignores_completed_rows_in_min_computation(
+        self, tmp_path: Path
+    ) -> None:
+        db_path = _make_queue_db(tmp_path)
+        conn = sqlite3.connect(str(db_path))
+        try:
+            _insert_row(conn, group_id="g", status="completed", created_at=1.0)
+            _insert_row(conn, group_id="g", status="pending", created_at=900.0)
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = get_oldest_unhealthy_age_seconds(db_path, now=1000.0)
+        assert result == 100.0  # 1000 - 900, not 1000 - 1
 
 
 # ===========================================================================
@@ -213,6 +288,29 @@ class TestSummarizeHealth:
         assert summary["retry"] == 0
         assert summary["unhealthy_groups"] == []
 
+    def test_unhealthy_groups_entries_have_exact_key_set(self) -> None:
+        """Each unhealthy_groups entry must have exactly {group_id, dead, retry, pending}."""
+        stats = {
+            ("g1", "dead"): 2,
+            ("g1", "retry"): 1,
+            ("g1", "in_flight"): 3,
+            ("g1", "pending"): 4,
+            ("g2", "dead"): 1,
+        }
+        summary = summarize_health(stats)
+
+        for entry in summary["unhealthy_groups"]:
+            assert set(entry.keys()) == {"group_id", "dead", "retry", "pending"}
+
+    def test_surfaces_oldest_unhealthy_age_seconds_from_kwarg(self) -> None:
+        stats = {("g", "dead"): 1}
+        summary = summarize_health(stats, oldest_unhealthy_age_seconds=123.4)
+        assert summary["oldest_unhealthy_age_seconds"] == 123.4
+
+    def test_oldest_unhealthy_age_seconds_defaults_to_none(self) -> None:
+        summary = summarize_health({})
+        assert summary["oldest_unhealthy_age_seconds"] is None
+
 
 # ===========================================================================
 # TestFilterByProject
@@ -341,6 +439,66 @@ class TestFormatReport:
         total = counts.pop("total_rows")
         assert sum(counts.values()) == total
 
+    def test_per_group_breakdown_aligns_with_long_group_ids(self) -> None:
+        long_id = "mem0_some_very_long_project_identifier_with_suffix"  # 50 chars
+        short_id = "x"
+        stats = {
+            (long_id, "dead"): 3,
+            (short_id, "completed"): 1,
+        }
+        summary = summarize_health(stats)
+        report = format_report(stats, summary)
+
+        # Extract the Per-group breakdown section rows only
+        lines = report.splitlines()
+        in_breakdown = False
+        data_lines = []
+        for ln in lines:
+            if ln == "Per-group breakdown:":
+                in_breakdown = True
+                continue
+            if in_breakdown:
+                if ln == "" or not ln.startswith("  "):
+                    break
+                data_lines.append(ln)
+
+        assert len(data_lines) == 2, f"Expected 2 breakdown rows, got: {data_lines}"
+
+        # Status column must start at the same character offset in both rows
+        # (the status word follows two spaces + the padded group_id column)
+        def status_col(row: str) -> int:
+            # Status is the second whitespace-delimited token after leading spaces
+            stripped = row.lstrip()
+            # Remove the group_id token and find where the next non-space starts
+            after_group = stripped[len(stripped.split()[0]):]
+            return row.index(after_group.lstrip(), 2)
+
+        col0 = status_col(data_lines[0])
+        col1 = status_col(data_lines[1])
+        assert col0 == col1, (
+            f"Status column misaligned: row0 status at {col0}, row1 status at {col1}\n"
+            f"  {data_lines[0]!r}\n  {data_lines[1]!r}"
+        )
+        # Long group_id must not overflow into the status column with no separator
+        assert f"{long_id}dead" not in report and f"{long_id}completed" not in report
+
+    def test_summary_line_includes_oldest_dead_age_when_present(self) -> None:
+        stats = {("g", "dead"): 1}
+        summary = summarize_health(
+            stats, oldest_unhealthy_age_seconds=3 * 3600 + 42 * 60
+        )
+        report = format_report(stats, summary)
+
+        summary_line = report.splitlines()[1]
+        assert "oldest_dead_age=3h42m" in summary_line
+
+    def test_summary_line_omits_oldest_dead_age_when_none(self) -> None:
+        stats = {("g", "completed"): 1}
+        summary = summarize_health(stats)  # oldest_unhealthy_age_seconds=None
+        report = format_report(stats, summary)
+
+        assert "oldest_dead_age" not in report
+
 
 # ===========================================================================
 # TestMain
@@ -400,16 +558,96 @@ class TestMain:
 
         assert "dark_factory" not in captured.out
 
-    def test_main_defaults_db_path_to_dark_factory_queue(self) -> None:
-        """The default --db-path should point at the dark-factory queue."""
-        import argparse
+    def test_default_db_path_does_not_contain_home_leo(self) -> None:
+        """Portability guard: the script must not hardcode /home/leo/src/dark-factory."""
+        import check_queue_health as cqh
 
-        # Reconstruct just the parser to check the default
-        parser = argparse.ArgumentParser()
-        parser.add_argument(
-            "--db-path",
-            default="/home/leo/src/dark-factory/data/queue/write_queue.db",
+        # Check the script source for the cross-project absolute path
+        assert cqh.__file__ is not None
+        source_path = Path(cqh.__file__)
+        source_text = source_path.read_text()
+        assert "/home/leo/src/dark-factory" not in source_text, (
+            "check_queue_health.py contains a hardcoded cross-project path; "
+            "use FUSED_MEMORY_QUEUE_DB env var or --db-path instead"
         )
-        parser.add_argument("--project", default=None)
-        ns = parser.parse_args([])
-        assert ns.db_path == "/home/leo/src/dark-factory/data/queue/write_queue.db"
+
+    def test_main_exits_with_code_2_on_missing_db_file(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        rc = main(["--db-path", "/nonexistent/path.db"])
+        captured = capsys.readouterr()
+
+        assert rc == 2
+        assert "/nonexistent/path.db" in captured.err
+        # Report banner must NOT appear on diagnostic failure
+        assert "HEALTH:" not in captured.out
+
+    def test_main_exits_with_code_2_on_missing_write_queue_table(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        # Create a valid SQLite file but without the write_queue table
+        db_path = tmp_path / "empty.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.close()
+
+        rc = main(["--db-path", str(db_path)])
+        captured = capsys.readouterr()
+
+        assert rc == 2
+        assert str(db_path) in captured.err
+        assert "HEALTH:" not in captured.out
+
+    def test_default_db_path_resolves_from_fused_memory_queue_db_env_var(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        db_path = _make_queue_db(tmp_path)
+        monkeypatch.setenv("FUSED_MEMORY_QUEUE_DB", str(db_path))
+
+        # No --db-path flag — should fall back to env var
+        rc = main([])
+        captured = capsys.readouterr()
+
+        # 0 (healthy) or 1 (unhealthy) — NOT 2 (diagnostic failure)
+        assert rc in (0, 1)
+        assert "HEALTH:" in captured.out
+
+    def test_main_exits_with_code_2_when_no_db_path_and_no_env_var(
+        self,
+        capsys: pytest.CaptureFixture,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("FUSED_MEMORY_QUEUE_DB", raising=False)
+
+        rc = main([])
+        captured = capsys.readouterr()
+
+        assert rc == 2
+        assert "--db-path" in captured.err or "FUSED_MEMORY_QUEUE_DB" in captured.err
+
+    def test_main_integrates_oldest_dead_age_in_report(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        import re
+        import time
+
+        db_path = _make_queue_db(tmp_path)
+        conn = sqlite3.connect(str(db_path))
+        try:
+            _insert_row(
+                conn,
+                group_id="g",
+                status="dead",
+                created_at=time.time() - 7200,  # 2 hours ago
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        rc = main(["--db-path", str(db_path)])
+        captured = capsys.readouterr()
+
+        assert rc == 1
+        assert re.search(r"oldest_dead_age=\d+h\d+m", captured.out)

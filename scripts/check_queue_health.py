@@ -5,33 +5,44 @@ so that DLQ resurgences are caught quickly.
 
 Usage examples::
 
-    # Check the default dark-factory queue
-    python scripts/check_queue_health.py
+    # Use the env var to point at the queue DB
+    FUSED_MEMORY_QUEUE_DB=/path/to/write_queue.db python scripts/check_queue_health.py
 
     # Scope the report to a single project
-    python scripts/check_queue_health.py --project autopilot_video
+    python scripts/check_queue_health.py --db-path /path/to/write_queue.db --project autopilot_video
 
-    # Point at an alternate DB
+    # Point at an alternate DB explicitly
     python scripts/check_queue_health.py --db-path /path/to/write_queue.db
 
 Exit codes:
     0 — queue is healthy (no dead or retry rows)
     1 — queue is unhealthy
+    2 — diagnostic failed (missing DB, missing write_queue table, no path configured, etc.)
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sqlite3
+import sys
+import time
 from pathlib import Path
 from typing import Any
-
-_DEFAULT_DB_PATH = "/home/leo/src/dark-factory/data/queue/write_queue.db"
-
 
 # ---------------------------------------------------------------------------
 # Core helpers (pure functions, testable without argparse)
 # ---------------------------------------------------------------------------
+
+
+def _format_age(seconds: float) -> str:
+    """Render a duration in seconds as a compact human-readable string."""
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    elif seconds < 3600:
+        return f"{int(seconds // 60)}m"
+    else:
+        return f"{int(seconds // 3600)}h{int((seconds % 3600) // 60)}m"
 
 
 def collect_queue_stats(db_path: str | Path) -> dict[tuple[str, str], int]:
@@ -58,11 +69,52 @@ def collect_queue_stats(db_path: str | Path) -> dict[tuple[str, str], int]:
         conn.close()
 
 
-def summarize_health(stats: dict[tuple[str, str], int]) -> dict[str, Any]:
+def get_oldest_unhealthy_age_seconds(
+    db_path: str | Path,
+    *,
+    now: float | None = None,
+) -> float | None:
+    """Return the age in seconds of the oldest unhealthy row (pending/retry/dead).
+
+    Opens the database in read-only URI mode (never acquires a write lock).
+
+    Args:
+        db_path: Path to the SQLite write_queue database file.
+        now: Override for the current time (seconds since epoch). Defaults to
+            ``time.time()``. Useful for deterministic testing.
+
+    Returns:
+        ``(now - MIN(created_at))`` for rows with status in
+        ``('pending', 'retry', 'dead')``, or ``None`` when no such rows exist.
+    """
+    db_path = str(db_path)
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        cursor = conn.execute(
+            "SELECT MIN(created_at) FROM write_queue"
+            " WHERE status IN ('pending', 'retry', 'dead')"
+        )
+        row = cursor.fetchone()
+    finally:
+        conn.close()
+
+    if row is None or row[0] is None:
+        return None
+    return (now if now is not None else time.time()) - row[0]
+
+
+def summarize_health(
+    stats: dict[tuple[str, str], int],
+    *,
+    oldest_unhealthy_age_seconds: float | None = None,
+) -> dict[str, Any]:
     """Aggregate per-(group, status) counts into an overall health summary.
 
     Args:
         stats: Output of :func:`collect_queue_stats` (or a filtered subset).
+        oldest_unhealthy_age_seconds: Age in seconds of the oldest unhealthy
+            row, as returned by :func:`get_oldest_unhealthy_age_seconds`.
+            Defaults to ``None`` (omitted from report when not provided).
 
     Returns:
         Dict with keys:
@@ -72,6 +124,8 @@ def summarize_health(stats: dict[tuple[str, str], int]) -> dict[str, Any]:
         - ``dead`` (int): Rows in "dead" status.
         - ``retry`` (int): Rows in "retry" status.
         - ``pending`` (int): Rows in "pending" status.
+        - ``oldest_unhealthy_age_seconds`` (float | None): Age of the oldest
+          unhealthy row, or ``None`` if none exist.
         - ``unhealthy_groups`` (list[dict]): One entry per group that has any
           non-zero dead / retry / pending count, sorted by group_id.
           Each entry: ``{group_id, dead, retry, pending}``.
@@ -90,11 +144,10 @@ def summarize_health(stats: dict[tuple[str, str], int]) -> dict[str, Any]:
         # Update global totals
         if status in totals:
             totals[status] += count
-        # Update per-group counters (in_flight tracked per-group for internal
-        # bookkeeping but NOT surfaced in unhealthy_groups entries)
-        g = group_counts.setdefault(
-            group_id, {"in_flight": 0, "dead": 0, "retry": 0, "pending": 0}
-        )
+        # Update per-group counters; in_flight is NOT tracked per-group —
+        # global totals still aggregate it, but unhealthy_groups only needs
+        # dead/retry/pending.
+        g = group_counts.setdefault(group_id, {"dead": 0, "retry": 0, "pending": 0})
         if status in g:
             g[status] += count
 
@@ -124,6 +177,7 @@ def summarize_health(stats: dict[tuple[str, str], int]) -> dict[str, Any]:
         "dead": dead,
         "retry": retry,
         "pending": totals["pending"],
+        "oldest_unhealthy_age_seconds": oldest_unhealthy_age_seconds,
         "unhealthy_groups": unhealthy_groups,
     }
 
@@ -169,7 +223,7 @@ def format_report(
 
     health_label = "HEALTHY" if summary["healthy"] else "UNHEALTHY"
     lines.append(f"HEALTH: {health_label}")
-    lines.append(
+    summary_line = (
         f"total_rows={summary['total_rows']}"
         f" completed={summary['completed']}"
         f" in_flight={summary['in_flight']}"
@@ -177,13 +231,18 @@ def format_report(
         f" retry={summary['retry']}"
         f" pending={summary['pending']}"
     )
+    oldest = summary.get("oldest_unhealthy_age_seconds")
+    if oldest is not None:
+        summary_line += f" oldest_dead_age={_format_age(oldest)}"
+    lines.append(summary_line)
 
     # Per-(group, status) table, sorted for stable output
     if stats:
+        width = max((len(g) for (g, _) in stats), default=20)
         lines.append("")
         lines.append("Per-group breakdown:")
         for (group_id, status), count in sorted(stats.items()):
-            lines.append(f"  {group_id:<40s}  {status:<12s}  {count}")
+            lines.append(f"  {group_id:<{width}s}  {status:<12s}  {count}")
 
     # Unhealthy groups detail section
     if summary["unhealthy_groups"]:
@@ -219,10 +278,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--db-path",
-        default=_DEFAULT_DB_PATH,
+        default=None,
         help=(
-            "Path to the write_queue SQLite database "
-            f"(default: {_DEFAULT_DB_PATH})"
+            "Path to the write_queue SQLite database. "
+            "Falls back to the FUSED_MEMORY_QUEUE_DB environment variable."
         ),
     )
     parser.add_argument(
@@ -232,10 +291,26 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    stats = collect_queue_stats(args.db_path)
+    db_path = args.db_path or os.environ.get("FUSED_MEMORY_QUEUE_DB")
+    if not db_path:
+        print(
+            "error: --db-path is required (or set FUSED_MEMORY_QUEUE_DB env var)",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        stats = collect_queue_stats(db_path)
+        oldest_age = get_oldest_unhealthy_age_seconds(db_path)
+    except (sqlite3.OperationalError, FileNotFoundError) as exc:
+        print(
+            f"error: failed to read queue DB at {db_path}: {exc}",
+            file=sys.stderr,
+        )
+        return 2
     if args.project:
         stats = filter_by_project(stats, args.project)
-    summary = summarize_health(stats)
+    summary = summarize_health(stats, oldest_unhealthy_age_seconds=oldest_age)
     print(format_report(stats, summary))
     return 0 if summary["healthy"] else 1
 
