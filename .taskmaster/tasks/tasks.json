@@ -5149,7 +5149,7 @@
         "description": "In tests/test_db_pipeline.py: (1) Replace the three `@pytest.mark.parametrize('entity', ['gate', 'job', 'run'])` decorators (lines 619, 629, 646) with `@pytest.mark.parametrize('entity', list(_UPDATE_SPECS))` so a new entity in _UPDATE_SPECS is automatically covered. (2) Add an `'invalid_col'` field (or similar) to each _UPDATE_SPECS entry with a distinct bad column name per entity (e.g. 'hacked' for gate, 'injected' for job, 'corrupted' for run), and parametrize `test_rejects_single_disallowed_column` with both 'evil_col' and the entity-specific name to restore the coverage the old per-entity tests had.",
         "details": "",
         "testStrategy": "",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [],
         "priority": "low",
         "subtasks": [],
@@ -5161,7 +5161,7 @@
             "tests"
           ]
         },
-        "updatedAt": "2026-04-10T10:11:19.166Z"
+        "updatedAt": "2026-04-10T11:10:29.511Z"
       },
       {
         "id": "273",
@@ -7526,9 +7526,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-10T11:08:47.678Z",
+      "lastModified": "2026-04-10T11:10:29.513Z",
       "taskCount": 412,
-      "completedCount": 252,
+      "completedCount": 253,
       "tags": [
         "master"
       ]
