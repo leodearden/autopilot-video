@@ -7070,6 +7070,17 @@
         "dependencies": [],
         "priority": "low",
         "subtasks": []
+      },
+      {
+        "id": 375,
+        "title": "Clarify _make_capturing_loads docstring and sentinel-marker comment",
+        "description": "In tests/test_render_router.py around lines 184-201, improve the documentation of the _make_capturing_loads() factory helper in two small ways: (1) Add a one-line comment next to the `'edl_version' in result` guard explaining that `edl_version` is a test-only sentinel marker injected by `_make_edl`, not part of the production EDL schema — it exists solely to disambiguate captured EDLs from any other dict that happens to contain a 'clips' key. A grep of autopilot/ shows no production code reads or writes this key, so a future reader may otherwise chase it into production code. (2) Tighten the docstring to state that the wrapper passes `s` through unchanged because (a) json.loads natively supports str/bytes/bytearray and (b) this avoids silently corrupting inputs if a future caller patches a site that receives bytes. The current integration callers in autopilot/render/router.py:102 only pass str, so the bytes-handling is defensive and unit-test-only — worth noting so the wrapper doesn't read as fixing an observed production bug. No functional changes; docstring/comment only.",
+        "details": "",
+        "testStrategy": "",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
@@ -7082,7 +7093,7 @@
       ],
       "created": "2026-04-10T08:03:52.127Z",
       "description": "Tasks for master context",
-      "updated": "2026-04-10T08:03:52.132Z"
+      "updated": "2026-04-10T08:03:53.189Z"
     }
   }
 }
