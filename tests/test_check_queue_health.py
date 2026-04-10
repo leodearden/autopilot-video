@@ -582,3 +582,28 @@ class TestMain:
 
         assert rc == 2
         assert "--db-path" in captured.err or "FUSED_MEMORY_QUEUE_DB" in captured.err
+
+    def test_main_integrates_oldest_dead_age_in_report(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        import re
+        import time
+
+        db_path = _make_queue_db(tmp_path)
+        conn = sqlite3.connect(str(db_path))
+        try:
+            _insert_row(
+                conn,
+                group_id="g",
+                status="dead",
+                created_at=time.time() - 7200,  # 2 hours ago
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        rc = main(["--db-path", str(db_path)])
+        captured = capsys.readouterr()
+
+        assert rc == 1
+        assert re.search(r"oldest_dead_age=\d+h\d+m", captured.out)
