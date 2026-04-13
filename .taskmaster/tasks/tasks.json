@@ -6768,14 +6768,14 @@
         "metadata": {
           "memory_hints": {
             "entities": [
-              "status_badge",
-              "narrative_status_badge"
+              "media_colors",
+              "stage_colors",
+              "job_colors"
             ],
             "queries": [
-              "color map duplication templates media stage job",
-              "narrative_status_badge wrapper pattern",
-              "narrative status values Tailwind color mappings scattered no single source of truth",
-              "domain-specific badge wrapper macro pattern"
+              "template DRY color maps centralized macro wrappers convention",
+              "media_colors stage_colors job_count_colors duplication templates",
+              "centralized macros color_maps.html narrative_status_badge.html"
             ]
           },
           "files": [
