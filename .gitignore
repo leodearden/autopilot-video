@@ -20,3 +20,25 @@ build/
 # Credentials
 *.credentials.json
 .task/
+
+.claude/
+
+data/.orchestrator/queue/
+
+data/.orchestrator/reconciliation/
+
+data/escalations/archive/
+
+data/escalations/
+
+data/orchestrator/
+
+*.log
+
+review/reports/
+
+docs/autopilot-video-2026-03-19.md
+
+docs/autopilot-video-2026-03-21.md
+
+docs/autopilot-video-project-status-2026-03-17.md
