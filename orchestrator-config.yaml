@@ -15,7 +15,6 @@ type_check_command: "pyright"
 fused_memory:
   url: "http://localhost:8002"
   project_id: "autopilot_video"
-  config_path: "/home/leo/src/autopilot-video/fused-memory-config.yaml"
   server_command: []
 
 # Sandbox (disabled: bwrap uid map not permitted on this kernel)
