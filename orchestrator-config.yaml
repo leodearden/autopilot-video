@@ -5,8 +5,6 @@
 max_concurrent_tasks: 12
 max_per_module: 1
 lock_depth: 4
-module_overrides:
-  tests: 2
 
 # Verification commands
 test_command: "pytest"

@@ -1,0 +1,17 @@
+{
+  // autopilot-video: Python project (video pipeline + FastAPI web UI)
+  "languages": ["python", "html", "javascript"],
+  "max_folder_files": 2000,
+  "extra_ignore_patterns": [
+    ".worktrees/",
+    ".venv/",
+    ".mypy_cache/",
+    ".ruff_cache/",
+    ".pytest_cache/",
+    "__pycache__/",
+    "data/",
+    "output/"
+  ],
+  "disabled_tools": ["search_columns"],
+  "staleness_days": 3
+}
